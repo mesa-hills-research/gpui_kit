@@ -99,6 +99,7 @@ impl From<lsp_types::DiagnosticSeverity> for DiagnosticSeverity {
 }
 
 impl DiagnosticSeverity {
+    #[allow(dead_code)]
     pub(crate) fn bg(&self, cx: &App) -> Hsla {
         let theme = &cx.theme().highlight_theme;
 
@@ -110,6 +111,7 @@ impl DiagnosticSeverity {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn fg(&self, cx: &App) -> Hsla {
         let theme = &cx.theme().highlight_theme;
 

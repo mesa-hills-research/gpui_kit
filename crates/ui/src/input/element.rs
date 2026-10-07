@@ -53,6 +53,25 @@ impl TextElement {
         });
     }
 
+    fn clamp_scroll_offset(
+        mut scroll_offset: Point<Pixels>,
+        scroll_size: &Size<Pixels>,
+        viewport_size: Size<Pixels>,
+        single_line: bool,
+    ) -> Point<Pixels> {
+        let safe_y_min = (-scroll_size.height + viewport_size.height).min(px(0.));
+        let safe_x_min = (-scroll_size.width + viewport_size.width).min(px(0.));
+
+        scroll_offset.x = scroll_offset.x.clamp(safe_x_min, px(0.));
+        scroll_offset.y = if single_line {
+            px(0.)
+        } else {
+            scroll_offset.y.clamp(safe_y_min, px(0.))
+        };
+
+        scroll_offset
+    }
+
     /// Returns the:
     ///
     /// - cursor bounds
@@ -64,6 +83,7 @@ impl TextElement {
         &self,
         last_layout: &LastLayout,
         bounds: &mut Bounds<Pixels>,
+        scroll_size: &Size<Pixels>,
         _: &mut Window,
         cx: &mut App,
     ) -> (Option<Bounds<Pixels>>, Point<Pixels>, Option<usize>) {
@@ -240,6 +260,13 @@ impl TextElement {
         if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             scroll_offset = deferred_scroll_offset;
         }
+
+        scroll_offset = Self::clamp_scroll_offset(
+            scroll_offset,
+            scroll_size,
+            bounds.size,
+            state.mode.is_single_line(),
+        );
 
         bounds.origin = bounds.origin + scroll_offset;
 
@@ -1159,7 +1186,7 @@ impl Element for TextElement {
         // Calculate the scroll offset to keep the cursor in view
 
         let (cursor_bounds, cursor_scroll_offset, current_row) =
-            self.layout_cursor(&last_layout, &mut bounds, window, cx);
+            self.layout_cursor(&last_layout, &mut bounds, &scroll_size, window, cx);
         last_layout.cursor_bounds = cursor_bounds;
 
         let search_match_paths = self.layout_search_matches(&last_layout, &mut bounds, cx);
@@ -1475,7 +1502,17 @@ impl Element for TextElement {
             if let Some(first_line) = &prepaint.ghost_first_line {
                 if let Some(cursor_bounds) = prepaint.cursor_bounds_with_scroll() {
                     let first_line_x = cursor_bounds.origin.x + cursor_bounds.size.width;
-                    let p = point(first_line_x, cursor_bounds.origin.y);
+                    
+                    // Calculate the exact top of the line by subtracting the cursor's vertical centering offset.
+                    let state = self.state.read(cx);
+                    let cursor_height = match state.size {
+                        crate::Size::Large => 1.,
+                        crate::Size::Small => 0.75,
+                        _ => 0.85,
+                    } * line_height;
+                    let first_line_y = cursor_bounds.origin.y - ((line_height - cursor_height) / 2.);
+
+                    let p = point(first_line_x, first_line_y);
 
                     // Paint background to cover any existing text
                     let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));

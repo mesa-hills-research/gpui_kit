@@ -27,6 +27,8 @@ use crate::{
 };
 
 const CONTEXT: &'static str = "TextView";
+const UPDATE_DELAY: Duration = Duration::from_millis(200);
+const SYNC_PARSE_MAX_BYTES: usize = 24 * 1024;
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys(vec![
@@ -61,32 +63,19 @@ impl RenderOnce for TextViewElement {
                             .child("Failed to parse content")
                             .child(err.to_string()),
                     ),
-                    None => this,
+                    None => this.child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Rendering…"),
+                    ),
                 })
         })
     }
 }
 
-/// Type for code block actions generator function.
 pub(crate) type CodeBlockActionsFn =
     dyn Fn(&CodeBlock, &mut Window, &mut App) -> AnyElement + Send + Sync;
 
-/// A text view that can render Markdown or HTML.
-///
-/// ## Goals
-///
-/// - Provide a rich text rendering component for such as Markdown or HTML,
-/// used to display rich text in GPUI application (e.g., Help messages, Release notes)
-/// - Support Markdown GFM and HTML (Simple HTML like Safari Reader Mode) for showing most common used markups.
-/// - Support Heading, Paragraph, Bold, Italic, StrikeThrough, Code, Link, Image, Blockquote, List, Table, HorizontalRule, CodeBlock ...
-///
-/// ## Not Goals
-///
-/// - Customization of the complex style (some simple styles will be supported)
-/// - As a Markdown editor or viewer (If you want to like this, you must fork your version).
-/// - As a HTML viewer, we not support CSS, we only support basic HTML tags for used to as a content reader.
-///
-/// See also [`MarkdownElement`], [`HtmlElement`]
 #[derive(Clone)]
 pub struct TextView {
     id: ElementId,
@@ -105,12 +94,9 @@ pub(crate) struct ParsedContent {
     pub(crate) node_cx: node::NodeContext,
 }
 
-/// The type of the text view.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TextViewType {
-    /// Markdown view
     Markdown,
-    /// HTML view
     Html,
 }
 
@@ -141,14 +127,20 @@ impl UpdateFuture {
         rx: smol::channel::Receiver<Update>,
         tx_result: smol::channel::Sender<Result<ParsedContent, SharedString>>,
         delay: Duration,
+        parse_on_start: bool,
         code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     ) -> Self {
+        let mut timer = Timer::never();
+        if parse_on_start {
+            timer.set_after(Duration::from_millis(0));
+        }
+
         Self {
             type_,
             highlight_theme,
             current_style: style,
             current_text: text,
-            timer: Timer::never(),
+            timer,
             rx: Box::pin(rx),
             tx_result,
             delay,
@@ -221,14 +213,13 @@ pub(crate) struct TextViewState {
     tx: Option<smol::channel::Sender<Update>>,
     parsed_result: Option<Result<ParsedContent, SharedString>>,
     focus_handle: Option<FocusHandle>,
-    /// The bounds of the text view
     bounds: Bounds<Pixels>,
-    /// The local (in TextView) position of the selection.
     selection_positions: (Option<Point<Pixels>>, Option<Point<Pixels>>),
-    /// Is current in selection.
     is_selecting: bool,
     is_selectable: bool,
     list_state: ListState,
+    last_text: SharedString,
+    last_style: TextViewStyle,
 }
 
 impl TextViewState {
@@ -244,12 +235,13 @@ impl TextViewState {
             is_selecting: false,
             is_selectable: false,
             list_state: ListState::new(0, gpui::ListAlignment::Top, px(1000.)),
+            last_text: SharedString::default(),
+            last_style: TextViewStyle::default(),
         }
     }
 }
 
 impl TextViewState {
-    /// Save bounds and unselect if bounds changed.
     fn update_bounds(&mut self, bounds: Bounds<Pixels>) {
         if self.bounds.size != bounds.size {
             self.clear_selection();
@@ -291,7 +283,6 @@ impl TextViewState {
         self.is_selectable
     }
 
-    /// Return the bounds of the selection in window coordinates.
     pub(crate) fn selection_bounds(&self) -> Bounds<Pixels> {
         selection_bounds(
             self.selection_positions.0,
@@ -343,9 +334,6 @@ impl From<TextView> for Text {
 }
 
 impl Text {
-    /// Set the style for [`TextView`].
-    ///
-    /// Do nothing if this is `String`.
     pub fn style(self, style: TextViewStyle) -> Self {
         match self {
             Self::String(s) => Self::String(s),
@@ -353,7 +341,6 @@ impl Text {
         }
     }
 
-    /// Get the str
     pub fn as_str(&self) -> &str {
         match self {
             Self::String(s) => s.as_str(),
@@ -398,7 +385,6 @@ impl TextView {
         }
     }
 
-    /// Create a new markdown text view.
     pub fn markdown(
         id: impl Into<ElementId>,
         markdown: impl Into<SharedString>,
@@ -419,9 +405,19 @@ impl TextView {
             &state,
             cx,
         );
-        if let Some(tx) = &state.read(cx).tx {
-            let _ = tx.try_send(Update::Text(markdown.clone()));
-        }
+
+        state.update(cx, {
+            let markdown = markdown.clone();
+            move |state, _| {
+                if state.last_text != markdown {
+                    state.last_text = markdown.clone();
+                    if let Some(tx) = &state.tx {
+                        let _ = tx.try_send(Update::Text(markdown.clone()));
+                    }
+                }
+            }
+        });
+
         Self {
             id,
             init_state: Some(init_state),
@@ -434,7 +430,6 @@ impl TextView {
         }
     }
 
-    /// Create a new html text view.
     pub fn html(
         id: impl Into<ElementId>,
         html: impl Into<SharedString>,
@@ -450,9 +445,19 @@ impl TextView {
             });
         let init_state =
             Self::create_init_state(TextViewType::Html, &html, &highlight_theme, &state, cx);
-        if let Some(tx) = &state.read(cx).tx {
-            let _ = tx.try_send(Update::Text(html.clone()));
-        }
+
+        state.update(cx, {
+            let html = html.clone();
+            move |state, _| {
+                if state.last_text != html {
+                    state.last_text = html.clone();
+                    if let Some(tx) = &state.tx {
+                        let _ = tx.try_send(Update::Text(html.clone()));
+                    }
+                }
+            }
+        });
+
         Self {
             id,
             init_state: Some(init_state),
@@ -465,7 +470,6 @@ impl TextView {
         }
     }
 
-    /// Set the source text of the text view.
     pub fn text(mut self, raw: impl Into<SharedString>) -> Self {
         let raw: SharedString = raw.into();
         if let Some(init_state) = &mut self.init_state {
@@ -480,7 +484,6 @@ impl TextView {
         self
     }
 
-    /// Set [`TextViewStyle`].
     pub fn style(mut self, style: TextViewStyle) -> Self {
         if let Some(init_state) = &mut self.init_state {
             match init_state {
@@ -493,24 +496,11 @@ impl TextView {
         self
     }
 
-    /// Set the text view to be selectable, default is false.
     pub fn selectable(mut self, selectable: bool) -> Self {
         self.selectable = selectable;
         self
     }
 
-    /// Set the text view to be scrollable, default is false.
-    ///
-    /// ## If true for `scrollable`
-    ///
-    /// The `scrollable` mode used for large content,
-    /// will show scrollbar, but requires the parent to have a fixed height,
-    /// and use [`gpui::list`] to render the content in a virtualized way.
-    ///
-    /// ## If false to fit content
-    ///
-    /// The TextView will expand to fit all content, no scrollbar.
-    /// This mode is suitable for small content, such as a few lines of text, a label, etc.
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
@@ -524,10 +514,6 @@ impl TextView {
         cx.write_to_clipboard(ClipboardItem::new_string(selected_text.trim().to_string()));
     }
 
-    /// Set custom block actions for code blocks.
-    ///
-    /// The closure receives the [`CodeBlock`],
-    /// and returns an element to display.
     pub fn code_block_actions<F, E>(mut self, f: F) -> Self
     where
         F: Fn(&CodeBlock, &mut Window, &mut App) -> E + Send + Sync + 'static,
@@ -580,19 +566,29 @@ impl Element for TextView {
             let (tx, rx) = smol::channel::unbounded::<Update>();
             let (tx_result, rx_result) =
                 smol::channel::unbounded::<Result<ParsedContent, SharedString>>();
-            let parsed_result = parse_content(
-                type_,
-                &text,
-                style.clone(),
-                &highlight_theme,
-                &code_block_actions,
-            );
+
+            let parse_sync = text.len() <= SYNC_PARSE_MAX_BYTES;
+            let parsed_result = if parse_sync {
+                Some(parse_content(
+                    type_,
+                    &text,
+                    style.clone(),
+                    &highlight_theme,
+                    &code_block_actions,
+                ))
+            } else {
+                None
+            };
 
             self.state.update(cx, {
                 let tx = tx.clone();
-                |state, _| {
-                    state.parsed_result = Some(parsed_result);
+                let text_for_state = text.clone();
+                let style_for_state = style.clone();
+                move |state, _| {
+                    state.parsed_result = parsed_result;
                     state.tx = Some(tx);
+                    state.last_text = text_for_state;
+                    state.last_style = style_for_state;
                 }
             });
 
@@ -610,7 +606,6 @@ impl Element for TextView {
                                 state.clear_selection();
                             });
                         } else {
-                            // state released, stopping processing
                             break;
                         }
                     }
@@ -625,7 +620,8 @@ impl Element for TextView {
                 highlight_theme,
                 rx,
                 tx_result,
-                Duration::from_millis(200),
+                UPDATE_DELAY,
+                !parse_sync,
                 code_block_actions,
             ))
             .detach();
@@ -724,7 +720,6 @@ impl Element for TextView {
             });
 
             if is_selecting {
-                // move to update end position.
                 window.on_mouse_event({
                     let state = self.state.clone();
                     move |event: &MouseMoveEvent, phase, _, cx| {
@@ -739,7 +734,6 @@ impl Element for TextView {
                     }
                 });
 
-                // up to end selection
                 window.on_mouse_event({
                     let state = self.state.clone();
                     move |_: &MouseUpEvent, phase, _, cx| {
@@ -756,7 +750,6 @@ impl Element for TextView {
             }
 
             if has_selection {
-                // down outside to clear selection
                 window.on_mouse_event({
                     let state = self.state.clone();
                     move |event: &MouseDownEvent, _, _, cx| {
@@ -841,11 +834,6 @@ mod tests {
             Bounds::default()
         );
 
-        // 10,10 start
-        //   |------|
-        //   |      |
-        //   |------|
-        //         50,50
         assert_eq!(
             selection_bounds(
                 Some(point(px(10.), px(10.))),
@@ -857,11 +845,6 @@ mod tests {
                 size: size(px(40.), px(40.))
             }
         );
-        // 10,10
-        //   |------|
-        //   |      |
-        //   |------|
-        //         50,50 start
         assert_eq!(
             selection_bounds(
                 Some(point(px(50.), px(50.))),
@@ -873,11 +856,6 @@ mod tests {
                 size: size(px(40.), px(40.))
             }
         );
-        //        50,10 start
-        //   |------|
-        //   |      |
-        //   |------|
-        // 10,50
         assert_eq!(
             selection_bounds(
                 Some(point(px(50.), px(10.))),
@@ -889,11 +867,6 @@ mod tests {
                 size: size(px(40.), px(40.))
             }
         );
-        //        50,10
-        //   |------|
-        //   |      |
-        //   |------|
-        // 10,50 start
         assert_eq!(
             selection_bounds(
                 Some(point(px(10.), px(50.))),

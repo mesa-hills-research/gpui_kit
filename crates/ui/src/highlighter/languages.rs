@@ -6,6 +6,7 @@ use crate::highlighter::LanguageConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, enum_iterator::Sequence)]
 pub enum Language {
     Json,
+    Plain,
 }
 
 #[cfg(feature = "tree-sitter-languages")]
@@ -59,7 +60,10 @@ impl Language {
 
     pub fn name(&self) -> &'static str {
         #[cfg(not(feature = "tree-sitter-languages"))]
-        return "json";
+        return match self {
+            Self::Plain => "text",
+            Self::Json => "json",
+        };
 
         #[cfg(feature = "tree-sitter-languages")]
         match self {
@@ -102,7 +106,10 @@ impl Language {
     #[allow(unused)]
     pub fn from_str(s: &str) -> Self {
         #[cfg(not(feature = "tree-sitter-languages"))]
-        return Self::Json;
+        return match s {
+            "json" | "jsonc" => Self::Json,
+            _ => Self::Plain,
+        };
 
         #[cfg(feature = "tree-sitter-languages")]
         match s {
@@ -178,6 +185,7 @@ impl Language {
     pub(super) fn config(&self) -> LanguageConfig {
         #[cfg(not(feature = "tree-sitter-languages"))]
         let (language, query, injection, locals) = match self {
+            Self::Plain => (tree_sitter_json::LANGUAGE, "", "", ""),
             Self::Json => (
                 tree_sitter_json::LANGUAGE,
                 include_str!("languages/json/highlights.scm"),

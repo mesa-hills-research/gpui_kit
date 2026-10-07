@@ -71,11 +71,7 @@ impl Render for DiagnosticPopover {
 
         let message = self.diagnostic.message.clone();
 
-        let (border, bg, fg) = (
-            self.diagnostic.severity.border(cx),
-            self.diagnostic.severity.bg(cx),
-            self.diagnostic.severity.fg(cx),
-        );
+        let border = self.diagnostic.severity.border(cx);
 
         Popover::new(
             "diagnostic-popover",
@@ -86,8 +82,6 @@ impl Render for DiagnosticPopover {
         .when(!self.open, |this| this.invisible())
         .px_1()
         .py_0p5()
-        .bg(bg)
-        .text_color(fg)
         .border_1()
         .border_color(border)
         .into_any_element()
