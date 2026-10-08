@@ -2,11 +2,13 @@ mod code_action_menu;
 mod completion_menu;
 mod diagnostic_popover;
 mod hover_popover;
+mod suggestion_menu;
 
 pub(crate) use code_action_menu::*;
 pub(crate) use completion_menu::*;
 pub(crate) use diagnostic_popover::*;
 pub(crate) use hover_popover::*;
+pub(crate) use suggestion_menu::*;
 
 use gpui::{
     App, Div, ElementId, InteractiveElement as _, SharedString, Stateful, StyleRefinement,

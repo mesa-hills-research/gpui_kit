@@ -101,3 +101,26 @@ See [Input's token examples](../../component/input.md#atomic-inline-tokens) for
 custom rendering, draft restoration and range units. Import the data types from
 `gpui_kit::base::input`. In JavaScript, use `TextareaState.new()` from `gpui-base`;
 it provides the same token methods.
+
+## Suggestions
+
+`TextareaState::suggestion_provider` installs a `SuggestionProvider`, and the
+state asks it as the user types, keeps track of which answer still applies, and
+handles Up, Down, Enter, Tab and Escape while suggestions are offered. Render
+the menu with `SuggestionMenu` next to the textarea. It places itself under the
+word being completed and leaves the surface and the rows to you:
+
+```rust
+use gpui_kit::base::input::SuggestionMenu;
+
+div()
+    .child(Textarea::new(&notes))
+    .child(
+        SuggestionMenu::new(&notes)
+            .max_h(px(240.))
+            .item(|item, _, _| div().child(item.suggestion().label().clone())),
+    )
+```
+
+See the [`gpui-component` Textarea](../../component/textarea.md#suggestions) for
+the provider, options, events and actions, which are the same here.

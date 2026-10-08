@@ -1199,36 +1199,23 @@ impl<M: InputModeKind> TextElement<M> {
         Some(WhitespaceIndicators { space, tab })
     }
 
-    /// Compute inline completion ghost lines for rendering.
+    /// Shape the ghost text offered at the caret, if any.
     ///
-    /// Returns (first_line, ghost_lines) where:
-    /// - first_line: Shaped text for the first line (goes after cursor on same line)
-    /// - ghost_lines: Shaped lines for subsequent lines (shift content down)
-    fn layout_inline_completion(
+    /// Its first line goes into the caret's line and its other lines become
+    /// rows of their own under it. See [`GhostText`].
+    fn layout_ghost_text(
         state: &InputBaseState<M>,
-        visible_range: &Range<usize>,
         font_size: Pixels,
         window: &mut Window,
-        _cx: &App,
-    ) -> (Option<ShapedLine>, Vec<ShapedLine>) {
+    ) -> Option<GhostText> {
         // Must be focused to show inline completion
         if !state.focus_handle.is_focused(window) {
-            return (None, vec![]);
+            return None;
         }
 
-        let Some(completion_item) = state.extras.inline_completion_item() else {
-            return (None, vec![]);
-        };
-
-        // Get cursor row from cursor position
-        let cursor_row = state.cursor_position().line as usize;
-
-        // Only show if cursor row is visible
-        if cursor_row < visible_range.start || cursor_row >= visible_range.end {
-            return (None, vec![]);
-        }
-
-        let completion_text = &completion_item.insert_text;
+        let completion_text = state.extras.ghost_text()?;
+        let offset = state.cursor();
+        let row = state.text.offset_to_point(offset).row;
         let completion_color = state.editor_style.muted_foreground.opacity(0.5);
 
         let text_style = window.text_style();
@@ -1236,7 +1223,7 @@ impl<M: InputModeKind> TextElement<M> {
 
         let lines: Vec<&str> = completion_text.split('\n').collect();
         if lines.is_empty() {
-            return (None, vec![]);
+            return None;
         }
 
         // Shape first line (goes after cursor)
@@ -1281,7 +1268,50 @@ impl<M: InputModeKind> TextElement<M> {
             })
             .collect();
 
-        (first_line, ghost_lines)
+        Some(GhostText {
+            offset,
+            row,
+            first_line,
+            lines: ghost_lines,
+        })
+    }
+
+    /// Reserve room in the display map for inline tokens and ghost text.
+    ///
+    /// Both take width the text itself does not have, and the line they are
+    /// in wraps with that width counted. `tokens` are the token widths, in
+    /// order, and the ghost text's first line is an empty range at the caret.
+    fn set_inline_metrics(
+        state: &mut InputBaseState<M>,
+        tokens: Option<Rc<[(Range<usize>, Pixels)]>>,
+        ghost: Option<(usize, Pixels)>,
+        cx: &mut gpui::Context<InputBaseState<M>>,
+    ) {
+        // Runs every frame: an input with neither leaves the display map
+        // alone once it holds nothing.
+        if tokens.is_none() && ghost.is_none() && !state.display_map.has_inline_metrics() {
+            return;
+        }
+        let tokens = tokens.unwrap_or_else(|| Rc::from([]));
+        let metrics = match ghost {
+            None => tokens,
+            Some((offset, width)) => {
+                let mut metrics = tokens.to_vec();
+                // Ahead of a token that starts at the caret: the ghost text is
+                // inserted before what follows the caret.
+                let ix = metrics.partition_point(|(range, _)| range.start < offset);
+                metrics.insert(ix, (offset..offset, width));
+                metrics.into()
+            }
+        };
+        let rows = state.display_map.wrap_row_count();
+        state.display_map.set_inline_metrics(metrics, cx);
+        // A line that wraps differently changes how tall an auto-growing
+        // input wants to be, which this frame has already laid out.
+        if state.mode.is_auto_grow() && state.display_map.wrap_row_count() != rows {
+            state.mode.update_auto_grow(&state.display_map);
+            cx.notify();
+        }
     }
 
     /// Return (line_number_width, line_number_len)
@@ -1640,11 +1670,14 @@ impl<M: InputModeKind> TextElement<M> {
             .into_any_element()
     }
 
+    /// Measure the inline tokens and reserve their width, and the ghost
+    /// text's, in the display map. See [`Self::set_inline_metrics`].
     fn measure_tokens(
         &self,
         width: Pixels,
         line_height: Pixels,
         viewport: Pixels,
+        ghost: Option<(usize, Pixels)>,
         window: &mut Window,
         cx: &mut App,
     ) -> std::collections::HashMap<usize, (AnyElement, Size<Pixels>)> {
@@ -1659,7 +1692,8 @@ impl<M: InputModeKind> TextElement<M> {
         );
         if !state.tokens_visible() {
             if state.token_layout_cache.is_none() {
-                let mut exit = self.state.update(cx, |state, _| {
+                let mut exit = self.state.update(cx, |state, cx| {
+                    Self::set_inline_metrics(state, None, ghost, cx);
                     state.token_bounds.clear();
                     state.reconcile_token_hover()
                 });
@@ -1672,7 +1706,7 @@ impl<M: InputModeKind> TextElement<M> {
                 return Default::default();
             }
             self.state.update(cx, |state, cx| {
-                state.display_map.set_inline_metrics(Rc::from([]), cx)
+                Self::set_inline_metrics(state, Some(Rc::from([])), ghost, cx)
             });
             let mut exit = self.state.update(cx, |state, _| {
                 state.token_bounds.clear();
@@ -1811,7 +1845,7 @@ impl<M: InputModeKind> TextElement<M> {
             }
             let metrics = cache.metrics.clone();
             state.token_layout_cache = Some(cache);
-            state.display_map.set_inline_metrics(metrics, cx);
+            Self::set_inline_metrics(state, Some(metrics), ghost, cx);
             if state.mode.is_auto_grow() {
                 let rows = state.mode.rows();
                 state.mode.update_auto_grow(&state.display_map);
@@ -1828,6 +1862,7 @@ impl<M: InputModeKind> TextElement<M> {
         last_layout: &LastLayout,
         font_size: Pixels,
         runs: &[TextRun],
+        ghost: Option<&GhostText>,
         window: &mut Window,
     ) -> Vec<LineLayout> {
         use crate::input::display_map::{InlineFragment, InputLine};
@@ -1853,18 +1888,39 @@ impl<M: InputModeKind> TextElement<M> {
                         .wrapped_lines
                         .clone()
                 };
+                // The ghost text's first line, at its offset in this line.
+                let ghost = ghost.filter(|ghost| ghost.row == row).and_then(|ghost| {
+                    Some((ghost.offset - line_start, ghost.first_line.as_ref()?))
+                });
+                let last = ranges.len().saturating_sub(1);
                 let mut lines: SmallVec<[InputLine; 1]> = SmallVec::new();
-                for range in ranges {
+                for (sub_ix, range) in ranges.into_iter().enumerate() {
                     let mut fragments = Vec::new();
                     let mut offset = range.start;
                     let mut x = px(0.);
                     let first =
                         spans.partition_point(|s| s.range().end <= line_start + range.start);
-                    for span in spans[first..]
+                    // What is not shaped from the text: each token, as wide as
+                    // its element measured, and the ghost text, which covers
+                    // no text at all.
+                    let mut pieces: Vec<(Range<usize>, Pixels, Option<ShapedLine>)> = spans
+                        [first..]
                         .iter()
                         .take_while(|s| s.range().start < line_start + range.end)
+                        .map(|span| {
+                            let local =
+                                span.range().start - line_start..span.range().end - line_start;
+                            let width = cache.widths.get(span.token()).copied().unwrap_or_default();
+                            (local, width, None)
+                        })
+                        .collect();
+                    if let Some((at, line)) =
+                        ghost.filter(|(at, _)| ghost_in_row(&range, *at, sub_ix == last))
                     {
-                        let local = span.range().start - line_start..span.range().end - line_start;
+                        let ix = pieces.partition_point(|(local, _, _)| local.start < at);
+                        pieces.insert(ix, (at..at, line.width, Some(line.clone())));
+                    }
+                    for (local, width, piece) in pieces {
                         if offset < local.start {
                             let part = offset..local.start;
                             let shaped = window.text_system().shape_line(
@@ -1882,12 +1938,11 @@ impl<M: InputModeKind> TextElement<M> {
                             });
                             x += width;
                         }
-                        let width = cache.widths.get(span.token()).copied().unwrap_or_default();
                         fragments.push(InlineFragment {
                             range: local.start - range.start..local.end - range.start,
                             x,
                             width,
-                            text: None,
+                            text: piece,
                         });
                         x += width;
                         offset = local.end;
@@ -2018,11 +2073,14 @@ impl<M: InputModeKind> TextElement<M> {
         runs: &[TextRun],
         bg_segments: &[(Range<usize>, Hsla)],
         whitespace_indicators: Option<WhitespaceIndicators>,
+        ghost: Option<&GhostText>,
         window: &mut Window,
     ) -> Vec<LineLayout> {
+        use crate::input::display_map::{InlineFragment, InputLine};
+
         let is_single_line = state.is_single_line();
         if state.tokens_visible() {
-            return Self::layout_token_lines(state, last_layout, font_size, runs, window);
+            return Self::layout_token_lines(state, last_layout, font_size, runs, ghost, window);
         }
 
         if is_single_line {
@@ -2040,8 +2098,28 @@ impl<M: InputModeKind> TextElement<M> {
             return vec![line_layout];
         }
 
+        // The first line of ghost text: shaped, and where it goes in its line.
+        let ghost = ghost.and_then(|ghost| {
+            let line = ghost.first_line.as_ref()?;
+            let line_start = state.text.line_start_offset(ghost.row);
+            Some((ghost.row, ghost.offset - line_start, line))
+        });
+
         // Empty to use placeholder, the placeholder is not in the wrapper map.
         if state.text.len() == 0 {
+            // Ghost text offered for an empty input stands in for the
+            // placeholder.
+            if let Some((_, _, line)) = ghost {
+                let ghost = InlineFragment {
+                    range: 0..0,
+                    x: px(0.),
+                    width: line.width,
+                    text: Some(line.clone()),
+                };
+                let line = InputLine::inline(SharedString::default(), vec![ghost]);
+                return vec![LineLayout::new().inline_lines(smallvec::smallvec![line])];
+            }
+
             let placeholder_text = display_text.to_string();
             let mut placeholder_lines = SmallVec::new();
             let mut line_has_background = false;
@@ -2080,10 +2158,14 @@ impl<M: InputModeKind> TextElement<M> {
 
             debug_assert_eq!(line_item.len(), line_text.len());
 
-            let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
+            let mut wrapped_lines: SmallVec<[InputLine; 1]> = SmallVec::with_capacity(1);
             let mut line_has_background = false;
+            let ghost = ghost
+                .filter(|(row, _, _)| *row == buffer_line)
+                .map(|(_, at, line)| (at, line));
+            let last = line_item.wrapped_lines.len().saturating_sub(1);
 
-            for range in &line_item.wrapped_lines {
+            for (sub_ix, range) in line_item.wrapped_lines.iter().enumerate() {
                 let line_runs = runs_for_range(runs, run_offset, &range);
                 let line_runs = if bg_segments.is_empty() {
                     line_runs
@@ -2094,16 +2176,65 @@ impl<M: InputModeKind> TextElement<M> {
                         bg_segments,
                     )
                 };
+                line_has_background |= has_background(&line_runs);
 
                 let sub_line: SharedString = line_text[range.clone()].to_string().into();
-                let line_runs =
-                    align_runs_to_char_boundaries(&sub_line, &line_runs).unwrap_or(line_runs);
-                let shaped_line = window
-                    .text_system()
-                    .shape_line(sub_line, font_size, &line_runs, None);
+                let shape = |text: SharedString, runs: Vec<TextRun>, window: &mut Window| {
+                    let runs = align_runs_to_char_boundaries(&text, &runs).unwrap_or(runs);
+                    window
+                        .text_system()
+                        .shape_line(text, font_size, &runs, None)
+                };
 
-                line_has_background |= has_background(&line_runs);
-                wrapped_lines.push(shaped_line);
+                let Some((at, ghost_line)) =
+                    ghost.filter(|(at, _)| ghost_in_row(range, *at, sub_ix == last))
+                else {
+                    wrapped_lines.push(shape(sub_line, line_runs, window).into());
+                    continue;
+                };
+
+                // The ghost text sits between the text before the caret and
+                // the text after it, which moves right to make room. It covers
+                // no text, so its range is empty.
+                let split = at - range.start;
+                let mut fragments = Vec::with_capacity(3);
+                let mut x = px(0.);
+                if split > 0 {
+                    let before = shape(
+                        sub_line[..split].to_string().into(),
+                        runs_for_range(&line_runs, 0, &(0..split)),
+                        window,
+                    );
+                    let width = before.width;
+                    fragments.push(InlineFragment {
+                        range: 0..split,
+                        x,
+                        width,
+                        text: Some(before),
+                    });
+                    x += width;
+                }
+                fragments.push(InlineFragment {
+                    range: split..split,
+                    x,
+                    width: ghost_line.width,
+                    text: Some(ghost_line.clone()),
+                });
+                x += ghost_line.width;
+                if split < sub_line.len() {
+                    let after = shape(
+                        sub_line[split..].to_string().into(),
+                        runs_for_range(&line_runs, 0, &(split..sub_line.len())),
+                        window,
+                    );
+                    fragments.push(InlineFragment {
+                        range: split..sub_line.len(),
+                        x,
+                        width: after.width,
+                        text: Some(after),
+                    });
+                }
+                wrapped_lines.push(InputLine::inline(sub_line, fragments));
             }
 
             // Use the first visual line's indentation width for continuation lines.
@@ -2119,7 +2250,7 @@ impl<M: InputModeKind> TextElement<M> {
             };
 
             let line_layout = LineLayout::new()
-                .lines(wrapped_lines)
+                .inline_lines(wrapped_lines)
                 .wrap_indent(wrap_indent)
                 .with_background(line_has_background)
                 .with_whitespaces(whitespace_indicators.clone());
@@ -2320,12 +2451,49 @@ pub(super) struct PrepaintState {
     bounds: Bounds<Pixels>,
     /// Fold icon layout data
     fold_icon_layout: FoldIconLayout,
-    // Inline completion rendering data
+    // Inline completion rendering data. The first line is part of the
+    // caret's line layout; see [`GhostText`].
     /// Shaped ghost lines to paint after cursor row (completion lines 2+)
     ghost_lines: Vec<ShapedLine>,
-    /// First line of inline completion (painted after cursor on same line)
-    ghost_first_line: Option<ShapedLine>,
     ghost_lines_height: Pixels,
+}
+
+/// Ghost text: a completion offered at the caret, painted in place but not
+/// part of the text.
+///
+/// The first line goes into the caret's line, between the text before the
+/// caret and the text after it, which moves right to make room and wraps if it
+/// no longer fits. The caret stays in front of it. Any further lines are
+/// painted as rows of their own under the caret's line, moving the lines below
+/// down.
+struct GhostText {
+    /// Where the ghost text is inserted: the caret, as a byte offset.
+    offset: usize,
+    /// The buffer row that offset is on.
+    row: usize,
+    /// The first line, or `None` when it is empty.
+    first_line: Option<ShapedLine>,
+    /// The lines after the first.
+    lines: Vec<ShapedLine>,
+}
+
+impl GhostText {
+    /// The room the first line takes in its line: an empty range at the
+    /// caret, and the line's width.
+    fn inlay(&self) -> Option<(usize, Pixels)> {
+        self.first_line
+            .as_ref()
+            .map(|line| (self.offset, line.width))
+    }
+}
+
+/// Whether ghost text at byte `at` of a line belongs to the wrapped row that
+/// covers `range` of it.
+///
+/// An offset on a wrap boundary is the start of the next row, where the caret
+/// is drawn too; only the last row also owns the offset at its end.
+fn ghost_in_row(range: &Range<usize>, at: usize, is_last_row: bool) -> bool {
+    range.start <= at && (at < range.end || (is_last_row && at == range.end))
 }
 
 impl PrepaintState {
@@ -2601,10 +2769,13 @@ impl<M: InputModeKind> Element for TextElement<M> {
         }
 
         let line_height = window.line_height();
+        // Shaped before the line layout, which makes room for its first line.
+        let ghost = Self::layout_ghost_text(self.state.read(cx), text_size, window);
         let token_elements = self.measure_tokens(
             (bounds.size.width - line_number_width - RIGHT_MARGIN).max(px(1.)),
             line_height,
             bounds.size.height,
+            ghost.as_ref().and_then(GhostText::inlay),
             window,
             cx,
         );
@@ -2735,6 +2906,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             &runs,
             &document_colors,
             whitespace_indicators,
+            ghost.as_ref(),
             window,
         );
 
@@ -2794,13 +2966,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
         }
         last_layout.lines = Rc::new(lines);
 
-        let (ghost_first_line, ghost_lines) = Self::layout_inline_completion(
-            state,
-            &last_layout.visible_range,
-            text_size,
-            window,
-            cx,
-        );
+        // Only painted while the caret's line is visible.
+        let ghost_lines = ghost
+            .filter(|ghost| last_layout.visible_range.contains(&ghost.row))
+            .map(|ghost| ghost.lines)
+            .unwrap_or_default();
         let ghost_line_count = ghost_lines.len();
         let ghost_lines_height = ghost_line_count as f32 * line_height;
 
@@ -2981,7 +3151,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
             range_decoration_frames,
             indent_guides_path,
             fold_icon_layout,
-            ghost_first_line,
             ghost_lines,
             ghost_lines_height,
         }
@@ -3146,13 +3315,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
             window.paint_path(path.clone(), color);
         }
 
-        // Paint text with inline completion ghost line support
+        // Paint text with inline completion ghost line support. The first
+        // ghost line is part of the caret's line and paints with it.
         let mut offset_y = invisible_top_padding;
         let ghost_lines = &prepaint.ghost_lines;
         let has_ghost_lines = !ghost_lines.is_empty();
-
-        // Track the y-position of the cursor row for positioning the first line suffix
-        let mut cursor_row_y = None;
 
         for (line, &buffer_line) in prepaint
             .last_layout
@@ -3177,10 +3344,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 cx,
             );
             offset_y += line.size(line_height).height;
-
-            if Some(row) == prepaint.current_row {
-                cursor_row_y = Some(line_y);
-            }
 
             // After the cursor row, paint ghost lines (which shifts subsequent content down)
             if has_ghost_lines && Some(row) == prepaint.current_row {
@@ -3314,28 +3477,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
             && !window.modifiers().alt
         {
             window.set_cursor_style(gpui::CursorStyle::PointingHand, &hitbox);
-        }
-
-        // Paint inline completion first line suffix (after cursor on same line)
-        if focused {
-            if let Some(first_line) = &prepaint.ghost_first_line {
-                let active_cursor = prepaint
-                    .cursor_infos_with_scroll()
-                    .into_iter()
-                    .find(|info| info.is_active);
-                if let (Some(cursor_info), Some(cursor_row_y)) = (active_cursor, cursor_row_y) {
-                    let cursor_bounds = cursor_info.bounds;
-                    let first_line_x = cursor_bounds.origin.x + cursor_bounds.size.width;
-                    let p = point(first_line_x, cursor_row_y);
-
-                    // Paint background to cover any existing text
-                    let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));
-                    window.paint_quad(fill(bg_bounds, editor_background));
-
-                    // Paint first line completion text
-                    _ = first_line.paint(p, line_height, text_align, None, window, cx);
-                }
-            }
         }
 
         self.paint_mouse_listeners(&prepaint.hitbox, window, cx);
@@ -4770,6 +4911,62 @@ mod tests {
         assert_eq!(
             cursor_surrounding_padding(false, None, visible_lines, line_height),
             raw.min(half),
+        );
+    }
+
+    /// C4: an editor's inline completion in the middle of a line used to paint
+    /// an opaque box over the rest of the line. The rest of the line now moves
+    /// right to make room for it, and the caret stays in front of it.
+    #[gpui::test]
+    fn inline_completion_moves_the_rest_of_the_line(cx: &mut TestAppContext) {
+        let (editor, window) = decoration_editor(cx, "foo bar", true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let x = |cx: &mut VisualTestContext, offset: usize| {
+            editor.read_with(cx, |state, _| {
+                state.range_to_bounds(&(offset..offset)).unwrap().left()
+            })
+        };
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.focus(window, cx);
+                state.set_selected_range(3..3, cx);
+            });
+            window.draw(cx).clear(cx);
+        });
+        let (caret, bar) = (x(&mut cx, 3), x(&mut cx, 4));
+
+        cx.update(|window, cx| {
+            editor.update(cx, |state, _| {
+                state.extras.inline_completion.item = Some(lsp_types::InlineCompletionItem {
+                    insert_text: "baz".into(),
+                    filter_text: None,
+                    range: None,
+                    command: None,
+                    insert_text_format: None,
+                });
+            });
+            window.draw(cx).clear(cx);
+        });
+        let ghost = cx.update(|window, _| {
+            let style = window.text_style();
+            let size = style.font_size.to_pixels(window.rem_size());
+            window
+                .text_system()
+                .shape_line("baz".into(), size, &[style.to_run(3)], None)
+                .width
+        });
+        assert_eq!(x(&mut cx, 3), caret);
+        assert!(((x(&mut cx, 4) - bar) - ghost).abs() < px(0.01));
+
+        // Tab accepts it as before.
+        cx.update(|window, cx| {
+            editor.update(cx, |state, cx| {
+                state.indent_inline(&super::super::IndentInline, window, cx)
+            })
+        });
+        assert_eq!(
+            editor.read_with(&cx, |state, _| state.value()),
+            "foobaz bar"
         );
     }
 }

@@ -23,6 +23,12 @@ pub struct Tree;
 /// through the concrete state of their control, never across the public API.
 pub(crate) use gpui_base::input::InputBaseState;
 pub use gpui_base::input::{
+    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
+    SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionItemContext,
+    SuggestionOptions, SuggestionProvider, SuggestionRequest, SuggestionTrigger, TextChange,
+    TextEdit,
+};
+pub use gpui_base::input::{
     Backspace, BufferPoint, CodeActionItem, CodeActionProvider, CompletionMenuOptions,
     CompletionProvider, Copy, Cut, DefinitionProvider, Delete, DeleteToBeginningOfLine,
     DeleteToEndOfLine, DeleteToNextWordEnd, DeleteToPreviousWordStart, DisplayMap, DisplayPoint,

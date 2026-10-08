@@ -141,6 +141,10 @@ pub struct Input {
     /// An optional paste handler. If set, it is invoked with the clipboard item
     /// before the default text insertion. Return `true` if handled.
     paste_handler: Option<Rc<dyn Fn(&gpui::ClipboardItem, &mut Window, &mut App) -> bool>>,
+
+    /// How a textarea's suggestion menu renders each suggestion, in place of
+    /// the default row.
+    suggestion_item_renderer: Option<gpui_base::input::SuggestionItemRenderer>,
 }
 
 impl Sizable for Input {
@@ -249,7 +253,18 @@ impl Input {
             token_renderer: None,
             token_click_listener: None,
             token_hover_listener: None,
+            suggestion_item_renderer: None,
         }
+    }
+
+    /// How a textarea's suggestion menu renders each suggestion. See
+    /// [`super::Textarea::suggestion_item`].
+    pub(crate) fn suggestion_item_renderer(
+        mut self,
+        renderer: Option<gpui_base::input::SuggestionItemRenderer>,
+    ) -> Self {
+        self.suggestion_item_renderer = renderer;
+        self
     }
 
     /// Set the developer-assigned identifier exposed to accessibility clients.
@@ -671,6 +686,13 @@ impl RenderOnce for Input {
         overlays
             .floating
             .extend(Self::render_touch_selection(&state, window, cx));
+        if let TextInputState::Textarea(textarea) = &state {
+            overlays.floating.extend(super::popovers::suggestion_menu(
+                textarea,
+                self.suggestion_item_renderer.clone(),
+                cx,
+            ));
+        }
 
         let presentation = state.presentation(cx);
         let content_type = self.content_type;

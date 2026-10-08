@@ -34,6 +34,8 @@ pub struct Textarea {
     context_menu_builder: Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
 
     paste_handler: Option<Rc<dyn Fn(&gpui::ClipboardItem, &mut Window, &mut App) -> bool>>,
+
+    suggestion_item: Option<gpui_base::input::SuggestionItemRenderer>,
 }
 
 impl Textarea {
@@ -86,7 +88,25 @@ impl Textarea {
             token_renderer: None,
             token_click_listener: None,
             token_hover_listener: None,
+            suggestion_item: None,
         }
+    }
+
+    /// The element each suggestion renders as in the suggestion menu, in place
+    /// of the default row: the label, with what was typed highlighted, and the
+    /// detail.
+    ///
+    /// The menu shows the suggestions of the state's
+    /// [`SuggestionProvider`](super::SuggestionProvider); the renderer only
+    /// draws them. Selection, scrolling and accepting stay with the menu.
+    pub fn suggestion_item<R: IntoElement>(
+        mut self,
+        render: impl Fn(&super::SuggestionItemContext, &mut Window, &mut App) -> R + 'static,
+    ) -> Self {
+        self.suggestion_item = Some(Rc::new(move |item, window, cx| {
+            render(item, window, cx).into_any_element()
+        }));
+        self
     }
 
     pub fn h(mut self, height: impl Into<DefiniteLength>) -> Self {
@@ -212,6 +232,7 @@ impl Textarea {
             .when_some(self.paste_handler, |this, handler| {
                 this.on_paste(move |item, window, cx| handler(item, window, cx))
             })
+            .suggestion_item_renderer(self.suggestion_item)
             .refine_style(&self.style)
     }
 }
@@ -274,5 +295,74 @@ mod tests {
             assert!(textarea.token_hover_listener.is_some());
             Probe
         });
+    }
+
+    /// The styled textarea shows its suggestion menu by itself, with rows from
+    /// the application's renderer when it gives one, and the keyboard reaches
+    /// the menu through it.
+    #[gpui::test]
+    fn textarea_shows_the_suggestion_menu(cx: &mut gpui::TestAppContext) {
+        use gpui::{AppContext as _, InteractiveElement as _, ParentElement as _, Render, div};
+        use std::cell::Cell;
+
+        struct Probe {
+            state: Entity<TextareaState>,
+            rendered: Rc<Cell<usize>>,
+            custom: bool,
+        }
+
+        impl Render for Probe {
+            fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+                let rendered = self.rendered.clone();
+                div()
+                    .p_4()
+                    .size_full()
+                    .child(Textarea::new(&self.state).when(self.custom, |this| {
+                        this.suggestion_item(move |item, _, _| {
+                            rendered.set(rendered.get() + 1);
+                            let ix = item.ix();
+                            div()
+                                .debug_selector(move || format!("custom-{ix}"))
+                                .child(item.suggestion().label().clone())
+                        })
+                    }))
+            }
+        }
+
+        cx.update(crate::init);
+        for custom in [false, true] {
+            let rendered = Rc::new(Cell::new(0));
+            let (probe, cx) = cx.add_window_view(|window, cx| Probe {
+                state: cx.new(|cx| TextareaState::new(window, cx)),
+                rendered: rendered.clone(),
+                custom,
+            });
+            let state = probe.read_with(cx, |probe, _| probe.state.clone());
+            cx.update(|window, cx| {
+                state.update(cx, |state, cx| state.focus(window, cx));
+                window.draw(cx).clear(cx);
+                state.update(cx, |state, cx| {
+                    state.present_suggestions(
+                        vec![
+                            super::super::Suggestion::new("hello"),
+                            super::super::Suggestion::new("help").with_detail("word"),
+                            super::super::Suggestion::new("helium"),
+                        ],
+                        cx,
+                    )
+                });
+                window.draw(cx).clear(cx);
+            });
+
+            assert!(cx.debug_bounds("suggestion-menu").is_some());
+            assert!(cx.debug_bounds("suggestion-2").is_some());
+            assert_eq!(cx.debug_bounds("custom-0").is_some(), custom);
+            assert_eq!(rendered.get() >= 3, custom);
+
+            cx.simulate_keystrokes("down enter");
+            assert_eq!(state.read_with(cx, |state, _| state.value()), "help");
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            assert!(cx.debug_bounds("suggestion-menu").is_none());
+        }
     }
 }

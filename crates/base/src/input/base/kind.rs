@@ -117,6 +117,16 @@ pub trait InputExtras: Default + 'static {
         None
     }
 
+    /// The text to paint as ghost text at the caret: what accepting the
+    /// offered completion would insert there.
+    ///
+    /// An editor's comes from its LSP inline completion, which is the default.
+    /// A textarea's comes from its suggestions, which are not LSP items.
+    fn ghost_text(&self) -> Option<&str> {
+        self.inline_completion_item()
+            .map(|item| item.insert_text.as_str())
+    }
+
     /// What this mode can offer its context menu: go-to-definition, code actions.
     fn context_menu_capabilities(&self) -> (bool, bool) {
         (false, false)
@@ -217,6 +227,21 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
         _state: &mut InputBaseState<Self>,
         _range: &std::ops::Range<usize>,
         _new_len: usize,
+    ) {
+    }
+
+    /// Observes one edit right after it was applied.
+    ///
+    /// `range` is in the text as it stood before the edit, and the `new_len`
+    /// bytes now at `range.start` replaced it. Every path that changes the
+    /// text calls this once per replacement, in the order they are applied:
+    /// typing, deleting, pasting, IME composition, undo and redo, and
+    /// replacing the whole value.
+    fn did_edit(
+        _state: &mut InputBaseState<Self>,
+        _range: &std::ops::Range<usize>,
+        _new_len: usize,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
     ) {
     }
 
@@ -340,14 +365,18 @@ impl InputModeKind for InputMode {
     /// them would cost more in dispatch than it saves.
     type Extras = ();
 }
-impl InputModeKind for TextareaMode {
-    const MULTI_LINE: bool = true;
+// `TextareaMode`'s and `EditorMode`'s implementations live with the textarea
+// and editor code, next to the features they dispatch to.
 
-    /// Ordinary multi-line text needs nothing beyond the shared engine.
-    type Extras = ();
+/// What ordinary multi-line text adds on top of the shared engine:
+/// suggestions from an application's provider.
+///
+/// A textarea that offers suggestions stays a textarea: it keeps its own font
+/// and parses nothing, where [`EditorExtras`] carries a language's machinery.
+#[derive(Default)]
+pub struct TextareaExtras {
+    pub(crate) suggestions: super::suggestions::Suggestions,
 }
-// `EditorMode`'s implementation lives with the editor code, next to the
-// language features it dispatches to.
 
 /// What a code editor adds on top of multi-line text: language features.
 pub struct EditorExtras {

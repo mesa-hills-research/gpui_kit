@@ -2,6 +2,12 @@
 use gpui::{App, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px};
 use std::ops::Range;
 
+/// One piece of a visual row: shaped text, a token's element, or ghost text.
+///
+/// `range` is in the row's source bytes. Text and tokens cover the bytes they
+/// show; ghost text shows bytes that are not in the source, so its range is
+/// empty, at the offset it is inserted at. That offset belongs in front of the
+/// ghost text, which is where the caret is drawn.
 pub(crate) struct InlineFragment {
     pub(crate) range: Range<usize>,
     pub(crate) x: Pixels,
@@ -16,7 +22,8 @@ pub(crate) struct InputLine {
     content: Content,
 }
 // Keep the ordinary shaped row inline: boxing it would add an allocation to
-// every existing plain-text row. Only token rows allocate fragment storage.
+// every existing plain-text row. Only token rows, and the row ghost text is
+// in, allocate fragment storage.
 #[allow(clippy::large_enum_variant)]
 enum Content {
     Text(ShapedLine),
@@ -47,6 +54,12 @@ impl InputLine {
             Content::Text(line) => line.x_for_index(ix),
             Content::Inline(fragments) => {
                 for f in fragments {
+                    if f.range.is_empty() {
+                        if ix == f.range.start {
+                            return f.x;
+                        }
+                        continue;
+                    }
                     if ix < f.range.end {
                         return f.x
                             + f.text.as_ref().map_or(
@@ -65,6 +78,11 @@ impl InputLine {
             Content::Inline(fragments) => {
                 for f in fragments {
                     if x <= f.x + f.width {
+                        // Ghost text has no offsets of its own: a point on it
+                        // lands where it is inserted.
+                        if f.range.is_empty() {
+                            return f.range.start;
+                        }
                         return f.text.as_ref().map_or(
                             if x - f.x < f.width / 2. {
                                 f.range.start

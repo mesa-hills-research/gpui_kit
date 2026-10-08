@@ -69,6 +69,10 @@ mod search;
 mod selection;
 #[path = "base/state.rs"]
 mod state;
+#[path = "textarea/suggestion_menu.rs"]
+mod suggestion_menu;
+#[path = "textarea/suggestions.rs"]
+mod suggestions;
 mod textarea;
 #[path = "base/touch.rs"]
 mod touch;
@@ -99,7 +103,8 @@ pub use highlighting::{
 pub use indent::TabSize;
 pub use input::{Input, InputState};
 pub use kind::{
-    EditorExtras, EditorMode, InputExtras, InputMode, InputModeKind, MultiLineMode, TextareaMode,
+    EditorExtras, EditorMode, InputExtras, InputMode, InputModeKind, MultiLineMode, TextareaExtras,
+    TextareaMode,
 };
 pub(crate) use language::EditorLanguage;
 pub use language::{LanguageProvider, set_language_config, set_language_provider};
@@ -121,4 +126,10 @@ pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use search::{SearchMatcher, SearchSession};
 pub use state::*;
+pub use suggestion_menu::{SuggestionItemContext, SuggestionItemRenderer, SuggestionMenu};
+pub use suggestions::{
+    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
+    SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionOptions,
+    SuggestionProvider, SuggestionRequest, SuggestionTrigger, TextChange, TextEdit,
+};
 pub use textarea::{Textarea, TextareaState};

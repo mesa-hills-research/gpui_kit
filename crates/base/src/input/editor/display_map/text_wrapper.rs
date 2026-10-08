@@ -29,10 +29,15 @@ pub enum WrappingIndent {
 
 /// Choose Unicode line-break opportunities using the same shaped widths as
 /// painting. Oversized words fall back to complete graphemes, never UTF-8 bytes.
+///
+/// `inlays` are widths painted at byte offsets without covering any text:
+/// ghost text, which moves what follows it right. A row starting at an inlay's
+/// offset holds it, and so does the last row when it is at the end of `text`.
 fn measured_wrap_boundaries(
     text: &str,
     width: Pixels,
     wrapping_indent: WrappingIndent,
+    inlays: &[(usize, Pixels)],
     mut measure: impl FnMut(&str) -> Pixels,
 ) -> Vec<gpui::Boundary> {
     let indent = if wrapping_indent == WrappingIndent::Same {
@@ -44,6 +49,13 @@ fn measured_wrap_boundaries(
         0
     };
     let indent_width = measure(&text[..indent]);
+    let mut measure = |start: usize, end: usize| {
+        let inlays = inlays
+            .iter()
+            .filter(|&&(at, _)| start <= at && (at < end || (at == end && end == text.len())))
+            .fold(px(0.), |sum, &(_, width)| sum + width);
+        measure(&text[start..end]) + inlays
+    };
     let ends: Vec<usize> = text
         .grapheme_indices(true)
         .map(|(ix, grapheme)| ix + grapheme.len())
@@ -66,7 +78,7 @@ fn measured_wrap_boundaries(
         let remaining = ends.len() - first;
         let mut low = 0;
         let mut high = 1;
-        while measure(&text[start..ends[first + high - 1]]) <= available {
+        while measure(start, ends[first + high - 1]) <= available {
             low = high;
             if high == remaining {
                 break;
@@ -75,7 +87,7 @@ fn measured_wrap_boundaries(
         }
         while low + 1 < high {
             let mid = (low + high) / 2;
-            if measure(&text[start..ends[first + mid - 1]]) <= available {
+            if measure(start, ends[first + mid - 1]) <= available {
                 low = mid;
             } else {
                 high = mid;
@@ -382,14 +394,21 @@ impl TextWrapper {
             range,
             new_text,
             &mut |line_str, wrap_width, line_start| {
+                let line_end = line_start + line_str.len();
                 let mut fragments = Vec::new();
+                // Empty ranges are ghost text, which covers no text. One at
+                // either end of the line still belongs to it.
+                let mut inlays = Vec::new();
+                let mut has_tokens = false;
                 let mut offset = 0;
-                let first = metrics.partition_point(|(r, _)| r.end <= line_start);
+                let first = metrics.partition_point(|(r, _)| {
+                    r.end < line_start || (r.end == line_start && !r.is_empty())
+                });
                 for (range, width) in &metrics[first..] {
-                    if range.start >= line_start + line_str.len() {
+                    if range.start > line_end || (range.start == line_end && !range.is_empty()) {
                         break;
                     }
-                    if range.start < line_start || range.end > line_start + line_str.len() {
+                    if range.start < line_start || range.end > line_end {
                         continue;
                     }
                     let range = range.start - line_start..range.end - line_start;
@@ -401,14 +420,20 @@ impl TextWrapper {
                     if offset < range.start {
                         fragments.push(LineFragment::text(&line_str[offset..range.start]));
                     }
+                    if range.is_empty() {
+                        inlays.push((range.start, *width));
+                    } else {
+                        has_tokens = true;
+                    }
                     fragments.push(LineFragment::element(*width, range.len()));
                     offset = range.end;
                 }
-                if fragments.is_empty() {
+                if !has_tokens {
                     return measured_wrap_boundaries(
                         line_str,
                         wrap_width,
                         wrapping_indent,
+                        &inlays,
                         |text| {
                             text_system
                                 .layout_line(
@@ -436,6 +461,10 @@ impl TextWrapper {
                     .collect()
             },
         );
+    }
+
+    pub(crate) fn has_inline_metrics(&self) -> bool {
+        !self.inline_metrics.is_empty()
     }
 
     pub(crate) fn adjust_inline_metrics(&mut self, range: &Range<usize>, new_len: usize) {
@@ -1214,7 +1243,7 @@ mod tests {
                 &(start..previous.len()),
                 &inserted,
                 &mut |line, width, _| {
-                    measured_wrap_boundaries(line, width, WrappingIndent::None, measure)
+                    measured_wrap_boundaries(line, width, WrappingIndent::None, &[], measure)
                 },
             );
             let expected = if value.ends_with('s') {
@@ -1232,7 +1261,7 @@ mod tests {
     #[test]
     fn measured_wrap_preserves_words_graphemes_and_indentation() {
         let wrap = |text: &str, width, indent| {
-            measured_wrap_boundaries(text, px(width), indent, |s| {
+            measured_wrap_boundaries(text, px(width), indent, &[], |s| {
                 px(s.graphemes(true).count() as f32)
             })
             .into_iter()
@@ -1247,6 +1276,31 @@ mod tests {
         assert_eq!(wrap("abc", 0., WrappingIndent::None), vec![1, 2]);
         // Closing punctuation stays with the preceding Chinese character.
         assert_eq!(wrap("你好，世界", 2., WrappingIndent::None), vec![3, 9]);
+    }
+
+    /// Ghost text takes room in the row it is in, so a line that fit without
+    /// it can wrap with it, and the row it starts owns it.
+    #[test]
+    fn measured_wrap_makes_room_for_ghost_text() {
+        let wrap = |text: &str, inlays: &[(usize, Pixels)]| {
+            measured_wrap_boundaries(text, px(11.), WrappingIndent::None, inlays, |s| {
+                px(s.graphemes(true).count() as f32)
+            })
+            .into_iter()
+            .map(|b| b.ix)
+            .collect::<Vec<_>>()
+        };
+        // 11 columns fit exactly.
+        assert!(wrap("hello world", &[]).is_empty());
+        // Three more after "hello" push "world" onto a row of its own.
+        assert_eq!(wrap("hello world", &[(5, px(3.))]), vec![6]);
+        // At the end of the line the ghost text still counts.
+        assert_eq!(wrap("hello world", &[(11, px(2.))]), vec![6]);
+        // On a break opportunity it starts the next row: "hello " still fits
+        // and "world" wraps with the ghost text in front of it.
+        assert_eq!(wrap("hello world", &[(6, px(5.))]), vec![6]);
+        // Ghost text that fits leaves the line alone.
+        assert!(wrap("hello", &[(5, px(6.))]).is_empty());
     }
 
     #[test]
