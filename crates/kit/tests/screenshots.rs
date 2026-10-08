@@ -4,14 +4,19 @@
 //! the goldens. mhr_gpui's `docs/screenshots.md` explains how to review and update them.
 #![cfg(target_os = "linux")]
 
+use std::rc::Rc;
+
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, IntoElement,
-    ParentElement as _, Render, Styled as _, Window,
+    ParentElement as _, Render, Result, Styled as _, Task, Window,
     assets::Assets,
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
-        input::{Input, InputState, Textarea, TextareaState},
+        input::{
+            Input, InputState, RopeExt as _, Suggestion, SuggestionProvider, SuggestionRequest,
+            Textarea, TextareaState,
+        },
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
     },
@@ -264,6 +269,79 @@ fn menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+/// The words [`Words`] completes from, each with the detail its menu row shows.
+const WORDS: [(&str, &str); 6] = [
+    ("comment", "noun"),
+    ("commit", "verb"),
+    ("component", "noun"),
+    ("compose", "verb"),
+    ("draft", "noun"),
+    ("review", "verb"),
+];
+
+/// Completes the word before the caret from [`WORDS`].
+struct Words;
+
+impl SuggestionProvider for Words {
+    fn suggestions(
+        &self,
+        request: &SuggestionRequest,
+        _: &mut Window,
+        _: &mut App,
+    ) -> Task<Result<Vec<Suggestion>>> {
+        let (text, offset) = (request.text(), request.offset());
+        let line_start = text.line_start_offset(text.offset_to_point(offset).row);
+        let before = text.slice(line_start..offset).to_string();
+        let typed = before
+            .rsplit(|c: char| !c.is_alphanumeric())
+            .next()
+            .unwrap_or_default();
+        let start = offset - typed.len();
+        let suggestions = WORDS
+            .iter()
+            .filter(|(word, _)| !typed.is_empty() && word.starts_with(typed))
+            .map(|(word, detail)| {
+                Suggestion::new(*word)
+                    .with_range(start..offset)
+                    .with_detail(*detail)
+            })
+            .collect();
+        Task::ready(Ok(suggestions))
+    }
+}
+
+struct Note {
+    note: Entity<TextareaState>,
+}
+
+impl Render for Note {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(Textarea::new(&self.note))
+    }
+}
+
+/// A textarea completing the word typed into it: the suggestion menu open under the word, with
+/// what was typed highlighted in each row and the keyboard cursor moved to the second row.
+fn suggestion_menu(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    // Room for the whole menu under the first line. In a shorter window the menu moves up to
+    // stay inside it and covers the line.
+    let window = open(&mut app, (320., 200.), SCALE, |window, cx| {
+        let note = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .rows(3)
+                .suggestion_provider(Rc::new(Words))
+        });
+        note.update(cx, |note, cx| note.focus(window, cx));
+        Note { note }
+    });
+    act(&mut app, window, |window, cx| {
+        window.input("Ship the com", cx);
+        window.press("down", cx);
+    });
+    app.capture(window).unwrap()
+}
+
 #[test]
 fn buttons_light() {
     goldens!().assert("buttons", &buttons(ThemeMode::Light, SCALE));
@@ -299,6 +377,16 @@ fn popup_menu() {
 #[test]
 fn popup_menu_dark() {
     goldens!().assert("menu-dark", &menu(ThemeMode::Dark));
+}
+
+#[test]
+fn textarea_suggestion_menu() {
+    goldens!().assert("suggestions", &suggestion_menu(ThemeMode::Light));
+}
+
+#[test]
+fn textarea_suggestion_menu_dark() {
+    goldens!().assert("suggestions-dark", &suggestion_menu(ThemeMode::Dark));
 }
 
 /// Renders every scene on three threads at once: each thread must produce the same pixels,
