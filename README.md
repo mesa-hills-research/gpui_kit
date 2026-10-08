@@ -5,7 +5,8 @@ mhr_gpui_kit is Mesa Hills Research's fork of [GPUI Kit](https://github.com/long
 releases and adds the changes listed below.
 
 It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
-GPUI to the `gpui-pre` 0.3.8 snapshot.
+GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
+[mhr_gpui](https://github.com/mesa-hills-research/mhr_gpui), the fork of those crates.
 
 ## Changes from upstream
 
@@ -19,6 +20,14 @@ GPUI to the `gpui-pre` 0.3.8 snapshot.
   [Textarea: suggestions](website/component/textarea.md#suggestions).
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
+- **GPUI from mhr_gpui.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre` crates
+  at mhr_gpui. For now it expects mhr_gpui checked out beside this repository.
+- **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea, a list
+  and a popup menu render headlessly on Linux, in light and dark themes and at scale factors 2
+  and 2.625, and are compared with the PNGs in `crates/kit/tests/screenshots`. They run with the
+  kit's tests and use mhr_gpui's `gpui-pre-screenshot`, whose
+  [docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md) cover
+  reviewing failures and updating the goldens with `UPDATE_GOLDENS=1`.
 
 ## Using it
 
@@ -29,6 +38,9 @@ from:
 [dependencies]
 gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
 ```
+
+Cargo applies only the root workspace's `[patch]` tables, so the app also patches the `gpui-pre`
+crates to mhr_gpui, as its README shows.
 
 ## Following upstream
 

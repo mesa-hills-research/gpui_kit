@@ -172,6 +172,38 @@ cap-std = { opt-level = 3 }
 # the shell and LLRT share the exact same quickjs-jit types and VM.
 rquickjs = { path = "crates/shell/rquickjs-compat" }
 
+# GPUI from mhr_gpui, Mesa Hills Research's fork of the gpui-pre crates, which
+# keeps their names and versions so the =0.3.8 pins above resolve to it. The
+# paths expect mhr_gpui checked out beside this repository. Once mhr_gpui is
+# on GitHub, each entry becomes
+#   { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "..." }
+# which also caps the lints of the gpui crates the way registry crates are.
+gpui-pre                   = { path = "../mhr_gpui/crates/gpui" }
+gpui-pre-apple             = { path = "../mhr_gpui/crates/gpui_apple" }
+gpui-pre-bench-metrics     = { path = "../mhr_gpui/crates/bench_metrics" }
+gpui-pre-collections       = { path = "../mhr_gpui/crates/collections" }
+gpui-pre-derive-refineable = { path = "../mhr_gpui/crates/refineable/derive_refineable" }
+gpui-pre-http-client       = { path = "../mhr_gpui/crates/http_client" }
+gpui-pre-http-client-tls   = { path = "../mhr_gpui/crates/http_client_tls" }
+gpui-pre-linux             = { path = "../mhr_gpui/crates/gpui_linux" }
+gpui-pre-macos             = { path = "../mhr_gpui/crates/gpui_macos" }
+gpui-pre-macros            = { path = "../mhr_gpui/crates/gpui_macros" }
+gpui-pre-perf              = { path = "../mhr_gpui/tooling/perf" }
+gpui-pre-platform          = { path = "../mhr_gpui/crates/gpui_platform" }
+gpui-pre-refineable        = { path = "../mhr_gpui/crates/refineable" }
+gpui-pre-reqwest-client    = { path = "../mhr_gpui/crates/reqwest_client" }
+gpui-pre-scheduler         = { path = "../mhr_gpui/crates/scheduler" }
+gpui-pre-shared-string     = { path = "../mhr_gpui/crates/gpui_shared_string" }
+gpui-pre-sum-tree          = { path = "../mhr_gpui/crates/sum_tree" }
+gpui-pre-util              = { path = "../mhr_gpui/crates/gpui_util" }
+gpui-pre-util-macros       = { path = "../mhr_gpui/crates/util_macros" }
+gpui-pre-web               = { path = "../mhr_gpui/crates/gpui_web" }
+gpui-pre-wgpu              = { path = "../mhr_gpui/crates/gpui_wgpu" }
+gpui-pre-windows           = { path = "../mhr_gpui/crates/gpui_windows" }
+gpui-pre-zlog              = { path = "../mhr_gpui/crates/zlog" }
+gpui-pre-ztracing          = { path = "../mhr_gpui/crates/ztracing" }
+gpui-pre-ztracing-macro    = { path = "../mhr_gpui/crates/ztracing_macro" }
+
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]
 
