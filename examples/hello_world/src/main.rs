@@ -1,5 +1,6 @@
-use gpui::*;
-use gpui_component::{button::*, *};
+use gpui_kit::component::button::*;
+use gpui_kit::component::*;
+use gpui_kit::*;
 
 pub struct Example;
 impl Render for Example {
@@ -21,21 +22,13 @@ impl Render for Example {
 }
 
 fn main() {
-    let app = Application::new();
-
-    app.run(move |cx| {
+    gpui_kit::application().run(move |cx| {
         // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        gpui_kit::init(cx);
 
-        cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|_| Example);
-                // This first level on the window, should be a Root.
-                cx.new(|cx| Root::new(view, window, cx))
-            })?;
-
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
+        // Opens a window with a `Root` wrapping the view, so dialogs, sheets,
+        // notifications and menus work in it.
+        gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Example))
+            .expect("Failed to open window");
     });
 }

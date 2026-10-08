@@ -1,6 +1,6 @@
 use anyhow::anyhow;
-use gpui::*;
-use gpui_component::{v_flex, IconName, Root};
+use gpui_kit::component::{IconName, v_flex};
+use gpui_kit::*;
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -44,21 +44,13 @@ impl Render for Example {
 
 fn main() {
     // Register Assets to GPUI application.
-    let app = Application::new().with_assets(Assets);
+    let app = gpui_kit::application().with_assets(Assets);
 
     app.run(move |cx| {
         // We must initialize gpui_component before using it.
-        gpui_component::init(cx);
+        gpui_kit::init(cx);
 
-        cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|_| Example);
-                // The first level on the window must be Root.
-                cx.new(|cx| Root::new(view, window, cx))
-            })?;
-
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
+        gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| cx.new(|_| Example))
+            .expect("Failed to open window");
     });
 }

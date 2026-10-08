@@ -173,6 +173,18 @@
           "description": "Chart 5 color.",
           "type": ["string", "null"]
         },
+        "chart.bullish": {
+          "description": "Bullish color for candlestick charts (upward price movement).",
+          "type": ["string", "null"]
+        },
+        "chart.bearish": {
+          "description": "Bearish color for candlestick charts (downward price movement).",
+          "type": ["string", "null"]
+        },
+        "chart.grid": {
+          "description": "Chart grid line color.",
+          "type": ["string", "null"]
+        },
         "danger.background": {
           "description": "Danger background color.",
           "type": ["string", "null"]
@@ -454,11 +466,19 @@
           "type": ["string", "null"]
         },
         "table.head.background": {
-          "description": "Table head background color.",
+          "description": "Table header background color.",
           "type": ["string", "null"]
         },
         "table.head.foreground": {
-          "description": "Table head text color.",
+          "description": "Table header text color.",
+          "type": ["string", "null"]
+        },
+        "table.foot.background": {
+          "description": "Table footer background color.",
+          "type": ["string", "null"]
+        },
+        "table.foot.foreground": {
+          "description": "Table footer text color.",
           "type": ["string", "null"]
         },
         "table.hover.background": {
@@ -475,10 +495,6 @@
         },
         "title_bar.border": {
           "description": "TitleBar border color.",
-          "type": ["string", "null"]
-        },
-        "tiles.background": {
-          "description": "Background color for Tiles.",
           "type": ["string", "null"]
         },
         "warning.background": {
