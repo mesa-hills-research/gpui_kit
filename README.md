@@ -22,12 +22,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
 - **GPUI from mhr_gpui.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre` crates
   at mhr_gpui. For now it expects mhr_gpui checked out beside this repository.
-- **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea, a list
-  and a popup menu render headlessly on Linux, in light and dark themes and at scale factors 2
-  and 2.625, and are compared with the PNGs in `crates/kit/tests/screenshots`. They run with the
-  kit's tests and use mhr_gpui's `gpui-pre-screenshot`, whose
-  [docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md) cover
-  reviewing failures and updating the goldens with `UPDATE_GOLDENS=1`.
+- **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
+  suggestion menu, a list and a popup menu render headlessly on Linux, in light and dark themes
+  and at scale factors 2 and 2.625, and are compared with the PNGs in
+  `crates/kit/tests/screenshots`. They run with the kit's tests and use mhr_gpui's
+  `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
+  covers running them and updating the goldens.
 
 ## Using it
 

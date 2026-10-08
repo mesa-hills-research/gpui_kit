@@ -112,3 +112,22 @@ Linux and Windows run the portable interaction/layout suite. It detects missing 
 marks and invisible input text even when native state stays correct. Other platforms
 explicitly skip this target until GPUI supplies a headless renderer; this is not a
 complete golden-image suite.
+
+## Golden screenshots on Linux
+
+`tests/screenshots.rs` renders components headlessly and compares the pixels with the PNGs in
+`tests/screenshots`: buttons, inputs and a textarea, a textarea's suggestion menu, a list and a
+popup menu, in light and dark themes. It draws with mhr_gpui's `gpui-pre-screenshot` on Mesa's
+software Vulkan driver (`mesa-vulkan-drivers` on Debian and Ubuntu), so a display and a GPU are
+optional, and it runs with the kit's other tests on Linux:
+
+```sh
+cargo test -p gpui-kit --features test-support --test screenshots --locked
+```
+
+A screenshot that differs from its golden fails the test and writes the capture and a diff to
+`tests/screenshots/failures`. After an intended change, `UPDATE_GOLDENS=1` rewrites the goldens
+that differ. Matches are exact, and another Mesa or LLVM version can move anti-aliased edges by a
+level or two. The failure message names the driver that drew the golden next to the current one.
+mhr_gpui's [screenshot docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md)
+cover writing these tests, reviewing failures and allowing a tolerance.
