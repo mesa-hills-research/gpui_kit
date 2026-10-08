@@ -3027,6 +3027,9 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.undo_manager.break_transaction_coalescing();
         self.selections.remove_all_but_active();
         self.set_selection(0, self.text.len());
+        // What was offered at the caret does not apply to a selection.
+        M::hide_context_menu(self, cx);
+        M::clear_inline_completion(self, cx);
         cx.notify();
     }
 
@@ -3759,6 +3762,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             self.text.replace(range.clone(), new_text);
 
             M::adjust_annotations(self, range, new_text.len());
+            M::did_edit(self, range, new_text.len(), cx);
             recorded |= self.push_history(
                 &old_text,
                 range,
@@ -4137,8 +4141,10 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
             // Masking rewrites the whole document, so ranges recorded against
             // the old text no longer point at anything.
             M::reset_annotations(self);
+            M::did_edit(self, &(0..old_text.len()), self.text.len(), cx);
         } else {
             M::adjust_annotations(self, &range, new_text.len());
+            M::did_edit(self, &range, new_text.len(), cx);
         }
         if mask_changed {
             // A segment-based history entry no longer matches the masked
@@ -4280,6 +4286,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         }
 
         M::adjust_annotations(self, &range, new_text.len());
+        M::did_edit(self, &range, new_text.len(), cx);
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
         }
