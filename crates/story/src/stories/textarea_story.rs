@@ -1,8 +1,10 @@
+use std::rc::Rc;
+
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, ClickEvent, ClipboardEntry, Context, Entity, Focusable,
-    InteractiveElement, IntoElement, ParentElement as _, Render, Styled, Subscription, Window, div,
-    px,
+    InteractiveElement, IntoElement, KeyBinding, ParentElement as _, Render, SharedString, Styled,
+    Subscription, Task, Window, div, px,
 };
 
 use crate::{ChangeStorySize, section, story_toolbar};
@@ -15,11 +17,85 @@ use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
     h_flex,
     hover_card::HoverCard,
-    input::{InputEvent, Textarea, TextareaState},
+    input::{
+        AcceptSuggestionWord, InputEvent, RopeExt as _, ShowSuggestions, Suggestion,
+        SuggestionEvent, SuggestionOptions, SuggestionProvider, SuggestionRequest, Textarea,
+        TextareaState,
+    },
     v_flex,
 };
 
-pub fn init(_: &mut App) {}
+pub fn init(cx: &mut App) {
+    // Suggestion keys of the story's own. Each falls through to the key's
+    // ordinary binding while there is nothing to act on.
+    cx.bind_keys([
+        KeyBinding::new("ctrl-space", ShowSuggestions, Some("Input")),
+        KeyBinding::new("alt-right", AcceptSuggestionWord, Some("Input")),
+    ]);
+}
+
+/// Words the suggestion examples complete from.
+const VOCABULARY: &[&str] = &[
+    "accessibility",
+    "application",
+    "autocomplete",
+    "component",
+    "composition",
+    "comprehensive",
+    "configuration",
+    "desktop",
+    "document",
+    "documentation",
+    "framework",
+    "interaction",
+    "interface",
+    "keyboard",
+    "suggestion",
+    "suggestions",
+    "textarea",
+    "the quick brown fox jumps over the lazy dog",
+];
+
+/// Completes the word before the caret from [`VOCABULARY`].
+///
+/// An application ranks with its own model, a dictionary or what the user
+/// typed before; the textarea shows the answer in the order given.
+struct VocabularyProvider;
+
+impl SuggestionProvider for VocabularyProvider {
+    fn suggestions(
+        &self,
+        request: &SuggestionRequest,
+        _: &mut Window,
+        _: &mut App,
+    ) -> Task<anyhow::Result<Vec<Suggestion>>> {
+        // Read the caret's line only, not the whole text.
+        let text = request.text();
+        let offset = request.offset();
+        let line_start = text.line_start_offset(text.offset_to_point(offset).row);
+        let before = text.slice(line_start..offset).to_string();
+        let word = before
+            .rsplit(|c: char| !c.is_alphanumeric())
+            .next()
+            .unwrap_or_default();
+        let start = offset - word.len();
+        let prefix = word.to_lowercase();
+        if prefix.is_empty() {
+            return Task::ready(Ok(Vec::new()));
+        }
+        let suggestions = VOCABULARY
+            .iter()
+            .filter(|word| word.starts_with(&prefix) && word.len() > prefix.len())
+            .take(8)
+            .map(|word| {
+                Suggestion::new(*word)
+                    .with_range(start..offset)
+                    .with_detail(if word.contains(' ') { "phrase" } else { "word" })
+            })
+            .collect();
+        Task::ready(Ok(suggestions))
+    }
+}
 
 struct ComposerAttachment {
     id: u64,
@@ -36,6 +112,9 @@ pub struct TextareaStory {
     chat_input: Entity<TextareaState>,
     chat_messages: Vec<String>,
     composer: Entity<TextareaState>,
+    suggestions_menu: Entity<TextareaState>,
+    suggestions_inline: Entity<TextareaState>,
+    last_suggestion_event: Option<SharedString>,
     attachments: Vec<ComposerAttachment>,
     /// Counter for attachment ids; `Image::id` is a content hash, so pasting
     /// the same image twice would collide.
@@ -142,23 +221,67 @@ impl TextareaStory {
                 .placeholder("Paste a screenshot here, it becomes an attachment above")
         });
 
-        let _subscriptions = vec![cx.subscribe_in(
-            &chat_input,
-            window,
-            |this: &mut Self, input, event, window, cx| match event {
-                InputEvent::PressEnter { shift, .. } if !shift => {
-                    let text = input.read(cx).value().trim().to_string();
-                    if !text.is_empty() {
-                        this.chat_messages.push(text);
-                        input.update(cx, |state, cx| {
-                            state.set_value("", window, cx);
-                        });
-                        cx.notify();
-                    }
+        let provider: Rc<dyn SuggestionProvider> = Rc::new(VocabularyProvider);
+        let suggestions_menu = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(3, 6)
+                .placeholder("Type “com” or “doc”, or press Ctrl-Space")
+                .suggestion_provider(provider.clone())
+                .suggestion_options(SuggestionOptions::default().inline(true))
+        });
+        let suggestions_inline = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(3, 6)
+                .placeholder("Type “the”: Tab accepts, Alt-Right takes a word")
+                .suggestion_provider(provider)
+                .suggestion_options(SuggestionOptions::default().menu(false).inline(true))
+        });
+
+        let on_suggestion = |this: &mut Self,
+                             _: Entity<TextareaState>,
+                             event: &SuggestionEvent,
+                             cx: &mut Context<Self>| {
+            this.last_suggestion_event = Some(match event {
+                SuggestionEvent::Accepted {
+                    suggestion,
+                    partial,
+                } => {
+                    let how = if *partial {
+                        "Accepted a word of"
+                    } else {
+                        "Accepted"
+                    };
+                    format!("{how} \u{201c}{}\u{201d}", suggestion.text()).into()
                 }
-                _ => {}
-            },
-        )];
+                SuggestionEvent::Dismissed { suggestion } => {
+                    format!("Dismissed \u{201c}{}\u{201d}", suggestion.text()).into()
+                }
+                _ => return,
+            });
+            cx.notify();
+        };
+
+        let _subscriptions = vec![
+            cx.subscribe(&suggestions_menu, on_suggestion),
+            cx.subscribe(&suggestions_inline, on_suggestion),
+            cx.subscribe_in(
+                &chat_input,
+                window,
+                |this: &mut Self, input, event, window, cx| match event {
+                    InputEvent::PressEnter { shift, .. } if !shift => {
+                        let text = input.read(cx).value().trim().to_string();
+                        if !text.is_empty() {
+                            this.chat_messages.push(text);
+                            input.update(cx, |state, cx| {
+                                state.set_value("", window, cx);
+                            });
+                            cx.notify();
+                        }
+                    }
+                    _ => {}
+                },
+            ),
+        ];
 
         Self {
             tokens: super::input_tokens::TokenExample::new(true, window, cx),
@@ -169,6 +292,9 @@ impl TextareaStory {
             chat_input,
             chat_messages: Vec::new(),
             composer,
+            suggestions_menu,
+            suggestions_inline,
+            last_suggestion_event: None,
             attachments: Vec::new(),
             next_attachment_id: 0,
             size: Size::Medium,
@@ -266,6 +392,31 @@ impl Render for TextareaStory {
                 section("Auto Grow with No Wrap")
                     .w(px(560.))
                     .child(Textarea::new(&self.textarea_auto_grow_no_wrap).with_size(self.size)),
+            )
+            .child(
+                section("Suggestions")
+                    .description(
+                        "Suggestions from the application's provider, in a menu with a preview, \
+                        or inline only. Up and Down choose, Enter or Tab accept, Escape dismisses.",
+                    )
+                    .w(px(560.))
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .w_full()
+                            .child(Textarea::new(&self.suggestions_menu).with_size(self.size))
+                            .child(Textarea::new(&self.suggestions_inline).with_size(self.size))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(
+                                        self.last_suggestion_event
+                                            .clone()
+                                            .unwrap_or_else(|| "No suggestion accepted yet".into()),
+                                    ),
+                            ),
+                    ),
             )
             .child(
                 section("Submit on Enter (Chat)").w(px(560.)).child(

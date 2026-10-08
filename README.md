@@ -12,6 +12,13 @@ GPUI to the `gpui-pre` 0.3.8 snapshot.
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.
+- **Suggestions in a Textarea** (`gpui-base`, `gpui-component`). A `TextareaState` takes a
+  `SuggestionProvider` and offers its suggestions in a menu under the word, as ghost text after the
+  caret, or both, while staying a plain text area. Answers for text that has since changed are
+  dropped, and the provider hears every edit with a revision. See
+  [Textarea: suggestions](website/component/textarea.md#suggestions).
+- **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
+  the rest of the line right, and the line wraps with it, where upstream painted over the text.
 
 ## Using it
 
