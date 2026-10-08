@@ -117,6 +117,15 @@ pub trait InputExtras: Default + 'static {
         None
     }
 
+    /// The text to paint as ghost text at the caret: what accepting the
+    /// offered completion would insert there.
+    ///
+    /// An editor's comes from its LSP inline completion, which is the default.
+    fn ghost_text(&self) -> Option<&str> {
+        self.inline_completion_item()
+            .map(|item| item.insert_text.as_str())
+    }
+
     /// What this mode can offer its context menu: go-to-definition, code actions.
     fn context_menu_capabilities(&self) -> (bool, bool) {
         (false, false)

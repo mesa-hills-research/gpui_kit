@@ -225,6 +225,11 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
+    /// Whether any line reserves width for an inline token or ghost text.
+    pub(crate) fn has_inline_metrics(&self) -> bool {
+        self.wrap_map.has_inline_metrics()
+    }
+
     /// Update layout parameters (wrap width or font)
     pub(crate) fn set_inline_metrics(
         &mut self,

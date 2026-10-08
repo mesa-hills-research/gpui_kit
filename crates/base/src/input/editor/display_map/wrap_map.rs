@@ -111,6 +111,10 @@ impl WrapMap {
         self.wrapper.update(changed_text, range, new_text, cx);
     }
 
+    pub(super) fn has_inline_metrics(&self) -> bool {
+        self.wrapper.has_inline_metrics()
+    }
+
     /// Update layout parameters (wrap width or font)
     pub(super) fn set_inline_metrics(
         &mut self,
