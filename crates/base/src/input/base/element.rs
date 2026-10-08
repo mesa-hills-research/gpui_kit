@@ -307,6 +307,16 @@ pub(super) fn clamp_horizontal_scroll_offset(
     offset.clamp(min_offset, px(0.))
 }
 
+// Prepaint and retained state must use the same range, or a frame painted at an
+// out-of-range offset snaps back on the next one.
+pub(super) fn clamp_vertical_scroll_offset(
+    offset: Pixels,
+    scroll_height: Pixels,
+    input_height: Pixels,
+) -> Pixels {
+    offset.clamp((input_height - scroll_height).min(px(0.)), px(0.))
+}
+
 fn clamp_auto_grow_vertical_scroll_offset(
     mode: &LayoutMode,
     scroll_top: Pixels,
@@ -314,7 +324,7 @@ fn clamp_auto_grow_vertical_scroll_offset(
     input_height: Pixels,
 ) -> Pixels {
     if mode.is_auto_grow() {
-        scroll_top.clamp((input_height - scroll_height).min(px(0.)), px(0.))
+        clamp_vertical_scroll_offset(scroll_top, scroll_height, input_height)
     } else {
         scroll_top
     }
@@ -713,12 +723,17 @@ impl<M: InputModeKind> TextElement<M> {
                 info.bounds.origin.x = info.bounds.origin.x.min(bounds.right() - CURSOR_WIDTH);
             }
         }
-        scroll_offset.y = clamp_auto_grow_vertical_scroll_offset(
-            &state.mode,
-            scroll_offset.y,
-            scroll_size.height,
-            bounds.size.height,
-        );
+        // Cursor-follow keeps the caret clear of the bottom edge, which can ask
+        // for more than the content scrolls when nothing pads the last line (a
+        // Textarea has no empty bottom area), and the offset kept from the last
+        // frame can exceed content that has since shrunk. Clamp to the range
+        // `update_scroll_offset` persists, so this frame paints where the next
+        // one will.
+        scroll_offset.y = if state.is_single_line() {
+            px(0.)
+        } else {
+            clamp_vertical_scroll_offset(scroll_offset.y, scroll_size.height, bounds.size.height)
+        };
 
         bounds.origin = bounds.origin + scroll_offset;
 

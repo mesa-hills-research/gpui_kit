@@ -27,7 +27,7 @@ use super::{
     cursor::{CursorSelection, Selections},
     element::{
         EditorScrollbar, EditorScrollbarSnapshot, LongestLineKey, TextElement,
-        clamp_horizontal_scroll_offset,
+        clamp_horizontal_scroll_offset, clamp_vertical_scroll_offset,
     },
     kind::InputModeKind,
     mask_pattern::normalize_number_input,
@@ -2496,13 +2496,14 @@ impl<M: InputModeKind> InputBaseState<M> {
         cx: &mut Context<Self>,
     ) {
         let mut offset = offset.unwrap_or(self.scroll_handle.offset());
-        let safe_y_range =
-            (-self.scroll_size.height + self.input_bounds.size.height).min(px(0.0))..px(0.);
-
         offset.y = if self.is_single_line() {
             px(0.)
         } else {
-            offset.y.clamp(safe_y_range.start, safe_y_range.end)
+            clamp_vertical_scroll_offset(
+                offset.y,
+                self.scroll_size.height,
+                self.input_bounds.size.height,
+            )
         };
         offset.x = clamp_horizontal_scroll_offset(
             offset.x,
@@ -6076,6 +6077,119 @@ mod tests {
                 );
             });
         });
+    }
+
+    /// Regression test: typing on the last line must paint the text at the
+    /// scroll offset that `update_scroll_offset` persists. Cursor-follow in
+    /// `layout_cursors` keeps the caret several lines clear of the bottom
+    /// edge, and a Textarea has no empty area below its last line, so it
+    /// asked for an offset past the end of the content. Each keystroke then
+    /// painted the text shifted up and the next frame painted it back down.
+    #[gpui::test]
+    fn test_typing_on_last_line_paints_at_persisted_scroll_offset(cx: &mut TestAppContext) {
+        let mut input = None;
+        // Tall enough for the default clearance of several lines.
+        let window = cx.open_window(size(px(720.), px(1000.)), |window, cx| {
+            cx.set_global(Theme::default());
+            super::super::init(cx);
+            let state = cx.new(|cx| crate::input::TextareaState::new(window, cx));
+            input = Some(state.clone());
+            TestRoot(state)
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let input = input.unwrap();
+        cx.run_until_parked();
+
+        let (rows, clearance, line_height) = input.read_with(&cx, |state, _| {
+            let line_height = state.last_layout.as_ref().unwrap().line_height;
+            let rows = super::super::element::viewport_visible_lines(
+                state.input_bounds.size.height,
+                line_height,
+            );
+            let clearance =
+                super::super::element::cursor_surrounding_padding(false, None, rows, line_height);
+            (rows, clearance, line_height)
+        });
+        assert!(
+            clearance > line_height,
+            "the bottom clearance must be more than one line for the caret to \
+             reach it on the last line ({rows} rows)"
+        );
+
+        // The text fits with its last line inside the clearance, then the
+        // text overflows the viewport.
+        for line_count in [rows - 1, rows + 20] {
+            assert_typing_at_end_paints_at_persisted_offset(&input, line_count, &mut cx);
+        }
+    }
+
+    /// An editor whose empty area below the last line is shorter than its
+    /// cursor clearance reaches the same state.
+    #[gpui::test]
+    fn test_typing_on_last_line_paints_at_persisted_scroll_offset_in_editor(
+        cx: &mut TestAppContext,
+    ) {
+        let input_view = InputView::build_editor(cx, |state| {
+            state
+                .scroll_beyond_last_line(Some(1))
+                .cursor_surrounding_lines(Some(3))
+        });
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        cx.run_until_parked();
+        assert_typing_at_end_paints_at_persisted_offset(&input_view.input, 100, &mut cx);
+    }
+
+    /// Types at the end of `line_count` lines, and checks that every frame
+    /// paints the text at the scroll offset paint persists and that the idle
+    /// frame after each keystroke leaves the text where it was.
+    fn assert_typing_at_end_paints_at_persisted_offset<M: InputModeKind>(
+        input: &Entity<InputBaseState<M>>,
+        line_count: usize,
+        cx: &mut VisualTestContext,
+    ) {
+        let text = (1..=line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value(text, window, cx);
+                let end = state.text.len();
+                state.set_selection(end, end);
+            });
+        });
+        cx.run_until_parked();
+
+        // The text's painted vertical offset, and the offset paint persisted.
+        let offsets = |cx: &mut VisualTestContext| {
+            input.read_with(cx, |state, _| {
+                let painted = state.text_bounds().unwrap().origin.y - state.input_bounds().origin.y;
+                (painted, state.scroll_handle.offset().y)
+            })
+        };
+
+        for _ in 0..5 {
+            // The update draws the keystroke's frame.
+            cx.update(|window, cx| {
+                input.update(cx, |state, cx| {
+                    state.replace_text_in_range(None, "x", window, cx);
+                });
+            });
+            let (painted, persisted) = offsets(cx);
+            assert!(
+                (painted - persisted).abs() < px(0.01),
+                "{line_count} lines: the keystroke's frame painted the text at \
+                 {painted:?}, but paint persisted {persisted:?}"
+            );
+
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            let (idle, _) = offsets(cx);
+            assert!(
+                (idle - painted).abs() < px(0.01),
+                "{line_count} lines: the text moved from {painted:?} to {idle:?} \
+                 on the frame after the keystroke"
+            );
+        }
     }
 
     #[gpui::test]
