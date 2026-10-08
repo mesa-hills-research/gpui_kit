@@ -85,6 +85,11 @@ chrono = "0.4.38"
 gpui = { workspace = true, features = ["test-support"] }
 lsp-types.workspace = true
 
+# The golden-image harness for tests/screenshots.rs, from mhr_gpui beside this repository like
+# the gpui crates. Its goldens are drawn by Mesa's software Vulkan driver, on Linux.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gpui-screenshot = { package = "gpui-pre-screenshot", path = "../../../mhr_gpui/crates/gpui_screenshot" }
+
 [[test]]
 name = "window"
 required-features = ["test-support"]
@@ -120,6 +125,10 @@ required-features = ["test-support", "component"]
 [[test]]
 name = "interactions"
 required-features = ["test-support"]
+
+[[test]]
+name = "screenshots"
+required-features = ["test-support", "component", "assets"]
 
 [[test]]
 name = "rendering"

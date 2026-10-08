@@ -4044,6 +4044,7 @@ dependencies = [
  "gpui-kit-assets",
  "gpui-pre",
  "gpui-pre-platform",
+ "gpui-pre-screenshot",
  "gpui-pre-web",
  "lsp-types 0.97.0",
 ]
@@ -4436,6 +4437,19 @@ dependencies = [
  "rand 0.9.5",
  "wasm_thread",
  "web-time",
+]
+
+[[package]]
+name = "gpui-pre-screenshot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "gpui-pre",
+ "gpui-pre-wgpu",
+ "image",
+ "png 0.18.1",
+ "sha2 0.10.9",
 ]
 
 [[package]]
