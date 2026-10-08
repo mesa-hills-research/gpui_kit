@@ -5,13 +5,16 @@ mhr_gpui_kit is Mesa Hills Research's fork of [GPUI Kit](https://github.com/long
 releases and carries the fixes that jot and its sibling apps need, each with a test.
 
 It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
-GPUI to the `gpui-pre` 0.3.8 snapshot.
+GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
+[mhr_gpui](https://github.com/mesa-hills-research/mhr_gpui), the fork of those crates.
 
 ## Changes from upstream
 
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.
+- **GPUI from mhr_gpui.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre` crates
+  at mhr_gpui. For now it expects mhr_gpui checked out beside this repository.
 
 ## Using it
 
@@ -22,6 +25,9 @@ from:
 [dependencies]
 gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
 ```
+
+Cargo applies only the root workspace's `[patch]` tables, so the app also patches the `gpui-pre`
+crates to mhr_gpui, as its README shows.
 
 ## Following upstream
 
