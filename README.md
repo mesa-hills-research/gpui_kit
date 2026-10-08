@@ -1,3 +1,38 @@
+# mhr_gpui_kit
+
+mhr_gpui_kit is Mesa Hills Research's fork of [GPUI Kit](https://github.com/longbridge/gpui-kit)
+(formerly gpui-component), the Rust desktop UI framework built on GPUI. It follows upstream
+releases and carries the fixes that jot and its sibling apps need, each with a test.
+
+It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
+GPUI to the `gpui-pre` 0.3.8 snapshot.
+
+## Changes from upstream
+
+- **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
+  vertical scroll offset before laying out text, so the frame of each keystroke paints the text
+  where the next frame does.
+
+## Using it
+
+The crates keep upstream's names, so an app moves to the fork by changing where `gpui-kit` comes
+from:
+
+```toml
+[dependencies]
+gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
+```
+
+## Following upstream
+
+Each upstream release lands as one commit that holds the release exactly as tagged, minus
+upstream's Dependabot config. The fork's own changes follow as separate commits, each with its
+test.
+
+---
+
+*Upstream's README follows.*
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/longbridge/gpui-kit/main/website/public/logo.svg" width="112" alt="GPUI Kit logo" />
   <br>
