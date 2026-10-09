@@ -14,6 +14,12 @@ backgrund = "backgrund"
 wtach = "wtach"
 netwrok = "netwrok"
 workspce = "workspce"
+# PostgreSQL's BRIN index type, a keyword of the SQL grammar's highlight query.
+brin = "brin"
 
 [files]
-extend-exclude = ["crates/story/src/fixtures/"]
+extend-exclude = [
+    "crates/story/src/fixtures/",
+    # tree-sitter-make's query, kept as published.
+    "crates/component/src/highlighter/languages/make/highlights.scm",
+]
