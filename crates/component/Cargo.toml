@@ -37,19 +37,23 @@ speech = [
 
 # For syntax highlighting in Markdown and CodeEditor.
 tree-sitter-languages = [
+    "tree-sitter-astro",
     "tree-sitter-bash",
     "tree-sitter-c",
     "tree-sitter-cmake",
     "tree-sitter-cpp",
     "tree-sitter-csharp",
     "tree-sitter-css",
+    "tree-sitter-diff",
     "tree-sitter-ejs",
     "tree-sitter-elixir",
     "tree-sitter-erb",
     "tree-sitter-go",
+    "tree-sitter-graphql",
     "tree-sitter-html",
     "tree-sitter-java",
     "tree-sitter-javascript",
+    "tree-sitter-jsdoc",
     "tree-sitter-kotlin",
     "tree-sitter-lua",
     "tree-sitter-make",
@@ -69,19 +73,23 @@ tree-sitter-languages = [
     "tree-sitter-yaml",
     "tree-sitter-zig",
 ]
+tree-sitter-astro = ["tree-sitter", "dep:tree-sitter-astro-next"]
 tree-sitter-bash = ["tree-sitter", "dep:tree-sitter-bash"]
 tree-sitter-c = ["tree-sitter", "dep:tree-sitter-c"]
 tree-sitter-cmake = ["tree-sitter", "dep:tree-sitter-cmake"]
 tree-sitter-cpp = ["tree-sitter", "dep:tree-sitter-cpp"]
 tree-sitter-csharp = ["tree-sitter", "dep:tree-sitter-c-sharp"]
 tree-sitter-css = ["tree-sitter", "dep:tree-sitter-css"]
+tree-sitter-diff = ["tree-sitter", "dep:tree-sitter-diff"]
 tree-sitter-ejs = ["tree-sitter", "dep:tree-sitter-embedded-template"]
 tree-sitter-elixir = ["tree-sitter", "dep:tree-sitter-elixir"]
 tree-sitter-erb = ["tree-sitter", "dep:tree-sitter-embedded-template"]
 tree-sitter-go = ["tree-sitter", "dep:tree-sitter-go"]
+tree-sitter-graphql = ["tree-sitter", "dep:tree-sitter-graphql"]
 tree-sitter-html = ["tree-sitter", "dep:tree-sitter-html"]
 tree-sitter-java = ["tree-sitter", "dep:tree-sitter-java"]
 tree-sitter-javascript = ["tree-sitter", "dep:tree-sitter-javascript"]
+tree-sitter-jsdoc = ["tree-sitter", "dep:tree-sitter-jsdoc"]
 tree-sitter-kotlin = ["tree-sitter", "dep:tree-sitter-kotlin-ng"]
 tree-sitter-lua = ["tree-sitter", "dep:tree-sitter-lua"]
 tree-sitter-make = ["tree-sitter", "dep:tree-sitter-make"]
@@ -101,12 +109,6 @@ tree-sitter-tsx = ["tree-sitter", "dep:tree-sitter-typescript"]
 tree-sitter-typescript = ["tree-sitter", "dep:tree-sitter-typescript"]
 tree-sitter-yaml = ["tree-sitter", "dep:tree-sitter-yaml"]
 tree-sitter-zig = ["tree-sitter", "dep:tree-sitter-zig"]
-# Languages without a grammar in Mesquite yet. The features remain so that apps
-# naming them still build, and these languages show as plain text.
-tree-sitter-astro = ["tree-sitter"]
-tree-sitter-diff = ["tree-sitter"]
-tree-sitter-graphql = ["tree-sitter"]
-tree-sitter-jsdoc = ["tree-sitter"]
 
 [dependencies]
 regex = "1"
@@ -157,18 +159,22 @@ cpal = { version = "0.15.3", optional = true }
 # Every entry names the same rev, as do examples/editor/Cargo.toml and the
 # Editor page (website/component/editor.md): move them together.
 tree-sitter                   = { package = "mesquite", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-astro-next        = { package = "mesquite_astro", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-bash              = { package = "mesquite_bash", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-c                 = { package = "mesquite_c", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-c-sharp           = { package = "mesquite_c_sharp", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-cmake             = { package = "mesquite_cmake", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-cpp               = { package = "mesquite_cpp", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-css               = { package = "mesquite_css", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-diff              = { package = "mesquite_diff", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-elixir            = { package = "mesquite_elixir", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-embedded-template = { package = "mesquite_embedded_template", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-go                = { package = "mesquite_go", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-graphql           = { package = "mesquite_graphql", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-html              = { package = "mesquite_html", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-java              = { package = "mesquite_java", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-javascript        = { package = "mesquite_javascript", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-jsdoc             = { package = "mesquite_jsdoc", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-json              = { package = "mesquite_json", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-kotlin-ng         = { package = "mesquite_kotlin", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 tree-sitter-lua               = { package = "mesquite_lua", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }

@@ -3893,18 +3893,22 @@ dependencies = [
  "lsp-types 0.97.0",
  "markdown",
  "mesquite",
+ "mesquite_astro",
  "mesquite_bash",
  "mesquite_c",
  "mesquite_c_sharp",
  "mesquite_cmake",
  "mesquite_cpp",
  "mesquite_css",
+ "mesquite_diff",
  "mesquite_elixir",
  "mesquite_embedded_template",
  "mesquite_go",
+ "mesquite_graphql",
  "mesquite_html",
  "mesquite_java",
  "mesquite_javascript",
+ "mesquite_jsdoc",
  "mesquite_json",
  "mesquite_kotlin",
  "mesquite_lua",
@@ -6397,6 +6401,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesquite_astro"
+version = "0.1.0"
+source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
+dependencies = [
+ "mesquite_language",
+]
+
+[[package]]
 name = "mesquite_bash"
 version = "0.1.0"
 source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
@@ -6445,6 +6457,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesquite_diff"
+version = "0.1.0"
+source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
+dependencies = [
+ "mesquite_language",
+]
+
+[[package]]
 name = "mesquite_elixir"
 version = "0.1.0"
 source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
@@ -6462,6 +6482,14 @@ dependencies = [
 
 [[package]]
 name = "mesquite_go"
+version = "0.1.0"
+source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
+dependencies = [
+ "mesquite_language",
+]
+
+[[package]]
+name = "mesquite_graphql"
 version = "0.1.0"
 source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
 dependencies = [
@@ -6494,6 +6522,14 @@ dependencies = [
 
 [[package]]
 name = "mesquite_javascript"
+version = "0.1.0"
+source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
+dependencies = [
+ "mesquite_language",
+]
+
+[[package]]
+name = "mesquite_jsdoc"
 version = "0.1.0"
 source = "git+https://github.com/mesa-hills-research/mesquite?rev=fef5b10845abe8fb435b2c4192aec3920d3f1898#fef5b10845abe8fb435b2c4192aec3920d3f1898"
 dependencies = [
