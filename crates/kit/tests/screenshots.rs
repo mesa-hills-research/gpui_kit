@@ -660,6 +660,51 @@ fn buttons_at_a_fractional_scale() {
     goldens().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
 }
 
+struct Bar;
+
+impl Render for Bar {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .child(gpui_kit::component::TitleBar::new())
+    }
+}
+
+/// The title bar is the theme's `title_bar.background` from its top edge down to its border, one
+/// flat color. It used to fade from a mix with the window background at the top, a shadow on
+/// themes whose background is darker, which Windows and macOS also dither into grain.
+#[test]
+fn title_bar_is_one_flat_color() {
+    let mut app = app(ThemeMode::Dark);
+    // The jot theme macOS Classic Dark, whose window background is darker than its title bar.
+    app.update(|cx| {
+        Theme::update(cx, |theme| {
+            theme.title_bar = gpui_kit::rgb(0x1c1c1e).into();
+            theme.background = gpui_kit::rgb(0x131313).into();
+        })
+    });
+    let window = open(&mut app, (400., 60.), SCALE, |_, _| Bar);
+    let image = app.capture(window).unwrap().image;
+
+    // Down the middle of the empty bar, every device row above the 1 px bottom border.
+    let x = image.width() / 2;
+    let height = gpui_kit::component::TITLE_BAR_HEIGHT.as_f32();
+    for y in 0..((height - 1.) * SCALE) as u32 {
+        let [r, g, b, _] = image.get_pixel(x, y).0;
+        assert!(
+            [r, g, b]
+                .into_iter()
+                .zip([0x1c_u8, 0x1c, 0x1e])
+                .all(|(actual, expected)| actual.abs_diff(expected) <= 2),
+            "row {y} of the title bar is {:?}, not #1c1c1e",
+            [r, g, b]
+        );
+    }
+}
+
 #[test]
 fn input_and_textarea() {
     goldens().assert("fields", &fields());
