@@ -339,66 +339,74 @@ pub struct StatusColors {
     // Minimal stub
 }
 
+/// The theme's colours, as the tree-sitter build falls back to when a highlight theme sets
+/// none.
 impl StatusColors {
-    pub fn error(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error(&self, cx: &gpui::App) -> gpui::Hsla {
+        crate::ActiveTheme::theme(cx).red
     }
 
-    pub fn error_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error_background(&self, cx: &gpui::App) -> gpui::Hsla {
+        status_background(self.error(cx), cx)
     }
 
-    pub fn error_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn error_border(&self, cx: &gpui::App) -> gpui::Hsla {
+        self.error(cx)
     }
 
-    pub fn warning(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning(&self, cx: &gpui::App) -> gpui::Hsla {
+        crate::ActiveTheme::theme(cx).yellow
     }
 
-    pub fn warning_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning_background(&self, cx: &gpui::App) -> gpui::Hsla {
+        status_background(self.warning(cx), cx)
     }
 
-    pub fn warning_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn warning_border(&self, cx: &gpui::App) -> gpui::Hsla {
+        self.warning(cx)
     }
 
-    pub fn info(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info(&self, cx: &gpui::App) -> gpui::Hsla {
+        crate::ActiveTheme::theme(cx).blue
     }
 
-    pub fn info_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info_background(&self, cx: &gpui::App) -> gpui::Hsla {
+        status_background(self.info(cx), cx)
     }
 
-    pub fn info_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn info_border(&self, cx: &gpui::App) -> gpui::Hsla {
+        self.info(cx)
     }
 
-    pub fn success(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success(&self, cx: &gpui::App) -> gpui::Hsla {
+        crate::ActiveTheme::theme(cx).green
     }
 
-    pub fn success_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success_background(&self, cx: &gpui::App) -> gpui::Hsla {
+        status_background(self.success(cx), cx)
     }
 
-    pub fn success_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn success_border(&self, cx: &gpui::App) -> gpui::Hsla {
+        self.success(cx)
     }
 
-    pub fn hint(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint(&self, cx: &gpui::App) -> gpui::Hsla {
+        crate::ActiveTheme::theme(cx).cyan
     }
 
-    pub fn hint_background(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint_background(&self, cx: &gpui::App) -> gpui::Hsla {
+        status_background(self.hint(cx), cx)
     }
 
-    pub fn hint_border(&self, _cx: &gpui::App) -> gpui::Hsla {
-        gpui::Hsla::default()
+    pub fn hint_border(&self, cx: &gpui::App) -> gpui::Hsla {
+        self.hint(cx)
     }
+}
+
+fn status_background(color: gpui::Hsla, cx: &gpui::App) -> gpui::Hsla {
+    crate::ActiveTheme::theme(cx)
+        .background
+        .blend(color.alpha(0.2))
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, JsonSchema, Serialize, Deserialize)]
