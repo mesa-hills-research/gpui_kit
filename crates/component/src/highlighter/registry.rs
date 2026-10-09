@@ -453,6 +453,10 @@ pub struct HighlightThemeStyle {
     /// Falls back to [`Self::editor_background`] when unset.
     #[serde(rename = "editor.gutter.background")]
     pub editor_gutter_background: Option<Hsla>,
+    /// Optional color for the line between the line numbers and the text.
+    /// Falls back to the theme's `border` when unset.
+    #[serde(rename = "editor.gutter.border")]
+    pub editor_gutter_border: Option<Hsla>,
     #[serde(flatten)]
     pub status: StatusColors,
     #[serde(rename = "syntax")]

@@ -640,6 +640,17 @@
             }
           ]
         },
+        "editor.gutter.border": {
+          "description": "The line between the line numbers and the text. Defaults to `border`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rgba"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "error": {
           "anyOf": [
             {

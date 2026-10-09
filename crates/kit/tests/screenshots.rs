@@ -492,11 +492,11 @@ impl Render for Gutters {
 
 /// Line-number gutters sized to the last line's number: a text editor with a few lines takes
 /// two digits, one scrolled to its end shows three, and a code editor keeps a column for its
-/// folding markers.
-fn gutters() -> Screenshot {
+/// folding markers. A thin line separates each gutter from the text.
+fn gutters(scale: f32) -> Screenshot {
     let mut app = app(ThemeMode::Light);
     let opened = Rc::new(std::cell::RefCell::new(None));
-    let window = open(&mut app, (320., 300.), SCALE, {
+    let window = open(&mut app, (320., 300.), scale, {
         let opened = opened.clone();
         move |window, cx| {
             let short = cx.new(|cx| {
@@ -582,7 +582,13 @@ fn textarea_suggestion_menu_dark() {
 
 #[test]
 fn compact_line_number_gutters() {
-    goldens().assert("gutters", &gutters());
+    goldens().assert("gutters", &gutters(SCALE));
+}
+
+/// The line beside each gutter covers whole device pixels at a fractional scale too.
+#[test]
+fn compact_line_number_gutters_at_a_fractional_scale() {
+    goldens().assert("gutters@2.625x", &gutters(2.625));
 }
 
 #[test]

@@ -419,6 +419,8 @@ pub struct HighlightThemeStyle {
     pub editor_invisible: Option<gpui::Hsla>,
     #[serde(rename = "editor.gutter.background")]
     pub editor_gutter_background: Option<gpui::Hsla>,
+    #[serde(rename = "editor.gutter.border")]
+    pub editor_gutter_border: Option<gpui::Hsla>,
     #[serde(flatten)]
     pub status: StatusColors,
     #[serde(rename = "syntax")]

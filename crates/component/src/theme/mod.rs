@@ -499,6 +499,16 @@ impl Theme {
             .unwrap_or_else(|| self.input_background())
     }
 
+    /// The line between an editor's line numbers and its text: the theme's
+    /// `editor.gutter.border`, or its `border` color when that is unset.
+    #[inline]
+    pub(crate) fn editor_gutter_border(&self) -> Hsla {
+        self.highlight_theme
+            .style
+            .editor_gutter_border
+            .unwrap_or(self.border)
+    }
+
     /// Returns a snapshot of the semantic design tokens represented by this
     /// theme. The snapshot is computed from the legacy public fields so direct
     /// mutations of those fields are reflected immediately.
