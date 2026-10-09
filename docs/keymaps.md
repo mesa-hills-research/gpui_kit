@@ -154,6 +154,10 @@ The less obvious choices:
   so Ctrl-Backspace at a line's start joins it to the line above.
 - Linux redoes with Ctrl-Shift-Z, the GNOME and KDE shortcut, and with Ctrl-Y, which GTK's text
   widgets and many Linux applications also take. Windows takes both too.
+- A menu shows an action's latest binding, so where two keys do the same, the platform's usual
+  one comes later in the table: Ctrl-X, C and V after Shift-Delete, Ctrl-Insert and
+  Shift-Insert, Ctrl-Z after Alt-Backspace, and for Redo Ctrl-Y on Windows and Ctrl-Shift-Z on
+  Linux.
 - Alt-Backspace undoes on Windows, the original CUA key that Windows edit controls and Office
   still accept. Linux leaves it free.
 - Insert stays free: the editor has no overwrite mode.

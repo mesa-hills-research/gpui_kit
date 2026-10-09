@@ -306,6 +306,33 @@ fn canonical(keys: &str) -> String {
     Keystroke::parse(keys).unwrap().unparse()
 }
 
+/// A menu shows an action's latest binding, which is the platform's usual
+/// shortcut where a second key does the same.
+#[test]
+fn menus_show_each_platforms_usual_shortcut() {
+    let shown = |platform: KeymapPlatform, action: &str| {
+        bindings(platform)
+            .iter()
+            .rev()
+            .find(|binding| binding.action().name().rsplit("::").next() == Some(action))
+            .map(|binding| binding.keystrokes()[0].inner().unparse())
+    };
+    let actions = ["Cut", "Copy", "Paste", "Undo", "Redo", "SelectAll"];
+    for (platform, expected) in [
+        (MacOS, "cmd-x cmd-c cmd-v cmd-z cmd-shift-z cmd-a"),
+        (Windows, "ctrl-x ctrl-c ctrl-v ctrl-z ctrl-y ctrl-a"),
+        (Linux, "ctrl-x ctrl-c ctrl-v ctrl-z ctrl-shift-z ctrl-a"),
+    ] {
+        for (action, keys) in actions.into_iter().zip(expected.split(' ')) {
+            assert_eq!(
+                shown(platform, action),
+                Some(canonical(keys)),
+                "{action} on {platform:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn no_platform_binds_a_key_twice() {
     for platform in KeymapPlatform::ALL {

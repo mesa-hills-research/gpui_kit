@@ -45,7 +45,16 @@ pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
     let mut bindings = common::bindings(cx);
     let primary = platform.primary();
 
-    // The same on every platform, on its own modifier.
+    match platform {
+        KeymapPlatform::MacOS => macos(&mut bindings, cx),
+        KeymapPlatform::Windows | KeymapPlatform::Linux => {
+            windows_and_linux(&mut bindings, platform, cx)
+        }
+    }
+
+    // The same on every platform, on its own modifier. A menu shows an
+    // action's latest binding, so these come after the platforms' second
+    // keys for the same actions, such as Shift-Delete for Cut.
     bindings.extend([
         bind(&format!("{primary}-a"), SelectAll, cx),
         bind(&format!("{primary}-c"), Copy, cx),
@@ -59,13 +68,6 @@ pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
         bind("shift-pageup", SelectPageUp, cx),
         bind("shift-pagedown", SelectPageDown, cx),
     ]);
-
-    match platform {
-        KeymapPlatform::MacOS => macos(&mut bindings, cx),
-        KeymapPlatform::Windows | KeymapPlatform::Linux => {
-            windows_and_linux(&mut bindings, platform, cx)
-        }
-    }
     bindings
 }
 
@@ -211,10 +213,16 @@ fn windows_and_linux(bindings: &mut Vec<KeyBinding>, platform: KeymapPlatform, c
     ]);
 
     // Redo, the classic CUA clipboard keys and Replace. Shift-Delete cuts
-    // here, where the shared keys have it delete.
+    // here, where the shared keys have it delete. Menus show Ctrl-Y for Redo
+    // on Windows and Ctrl-Shift-Z on Linux, the later of the two.
+    let (redo, menu_redo) = if windows {
+        ("ctrl-shift-z", "ctrl-y")
+    } else {
+        ("ctrl-y", "ctrl-shift-z")
+    };
     bindings.extend([
-        bind("ctrl-y", Redo, cx),
-        bind("ctrl-shift-z", Redo, cx),
+        bind(redo, Redo, cx),
+        bind(menu_redo, Redo, cx),
         bind("ctrl-insert", Copy, cx),
         bind("shift-insert", Paste, cx),
         bind("ctrl-h", Replace, cx),
