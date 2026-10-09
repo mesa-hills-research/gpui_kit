@@ -1,0 +1,15 @@
+[package]
+name = "mhr_gpui_new"
+version = "0.1.0"
+description = "Creates a GPUI app with the title bar, menus and window frame set up for macOS, Windows and Linux."
+license = "Apache-2.0"
+publish = false
+edition.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+toml = "0.8"
+
+[lints]
+workspace = true

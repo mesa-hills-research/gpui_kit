@@ -29,6 +29,7 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   `crates/kit/tests/screenshots`. They run with the kit's tests and use mhr_gpui's
   `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
+- **A generator for new apps** (`mhr_gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it
 
@@ -45,6 +46,19 @@ crates to mhr_gpui, at the commit this repository's `Cargo.toml` names (mhr_gpui
 how). Building needs GitHub access to the private mhr_gpui repository and
 `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`).
+
+## Starting a new app
+
+`mhr_gpui_new` creates an app with the title bar, menus, window frame, icon and logging set up for
+macOS, Windows and Linux:
+
+```sh
+cargo install --git https://github.com/mesa-hills-research/mhr_gpui_kit mhr_gpui_new
+mhr_gpui_new my-app --name "My App" --app-id com.example.MyApp
+cd my-app && cargo run
+```
+
+[docs/app-template.md](docs/app-template.md) describes the generated app.
 
 ## Following upstream
 
