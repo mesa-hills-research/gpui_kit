@@ -13,6 +13,8 @@ mod editor;
 mod history;
 #[path = "input/lifecycle.rs"]
 mod lifecycle;
+#[path = "input/spelling.rs"]
+mod spelling;
 #[path = "input/textarea.rs"]
 mod textarea;
 use gpui::{
