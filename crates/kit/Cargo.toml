@@ -90,7 +90,7 @@ serde_json.workspace = true
 # crates in the workspace's [patch.crates-io]. Its goldens are drawn by Mesa's software Vulkan
 # driver, on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "5d00ce2d66971d9a4c13c14d5bebac9b1f1bc4dd" }
+gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "3ee85e86ba0c3cffb4275f459de36a47b0b5a6ea" }
 
 [[test]]
 name = "window"
