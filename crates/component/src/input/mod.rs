@@ -24,6 +24,7 @@ pub use context_menu::ContextMenuTarget;
 /// The shared editing engine. Internal to the framework: components reach it
 /// through the concrete state of their control, never across the public API.
 pub(crate) use gpui_base::input::InputBaseState;
+pub use gpui_base::input::cua;
 pub use gpui_base::input::{
     AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
     SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionItemContext,
@@ -58,6 +59,7 @@ pub use gpui_base::input::{
     SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
 };
 pub use gpui_base::input::{EditorMode, InputMode, InputModeKind, TextareaMode};
+pub use gpui_base::input::{EmacsState, SaveBuffer, VimCommand, VimQuit, VimWrite, WriteFile};
 #[doc(hidden)]
 mod editor;
 mod group;

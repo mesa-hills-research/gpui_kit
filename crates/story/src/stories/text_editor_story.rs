@@ -1,17 +1,18 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Subscription, Task, Window, div,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, Window, div,
 };
 
 use gpui_kit::component::{
-    ActiveTheme as _, Selectable as _, Sizable as _,
+    ActiveTheme as _, Selectable as _, Sizable as _, WindowExt as _,
     button::Button,
     h_flex,
     input::{
-        Keymap, RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker, SpellEvent, Suggestion,
-        SuggestionOptions, SuggestionProvider, SuggestionRequest, TextEditor, TextareaState,
+        Keymap, RopeExt as _, SaveBuffer, SpellCheck, SpellCheckRequest, SpellChecker, SpellEvent,
+        Suggestion, SuggestionOptions, SuggestionProvider, SuggestionRequest, TextEditor,
+        TextareaState, VimQuit, VimWrite,
     },
     switch::Switch,
     v_flex,
@@ -215,6 +216,17 @@ impl Render for TextEditorStory {
         v_flex()
             .size_full()
             .gap_3()
+            // Emacs's C-x C-s and Vim's :w and :q leave saving and closing to
+            // the application.
+            .on_action(cx.listener(|_, _: &SaveBuffer, window, cx| {
+                window.push_notification("C-x C-s: the application saves here", cx)
+            }))
+            .on_action(cx.listener(|_, _: &VimWrite, window, cx| {
+                window.push_notification(":w: the application saves here", cx)
+            }))
+            .on_action(cx.listener(|_, _: &VimQuit, window, cx| {
+                window.push_notification(":q: the application closes the document here", cx)
+            }))
             .child(
                 h_flex()
                     .gap_4()

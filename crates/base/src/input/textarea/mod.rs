@@ -24,6 +24,7 @@ impl InputModeKind for TextareaMode {
         new_len: usize,
     ) {
         state.extras.marks.adjust_for_edit(range, new_len);
+        state.extras.keymap.adjust_for_edit(range, new_len);
     }
 
     fn did_edit(
@@ -41,6 +42,7 @@ impl InputModeKind for TextareaMode {
         window: &mut Window,
         cx: &mut gpui::Context<InputBaseState<Self>>,
     ) {
+        state.keymap_on_render(cx);
         state.spelling_on_render(window, cx);
     }
 
@@ -142,6 +144,10 @@ impl crate::input::InputExtras for TextareaExtras {
         style: &crate::input::InputEditorStyle,
     ) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> {
         self.marks.underlines(range, style)
+    }
+
+    fn caret_offset(&self) -> Option<usize> {
+        self.keymap.caret_offset()
     }
 }
 

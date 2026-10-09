@@ -63,13 +63,15 @@
 
 mod commands;
 mod common;
-mod cua;
+pub mod cua;
 mod emacs;
+#[cfg(test)]
+mod switching;
 #[cfg(test)]
 pub(crate) mod test;
 mod vim;
 
-use std::any::Any;
+use std::{any::Any, ops::Range};
 
 use gpui::{
     Action, App, Context, Div, Entity, KeyBinding, KeyContext, SharedString, Stateful, Window,
@@ -83,7 +85,8 @@ pub use commands::{
     MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
     SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
 };
-pub use vim::{VimMode, VimState};
+pub use emacs::{EmacsState, SaveBuffer, WriteFile};
+pub use vim::{VimCommand, VimMode, VimQuit, VimState, VimWrite};
 
 /// Which keybinding scheme a textarea follows.
 ///
@@ -226,6 +229,20 @@ pub trait KeymapState: Any {
     fn accepts_text_input(&self) -> bool {
         true
     }
+
+    /// Follow an edit that replaced `range` with `new_len` bytes, to keep
+    /// offsets the state holds, such as Emacs's mark, on the same text.
+    fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
+        _ = (range, new_len);
+    }
+
+    /// Where to draw the caret, when the scheme draws one caret of its own
+    /// rather than one at the moving end of each selection. Vim's visual modes
+    /// draw it on the last selected character. An offset outside the active
+    /// selection is ignored. Defaults to none.
+    fn caret_offset(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// A binding in `context`, for building a scheme's table.
@@ -272,6 +289,16 @@ impl KeymapSettings {
             .as_ref()
             .is_none_or(|state| state.accepts_text_input())
     }
+
+    pub(crate) fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
+        if let Some(state) = &mut self.state {
+            state.adjust_for_edit(range, new_len);
+        }
+    }
+
+    pub(crate) fn caret_offset(&self) -> Option<usize> {
+        self.state.as_ref()?.caret_offset()
+    }
 }
 
 /// Methods for a textarea's keybinding scheme. See [`Keymap`].
@@ -283,7 +310,8 @@ impl TextareaState {
     }
 
     /// Switch to the keybinding scheme `keymap`. The scheme starts afresh,
-    /// for Vim in normal mode.
+    /// Vim in normal mode and Emacs with no mark or prefix argument, and the
+    /// old scheme's state goes. The selection and the undo history stay.
     pub fn set_keymap(&mut self, keymap: Keymap, cx: &mut Context<Self>) {
         self.extras.keymap.set(keymap);
         cx.notify();
@@ -329,6 +357,14 @@ impl TextareaState {
             Keymap::Cua => false,
             Keymap::Emacs => emacs::typed_text(self, text, window, cx),
             Keymap::Vim => vim::typed_text(self, text, window, cx),
+        }
+    }
+
+    /// Let the scheme catch up, before the textarea renders, with what changed
+    /// around it, such as a selection made with the mouse.
+    pub(crate) fn keymap_on_render(&mut self, cx: &mut Context<Self>) {
+        if self.current_keymap() == Keymap::Vim {
+            vim::on_render(self, cx);
         }
     }
 
@@ -423,7 +459,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Block);
         test.keys("l");
         test.assert("abˇc");
-        test.type_text("x");
+        // `q` is no command of Vim's here, and normal mode inserts nothing.
+        test.type_text("q");
         test.assert("abˇc");
 
         test.keys("i");
@@ -431,7 +468,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Bar);
         test.type_text("xy");
         test.assert("abxyˇc");
-        test.keys("escape h");
+        // Escape steps back onto the last character typed.
+        test.keys("escape");
         assert_eq!(test.mode_label().as_deref(), Some("NORMAL"));
         test.assert("abxˇyc");
         assert!(

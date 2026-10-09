@@ -354,8 +354,104 @@ let document = cx.new(|cx| TextareaState::new(window, cx).text_editor().keymap(K
 document.update(cx, |document, cx| document.set_keymap(Keymap::Emacs, cx));
 ```
 
-Only the active scheme's keys apply. A scheme with modes reports the current
-one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
-the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
-state to show the label in a status bar. CUA binds the platform's shortcuts,
-and Emacs and Vim bind their basic motions so far.
+Only the active scheme's keys apply. A switch starts the new scheme afresh,
+Vim in normal mode, and keeps the selection and the undo history. A scheme
+with modes reports the current one through `keymap_mode_label`, such as
+`NORMAL` or `INSERT` in Vim, and draws the caret as `cursor_shape` says: a
+block in Vim's normal mode. Observe the state to show the label in a status
+bar. CUA binds each platform's own shortcuts, Emacs keeps a mark, a kill ring
+and a prefix argument, and Vim has its modes, operators, registers and command
+line. Each scheme's keys are below.
+
+#### CUA
+
+CUA follows each platform's own text fields, in every input and editor:
+
+| Action | macOS | Windows | Linux |
+|---|---|---|---|
+| Move by word | Option-Left, Option-Right | Ctrl-Left, Ctrl-Right | Ctrl-Left, Ctrl-Right |
+| Line start or end | Cmd-Left, Cmd-Right | Home, End | Home, End |
+| Text start or end | Cmd-Up, Cmd-Down | Ctrl-Home, Ctrl-End | Ctrl-Home, Ctrl-End |
+| Paragraph up or down | Option-Up, Option-Down | Ctrl-Up, Ctrl-Down | Ctrl-Up, Ctrl-Down |
+| Page up or down | Option-Page Up, Option-Page Down | Page Up, Page Down | Page Up, Page Down |
+| Scroll, caret stays | Home, End, Page Up, Page Down | | |
+| Select | Shift with a key above | Shift with a key above | Shift with a key above |
+| Delete a word | Option-Backspace, Option-Delete | Ctrl-Backspace, Ctrl-Delete | Ctrl-Backspace, Ctrl-Delete |
+| Delete to line start or end | Cmd-Backspace, Cmd-Delete | | |
+| Undo | Cmd-Z | Ctrl-Z, Alt-Backspace | Ctrl-Z |
+| Redo | Cmd-Shift-Z | Ctrl-Y, Ctrl-Shift-Z | Ctrl-Shift-Z, Ctrl-Y |
+| Cut, copy, paste | Cmd-X, Cmd-C, Cmd-V | Ctrl-X, Ctrl-C, Ctrl-V | Ctrl-X, Ctrl-C, Ctrl-V |
+| Cut, copy, paste (classic) | | Shift-Delete, Ctrl-Insert, Shift-Insert | Shift-Delete, Ctrl-Insert, Shift-Insert |
+| Select all | Cmd-A | Ctrl-A | Ctrl-A |
+| Find, replace | Cmd-F, Cmd-Option-F | Ctrl-F, Ctrl-H | Ctrl-F, Ctrl-H |
+
+Windows moves by word to the start of each word and stops at line ends, and Linux and macOS move
+to the end of a word going right. On macOS, Shift-Home and Shift-End select to the start and end
+of the text, and the Control keys of every Cocoa text field work too: Ctrl-A, E, F, B, N and P
+move (Shift selects), Ctrl-D and Ctrl-H delete, Ctrl-K cuts to the end of the line and Ctrl-Y puts
+it back, Ctrl-T swaps two characters, Ctrl-O opens a line, Ctrl-V moves a page down and Ctrl-L
+centers the caret. The commands these keys use are in `gpui_kit::component::input::cua`, for an
+application that binds them to other keys.
+
+#### Emacs
+
+Meta is Alt on Windows and Linux and Option on macOS, and Escape followed by a
+key works as Meta too. On macOS, Cmd keeps Copy, Cut, Paste, Undo, Redo and
+Select All.
+
+| Keys | Command |
+|---|---|
+| `C-f` `C-b` `C-n` `C-p`, the arrows | Character, line |
+| `M-f` `M-b`, `C-a` `C-e`, `M-m` | Word, line start and end, indentation |
+| `M-a` `M-e`, `M-{` `M-}` | Sentence, paragraph |
+| `M-<` `M->`, `C-v` `M-v` | Start and end of the text, page |
+| `C-Space` or `C-@`, `C-x C-x`, `C-x h` | Set the mark, swap the caret and the mark, select all |
+| `C-g` | Deactivate the mark, cancel a prefix |
+| `C-k`, `M-d`, `M-Backspace`, `C-w` | Kill to the end of the line, word, word before, region |
+| `M-w`, `C-y`, `M-y` | Copy the region, yank, swap the yank for the kill before it |
+| `C-d`, `C-t` `M-t`, `M-u` `M-l` `M-c` | Delete, transpose, change case |
+| `C-o`, `C-j`, `M-^` | Open a line, new line, join to the line before |
+| `C-/` `C-_` `C-x u` | Undo |
+| `C-s` `C-r` | Search forward and back |
+| `C-u`, `M-0` to `M-9`, `M--` | Prefix argument, a count for the next command |
+
+Motions extend the region while the mark is active. Kills go to the kill ring
+and the clipboard, kills in a row join into one, and `C-y` pastes text copied
+in another application. The prefix argument shows as the mode label while it
+is typed. `C-x C-s` and `C-x C-w` dispatch `SaveBuffer` and `WriteFile`, which
+the application handles to save. `EmacsState` holds the mark and the kill ring.
+
+#### Vim
+
+| | Keys |
+|---|---|
+| Modes | `i` `a` `I` `A` `o` `O` insert, `R` replace, `v` `V` Ctrl-V visual, Escape back to normal |
+| Motions | `h` `j` `k` `l`, `w` `b` `e` `ge`, `0` `^` `$`, `gg` `G`, `f` `t` `F` `T` `;` `,`, `%`, `{` `}`, `H` `M` `L`, `/` `?` `n` `N` `*` `#` |
+| Operators | `d` `c` `y` `>` `<` `g~` `gu` `gU`, doubled for lines, with counts such as `2d3w` |
+| Text objects | `iw` `aw`, quotes, brackets, `it` `at` for tags, `ip` `ap` |
+| Editing | `x` `X` `D` `C` `Y` `s` `S` `r` `~` `J` `p` `P`, `u` and Ctrl-R, `.`, Ctrl-A and Ctrl-X |
+| Registers | `"a` to `"z`, `"A` to append, `"0` to `"9`, `"_`, `"+` and `"*` for the clipboard |
+| Command line | `:{n}`, `:s/pattern/replacement/g` on a line, a range or the selection, `:w`, `:q`, `:wq`, `:x` |
+
+Vim's keys are the same on every platform. Ctrl-V starts visual block mode, as
+in Vim on Unix. The clipboard and undo shortcuts stay: Cmd-C, Cmd-X, Cmd-V,
+Cmd-A and Cmd-Z on macOS, Ctrl-Shift-C and Ctrl-Shift-V on Windows and Linux.
+Other Ctrl and Cmd shortcuts reach the application, except Vim's own Ctrl keys
+such as Ctrl-R and Ctrl-W.
+
+While a command line is typed, the mode label shows it, such as `:s/a/b/`.
+`:w` dispatches `VimWrite`, `:q` dispatches `VimQuit`, and `:wq` and `:x` both.
+Any other command arrives as `VimCommand` with its text. Handle them around the
+editor:
+
+```rust
+use gpui_kit::component::input::{VimCommand, VimQuit, VimWrite};
+
+div()
+    .on_action(cx.listener(|this, _: &VimWrite, window, cx| this.save(window, cx)))
+    .on_action(cx.listener(|this, _: &VimQuit, window, cx| this.close(window, cx)))
+    .on_action(cx.listener(|this, action: &VimCommand, window, cx| {
+        this.run(&action.command, window, cx)
+    }))
+    .child(TextEditor::new(&document))
+```

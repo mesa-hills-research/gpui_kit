@@ -25,6 +25,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   Dictionary and Ignore. Line numbers, marks (underlines that follow the text) and a context menu
   that knows the clicked word work on any textarea. See
   [Textarea: text editor](website/component/textarea.md#text-editor).
+- **Keybinding schemes** (`gpui-base`, `gpui-component`). A textarea follows CUA, Emacs or Vim keys
+  and switches between them at run time. CUA binds each platform's own text-field shortcuts in
+  every input, Emacs adds the mark, the kill ring and prefix arguments, and Vim its modes,
+  operators, text objects, registers and command line. See
+  [Textarea: keybindings](website/component/textarea.md#keybindings), and
+  [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
 - **Compact line numbers** (`gpui-base`). The line-number gutter of the code editor and of a
   textarea is as wide as the last line's number needs, from two digits, with the numbers
   right-aligned, and leaves room for folding markers only while folding is on.
