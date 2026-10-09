@@ -34,6 +34,19 @@ pub(super) fn default_mono_font_family() -> SharedString {
     TypographyTokens::default().mono
 }
 
+/// The installed stand-in for the platform default, once
+/// [`resolve_default_mono_font`] has looked for it.
+static RESOLVED: OnceLock<SharedString> = OnceLock::new();
+
+/// The monospace family of a theme that names none: the installed stand-in
+/// for the platform default once that is known, else the platform default.
+pub(super) fn default_installed_mono_font_family() -> SharedString {
+    RESOLVED
+        .get()
+        .cloned()
+        .unwrap_or_else(default_mono_font_family)
+}
+
 /// Replaces the platform-default monospace family on the global theme with one
 /// that is installed. A family chosen explicitly is left alone.
 pub(super) fn resolve_default_mono_font(cx: &mut App) {
@@ -46,7 +59,6 @@ pub(super) fn resolve_default_mono_font(cx: &mut App) {
 
 /// The installed stand-in for the platform default, resolved once per process.
 fn installed_default_mono_font_family(cx: &App) -> SharedString {
-    static RESOLVED: OnceLock<SharedString> = OnceLock::new();
     RESOLVED
         .get_or_init(|| {
             let default = default_mono_font_family();

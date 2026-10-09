@@ -5,7 +5,7 @@ use gpui::{
     Window, prelude::FluentBuilder as _,
 };
 
-use super::{ContextMenuTarget, Input, TextareaState};
+use super::{ContextMenuStyle, ContextMenuTarget, Input, TextareaState};
 use crate::native_menu::NativeMenu;
 use crate::{RoleOverride, Sizable, Size, StyledExt as _};
 
@@ -37,6 +37,11 @@ pub struct Textarea {
     paste_handler: Option<Rc<dyn Fn(&gpui::ClipboardItem, &mut Window, &mut App) -> bool>>,
 
     suggestion_item: Option<gpui_base::input::SuggestionItemRenderer>,
+
+    /// Paint the theme's editor background. See [`Input::editor_surface`].
+    editor_surface: bool,
+
+    context_menu_style: ContextMenuStyle,
 }
 
 impl Textarea {
@@ -91,7 +96,15 @@ impl Textarea {
             token_click_listener: None,
             token_hover_listener: None,
             suggestion_item: None,
+            editor_surface: false,
+            context_menu_style: ContextMenuStyle::default(),
         }
+    }
+
+    /// Paint the theme's `editor.background`, as [`super::TextEditor`] does.
+    pub(crate) fn editor_surface(mut self, editor_surface: bool) -> Self {
+        self.editor_surface = editor_surface;
+        self
     }
 
     /// The element each suggestion renders as in the suggestion menu, in place
@@ -208,6 +221,20 @@ impl Textarea {
         self
     }
 
+    /// What draws the right-click menu: the operating system's menu on macOS
+    /// and Windows, the default, or GPUI's menu in the theme's colors with
+    /// [`ContextMenuStyle::Drawn`].
+    pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.context_menu_style = style;
+        self
+    }
+
+    /// The style [`Self::context_menu_style`] set, for tests.
+    #[cfg(test)]
+    pub(crate) fn current_context_menu_style(&self) -> ContextMenuStyle {
+        self.context_menu_style
+    }
+
     /// Intercept paste payloads (images, files) before the default text insertion.
     ///
     /// `true` consumes the paste so nothing is inserted, `false` falls through
@@ -268,6 +295,8 @@ impl Textarea {
             })
             .suggestion_item_renderer(self.suggestion_item)
             .context_menu_target_builder(self.context_menu_target_builder)
+            .editor_surface(self.editor_surface)
+            .context_menu_style(self.context_menu_style)
             .refine_style(&self.style)
     }
 }

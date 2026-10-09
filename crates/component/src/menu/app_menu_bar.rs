@@ -10,7 +10,7 @@ use gpui::{
     App, AppContext as _, ClickEvent, Context, DismissEvent, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyBinding, MouseButton, OwnedMenu, ParentElement,
     Render, Role, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, anchored,
-    deferred, div, prelude::FluentBuilder, px,
+    canvas, deferred, div, prelude::FluentBuilder, px,
 };
 
 const CONTEXT: &str = "AppMenuBar";
@@ -140,6 +140,12 @@ pub(super) struct AppMenu {
     name: SharedString,
     menu: OwnedMenu,
     popup_menu: Option<Entity<PopupMenu>>,
+    /// Registered on the menu's title and never focused, so the popup can look
+    /// its shortcuts up through the menu bar's key contexts on the frame it
+    /// opens, when nothing has focus or focus is outside those contexts. GPUI
+    /// finds a handle in the previously rendered frame, where the popup's own
+    /// element is not yet.
+    trigger_focus: FocusHandle,
 
     _subscription: Option<Subscription>,
 }
@@ -152,12 +158,13 @@ impl AppMenu {
         cx: &mut App,
     ) -> Entity<Self> {
         let name = menu.name.clone();
-        cx.new(|_| Self {
+        cx.new(|cx| Self {
             ix,
             menu_bar,
             name,
             menu: menu.clone(),
             popup_menu: None,
+            trigger_focus: cx.focus_handle(),
             _subscription: None,
         })
     }
@@ -179,8 +186,10 @@ impl AppMenu {
                 let popup_menu = PopupMenu::build(window, cx, |menu, window, cx| {
                     menu.with_menu_items(items, window, cx)
                 });
+                let trigger_focus = self.trigger_focus.clone();
                 popup_menu.update(cx, |menu, cx| {
                     menu.set_action_context(action_context.clone(), cx);
+                    menu.set_trigger_focus(Some(trigger_focus), cx);
                 });
                 self._subscription =
                     Some(cx.subscribe_in(&popup_menu, window, Self::handle_dismiss));
@@ -259,9 +268,20 @@ impl Render for AppMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_open = self.is_open(cx);
 
+        let trigger_focus = self.trigger_focus.clone();
         div()
             .id(self.ix)
             .relative()
+            // Registers the handle on this path without making the title
+            // focusable.
+            .child(
+                canvas(
+                    move |_, window, cx| window.set_focus_handle(&trigger_focus, cx),
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_0(),
+            )
             .child(
                 Button::new("menu")
                     .small()
@@ -304,6 +324,76 @@ mod tests {
     use super::*;
 
     use gpui::TestAppContext;
+
+    gpui::actions!(app_menu_bar_tests, [SaveDoc]);
+
+    /// A document under a menu bar, inside the key context its shortcuts are
+    /// bound in, the way an application lays out its window.
+    struct DocRoot {
+        menu_bar: Entity<AppMenuBar>,
+        doc: FocusHandle,
+    }
+
+    impl Render for DocRoot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .key_context("Doc")
+                .on_action(|_: &SaveDoc, _, _| {})
+                .size_full()
+                .child(div().h(px(30.)).child(self.menu_bar.clone()))
+                .child(div().id("doc").track_focus(&self.doc).size_full())
+        }
+    }
+
+    /// The menu opens complete: its first frame lays out the shortcuts beside
+    /// the items, at the width it keeps, whether or not the document has
+    /// focus.
+    #[gpui::test]
+    fn a_menu_opens_with_its_shortcuts(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.bind_keys([KeyBinding::new("ctrl-alt-shift-s", SaveDoc, Some("Doc"))]);
+            GlobalState::global_mut(cx).set_app_menus(vec![
+                gpui::Menu::new("File")
+                    .items([gpui::MenuItem::action("Save a Copy", SaveDoc)])
+                    .owned(),
+            ]);
+        });
+        for focused in [true, false] {
+            let (root, cx) = cx.add_window_view(|window, cx| {
+                let doc = cx.focus_handle();
+                if focused {
+                    doc.focus(window, cx);
+                }
+                DocRoot {
+                    menu_bar: AppMenuBar::new(cx),
+                    doc,
+                }
+            });
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            let menu_bar = root.read_with(cx, |root, _| root.menu_bar.clone());
+            let popup = move |cx: &App| {
+                menu_bar.read(cx).menus[0]
+                    .read(cx)
+                    .popup_menu
+                    .clone()
+                    .expect("the menu is open")
+            };
+
+            cx.simulate_mouse_down(
+                gpui::point(px(10.), px(10.)),
+                MouseButton::Left,
+                Default::default(),
+            );
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            assert!(cx.debug_bounds("kbd:ctrl-alt-shift-s").is_some());
+            let (first, settled) = cx.update(|_, cx| popup(cx).read(cx).first_and_last_bounds());
+            assert_eq!(
+                first.size.width, settled.size.width,
+                "focused: {focused}, the menu must open at its width"
+            );
+        }
+    }
 
     struct TestRoot {
         menu_bar: Entity<AppMenuBar>,

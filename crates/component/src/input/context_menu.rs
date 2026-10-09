@@ -13,6 +13,45 @@ use crate::native_menu::NativeMenu;
 /// How many of the spell checker's suggestions the menu lists.
 const MAX_SPELLING_SUGGESTIONS: usize = 5;
 
+/// What draws a text field's right-click menu.
+///
+/// [`super::TextEditor`] uses [`Self::Drawn`], and inputs and textareas
+/// [`Self::Native`]. Change it with `context_menu_style` on [`super::Input`],
+/// [`super::Textarea`] or [`super::TextEditor`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ContextMenuStyle {
+    /// A [`PopupMenu`](crate::menu::PopupMenu) drawn by GPUI in the theme's
+    /// colors, on every platform. It stays inside the window.
+    Drawn,
+    /// The operating system's menu on macOS and Windows, which can reach past
+    /// the window's edge. Other platforms have none, and show the drawn menu.
+    #[default]
+    Native,
+}
+
+impl ContextMenuStyle {
+    /// Whether the operating system draws a menu of this style on `os`, a
+    /// [`std::env::consts::OS`] value.
+    pub(crate) fn uses_os_menu(self, os: &str) -> bool {
+        self == Self::Native && matches!(os, "macos" | "windows")
+    }
+
+    /// Show `menu` at `position` in this style.
+    pub(crate) fn show(
+        self,
+        menu: NativeMenu,
+        position: gpui::Point<gpui::Pixels>,
+        window: &mut gpui::Window,
+        cx: &mut App,
+    ) {
+        if self.uses_os_menu(std::env::consts::OS) {
+            menu.show(position, window, cx);
+        } else {
+            menu.show_drawn(position, window, cx);
+        }
+    }
+}
+
 /// Where a textarea's context menu opened and what is there, for a menu
 /// builder given to [`super::Textarea::context_menu_at`].
 ///
@@ -177,4 +216,23 @@ pub(crate) fn standard_items(
         t!("Input.Select All"),
         Box::new(gpui_base::input::SelectAll),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContextMenuStyle;
+
+    /// The drawn style is drawn by GPUI everywhere. The native one is the
+    /// operating system's where there is one.
+    #[test]
+    fn which_menu_each_style_shows_on_each_platform() {
+        for os in ["windows", "macos", "linux", "freebsd", "android", "ios"] {
+            assert!(!ContextMenuStyle::Drawn.uses_os_menu(os), "{os}");
+            assert_eq!(
+                ContextMenuStyle::Native.uses_os_menu(os),
+                matches!(os, "windows" | "macos"),
+                "{os}"
+            );
+        }
+    }
 }

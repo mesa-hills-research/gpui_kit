@@ -20,12 +20,28 @@
 //! the probe does nothing while no font is installed: there would be nothing
 //! to name anyway.
 
+use std::sync::OnceLock;
+
 use gpui::{App, SharedString, font};
 
 use super::mono_font::installed_font_names;
 
 /// The virtual family GPUI resolves on every platform.
 const SYSTEM_UI_FONT: &str = ".SystemUIFont";
+
+/// The installed family `.SystemUIFont` resolves to, once
+/// [`resolve_default_font`] has found one. The fonts a process can use do not
+/// change while it runs.
+static RESOLVED: OnceLock<SharedString> = OnceLock::new();
+
+/// The UI family of a theme that names none: the installed family
+/// `.SystemUIFont` resolves to once that is known, else `.SystemUIFont`.
+pub(super) fn default_font_family() -> SharedString {
+    RESOLVED
+        .get()
+        .cloned()
+        .unwrap_or_else(|| SYSTEM_UI_FONT.into())
+}
 
 /// Replaces `.SystemUIFont` on the global theme with the installed family GPUI
 /// resolves it to, when that differs. Any other family is left alone.
@@ -45,6 +61,7 @@ pub(super) fn resolve_default_font(cx: &mut App) {
         return;
     };
     tracing::info!("UI font {SYSTEM_UI_FONT:?} resolves to {family:?}, naming it on the theme.");
+    let _ = RESOLVED.set(family.clone());
     cx.global_mut::<super::Theme>().font_family = family;
 }
 

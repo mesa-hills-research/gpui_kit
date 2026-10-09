@@ -1,4 +1,5 @@
-//! Fallback popup menu for platforms without an OS-native popup (e.g. Linux).
+//! The drawn popup menu: the fallback for platforms without an OS-native popup
+//! (e.g. Linux), and what [`super::NativeMenu::show_drawn`] shows everywhere.
 //!
 //! It renders gpui-component's drawn [`PopupMenu`] through an overlay held by
 //! [`crate::Root`]. Unlike a real native menu it is clipped to the window, but it keeps
@@ -30,11 +31,16 @@ impl FallbackMenuOverlay {
         Self { active: None }
     }
 
+    /// The menu showing, for tests.
+    #[cfg(test)]
+    pub(crate) fn active_menu(&self) -> Option<Entity<PopupMenu>> {
+        self.active.as_ref().map(|active| active.menu.clone())
+    }
+
     /// Build a [`PopupMenu`] from `items` and show it anchored at `position`.
     ///
     /// `action_context` is the focus handle the selected action is dispatched
     /// to, matching the native backends (which dispatch to the window's focus).
-    #[allow(dead_code)] // Only used where the native menu falls back (e.g. Linux).
     fn show(
         &mut self,
         items: Vec<NativeMenuItem>,
@@ -61,7 +67,6 @@ impl FallbackMenuOverlay {
 }
 
 /// Recursively build a [`PopupMenu`] entity from native menu items.
-#[allow(dead_code)] // Only used where the native menu falls back (e.g. Linux).
 fn build_popup(
     items: Vec<NativeMenuItem>,
     action_context: Option<FocusHandle>,
@@ -128,8 +133,12 @@ impl Render for FallbackMenuOverlay {
     }
 }
 
-/// Show the fallback popup menu through [`crate::Root`]'s overlay.
-#[allow(dead_code)] // Only called where the native menu falls back (e.g. Linux).
+/// Whether the window has a [`crate::Root`] to draw the menu.
+pub(super) fn can_show(window: &Window, cx: &App) -> bool {
+    WindowState::native_menu_overlay(window, cx).is_some()
+}
+
+/// Show the drawn popup menu through [`crate::Root`]'s overlay.
 pub(super) fn show(
     items: Vec<NativeMenuItem>,
     position: Point<Pixels>,

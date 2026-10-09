@@ -50,7 +50,7 @@ cx.theme().foreground
 
 ## 编辑器颜色
 
-主题 `highlight` 部分中的 `editor.foreground` 设置代码编辑器的文本颜色，`editor.line_number` 和 `editor.active_line_number` 分别设置行号和光标所在行行号的颜色，默认分别使用 `foreground`、`muted.foreground` 和编辑器的文本颜色。
+主题 `highlight` 部分中的 `editor.background` 设置代码编辑器和文本编辑器的背景，默认使用输入框背景。`editor.foreground` 设置代码编辑器的文本颜色，`editor.line_number` 和 `editor.active_line_number` 分别设置行号和光标所在行行号的颜色，默认分别使用 `foreground`、`muted.foreground` 和编辑器的文本颜色。
 
 `editor.gutter.border` 设置编辑器行号与文本之间分隔线的颜色，默认使用 `border`。
 
@@ -83,6 +83,8 @@ pub fn init(cx: &mut App) {
     }
 }
 ```
+
+`apply_config` 会替换整个主题。主题文件没有设置的项，例如 `radius`、`shadow`、字体或 `highlight` 部分，都会使用该文件所属模式的默认值，因此之前主题的设置不会保留下来。如果应用自己在主题上设置了字号或圆角，切换主题后需要重新设置。
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html

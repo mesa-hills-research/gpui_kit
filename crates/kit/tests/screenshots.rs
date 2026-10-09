@@ -278,6 +278,41 @@ fn menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+gpui_kit::actions!(screenshots, [Undo, Redo, Save, SaveAll, Settings]);
+
+/// A menu of actions with their shortcuts, each drawn as a key cap: a single key, several
+/// modifiers, and a sequence of two keystrokes, the keyboard cursor on the second item.
+fn shortcut_menu(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    app.update(|cx| {
+        cx.bind_keys([
+            gpui_kit::KeyBinding::new("ctrl-z", Undo, None),
+            gpui_kit::KeyBinding::new("ctrl-shift-z", Redo, None),
+            gpui_kit::KeyBinding::new("ctrl-s", Save, None),
+            gpui_kit::KeyBinding::new("ctrl-k s", SaveAll, None),
+            gpui_kit::KeyBinding::new("f2", Settings, None),
+        ])
+    });
+    let window = open(&mut app, (256., 196.), SCALE, |window, cx| {
+        let menu = PopupMenu::build(window, cx, |menu, _, _| {
+            menu.menu("Undo", Box::new(Undo))
+                .menu("Redo", Box::new(Redo))
+                .separator()
+                .menu("Save", Box::new(Save))
+                .menu("Save All", Box::new(SaveAll))
+                .separator()
+                .menu("Settings", Box::new(Settings))
+        });
+        menu.read(cx).focus_handle(cx).focus(window, cx);
+        Menu { menu }
+    });
+    act(&mut app, window, |window, cx| {
+        window.press("down", cx);
+        window.press("down", cx);
+    });
+    app.capture(window).unwrap()
+}
+
 /// The words [`Words`] completes from, each with the detail its menu row shows.
 const WORDS: [(&str, &str); 6] = [
     ("comment", "noun"),
@@ -473,6 +508,102 @@ fn text_editor_menu(mode: ThemeMode) -> Screenshot {
         );
     });
     app.capture(window).unwrap()
+}
+
+struct Surfaces {
+    document: Entity<TextareaState>,
+    note: Entity<TextareaState>,
+}
+
+impl Render for Surfaces {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx)
+            .child(div().h(px(80.)).child(TextEditor::new(&self.document)))
+            .child(Textarea::new(&self.note).h(px(80.)))
+    }
+}
+
+/// The color a device pixel shows, as `[r, g, b]`.
+fn pixel(screenshot: &Screenshot, (x, y): (f32, f32)) -> [u8; 3] {
+    let [r, g, b, _] = screenshot
+        .image
+        .get_pixel((x * SCALE) as u32, (y * SCALE) as u32)
+        .0;
+    [r, g, b]
+}
+
+/// `color` as the 8-bit `[r, g, b]` a window shows it in.
+fn rgb(color: gpui_kit::Hsla) -> [u8; 3] {
+    let color = gpui_kit::Rgba::from(color);
+    [color.r, color.g, color.b].map(|channel| (channel * 255.).round() as u8)
+}
+
+/// Every bundled theme, light and dark, draws a text editor and its line-number gutter on the
+/// theme's `editor.background`, as a code editor, and a plain textarea on the input background.
+#[test]
+fn text_editor_draws_on_each_themes_editor_background() {
+    let mut app = app(ThemeMode::Light);
+    let themes_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes");
+    app.update(|cx| {
+        for entry in std::fs::read_dir(themes_dir).unwrap() {
+            let content = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            gpui_kit::component::ThemeRegistry::global_mut(cx)
+                .load_themes_from_str(&content)
+                .unwrap();
+        }
+    });
+    let window = open(&mut app, (240., 200.), SCALE, |window, cx| Surfaces {
+        document: cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .text_editor()
+                .default_value("Hi")
+        }),
+        note: cx.new(|cx| TextareaState::new(window, cx).default_value("Hi")),
+    });
+    let themes = app.update(|cx| {
+        gpui_kit::component::ThemeRegistry::global(cx)
+            .sorted_themes()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    assert!(themes.len() > 60, "found {} themes", themes.len());
+    let modes = themes.iter().map(|theme| theme.mode).collect::<Vec<_>>();
+    assert!(modes.contains(&ThemeMode::Light) && modes.contains(&ThemeMode::Dark));
+
+    for theme in themes {
+        let editor_background = theme
+            .highlight
+            .as_ref()
+            .and_then(|highlight| highlight.editor_background)
+            .unwrap_or_else(|| panic!("{} sets no editor.background", theme.name));
+        let input_background = app.update(|cx| {
+            Theme::update(cx, |current| current.apply_config(&theme));
+            let current = cx.theme();
+            current.background.blend(current.input_background())
+        });
+        let shot = app.capture(window).unwrap();
+        let close = |actual: [u8; 3], expected: [u8; 3]| {
+            actual.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 2)
+        };
+        // Below the one line: the text area right of the gutter, then the gutter itself.
+        for (place, at) in [("text", (200., 80.)), ("gutter", (22., 80.))] {
+            let actual = pixel(&shot, at);
+            assert!(
+                close(actual, rgb(editor_background)),
+                "{}: the text editor's {place} shows {actual:?}, editor.background is {:?}",
+                theme.name,
+                rgb(editor_background),
+            );
+        }
+        let actual = pixel(&shot, (200., 170.));
+        assert!(
+            close(actual, rgb(input_background)),
+            "{}: the textarea shows {actual:?}, the input background is {:?}",
+            theme.name,
+            rgb(input_background),
+        );
+    }
 }
 
 /// A text editor alone, for the smooth caret.
@@ -742,6 +873,51 @@ fn buttons_at_a_fractional_scale() {
     goldens().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
 }
 
+struct Bar;
+
+impl Render for Bar {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .child(gpui_kit::component::TitleBar::new())
+    }
+}
+
+/// The title bar is the theme's `title_bar.background` from its top edge down to its border, one
+/// flat color. It used to fade from a mix with the window background at the top, a shadow on
+/// themes whose background is darker, which Windows and macOS also dither into grain.
+#[test]
+fn title_bar_is_one_flat_color() {
+    let mut app = app(ThemeMode::Dark);
+    // The jot theme macOS Classic Dark, whose window background is darker than its title bar.
+    app.update(|cx| {
+        Theme::update(cx, |theme| {
+            theme.title_bar = gpui_kit::rgb(0x1c1c1e).into();
+            theme.background = gpui_kit::rgb(0x131313).into();
+        })
+    });
+    let window = open(&mut app, (400., 60.), SCALE, |_, _| Bar);
+    let image = app.capture(window).unwrap().image;
+
+    // Down the middle of the empty bar, every device row above the 1 px bottom border.
+    let x = image.width() / 2;
+    let height = gpui_kit::component::TITLE_BAR_HEIGHT.as_f32();
+    for y in 0..((height - 1.) * SCALE) as u32 {
+        let [r, g, b, _] = image.get_pixel(x, y).0;
+        assert!(
+            [r, g, b]
+                .into_iter()
+                .zip([0x1c_u8, 0x1c, 0x1e])
+                .all(|(actual, expected)| actual.abs_diff(expected) <= 2),
+            "row {y} of the title bar is {:?}, not #1c1c1e",
+            [r, g, b]
+        );
+    }
+}
+
 #[test]
 fn input_and_textarea() {
     goldens().assert("fields", &fields());
@@ -760,6 +936,16 @@ fn popup_menu() {
 #[test]
 fn popup_menu_dark() {
     goldens().assert("menu-dark", &menu(ThemeMode::Dark));
+}
+
+#[test]
+fn popup_menu_shortcuts() {
+    goldens().assert("menu-shortcuts", &shortcut_menu(ThemeMode::Light));
+}
+
+#[test]
+fn popup_menu_shortcuts_dark() {
+    goldens().assert("menu-shortcuts-dark", &shortcut_menu(ThemeMode::Dark));
 }
 
 #[test]
