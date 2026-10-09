@@ -44,6 +44,10 @@ Background tokens that opt in to gradient rendering can also use CSS-style two-s
 
 Top-level theme fields, such as `cx.theme().button_primary`, remain solid `Hsla` values for compatibility. Code that needs the full resolved token can use `cx.theme().tokens.button_primary`; its `.color` field is the solid representative color, and its `.background` field contains the configured `Background`, including gradients.
 
+## Editor colors
+
+In a theme's `highlight` section, `editor.gutter.border` colors the line between an editor's line numbers and its text. It defaults to `border`.
+
 ## Theme Registry
 
 There have more than 20 built-in themes available in [themes](https://github.com/longbridge/gpui-kit/tree/main/themes) folder.

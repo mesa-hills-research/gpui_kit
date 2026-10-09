@@ -44,6 +44,10 @@ cx.theme().foreground
 
 `cx.theme().button_primary` 等顶层字段仍然是纯色 `Hsla`，保持兼容。需要完整 resolved token 时使用 `cx.theme().tokens.button_primary`；其中 `.color` 是纯色代表色，`.background` 是实际配置的 `Background`，包含渐变。
 
+## 编辑器颜色
+
+主题 `highlight` 部分中的 `editor.gutter.border` 设置编辑器行号与文本之间分隔线的颜色，默认使用 `border`。
+
 ## Theme Registry
 
 仓库在 [themes](https://github.com/longbridge/gpui-kit/tree/main/themes) 目录下内置了 20+ 主题。

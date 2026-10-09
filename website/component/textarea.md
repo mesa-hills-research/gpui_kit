@@ -218,6 +218,9 @@ let document = cx.new(|cx| {
 TextEditor::new(&document)
 ```
 
+A thin line separates the line numbers from the text, in the theme's
+`editor.gutter.border` color, `border` by default.
+
 Each part also works on its own, on any textarea: `line_number(true)`,
 `searchable(true)`, `spell_checker` and [suggestions](#suggestions).
 
