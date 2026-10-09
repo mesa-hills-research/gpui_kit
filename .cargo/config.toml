@@ -2,9 +2,5 @@
 # against a local checkout of the gpui fork.
 include = [{ path = "local.toml", optional = true }]
 
-# The gpui fork is a private repository. The git CLI fetches it with git's own credentials.
-[net]
-git-fetch-with-cli = true
-
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/STACK:8000000"]

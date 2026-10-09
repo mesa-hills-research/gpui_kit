@@ -137,9 +137,7 @@ cover writing these tests, reviewing failures and allowing a tolerance.
 
 The gpui crates come from
 [Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui) at the commit
-`Cargo.toml` names. The repository is private, so building needs GitHub access to it.
-`.cargo/config.toml` sets `net.git-fetch-with-cli = true`, which has cargo fetch it with the git
-CLI and its credentials.
+`Cargo.toml` names.
 
 To build against a checkout of the fork beside this repository instead, put these patches in
 `.cargo/local.toml`, a file git ignores and `.cargo/config.toml` includes:
