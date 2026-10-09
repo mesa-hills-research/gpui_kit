@@ -156,37 +156,37 @@ cpal = { version = "0.15.3", optional = true }
 # `tree_sitter_rust`, ...), and the dependency names below keep the upstream crates' names.
 # Every entry names the same rev, as do examples/editor/Cargo.toml and the
 # Editor page (website/component/editor.md): move them together.
-tree-sitter                   = { package = "mesquite", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-bash              = { package = "mesquite_bash", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-c                 = { package = "mesquite_c", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-c-sharp           = { package = "mesquite_c_sharp", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-cmake             = { package = "mesquite_cmake", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-cpp               = { package = "mesquite_cpp", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-css               = { package = "mesquite_css", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-elixir            = { package = "mesquite_elixir", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-embedded-template = { package = "mesquite_embedded_template", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-go                = { package = "mesquite_go", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-html              = { package = "mesquite_html", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-java              = { package = "mesquite_java", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-javascript        = { package = "mesquite_javascript", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-json              = { package = "mesquite_json", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-kotlin-ng         = { package = "mesquite_kotlin", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-lua               = { package = "mesquite_lua", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-make              = { package = "mesquite_make", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-md                = { package = "mesquite_markdown", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-php               = { package = "mesquite_php", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-proto             = { package = "mesquite_proto", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-python            = { package = "mesquite_python", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-ruby              = { package = "mesquite_ruby", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-rust              = { package = "mesquite_rust", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-scala             = { package = "mesquite_scala", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-sequel            = { package = "mesquite_sql", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-svelte-ng         = { package = "mesquite_svelte", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-swift             = { package = "mesquite_swift", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-toml-ng           = { package = "mesquite_toml", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-typescript        = { package = "mesquite_typescript", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-yaml              = { package = "mesquite_yaml", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
-tree-sitter-zig               = { package = "mesquite_zig", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4", optional = true }
+tree-sitter                   = { package = "mesquite", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-bash              = { package = "mesquite_bash", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-c                 = { package = "mesquite_c", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-c-sharp           = { package = "mesquite_c_sharp", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-cmake             = { package = "mesquite_cmake", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-cpp               = { package = "mesquite_cpp", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-css               = { package = "mesquite_css", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-elixir            = { package = "mesquite_elixir", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-embedded-template = { package = "mesquite_embedded_template", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-go                = { package = "mesquite_go", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-html              = { package = "mesquite_html", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-java              = { package = "mesquite_java", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-javascript        = { package = "mesquite_javascript", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-json              = { package = "mesquite_json", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-kotlin-ng         = { package = "mesquite_kotlin", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-lua               = { package = "mesquite_lua", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-make              = { package = "mesquite_make", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-md                = { package = "mesquite_markdown", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-php               = { package = "mesquite_php", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-proto             = { package = "mesquite_proto", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-python            = { package = "mesquite_python", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-ruby              = { package = "mesquite_ruby", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-rust              = { package = "mesquite_rust", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-scala             = { package = "mesquite_scala", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-sequel            = { package = "mesquite_sql", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-svelte-ng         = { package = "mesquite_svelte", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-swift             = { package = "mesquite_swift", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-toml-ng           = { package = "mesquite_toml", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-typescript        = { package = "mesquite_typescript", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-yaml              = { package = "mesquite_yaml", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
+tree-sitter-zig               = { package = "mesquite_zig", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-text = "=21.0.0"

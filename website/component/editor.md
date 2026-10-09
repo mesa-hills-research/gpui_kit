@@ -117,7 +117,7 @@ kit's parser share one `tree_sitter` crate:
 
 ```toml
 [dependencies]
-tree-sitter-haskell = { package = "mesquite_haskell", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4" }
+tree-sitter-haskell = { package = "mesquite_haskell", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898" }
 ```
 
 ```rust
