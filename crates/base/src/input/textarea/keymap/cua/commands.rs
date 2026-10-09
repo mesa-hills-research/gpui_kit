@@ -17,7 +17,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::input::{
     BufferPoint, InputBaseState, InputModeKind, RopeExt as _, movement::MoveDirection,
-    undo_manager::EditIntent,
+    smooth_caret::CaretMotion, undo_manager::EditIntent,
 };
 
 actions!(
@@ -411,12 +411,16 @@ pub(crate) fn register_actions<M: InputModeKind>(
     element
         .on_action(
             window.listener_for(entity, |state, _: &MoveToWordStartLeft, window, cx| {
-                state.move_each_to(InputBaseState::word_start_left, None, window, cx)
+                state.caret_motion(CaretMotion::Word, |state| {
+                    state.move_each_to(InputBaseState::word_start_left, None, window, cx)
+                })
             }),
         )
         .on_action(
             window.listener_for(entity, |state, _: &MoveToWordStartRight, window, cx| {
-                state.move_each_to(InputBaseState::word_start_right, None, window, cx)
+                state.caret_motion(CaretMotion::Word, |state| {
+                    state.move_each_to(InputBaseState::word_start_right, None, window, cx)
+                })
             }),
         )
         .on_action(

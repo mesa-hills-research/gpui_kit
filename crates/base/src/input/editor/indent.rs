@@ -205,7 +205,10 @@ impl<M: InputModeKind> InputBaseState<M> {
         if M::accept_inline_completion(self, window, cx) {
             return;
         }
-        self.indent(false, window, cx);
+        // A tab typed at the caret glides like a typed character.
+        self.caret_motion(super::smooth_caret::CaretMotion::Typing, |this| {
+            this.indent(false, window, cx)
+        });
     }
 
     pub(super) fn indent_block(&mut self, _: &Indent, window: &mut Window, cx: &mut Context<Self>) {

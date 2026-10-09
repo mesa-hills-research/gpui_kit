@@ -5,7 +5,7 @@ use sum_tree::Bias;
 use crate::input::{
     InputBaseState, MoveDown, MoveEnd, MoveHome, MoveLeft, MovePageDown, MovePageUp, MoveRight,
     MoveToEnd, MoveToNextWord, MoveToPreviousWord, MoveToStart, MoveUp, RopeExt as _,
-    cursor::CursorSelection,
+    cursor::CursorSelection, smooth_caret::CaretMotion,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -301,19 +301,21 @@ impl<M: InputModeKind> InputBaseState<M> {
             return;
         }
 
-        self.move_all_cursors(
-            |s, sel| {
-                let offset = if sel.is_empty() {
-                    s.previous_boundary(sel.cursor_offset())
-                } else {
-                    sel.start
-                };
-                (offset, s.preferred_column_for(offset), false)
-            },
-            None,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Grapheme, |this| {
+            this.move_all_cursors(
+                |s, sel| {
+                    let offset = if sel.is_empty() {
+                        s.previous_boundary(sel.cursor_offset())
+                    } else {
+                        sel.start
+                    };
+                    (offset, s.preferred_column_for(offset), false)
+                },
+                None,
+                window,
+                cx,
+            )
+        });
     }
 
     pub(super) fn right(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
@@ -327,19 +329,21 @@ impl<M: InputModeKind> InputBaseState<M> {
             return;
         }
 
-        self.move_all_cursors(
-            |s, sel| {
-                let offset = if sel.is_empty() {
-                    s.next_boundary(sel.cursor_offset())
-                } else {
-                    sel.end
-                };
-                (offset, s.preferred_column_for(offset), false)
-            },
-            None,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Grapheme, |this| {
+            this.move_all_cursors(
+                |s, sel| {
+                    let offset = if sel.is_empty() {
+                        s.next_boundary(sel.cursor_offset())
+                    } else {
+                        sel.end
+                    };
+                    (offset, s.preferred_column_for(offset), false)
+                },
+                None,
+                window,
+                cx,
+            )
+        });
     }
 
     pub(super) fn up(&mut self, action: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
@@ -433,15 +437,17 @@ impl<M: InputModeKind> InputBaseState<M> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.move_all_cursors(
-            |s, sel| {
-                let offset = s.previous_start_of_word_at(sel.cursor_offset());
-                (offset, s.preferred_column_for(offset), false)
-            },
-            None,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Word, |this| {
+            this.move_all_cursors(
+                |s, sel| {
+                    let offset = s.previous_start_of_word_at(sel.cursor_offset());
+                    (offset, s.preferred_column_for(offset), false)
+                },
+                None,
+                window,
+                cx,
+            )
+        });
     }
 
     pub(super) fn move_to_next_word(
@@ -450,14 +456,16 @@ impl<M: InputModeKind> InputBaseState<M> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.move_all_cursors(
-            |s, sel| {
-                let offset = s.next_end_of_word_at(sel.cursor_offset());
-                (offset, s.preferred_column_for(offset), false)
-            },
-            None,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Word, |this| {
+            this.move_all_cursors(
+                |s, sel| {
+                    let offset = s.next_end_of_word_at(sel.cursor_offset());
+                    (offset, s.preferred_column_for(offset), false)
+                },
+                None,
+                window,
+                cx,
+            )
+        });
     }
 }

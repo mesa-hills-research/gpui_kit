@@ -4,7 +4,7 @@
 //! the goldens. The gpui fork's `docs/screenshots.md` explains how to review and update them.
 #![cfg(target_os = "linux")]
 
-use std::{borrow::Cow, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, rc::Rc, time::Duration};
 
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, InputEvent as _,
@@ -475,6 +475,67 @@ fn text_editor_menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+/// A text editor alone, for the smooth caret.
+struct Typing {
+    document: Entity<TextareaState>,
+}
+
+impl Render for Typing {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(div().h(px(40.)).child(TextEditor::new(&self.document)))
+    }
+}
+
+/// A text editor holding `text` with the caret at `caret`, with the smooth caret on unless
+/// `smooth` is false. The screenshot app shows animations in their final state, so this one
+/// turns motion back on.
+fn smooth_caret_window(
+    mut app: ScreenshotApp,
+    text: &'static str,
+    caret: usize,
+    smooth: bool,
+) -> (ScreenshotApp, AnyWindowHandle, Entity<TextareaState>) {
+    app.update(|cx| cx.set_reduce_motion(false));
+    let opened = Rc::new(RefCell::new(None));
+    let window = open(&mut app, (300., 72.), SCALE, {
+        let opened = opened.clone();
+        move |window, cx| {
+            let document = cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .text_editor()
+                    .smooth_caret(smooth)
+                    .default_value(text)
+            });
+            document.update(cx, |document, cx| {
+                document.focus(window, cx);
+                document.set_selected_range(caret..caret, cx);
+            });
+            *opened.borrow_mut() = Some(document.clone());
+            Typing { document }
+        }
+    });
+    let document = opened.borrow_mut().take().unwrap();
+    app.capture(window).unwrap();
+    (app, window, document)
+}
+
+/// The smooth caret 0, 50, 100 and 200 ms after a "W" is typed in the middle of a line. The
+/// caret uncovers the letter as it glides, the rest of the line moves with it, and after 200 ms
+/// the line is drawn as without the smooth caret.
+fn smooth_caret(mode: ThemeMode) -> Vec<(u64, Screenshot)> {
+    let (mut app, window, _) = smooth_caret_window(app(mode), "Hello world", 5, true);
+    act(&mut app, window, |window, cx| window.input("W", cx));
+    let mut elapsed = 0;
+    [0, 50, 100, 200]
+        .into_iter()
+        .map(|ms| {
+            app.advance_clock(Duration::from_millis(ms - elapsed));
+            elapsed = ms;
+            (ms, app.capture(window).unwrap())
+        })
+        .collect()
+}
+
 struct Gutters {
     short: Entity<TextareaState>,
     long: Entity<TextareaState>,
@@ -658,6 +719,84 @@ fn text_editor_spelling_menu() {
 #[test]
 fn text_editor_spelling_menu_dark() {
     goldens().assert("text-editor-menu-dark", &text_editor_menu(ThemeMode::Dark));
+}
+
+#[test]
+fn smooth_caret_uncovering_a_letter() {
+    for (ms, shot) in smooth_caret(ThemeMode::Light) {
+        goldens().assert(&format!("smooth-caret-{ms}ms"), &shot);
+    }
+}
+
+#[test]
+fn smooth_caret_uncovering_a_letter_dark() {
+    for (ms, shot) in smooth_caret(ThemeMode::Dark) {
+        goldens().assert(&format!("smooth-caret-{ms}ms-dark"), &shot);
+    }
+}
+
+/// Once the caret has settled, the line is drawn exactly as without the smooth caret.
+#[test]
+fn smooth_caret_settles_to_the_plain_drawing() {
+    let settled = |smooth| {
+        let (mut app, window, _) =
+            smooth_caret_window(app(ThemeMode::Light), "Hello world", 5, smooth);
+        act(&mut app, window, |window, cx| window.input("W", cx));
+        app.advance_clock(Duration::from_millis(200));
+        app.capture(window).unwrap().image
+    };
+    assert!(settled(true) == settled(false));
+}
+
+/// Typing at the end of a line, every frame of the glide draws nothing right of the caret: the
+/// letter is uncovered by the caret, never ahead of it. The caret is red here so it can be told
+/// apart from the text.
+#[test]
+fn smooth_caret_draws_nothing_right_of_the_caret() {
+    let mut app = app(ThemeMode::Light);
+    app.update(|cx| Theme::update(cx, |theme| theme.caret = gpui_kit::red()));
+    let (mut app, window, document) = smooth_caret_window(app, "Hello", 5, true);
+    act(&mut app, window, |window, cx| window.input("W", cx));
+    let (caret, input) = app.update(|cx| {
+        let document = document.read(cx);
+        (document.cursor_layout().unwrap().0, document.input_bounds())
+    });
+    let device = |x: gpui_kit::Pixels| (x.as_f32() * SCALE) as u32;
+    let (top, bottom) = (device(caret.top()), device(caret.bottom()));
+    let middle = (top + bottom) / 2;
+    let right = device(input.right()) - 8;
+
+    let mut uncovered = Vec::new();
+    for _ in 0..20 {
+        let image = app.capture(window).unwrap().image;
+        let red = |x: u32| {
+            let [r, g, b, _] = image.get_pixel(x, middle).0;
+            r > 200 && g < 80 && b < 80
+        };
+        let caret_end = (0..right)
+            .filter(|x| red(*x))
+            .max()
+            .expect("the caret is drawn while it glides");
+        let background = image.get_pixel(right, middle).0;
+        for y in top..bottom {
+            for x in caret_end + 1..right {
+                let pixel = image.get_pixel(x, y).0;
+                assert!(
+                    pixel
+                        .iter()
+                        .zip(background)
+                        .all(|(a, b)| a.abs_diff(b) <= 2),
+                    "ink at ({x}, {y}), right of the caret ending at {caret_end}: {pixel:?}"
+                );
+            }
+        }
+        uncovered.push(caret_end);
+        app.advance_clock(Duration::from_millis(10));
+    }
+    assert!(
+        uncovered.windows(2).all(|pair| pair[0] <= pair[1]) && uncovered[0] < uncovered[19],
+        "the caret glides right: {uncovered:?}"
+    );
 }
 
 /// Renders every scene on three threads at once: each thread must produce the same pixels,

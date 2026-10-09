@@ -105,6 +105,18 @@ The scheme's actions reach the state with `state.keymap_state_mut::<VimState>()`
 arrives in `typed_text` first, which is where a command that takes the next character, such as
 Vim's `f{char}` or `r{char}`, reads it.
 
+## The smooth caret
+
+The smooth caret glides only for the movements a handler records with `caret_motion`: typing,
+Backspace, and moves by a character or a word. A scheme's own motion of that kind runs its move
+inside it, as Vim's `h`, `l`, `w`, `b` and `e` do:
+
+```rust
+state.caret_motion(CaretMotion::Word, |state| state.move_to(offset, None, cx))
+```
+
+Every other movement puts the caret in place at once.
+
 ## Testing
 
 `KeymapTest` opens a focused textarea with one scheme and one platform's tables, and checks the
