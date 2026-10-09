@@ -8,12 +8,21 @@ mod common;
 use std::{borrow::Cow, cell::RefCell, rc::Rc};
 
 use gpui::{
-    AppContext as _, Context, Entity, FontStyle, FontWeight, IntoElement, Render, TestAppContext,
-    Window, px, size,
+    AnyWindowHandle, AppContext as _, Context, Entity, FontStyle, FontWeight, IntoElement,
+    ParentElement as _, Pixels, Render, ScrollDelta, Styled as _, TestAppContext, Window, div,
+    point, px, size,
 };
-use gpui_component::font_picker::{
-    FontCatalog, FontFamily, FontPicker, FontPickerEvent, FontPickerState, FontSettings,
+use gpui_component::{
+    IndexPath,
+    checkbox::Checkbox,
+    font_picker::{
+        FontCatalog, FontFamily, FontPicker, FontPickerEvent, FontPickerState, FontSettings,
+    },
+    scroll::ScrollableElement as _,
+    v_flex,
 };
+use gpui_kit::test::{TestAppContextExt as _, TestWindowExt as _};
+use std::time::Duration;
 
 const IBM_PLEX_SANS: &[u8] = include_bytes!("../../story-web/fonts/IBMPlexSans-Regular.ttf");
 /// Inter's variable font, "Inter Variable", with a `wght` axis from 100 to 900.
@@ -283,4 +292,164 @@ fn choosing_a_family_reports_the_new_settings(cx: &mut TestAppContext) {
     .unwrap();
     // Adding fonts reports nothing: choosing one is up to the application.
     assert_eq!(events.borrow().len(), 1);
+}
+
+/// A page that scrolls, with the picker between a checkbox at the top and
+/// filler that makes the page taller than the window.
+struct ScrollingPage {
+    picker: Entity<FontPickerState>,
+    compact: bool,
+}
+
+impl Render for ScrollingPage {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let picker = FontPicker::new(&self.picker);
+        div().size_full().overflow_y_scrollbar().child(
+            v_flex()
+                .p_4()
+                .gap_4()
+                .child(Checkbox::new("page-top").label("Top"))
+                .child(if self.compact {
+                    picker.compact()
+                } else {
+                    picker
+                })
+                .child(div().h(px(1200.)).flex_shrink_0()),
+        )
+    }
+}
+
+/// Opens a scrolling page with the picker on JetBrains Mono, whose source
+/// face offers more features than fit in the full layout's features list.
+/// Records the settings each change reports.
+fn open_page(
+    cx: &mut TestAppContext,
+    compact: bool,
+) -> (AnyWindowHandle, Rc<RefCell<Vec<FontSettings>>>) {
+    cx.update(gpui_component::init);
+    let events: Rc<RefCell<Vec<FontSettings>>> = Rc::default();
+    let (window, _) = common::open_window(cx, Some(size(px(800.), px(600.))), {
+        let events = events.clone();
+        move |window, cx| {
+            let picker = cx.new(|cx| {
+                FontPickerState::new(window, cx)
+                    .catalog(FontCatalog::from_fonts(&[
+                        JETBRAINS_MONO_SOURCE,
+                        IBM_PLEX_SANS,
+                        INTER,
+                    ]))
+                    .default_settings(FontSettings::new("JetBrains Mono").with_size(px(14.)))
+            });
+            cx.subscribe(&picker, move |_, event: &FontPickerEvent, _| {
+                let FontPickerEvent::Change(settings) = event else {
+                    return;
+                };
+                events.borrow_mut().push(settings.clone());
+            })
+            .detach();
+            cx.new(|_| ScrollingPage { picker, compact })
+        }
+    });
+    cx.run_until_parked();
+    (window.into(), events)
+}
+
+fn top(window: &Window, id: &'static str) -> Pixels {
+    window.find(id).bounds().top()
+}
+
+fn wheel(dy: f32) -> ScrollDelta {
+    ScrollDelta::Pixels(point(px(0.), px(dy)))
+}
+
+#[gpui_kit::test]
+async fn the_wheel_over_the_features_scrolls_them_and_not_the_page(cx: &mut TestAppContext) {
+    let (window, _) = open_page(cx, false);
+    cx.update_window(window, |_, window, cx| {
+        window.render_frame(cx);
+        let page = top(window, "page-top");
+        let feature = top(window, "font-picker-feature-calt");
+
+        window.scroll("font-picker-feature-calt", wheel(-40.), cx);
+        assert_eq!(top(window, "font-picker-feature-calt"), feature - px(40.));
+        assert_eq!(top(window, "page-top"), page);
+
+        // Over the rest of the page, the page scrolls.
+        window.scroll("page-top", wheel(-40.), cx);
+        assert_eq!(top(window, "page-top"), page - px(40.));
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+async fn arrow_keys_move_through_the_family_list(cx: &mut TestAppContext) {
+    let (window, events) = open_page(cx, false);
+    cx.update_window(window, |_, window, cx| {
+        window.render_frame(cx);
+        // The families are sorted: IBM Plex Sans, Inter Variable, JetBrains Mono.
+        window.click(IndexPath::default().row(0), cx);
+        window.press("down", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    let families: Vec<String> = events
+        .borrow()
+        .iter()
+        .map(|settings| settings.family().to_string())
+        .collect();
+    assert_eq!(families, ["IBM Plex Sans", "Inter Variable"]);
+}
+
+#[gpui_kit::test]
+async fn the_compact_picker_chooses_a_family_from_a_dropdown(cx: &mut TestAppContext) {
+    let (window, events) = open_page(cx, true);
+    cx.update_window(window, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(
+            window.find("font-picker-family").value(),
+            Some("JetBrains Mono")
+        );
+        assert_eq!(window.find("font-picker-family").expanded(), Some(false));
+        window.within("font-picker-family").click("input", cx);
+        assert_eq!(window.find("font-picker-family").expanded(), Some(true));
+        window.input("plex", cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(window, |_, window, cx| {
+        window.render_frame(cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.wait_for(window, Duration::from_millis(500), |window, _| {
+        window.find("font-picker-family").expanded() == Some(false)
+            && window.find("font-picker-family").value() == Some("IBM Plex Sans")
+    })
+    .await;
+    assert_eq!(events.borrow().last().unwrap().family(), "IBM Plex Sans");
+}
+
+#[gpui_kit::test]
+async fn the_compact_picker_keeps_the_features_behind_a_disclosure(cx: &mut TestAppContext) {
+    let (window, events) = open_page(cx, true);
+    cx.update_window(window, |_, window, cx| {
+        window.render_frame(cx);
+        assert!(window.try_find("font-picker-feature-calt").is_none());
+
+        window.click("font-picker-features-toggle", cx);
+        assert_eq!(
+            window.find("font-picker-feature-calt").checked(),
+            Some(true)
+        );
+        window.click("font-picker-feature-calt", cx);
+        assert_eq!(
+            window.find("font-picker-feature-calt").checked(),
+            Some(false)
+        );
+
+        window.click("font-picker-features-toggle", cx);
+        assert!(window.try_find("font-picker-feature-calt").is_none());
+    })
+    .unwrap();
+    assert_eq!(events.borrow().last().unwrap().feature("calt"), Some(false));
 }

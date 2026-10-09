@@ -16,6 +16,7 @@ use crate::{
     ActiveTheme as _, IndexPath, h_flex,
     input::{InputEvent, InputState},
     list::{ListDelegate, ListEvent, ListItem, ListState},
+    searchable_list::{SearchableListItem, SearchableVec},
     select::{SelectEvent, SelectItem, SelectState},
 };
 
@@ -55,7 +56,14 @@ pub struct FontPickerState {
     settings: FontSettings,
     monospace_only: bool,
     pub(super) families: Entity<ListState<FamilyList>>,
+    /// The families as a dropdown, for the compact layout.
+    pub(super) family_select: Entity<SelectState<SearchableVec<FamilyItem>>>,
     pub(super) weights: Entity<SelectState<Vec<WeightItem>>>,
+    /// Whether the dropdown's families are out of date.
+    family_select_stale: bool,
+    /// Whether the OpenType features are shown, when the layout keeps them
+    /// behind a disclosure.
+    features_open: bool,
     pub(super) size: Entity<InputState>,
     pub(super) line_height: Entity<InputState>,
     _load: Task<()>,
@@ -71,6 +79,9 @@ impl FontPickerState {
         let settings = FontSettings::default();
         let families =
             cx.new(|cx| ListState::new(FamilyList::default(), window, cx).searchable(true));
+        let family_select = cx.new(|cx| {
+            SelectState::new(SearchableVec::new(Vec::new()), None, window, cx).searchable(true)
+        });
         let weights = cx.new(|cx| SelectState::new(Vec::new(), None, window, cx));
         let size = cx.new(|cx| {
             InputState::new(window, cx)
@@ -95,6 +106,20 @@ impl FontPickerState {
                 let family = families.read(cx).delegate().family(ix.row).cloned();
                 if let Some(family) = family {
                     this.choose_family(&family, window, cx);
+                }
+            }),
+            cx.subscribe_in(&family_select, window, |this, _, event, window, cx| {
+                let SelectEvent::<SearchableVec<FamilyItem>>::Confirm(Some(name)) = event else {
+                    return;
+                };
+                let family = this
+                    .catalog
+                    .as_ref()
+                    .and_then(|catalog| catalog.family(name.as_ref()))
+                    .cloned();
+                if let Some(family) = family {
+                    this.choose_family(&family, window, cx);
+                    this.sync_family_row(window, cx);
                 }
             }),
             cx.subscribe_in(&weights, window, |this, _, event, window, cx| {
@@ -150,7 +175,10 @@ impl FontPickerState {
             settings,
             monospace_only: false,
             families,
+            family_select,
             weights,
+            family_select_stale: false,
+            features_open: false,
             size,
             line_height,
             _load: Task::ready(()),
@@ -222,6 +250,8 @@ impl FontPickerState {
             families.delegate_mut().refilter();
             cx.notify();
         });
+        // The dropdown takes the new list when it is next drawn.
+        self.family_select_stale = true;
         cx.notify();
     }
 
@@ -311,6 +341,19 @@ impl FontPickerState {
         }
     }
 
+    /// Whether the OpenType features are shown, in a layout that keeps them
+    /// behind a disclosure. They start hidden.
+    pub fn is_features_open(&self) -> bool {
+        self.features_open
+    }
+
+    /// Show or hide the OpenType features, in a layout that keeps them
+    /// behind a disclosure.
+    pub fn set_features_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.features_open = open;
+        cx.notify();
+    }
+
     /// Turn italic on or off, when the family has an italic face.
     pub(super) fn set_italic(&mut self, italic: bool, window: &mut Window, cx: &mut Context<Self>) {
         let settings = self.settings.clone().with_italic(italic);
@@ -367,6 +410,7 @@ impl FontPickerState {
             cx.notify();
         });
         self.catalog = Some(catalog);
+        self.sync_family_select(window, cx);
         self.sync_controls(window, cx);
         if let Some(family) = self.pending_family.take() {
             self.choose_family_named(&family, window, cx);
@@ -392,9 +436,47 @@ impl FontPickerState {
         self.sync_family_row(window, cx);
     }
 
+    /// Bring the dropdown's families up to date, before it is drawn.
+    pub(super) fn prepare_family_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.family_select_stale {
+            self.sync_family_select(window, cx);
+        }
+    }
+
+    /// Offer the catalog's families in the dropdown, with the monospace
+    /// filter applied.
+    fn sync_family_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.family_select_stale = false;
+        let items: Vec<FamilyItem> = self
+            .catalog
+            .iter()
+            .flat_map(|catalog| catalog.families())
+            .filter(|family| !self.monospace_only || family.is_monospace())
+            .map(|family| FamilyItem {
+                name: family.name().clone(),
+                added: family.is_added(),
+            })
+            .collect();
+        let chosen = self.settings.family().clone();
+        self.family_select.update(cx, |select, cx| {
+            select.set_items(SearchableVec::new(items), window, cx);
+            select.set_selected_value(&chosen, window, cx);
+            cx.notify();
+        });
+    }
+
     /// Select the chosen family's row in the list and scroll to it.
     fn sync_family_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let family = self.settings.family().clone();
+        let chosen = self
+            .family()
+            .map(|family| family.name().clone())
+            .unwrap_or_else(|| family.clone());
+        self.family_select.update(cx, |select, cx| {
+            if select.selected_value() != Some(&chosen) {
+                select.set_selected_value(&chosen, window, cx);
+            }
+        });
         self.families.update(cx, |families, cx| {
             let row = families.delegate().row_of(&family);
             families.delegate_mut().selected = row.map(|row| IndexPath::default().row(row));
@@ -476,6 +558,41 @@ pub(super) fn weight_name(weight: u16) -> SharedString {
         800 => t!("FontPicker.weight.extra_bold").into(),
         900 => t!("FontPicker.weight.black").into(),
         other => other.to_string().into(),
+    }
+}
+
+/// A family in the dropdown of the compact layout.
+#[derive(Clone, Debug)]
+pub(super) struct FamilyItem {
+    name: SharedString,
+    added: bool,
+}
+
+impl SearchableListItem for FamilyItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.name.clone()
+    }
+
+    fn render(&self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .gap_2()
+            .justify_between()
+            .child(self.name.clone())
+            .when(self.added, |this| {
+                this.child(
+                    gpui::div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("FontPicker.added").to_string()),
+                )
+            })
+    }
+
+    fn value(&self) -> &SharedString {
+        &self.name
     }
 }
 

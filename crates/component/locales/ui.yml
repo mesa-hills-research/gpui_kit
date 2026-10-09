@@ -242,6 +242,36 @@ FontPicker:
     zh-CN: 搜索字体
     zh-HK: 搜尋字型
     zh-TW: 搜尋字型
+  family:
+    en: Font
+    zh-CN: 字体
+    zh-HK: 字型
+    zh-TW: 字型
+  loading:
+    en: Loading fonts…
+    zh-CN: 正在读取字体…
+    zh-HK: 正在讀取字型…
+    zh-TW: 正在讀取字型…
+  font_features:
+    en: Font features
+    zh-CN: 字体特性
+    zh-HK: 字型特性
+    zh-TW: 字型特性
+  changed:
+    en: "%{n} changed"
+    zh-CN: 已更改 %{n} 项
+    zh-HK: 已變更 %{n} 項
+    zh-TW: 已變更 %{n} 項
+  stylistic_sets:
+    en: Stylistic sets
+    zh-CN: 风格集
+    zh-HK: 風格集
+    zh-TW: 風格集
+  character_variants:
+    en: Character variants
+    zh-CN: 字符变体
+    zh-HK: 字元變體
+    zh-TW: 字元變體
   monospace_only:
     en: Monospace only
     zh-CN: 仅显示等宽字体
