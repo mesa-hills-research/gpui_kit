@@ -21,7 +21,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
 - **GPUI from mhr_gpui.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre` crates
-  at mhr_gpui. For now it expects mhr_gpui checked out beside this repository.
+  at one commit of mhr_gpui on GitHub. To work on both repositories together, see
+  [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-mhr_gpui-alongside).
 - **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
   suggestion menu, a list and a popup menu render headlessly on Linux, in light and dark themes
   and at scale factors 2 and 2.625, and are compared with the PNGs in
@@ -40,7 +41,10 @@ gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = 
 ```
 
 Cargo applies only the root workspace's `[patch]` tables, so the app also patches the `gpui-pre`
-crates to mhr_gpui, as its README shows.
+crates to mhr_gpui, at the commit this repository's `Cargo.toml` names (mhr_gpui's README shows
+how). Building needs GitHub access to the private mhr_gpui repository and
+`net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
+`CARGO_NET_GIT_FETCH_WITH_CLI=true`).
 
 ## Following upstream
 

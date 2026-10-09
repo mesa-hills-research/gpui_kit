@@ -131,3 +131,49 @@ that differ. Matches are exact, and another Mesa or LLVM version can move anti-a
 level or two. The failure message names the driver that drew the golden next to the current one.
 mhr_gpui's [screenshot docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md)
 cover writing these tests, reviewing failures and allowing a tolerance.
+
+## Working on mhr_gpui alongside
+
+The gpui crates come from [mhr_gpui](https://github.com/mesa-hills-research/mhr_gpui) at the
+commit `Cargo.toml` names. The repository is private, so building needs GitHub access to it.
+`.cargo/config.toml` sets `net.git-fetch-with-cli = true`, which has cargo fetch it with the git
+CLI and its credentials.
+
+To build against an mhr_gpui checkout beside this repository instead, put these patches in
+`.cargo/local.toml`, a file git ignores and `.cargo/config.toml` includes:
+
+```toml
+[patch.crates-io]
+gpui-pre                   = { path = "../mhr_gpui/crates/gpui" }
+gpui-pre-apple             = { path = "../mhr_gpui/crates/gpui_apple" }
+gpui-pre-bench-metrics     = { path = "../mhr_gpui/crates/bench_metrics" }
+gpui-pre-collections       = { path = "../mhr_gpui/crates/collections" }
+gpui-pre-derive-refineable = { path = "../mhr_gpui/crates/refineable/derive_refineable" }
+gpui-pre-http-client       = { path = "../mhr_gpui/crates/http_client" }
+gpui-pre-http-client-tls   = { path = "../mhr_gpui/crates/http_client_tls" }
+gpui-pre-linux             = { path = "../mhr_gpui/crates/gpui_linux" }
+gpui-pre-macos             = { path = "../mhr_gpui/crates/gpui_macos" }
+gpui-pre-macros            = { path = "../mhr_gpui/crates/gpui_macros" }
+gpui-pre-perf              = { path = "../mhr_gpui/tooling/perf" }
+gpui-pre-platform          = { path = "../mhr_gpui/crates/gpui_platform" }
+gpui-pre-refineable        = { path = "../mhr_gpui/crates/refineable" }
+gpui-pre-reqwest-client    = { path = "../mhr_gpui/crates/reqwest_client" }
+gpui-pre-scheduler         = { path = "../mhr_gpui/crates/scheduler" }
+gpui-pre-shared-string     = { path = "../mhr_gpui/crates/gpui_shared_string" }
+gpui-pre-sum-tree          = { path = "../mhr_gpui/crates/sum_tree" }
+gpui-pre-util              = { path = "../mhr_gpui/crates/gpui_util" }
+gpui-pre-util-macros       = { path = "../mhr_gpui/crates/util_macros" }
+gpui-pre-web               = { path = "../mhr_gpui/crates/gpui_web" }
+gpui-pre-wgpu              = { path = "../mhr_gpui/crates/gpui_wgpu" }
+gpui-pre-windows           = { path = "../mhr_gpui/crates/gpui_windows" }
+gpui-pre-zlog              = { path = "../mhr_gpui/crates/zlog" }
+gpui-pre-ztracing          = { path = "../mhr_gpui/crates/ztracing" }
+gpui-pre-ztracing-macro    = { path = "../mhr_gpui/crates/ztracing_macro" }
+
+[patch."https://github.com/mesa-hills-research/mhr_gpui"]
+gpui-pre-screenshot        = { path = "../mhr_gpui/crates/gpui_screenshot" }
+```
+
+Cargo records the local paths in `Cargo.lock`, so run the first build without `--locked`. Before
+committing, restore the lock with `git checkout Cargo.lock`. Deleting `.cargo/local.toml` switches
+back to GitHub.

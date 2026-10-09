@@ -174,35 +174,36 @@ rquickjs = { path = "crates/shell/rquickjs-compat" }
 
 # GPUI from mhr_gpui, Mesa Hills Research's fork of the gpui-pre crates, which
 # keeps their names and versions so the =0.3.8 pins above resolve to it. The
-# paths expect mhr_gpui checked out beside this repository. Once mhr_gpui is
-# on GitHub, each entry becomes
-#   { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "..." }
-# which also caps the lints of the gpui crates the way registry crates are.
-gpui-pre                   = { path = "../mhr_gpui/crates/gpui" }
-gpui-pre-apple             = { path = "../mhr_gpui/crates/gpui_apple" }
-gpui-pre-bench-metrics     = { path = "../mhr_gpui/crates/bench_metrics" }
-gpui-pre-collections       = { path = "../mhr_gpui/crates/collections" }
-gpui-pre-derive-refineable = { path = "../mhr_gpui/crates/refineable/derive_refineable" }
-gpui-pre-http-client       = { path = "../mhr_gpui/crates/http_client" }
-gpui-pre-http-client-tls   = { path = "../mhr_gpui/crates/http_client_tls" }
-gpui-pre-linux             = { path = "../mhr_gpui/crates/gpui_linux" }
-gpui-pre-macos             = { path = "../mhr_gpui/crates/gpui_macos" }
-gpui-pre-macros            = { path = "../mhr_gpui/crates/gpui_macros" }
-gpui-pre-perf              = { path = "../mhr_gpui/tooling/perf" }
-gpui-pre-platform          = { path = "../mhr_gpui/crates/gpui_platform" }
-gpui-pre-refineable        = { path = "../mhr_gpui/crates/refineable" }
-gpui-pre-reqwest-client    = { path = "../mhr_gpui/crates/reqwest_client" }
-gpui-pre-scheduler         = { path = "../mhr_gpui/crates/scheduler" }
-gpui-pre-shared-string     = { path = "../mhr_gpui/crates/gpui_shared_string" }
-gpui-pre-sum-tree          = { path = "../mhr_gpui/crates/sum_tree" }
-gpui-pre-util              = { path = "../mhr_gpui/crates/gpui_util" }
-gpui-pre-util-macros       = { path = "../mhr_gpui/crates/util_macros" }
-gpui-pre-web               = { path = "../mhr_gpui/crates/gpui_web" }
-gpui-pre-wgpu              = { path = "../mhr_gpui/crates/gpui_wgpu" }
-gpui-pre-windows           = { path = "../mhr_gpui/crates/gpui_windows" }
-gpui-pre-zlog              = { path = "../mhr_gpui/crates/zlog" }
-gpui-pre-ztracing          = { path = "../mhr_gpui/crates/ztracing" }
-gpui-pre-ztracing-macro    = { path = "../mhr_gpui/crates/ztracing_macro" }
+# repository is private, so cargo fetches it with the git CLI and its
+# credentials (.cargo/config.toml). Every entry, and gpui-screenshot in
+# crates/kit/Cargo.toml, names the same rev: move them together. To build
+# against a local checkout instead, see "Working on mhr_gpui alongside" in
+# crates/kit/TESTING.md.
+gpui-pre                   = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-apple             = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-bench-metrics     = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-collections       = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-derive-refineable = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-http-client       = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-http-client-tls   = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-linux             = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-macos             = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-macros            = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-perf              = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-platform          = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-refineable        = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-reqwest-client    = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-scheduler         = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-shared-string     = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-sum-tree          = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-util              = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-util-macros       = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-web               = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-wgpu              = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-windows           = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-zlog              = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-ztracing          = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-pre-ztracing-macro    = { git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]

@@ -4073,6 +4073,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -4147,6 +4148,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-apple"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "async-task",
@@ -4175,6 +4177,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-bench-metrics"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "criterion 0.8.2",
@@ -4185,6 +4188,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-collections"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-util",
  "indexmap",
@@ -4194,6 +4198,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-derive-refineable"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4203,6 +4208,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-http-client"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -4222,6 +4228,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-http-client-tls"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "log",
  "rustls",
@@ -4232,6 +4239,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-linux"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -4275,6 +4283,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-macos"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -4319,6 +4328,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-macros"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "heck 0.5.0",
  "proc-macro-crate 3.5.0",
@@ -4330,6 +4340,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-perf"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-collections",
  "serde",
@@ -4339,6 +4350,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-platform"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -4353,6 +4365,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-refineable"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-derive-refineable",
 ]
@@ -4411,6 +4424,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-reqwest-client"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4427,6 +4441,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-scheduler"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "async-task",
  "backtrace",
@@ -4442,6 +4457,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-screenshot"
 version = "0.1.0"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "base64",
@@ -4455,6 +4471,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-shared-string"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "schemars",
  "serde",
@@ -4464,6 +4481,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-sum-tree"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-ztracing",
  "heapless",
@@ -4475,6 +4493,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-util"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "log",
@@ -4484,6 +4503,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-util-macros"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-perf",
  "quote",
@@ -4493,6 +4513,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-web"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -4520,6 +4541,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-wgpu"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4546,6 +4568,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-windows"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -4574,6 +4597,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-zlog"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4584,6 +4608,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-ztracing"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 dependencies = [
  "gpui-pre-zlog",
  "gpui-pre-ztracing-macro",
@@ -4594,6 +4619,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-ztracing-macro"
 version = "0.3.8"
+source = "git+https://github.com/mesa-hills-research/mhr_gpui?rev=1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae#1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae"
 
 [[package]]
 name = "gpui-shell"

@@ -1,2 +1,10 @@
+# Machine-local settings, kept out of git: crates/kit/TESTING.md uses this file to build
+# against a local mhr_gpui checkout.
+include = [{ path = "local.toml", optional = true }]
+
+# mhr_gpui is a private repository. The git CLI fetches it with git's own credentials.
+[net]
+git-fetch-with-cli = true
+
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/STACK:8000000"]
