@@ -1,13 +1,14 @@
 use gpui::{
     Action, App, AsKeystroke, FocusHandle, Half, InteractiveElement as _, IntoElement, KeyBinding,
     KeyContext, Keystroke, ParentElement as _, RenderOnce, StyleRefinement, Styled, Window, div,
-    px, relative,
+    px, relative, rems,
 };
 
 use crate::{ActiveTheme, StyledExt, h_flex};
 
 /// A keyboard shortcut drawn as a key cap: a small rounded key with the
-/// whole shortcut on it, such as `Ctrl+Shift+Z` or `⇧⌘Z`.
+/// whole shortcut on it, such as `Ctrl+Shift+Z` or `⇧⌘Z`, in the theme's
+/// monospace font. `font_family` picks another.
 ///
 /// A shortcut of several keystrokes in a row, such as Emacs's `C-x C-s`,
 /// shows a cap for each keystroke.
@@ -299,7 +300,10 @@ impl RenderOnce for Kbd {
             .debug_selector(|| format!("kbd:{selector}"))
             .flex_shrink_0()
             .text_color(theme.muted_foreground)
-            .text_xs()
+            .font_family(theme.mono_font_family.clone())
+            // A monospace font looks larger than the interface font at the
+            // same size, so the cap's text is a step smaller than extra small.
+            .text_size(rems(0.6875))
             .line_height(relative(1.))
             .refine_style(&self.style)
             .into_any_element()

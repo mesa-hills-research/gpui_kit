@@ -181,6 +181,10 @@ div().child(format!("Shortcut: {}", shortcut_text))
 
 快捷键绘制成一个键帽：一个带圆角的小按键，整个快捷键写在同一个键帽上，例如 `Ctrl+Shift+Z` 或 `⇧⌘Z`。由多个按键依次组成的快捷键（例如 Emacs 的 `ctrl-x ctrl-s`）每个按键各占一个键帽。菜单、菜单栏、文本框的右键菜单、工具提示和命令面板都以这种方式显示快捷键。
 
-键帽在主题的 `muted.background` 上以 `muted.foreground` 显示文字，边框由 `muted.foreground` 得出，底边略粗。有了这道边框，键帽在菜单中高亮的行上也清晰可见。`outline()` 改用主题背景色填充键帽。文字为超小字号，圆角跟随主题的圆角设置。
+键帽在主题的 `muted.background` 上以 `muted.foreground` 显示文字，边框由 `muted.foreground` 得出，底边略粗。有了这道边框，键帽在菜单中高亮的行上也清晰可见。`outline()` 改用主题背景色填充键帽。文字使用主题的等宽字体（`mono_font.family`，默认为系统的等宽字体），字号比超小字号略小，圆角跟随主题的圆角设置。`font_family` 可以为单个键帽指定其他字体：
+
+```rust
+Kbd::new(Keystroke::parse("cmd-s").unwrap()).font_family("JetBrains Mono")
+```
 
 所有样式都可以通过 `Styled` trait 的方法覆盖。

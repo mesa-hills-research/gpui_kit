@@ -207,6 +207,10 @@ div().child(format!("Shortcut: {}", shortcut_text))
 
 ## Styling
 
-The key cap shows its text in the theme's `muted.foreground` on its `muted.background`, inside an edge drawn from `muted.foreground` that is slightly heavier at the bottom. The edge keeps the cap visible on a menu's highlighted row too. `outline()` fills the cap with the theme's background instead. The text is extra small, and the corners follow the theme's radius.
+The key cap shows its text in the theme's `muted.foreground` on its `muted.background`, inside an edge drawn from `muted.foreground` that is slightly heavier at the bottom. The edge keeps the cap visible on a menu's highlighted row too. `outline()` fills the cap with the theme's background instead. The text is in the theme's monospace font (`mono_font.family`, the system's monospace font by default), a little smaller than extra small, and the corners follow the theme's radius. `font_family` sets another font for one key cap:
+
+```rust
+Kbd::new(Keystroke::parse("cmd-s").unwrap()).font_family("JetBrains Mono")
+```
 
 All styles can be customized using the `Styled` trait methods.
