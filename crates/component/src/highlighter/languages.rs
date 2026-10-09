@@ -497,7 +497,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-swift")]
-            Self::Swift => (tree_sitter_swift::LANGUAGE, "", "", ""),
+            Self::Swift => (
+                tree_sitter_swift::LANGUAGE,
+                include_str!("languages/swift/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-scala")]
             Self::Scala => (
                 tree_sitter_scala::LANGUAGE,
@@ -513,11 +518,26 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-csharp")]
-            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
+            Self::CSharp => (
+                tree_sitter_c_sharp::LANGUAGE,
+                include_str!("languages/csharp/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-graphql")]
-            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, "", "", ""),
+            Self::GraphQL => (
+                tree_sitter_graphql::LANGUAGE,
+                include_str!("languages/graphql/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-proto")]
-            Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
+            Self::Proto => (
+                tree_sitter_proto::LANGUAGE,
+                include_str!("languages/proto/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-make")]
             Self::Make => (
                 tree_sitter_make::LANGUAGE,
@@ -526,7 +546,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-cmake")]
-            Self::CMake => (tree_sitter_cmake::LANGUAGE, "", "", ""),
+            Self::CMake => (
+                tree_sitter_cmake::LANGUAGE,
+                include_str!("languages/cmake/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-typescript")]
             Self::TypeScript => (
                 tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
@@ -705,5 +730,273 @@ mod tests {
             })
             .collect();
         assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-graphql")]
+    fn test_graphql_highlights() {
+        let source = r#"query Hero($episode: Episode = JEDI) @cached {
+  hero(episode: $episode) {
+    name
+    ...HeroFields
+  }
+}
+
+"The hero type."
+type Character implements Node {
+  friends(first: Int = 10): [Character!]!
+}
+"#;
+        assert_highlights(
+            "graphql",
+            source,
+            &[
+                ("query", "keyword"),
+                ("Hero", "function"),
+                ("$episode", "variable.parameter"),
+                ("Episode", "type"),
+                ("JEDI", "constant"),
+                ("cached", "attribute"),
+                ("hero", "property"),
+                ("HeroFields", "function"),
+                ("\"The hero type.\"", "comment.doc"),
+                ("implements", "keyword"),
+                ("Character", "type"),
+                ("friends", "property"),
+                ("first", "variable.parameter"),
+                ("10", "number"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-csharp")]
+    fn test_csharp_highlights() {
+        let source = r#"/// <summary>Greets people.</summary>
+[Serializable]
+public class Greeter<T> : IGreeter where T : class
+{
+    private const int MaxCount = 3;
+    public string Name { get; init; } = "world";
+
+    public async Task<string> GreetAsync(T target, int count = 1)
+    {
+        var message = $"Hello, {Name}!\n";
+        await Task.Delay(count);
+        return message ?? null;
+    }
+}
+"#;
+        assert_highlights(
+            "csharp",
+            source,
+            &[
+                ("/// <summary>Greets people.</summary>", "comment.doc"),
+                ("Serializable", "attribute"),
+                ("public", "keyword"),
+                ("Greeter", "type"),
+                ("IGreeter", "type"),
+                ("MaxCount", "constant"),
+                ("3", "number"),
+                ("Name", "property"),
+                ("\"world\"", "string"),
+                ("GreetAsync", "function"),
+                ("target", "variable.parameter"),
+                ("int", "type.builtin"),
+                ("Hello, ", "string"),
+                ("\\n", "string.escape"),
+                ("Delay", "function"),
+                ("null", "constant.builtin"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-swift")]
+    fn test_swift_highlights() {
+        let source = r#"import SwiftUI
+
+/// A tappable view.
+struct CounterView: View {
+    @State private var count = 0
+    var body: some View {
+        Button("Add \(count)") { count += 1 }
+            .padding(.horizontal)
+    }
+
+    func reset(to value: Int) {
+        print(items[0], self)
+    }
+}
+"#;
+        assert_highlights(
+            "swift",
+            source,
+            &[
+                ("import", "keyword"),
+                ("/// A tappable view.", "comment.doc"),
+                ("CounterView", "type"),
+                ("State", "attribute"),
+                ("private", "keyword"),
+                ("count", "property"),
+                ("0", "number"),
+                ("Button", "type"),
+                ("\"Add ", "string"),
+                ("\\(", "punctuation.special"),
+                ("padding", "function"),
+                ("horizontal", "constant"),
+                ("reset", "function"),
+                ("value", "variable.parameter"),
+                ("print", "function"),
+                ("items", "variable"),
+                ("self", "variable.special"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-proto")]
+    fn test_proto_highlights() {
+        let source = r#"syntax = "proto3";
+package shop.catalog;
+
+// A product.
+message Product {
+  string name = 1 [deprecated = true];
+  repeated Tag tags = 2;
+  enum Tag { TAG_UNSPECIFIED = 0; }
+}
+
+service Catalog {
+  rpc GetProduct(GetProductRequest) returns (Product);
+}
+"#;
+        assert_highlights(
+            "proto",
+            source,
+            &[
+                ("syntax", "keyword"),
+                ("\"proto3\"", "string.special"),
+                ("// A product.", "comment"),
+                ("message", "keyword"),
+                ("Product", "type"),
+                ("string", "type"),
+                ("name", "property"),
+                ("1", "number"),
+                ("deprecated", "property"),
+                ("true", "boolean"),
+                ("repeated", "keyword"),
+                ("TAG_UNSPECIFIED", "constant"),
+                ("Catalog", "type"),
+                ("GetProduct", "function"),
+                ("returns", "keyword"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-cmake")]
+    fn test_cmake_highlights() {
+        let source = r#"cmake_minimum_required(VERSION 3.20)
+# Build the app.
+set(APP_NAME "demo-${PROJECT_VERSION}")
+if(WIN32 AND NOT MSVC)
+  target_compile_options(app PRIVATE $<$<CONFIG:Debug>:-g>)
+  option(DEMO_TESTS "Build the tests" OFF)
+endif()
+function(add_demo name)
+endfunction()
+"#;
+        assert_highlights(
+            "cmake",
+            source,
+            &[
+                ("cmake_minimum_required", "function"),
+                ("VERSION", "constant"),
+                ("3.20", "number"),
+                ("# Build the app.", "comment"),
+                ("APP_NAME", "variable"),
+                ("\"demo-", "string"),
+                ("${", "punctuation.special"),
+                ("PROJECT_VERSION", "variable"),
+                ("if", "keyword"),
+                ("AND", "keyword"),
+                ("$<$<CONFIG:Debug>:-g>", "string.special"),
+                ("OFF", "boolean"),
+                ("function", "keyword"),
+                ("add_demo", "function"),
+                ("name", "variable.parameter"),
+                ("endfunction", "keyword"),
+            ],
+        );
+    }
+
+    /// Highlights `source` and asserts that each `(text, capture)` pair renders
+    /// with that capture, using a theme that styles every highlight name.
+    #[cfg(any(
+        feature = "tree-sitter-cmake",
+        feature = "tree-sitter-csharp",
+        feature = "tree-sitter-graphql",
+        feature = "tree-sitter-proto",
+        feature = "tree-sitter-swift",
+    ))]
+    #[track_caller]
+    fn assert_highlights(language: &str, source: &str, expected: &[(&str, &str)]) {
+        use crate::highlighter::{SyntaxHighlighter, registry::HIGHLIGHT_NAMES};
+        use std::sync::Mutex;
+
+        /// Gives each capture name its own hue, so the rendered style tells which
+        /// capture won. Names without a theme key stay unstyled, as in a real theme.
+        #[derive(Default)]
+        struct CaptureColors(Mutex<Vec<String>>);
+
+        impl gpui_base::input::HighlightStyleResolver for CaptureColors {
+            fn style(&self, name: &str) -> Option<gpui::HighlightStyle> {
+                let prefix = name.split('.').next().unwrap_or(name);
+                if !HIGHLIGHT_NAMES.contains(&name) && !HIGHLIGHT_NAMES.contains(&prefix) {
+                    return None;
+                }
+                let mut names = self.0.lock().unwrap();
+                let index = match names.iter().position(|n| n == name) {
+                    Some(index) => index,
+                    None => {
+                        names.push(name.to_string());
+                        names.len() - 1
+                    }
+                };
+                Some(gpui::HighlightStyle {
+                    color: Some(gpui::hsla(index as f32 / 1000., 1., 0.5, 1.)),
+                    ..Default::default()
+                })
+            }
+        }
+
+        let rope = ropey::Rope::from_str(source);
+        let mut highlighter = SyntaxHighlighter::new(language);
+        highlighter.update(None, &rope, None);
+        let colors = CaptureColors::default();
+        let styles = highlighter.styles(&(0..source.len()), &colors);
+        let names = colors.0.into_inner().unwrap();
+
+        for (text, capture) in expected {
+            let start = source
+                .find(text)
+                .unwrap_or_else(|| panic!("{text:?} is not in the {language} source"));
+            let range = start..start + text.len();
+            let rendered: Vec<&str> = styles
+                .iter()
+                .filter(|(style_range, _)| {
+                    style_range.start < range.end && range.start < style_range.end
+                })
+                .map(|(_, style)| match style.color {
+                    Some(color) => names[(color.h * 1000.).round() as usize].as_str(),
+                    None => "(none)",
+                })
+                .collect();
+            assert!(
+                !rendered.is_empty() && rendered.iter().all(|name| name == capture),
+                "{language}: {text:?} renders as {rendered:?}, expected {capture:?}"
+            );
+        }
     }
 }

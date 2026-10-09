@@ -1,10 +1,15 @@
 Highlight queries from tree-sitter grammars
 
-The query files listed below come from the grammar repositories named with them,
-at the versions given. Each is distributed under
-the MIT License, except tree-sitter-astro-next and tree-sitter-elixir, which are
+The query files listed below come from the projects named with them, at the
+versions given. Files marked "adapted" were changed to use this kit's highlight
+names. Each project is distributed under the MIT License, except
+nvim-treesitter, tree-sitter-astro-next and tree-sitter-elixir, which are
 under the Apache License 2.0 (its text is in LICENSE-APACHE at the root of this
 repository). The MIT License text follows the list.
+
+nvim-treesitter (https://github.com/nvim-treesitter/nvim-treesitter, commit e289100), Apache-2.0
+  csharp/highlights.scm and graphql/highlights.scm, adapted
+  The LICENSE names no copyright holder. The authors are the nvim-treesitter contributors.
 
 tree-sitter-astro-next 0.1.1 (https://github.com/PRRPCHT/tree-sitter-astro-next), Apache-2.0
   astro/highlights.scm, astro/injections.scm
@@ -16,6 +21,14 @@ tree-sitter-bash 0.25.1 (https://github.com/tree-sitter/tree-sitter-bash), MIT
 tree-sitter-c 0.24.2 (https://github.com/tree-sitter/tree-sitter-c), MIT
   c/highlights.scm
   Copyright (c) 2014 Max Brunsfeld
+
+tree-sitter-c-sharp 0.23.5 (https://github.com/tree-sitter/tree-sitter-c-sharp), MIT
+  csharp/highlights.scm, adapted together with nvim-treesitter's query
+  Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors.
+
+tree-sitter-cmake 0.7.5 (https://github.com/uyha/tree-sitter-cmake), MIT
+  cmake/highlights.scm, adapted
+  Copyright (c) 2025 Uy Ha
 
 tree-sitter-cpp 0.23.4 (https://github.com/tree-sitter/tree-sitter-cpp), MIT
   cpp/highlights.scm
@@ -62,6 +75,10 @@ tree-sitter-php 0.25.1 (https://github.com/tree-sitter/tree-sitter-php), MIT
   Copyright (c) 2017 Josh Vera, GitHub
   Copyright (c) 2019 Max Brunsfeld, Amaan Qureshi, Christian Frøystad, Caleb White
 
+tree-sitter-proto 0.6.0 (https://github.com/coder3101/tree-sitter-proto), MIT
+  proto/highlights.scm, adapted
+  Copyright (c) 2024-2025 Mohammad Ashar Khan
+
 tree-sitter-python 0.25.0 (https://github.com/tree-sitter/tree-sitter-python), MIT
   python/highlights.scm
   Copyright (c) 2016 Max Brunsfeld
@@ -81,6 +98,10 @@ tree-sitter-sequel 0.3.11 (https://github.com/DerekStride/tree-sitter-sql), MIT
 tree-sitter-svelte-next 0.1.1 (https://github.com/PRRPCHT/tree-sitter-svelte-next), MIT
   svelte/highlights.scm, svelte/injections.scm
   Copyright (c) 2024 Amaan Qureshi
+
+tree-sitter-swift 0.7.4 (https://github.com/alex-pinkus/tree-sitter-swift), MIT
+  swift/highlights.scm, adapted
+  Copyright (c) 2021 alex-pinkus
 
 tree-sitter-toml-ng 0.7.0 (https://github.com/tree-sitter-grammars/tree-sitter-toml), MIT
   toml/highlights.scm
