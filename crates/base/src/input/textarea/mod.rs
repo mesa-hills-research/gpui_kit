@@ -221,10 +221,16 @@ mod tests {
         (cx, textareas)
     }
 
-    /// Line numbers take a gutter, which moves the text right.
+    /// Line numbers take a gutter, which moves the text right. The text
+    /// editor preset turns them on with search.
     #[gpui::test]
     fn line_numbers_take_a_gutter(cx: &mut TestAppContext) {
-        let (cx, textareas) = open(cx, vec![|state| state, |state| state.line_number(true)]);
+        let (cx, textareas) = open(
+            cx,
+            vec![|state| state, |state| state.line_number(true), |state| {
+                state.text_editor()
+            }],
+        );
         let left = |textarea: &Entity<TextareaState>| -> Pixels {
             textarea.read_with(&cx, |state, _| {
                 state.range_to_bounds(&(0..0)).unwrap().left() - state.input_bounds().left()
@@ -236,7 +242,13 @@ mod tests {
             numbered > plain + px(10.),
             "{numbered:?} leaves room for the line numbers, {plain:?} does not"
         );
-        assert!(textareas[1].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
+        assert_eq!(left(&textareas[2]), numbered);
+
+        textareas[2].read_with(&cx, |state, _| {
+            assert!(state.presentation().has_line_numbers());
+            assert!(state.searchable);
+            assert!(state.soft_wrap);
+        });
         assert!(!textareas[0].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
     }
 

@@ -10935,6 +10935,19 @@ impl InputBaseState<crate::input::TextareaMode> {
         self.extras.line_number = line_number;
         cx.notify();
     }
+
+    /// Set the textarea up as a text editor: line numbers, the search panel
+    /// and soft wrap.
+    ///
+    /// Add a [`SpellChecker`](crate::input::SpellChecker) with
+    /// [`Self::spell_checker`] and a
+    /// [`SuggestionProvider`](crate::input::SuggestionProvider) with
+    /// [`Self::suggestion_provider`] for spell checking and completions.
+    pub fn text_editor(self) -> Self {
+        let mut state = self.line_number(true).searchable(true);
+        state.soft_wrap = true;
+        state
+    }
 }
 
 /// Methods that only a source-code editor offers.
