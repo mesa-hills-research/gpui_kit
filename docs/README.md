@@ -8,6 +8,8 @@ rather than project-progress logs.
   component taxonomy, state flow, overlay system, and native/WASM integration.
 - [Styling and Motion](STYLING-AND-MOTION.md) explains semantic tokens, typed
   state styles, application-owned presentation, and animation primitives.
+- [Themes](themes.md) explains the theme contrast checker, the theme generator and the
+  contrast rules they apply.
 - [GPUI Shell](gpui-shell.md) explains the scriptable application runtime built
   on `gpui-base`: the engine seam, the render protocol, call scopes, the object
   model, capabilities and the sandbox, and the measured performance model.

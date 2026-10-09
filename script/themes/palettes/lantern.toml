@@ -1,0 +1,80 @@
+# Lantern: an evening theme with almost no blue light. Ambers, golds, olive and rose on warm
+# brown, or on dimmed sepia paper for the light variant.
+
+family = "Lantern"
+file = "lantern.json"
+
+[options]
+shadow = false
+
+[[themes]]
+name = "Lantern Light"
+mode = "light"
+background = "oklch(0.90 0.035 80)"
+sidebar = "oklch(0.87 0.04 78)"
+title_bar = "oklch(0.885 0.038 79)"
+tab_bar = "oklch(0.865 0.04 78)"
+popover = "oklch(0.92 0.03 80)"
+control = "oklch(0.93 0.028 80)"
+knob = "oklch(0.95 0.02 80)"
+foreground = "oklch(0.30 0.05 50)"
+muted = "oklch(0.46 0.05 55)"
+accent = "oklch(0.52 0.13 50)"
+on_fill_light = "oklch(0.97 0.02 85)"
+
+[themes.semantic]
+red = "oklch(0.48 0.16 30)"
+orange = "oklch(0.55 0.14 55)"
+yellow = "oklch(0.62 0.12 85)"
+green = "oklch(0.48 0.10 125)"
+cyan = "oklch(0.50 0.07 100)"
+blue = "oklch(0.50 0.06 80)"
+magenta = "oklch(0.48 0.13 15)"
+
+[themes.syntax]
+keyword = "oklch(0.48 0.14 40)"
+function = "oklch(0.45 0.10 75)"
+type = "oklch(0.44 0.09 135)"
+string = "oklch(0.47 0.07 100)"
+number = "oklch(0.48 0.14 25)"
+comment = "oklch(0.50 0.04 65)"
+property = "oklch(0.40 0.06 60)"
+attribute = "oklch(0.47 0.11 355)"
+escape = "oklch(0.47 0.11 355)"
+special = "oklch(0.48 0.13 35)"
+punctuation = "oklch(0.42 0.04 60)"
+
+[[themes]]
+name = "Lantern Dark"
+mode = "dark"
+background = "oklch(0.195 0.022 60)"
+sidebar = "oklch(0.22 0.025 60)"
+title_bar = "oklch(0.21 0.024 60)"
+tab_bar = "oklch(0.18 0.02 60)"
+popover = "oklch(0.245 0.028 60)"
+foreground = "oklch(0.87 0.065 78)"
+muted = "oklch(0.68 0.06 70)"
+accent = "oklch(0.76 0.14 68)"
+knob = "oklch(0.88 0.06 78)"
+
+[themes.semantic]
+red = "oklch(0.70 0.16 30)"
+orange = "oklch(0.76 0.14 55)"
+yellow = "oklch(0.86 0.13 90)"
+green = "oklch(0.78 0.11 120)"
+cyan = "oklch(0.80 0.08 100)"
+blue = "oklch(0.78 0.06 80)"
+magenta = "oklch(0.72 0.12 15)"
+
+[themes.syntax]
+keyword = "oklch(0.74 0.14 45)"
+function = "oklch(0.85 0.12 88)"
+type = "oklch(0.78 0.10 135)"
+string = "oklch(0.85 0.07 100)"
+number = "oklch(0.73 0.12 25)"
+comment = "oklch(0.62 0.05 65)"
+property = "oklch(0.83 0.07 75)"
+attribute = "oklch(0.80 0.09 355)"
+escape = "oklch(0.80 0.09 355)"
+special = "oklch(0.78 0.12 35)"
+punctuation = "oklch(0.70 0.05 65)"

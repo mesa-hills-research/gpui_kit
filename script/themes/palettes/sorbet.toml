@@ -1,0 +1,79 @@
+# Sorbet: soft pastels. Raspberry, blueberry, mint, pistachio and peach on lavender cream, or on
+# a gentle plum-grey after dark.
+
+family = "Sorbet"
+file = "sorbet.json"
+
+[options]
+shadow = true
+
+[options.styles]
+comment = { font_style = "italic" }
+
+[[themes]]
+name = "Sorbet Light"
+mode = "light"
+background = "oklch(0.975 0.012 340)"
+sidebar = "oklch(0.95 0.025 310)"
+title_bar = "oklch(0.96 0.02 325)"
+tab_bar = "oklch(0.945 0.022 315)"
+popover = "oklch(0.985 0.008 330)"
+foreground = "oklch(0.34 0.045 305)"
+muted = "oklch(0.53 0.04 310)"
+accent = "oklch(0.63 0.16 355)"
+
+[themes.semantic]
+red = "oklch(0.56 0.17 15)"
+orange = "oklch(0.64 0.14 50)"
+yellow = "oklch(0.75 0.13 90)"
+green = "oklch(0.58 0.12 155)"
+cyan = "oklch(0.60 0.09 200)"
+blue = "oklch(0.56 0.12 265)"
+magenta = "oklch(0.56 0.16 330)"
+
+[themes.syntax]
+keyword = "oklch(0.53 0.17 350)"
+function = "oklch(0.53 0.12 265)"
+type = "oklch(0.53 0.10 190)"
+string = "oklch(0.53 0.12 140)"
+number = "oklch(0.57 0.13 50)"
+comment = "oklch(0.60 0.04 315)"
+property = "oklch(0.48 0.08 300)"
+attribute = "oklch(0.55 0.14 320)"
+escape = "oklch(0.57 0.13 50)"
+special = "oklch(0.55 0.14 20)"
+punctuation = "oklch(0.55 0.04 305)"
+
+[[themes]]
+name = "Sorbet Dark"
+mode = "dark"
+background = "oklch(0.245 0.03 300)"
+sidebar = "oklch(0.27 0.035 300)"
+title_bar = "oklch(0.26 0.032 300)"
+tab_bar = "oklch(0.23 0.028 300)"
+popover = "oklch(0.29 0.035 300)"
+foreground = "oklch(0.92 0.02 330)"
+muted = "oklch(0.72 0.035 310)"
+accent = "oklch(0.80 0.11 355)"
+
+[themes.semantic]
+red = "oklch(0.76 0.13 15)"
+orange = "oklch(0.82 0.11 55)"
+yellow = "oklch(0.89 0.10 95)"
+green = "oklch(0.84 0.11 155)"
+cyan = "oklch(0.84 0.08 200)"
+blue = "oklch(0.80 0.09 265)"
+magenta = "oklch(0.80 0.11 330)"
+
+[themes.syntax]
+keyword = "oklch(0.80 0.11 355)"
+function = "oklch(0.82 0.09 265)"
+type = "oklch(0.85 0.08 185)"
+string = "oklch(0.87 0.10 135)"
+number = "oklch(0.85 0.09 60)"
+comment = "oklch(0.66 0.04 305)"
+property = "oklch(0.84 0.06 300)"
+attribute = "oklch(0.80 0.10 320)"
+escape = "oklch(0.82 0.10 30)"
+special = "oklch(0.82 0.10 30)"
+punctuation = "oklch(0.74 0.03 310)"

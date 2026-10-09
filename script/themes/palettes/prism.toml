@@ -1,0 +1,79 @@
+# Prism: vivid. Electric violet on deep indigo-black or bright white, with hot magenta, cyan,
+# lime, lemon and tangerine at full saturation.
+
+family = "Prism"
+file = "prism.json"
+
+[options]
+shadow = true
+active_line = "accent"
+
+[[themes]]
+name = "Prism Light"
+mode = "light"
+background = "oklch(0.99 0.006 290)"
+sidebar = "oklch(0.965 0.016 290)"
+title_bar = "oklch(0.975 0.012 290)"
+tab_bar = "oklch(0.955 0.018 290)"
+popover = "#FFFFFF"
+foreground = "oklch(0.22 0.05 285)"
+muted = "oklch(0.50 0.05 285)"
+accent = "oklch(0.54 0.25 300)"
+
+[themes.semantic]
+red = "oklch(0.56 0.22 20)"
+orange = "oklch(0.64 0.18 50)"
+yellow = "oklch(0.78 0.16 90)"
+green = "oklch(0.58 0.17 145)"
+cyan = "oklch(0.60 0.13 210)"
+blue = "oklch(0.52 0.20 260)"
+magenta = "oklch(0.56 0.24 340)"
+
+[themes.syntax]
+keyword = "oklch(0.55 0.24 350)"
+function = "oklch(0.52 0.15 230)"
+type = "oklch(0.52 0.17 145)"
+string = "oklch(0.56 0.15 60)"
+number = "oklch(0.56 0.20 30)"
+comment = "oklch(0.58 0.05 285)"
+property = "oklch(0.50 0.16 270)"
+attribute = "oklch(0.52 0.15 165)"
+escape = "oklch(0.55 0.21 15)"
+special = "oklch(0.55 0.21 15)"
+operator = "oklch(0.55 0.20 330)"
+punctuation = "oklch(0.50 0.06 290)"
+
+[[themes]]
+name = "Prism Dark"
+mode = "dark"
+background = "oklch(0.18 0.035 285)"
+sidebar = "oklch(0.21 0.04 285)"
+title_bar = "oklch(0.195 0.038 285)"
+tab_bar = "oklch(0.165 0.032 285)"
+popover = "oklch(0.235 0.045 285)"
+foreground = "oklch(0.94 0.015 285)"
+muted = "oklch(0.72 0.04 285)"
+accent = "oklch(0.68 0.21 300)"
+
+[themes.semantic]
+red = "oklch(0.70 0.21 20)"
+orange = "oklch(0.78 0.17 55)"
+yellow = "oklch(0.90 0.17 100)"
+green = "oklch(0.84 0.20 145)"
+cyan = "oklch(0.84 0.14 205)"
+blue = "oklch(0.72 0.17 260)"
+magenta = "oklch(0.72 0.24 340)"
+
+[themes.syntax]
+keyword = "oklch(0.72 0.23 350)"
+function = "oklch(0.84 0.15 205)"
+type = "oklch(0.87 0.20 140)"
+string = "oklch(0.90 0.16 100)"
+number = "oklch(0.78 0.17 50)"
+comment = "oklch(0.64 0.06 285)"
+property = "oklch(0.80 0.12 265)"
+attribute = "oklch(0.80 0.15 165)"
+escape = "oklch(0.78 0.17 25)"
+special = "oklch(0.78 0.17 25)"
+operator = "oklch(0.80 0.14 330)"
+punctuation = "oklch(0.74 0.05 290)"

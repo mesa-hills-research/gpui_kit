@@ -1,0 +1,97 @@
+# Beacon: high contrast. Black and white with a signal-yellow (dark) or cobalt (light) accent,
+# strong borders, bold keywords, and body text held to 7:1.
+
+family = "Beacon"
+file = "beacon.json"
+
+[levels]
+text = 7.0
+subtle = 4.5
+ui = 4.5
+control = 3.0
+highlight = 1.4
+divider = 1.6
+hover = 1.15
+
+[options]
+shadow = false
+
+[options.styles]
+keyword = { font_weight = 700 }
+
+[[themes]]
+name = "Beacon Light"
+mode = "light"
+background = "#FFFFFF"
+sidebar = "oklch(0.965 0 0)"
+title_bar = "oklch(0.975 0 0)"
+tab_bar = "oklch(0.95 0 0)"
+popover = "#FFFFFF"
+foreground = "#000000"
+muted = "oklch(0.38 0 0)"
+accent = "oklch(0.45 0.22 265)"
+border = "oklch(0.55 0 0)"
+input_border = "oklch(0.35 0 0)"
+hover = "oklch(0.91 0 0)"
+sidebar_active = "oklch(0.86 0.03 265)"
+
+[themes.semantic]
+red = "oklch(0.48 0.19 27)"
+orange = "oklch(0.52 0.15 50)"
+yellow = "oklch(0.55 0.12 85)"
+green = "oklch(0.45 0.13 150)"
+cyan = "oklch(0.45 0.09 210)"
+blue = "oklch(0.45 0.22 265)"
+magenta = "oklch(0.45 0.20 330)"
+
+[themes.syntax]
+keyword = "oklch(0.42 0.20 330)"
+function = "oklch(0.40 0.12 235)"
+type = "oklch(0.42 0.14 150)"
+string = "oklch(0.45 0.13 55)"
+number = "oklch(0.45 0.17 30)"
+comment = "oklch(0.42 0 0)"
+property = "oklch(0.35 0.08 260)"
+attribute = "oklch(0.40 0.15 295)"
+escape = "oklch(0.45 0.17 30)"
+special = "oklch(0.42 0.20 330)"
+punctuation = "oklch(0.25 0 0)"
+
+[[themes]]
+name = "Beacon Dark"
+mode = "dark"
+background = "#000000"
+sidebar = "oklch(0.16 0 0)"
+title_bar = "oklch(0.14 0 0)"
+tab_bar = "oklch(0.12 0 0)"
+popover = "oklch(0.18 0 0)"
+foreground = "#FFFFFF"
+muted = "oklch(0.82 0 0)"
+accent = "oklch(0.88 0.17 95)"
+primary_text = "dark"
+border = "oklch(0.52 0 0)"
+input_border = "oklch(0.70 0 0)"
+hover = "oklch(0.30 0 0)"
+sidebar_active = "oklch(0.32 0.05 95)"
+
+[themes.semantic]
+red = "oklch(0.72 0.19 25)"
+orange = "oklch(0.80 0.16 60)"
+yellow = "oklch(0.90 0.17 98)"
+green = "oklch(0.85 0.19 145)"
+cyan = "oklch(0.86 0.13 200)"
+blue = "oklch(0.78 0.13 250)"
+magenta = "oklch(0.78 0.18 330)"
+
+[themes.syntax]
+keyword = "oklch(0.80 0.17 335)"
+function = "oklch(0.88 0.13 200)"
+type = "oklch(0.88 0.17 150)"
+string = "oklch(0.90 0.14 100)"
+number = "oklch(0.82 0.15 55)"
+comment = "oklch(0.80 0.02 250)"
+property = "oklch(0.88 0.06 240)"
+attribute = "oklch(0.82 0.13 290)"
+escape = "oklch(0.82 0.15 55)"
+special = "oklch(0.80 0.17 335)"
+punctuation = "oklch(0.85 0 0)"
