@@ -226,6 +226,14 @@ pub trait KeymapState: Any {
     fn accepts_text_input(&self) -> bool {
         true
     }
+
+    /// Where to draw the caret, when the scheme draws one caret of its own
+    /// rather than one at the moving end of each selection. Vim's visual modes
+    /// draw it on the last selected character. An offset outside the active
+    /// selection is ignored. Defaults to none.
+    fn caret_offset(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// A binding in `context`, for building a scheme's table.
@@ -271,6 +279,10 @@ impl KeymapSettings {
         self.state
             .as_ref()
             .is_none_or(|state| state.accepts_text_input())
+    }
+
+    pub(crate) fn caret_offset(&self) -> Option<usize> {
+        self.state.as_ref()?.caret_offset()
     }
 }
 

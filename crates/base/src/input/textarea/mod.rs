@@ -143,6 +143,10 @@ impl crate::input::InputExtras for TextareaExtras {
     ) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> {
         self.marks.underlines(range, style)
     }
+
+    fn caret_offset(&self) -> Option<usize> {
+        self.keymap.caret_offset()
+    }
 }
 
 /// An unstyled ordinary multi-line text input.
