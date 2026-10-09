@@ -84,7 +84,7 @@ pub use commands::{
     SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
 };
 pub use emacs::{EmacsState, SaveBuffer, WriteFile};
-pub use vim::{VimMode, VimState};
+pub use vim::{VimCommand, VimMode, VimQuit, VimState, VimWrite};
 
 /// Which keybinding scheme a textarea follows.
 ///
@@ -233,6 +233,14 @@ pub trait KeymapState: Any {
     fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
         _ = (range, new_len);
     }
+
+    /// Where to draw the caret, when the scheme draws one caret of its own
+    /// rather than one at the moving end of each selection. Vim's visual modes
+    /// draw it on the last selected character. An offset outside the active
+    /// selection is ignored. Defaults to none.
+    fn caret_offset(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// A binding in `context`, for building a scheme's table.
@@ -284,6 +292,10 @@ impl KeymapSettings {
         if let Some(state) = &mut self.state {
             state.adjust_for_edit(range, new_len);
         }
+    }
+
+    pub(crate) fn caret_offset(&self) -> Option<usize> {
+        self.state.as_ref()?.caret_offset()
     }
 }
 
@@ -342,6 +354,14 @@ impl TextareaState {
             Keymap::Cua => false,
             Keymap::Emacs => emacs::typed_text(self, text, window, cx),
             Keymap::Vim => vim::typed_text(self, text, window, cx),
+        }
+    }
+
+    /// Let the scheme catch up, before the textarea renders, with what changed
+    /// around it, such as a selection made with the mouse.
+    pub(crate) fn keymap_on_render(&mut self, cx: &mut Context<Self>) {
+        if self.current_keymap() == Keymap::Vim {
+            vim::on_render(self, cx);
         }
     }
 
@@ -436,7 +456,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Block);
         test.keys("l");
         test.assert("abˇc");
-        test.type_text("x");
+        // `q` is no command of Vim's here, and normal mode inserts nothing.
+        test.type_text("q");
         test.assert("abˇc");
 
         test.keys("i");
@@ -444,7 +465,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Bar);
         test.type_text("xy");
         test.assert("abxyˇc");
-        test.keys("escape h");
+        // Escape steps back onto the last character typed.
+        test.keys("escape");
         assert_eq!(test.mode_label().as_deref(), Some("NORMAL"));
         test.assert("abxˇyc");
         assert!(

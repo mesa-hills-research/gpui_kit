@@ -163,6 +163,13 @@ pub trait InputExtras: Default + 'static {
     ) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> {
         Vec::new()
     }
+
+    /// Where to draw the caret instead of at the active selection's moving
+    /// end, when the keybinding scheme draws one caret of its own, as Vim's
+    /// visual modes do. See [`crate::input::KeymapState::caret_offset`].
+    fn caret_offset(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// A mode with nothing extra to render.

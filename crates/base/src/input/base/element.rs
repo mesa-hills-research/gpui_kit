@@ -601,13 +601,24 @@ impl<M: InputModeKind> TextElement<M> {
 
         let cursor_height = 0.85 * line_height;
         let cursor_shape = state.extras.cursor_shape();
+        // A scheme that draws one caret of its own, such as Vim in visual
+        // mode, places it within the active selection.
+        let caret_offset = state.extras.caret_offset();
 
         for selection in state.selections.iter() {
             let is_active = selection.id == active_id;
+            if !is_active && caret_offset.is_some() {
+                continue;
+            }
 
             let mut selected_range = *selection;
             let mut cursor = selection.cursor_offset();
             if is_active {
+                if let Some(offset) =
+                    caret_offset.filter(|offset| (selection.start..=selection.end).contains(offset))
+                {
+                    cursor = state.text.clip_offset(offset, sum_tree::Bias::Left);
+                }
                 if let Some(ime_marked_range) = &state.ime_marked_range {
                     selected_range = (ime_marked_range.end..ime_marked_range.end).into();
                     cursor = ime_marked_range.end;

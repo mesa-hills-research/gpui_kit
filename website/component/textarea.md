@@ -357,8 +357,9 @@ document.update(cx, |document, cx| document.set_keymap(Keymap::Emacs, cx));
 Only the active scheme's keys apply. A scheme with modes reports the current
 one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
 the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
-state to show the label in a status bar. CUA binds the platform's shortcuts,
-and Emacs's keys are below. Vim binds its basic motions so far.
+state to show the label in a status bar. CUA binds each platform's own
+shortcuts, Emacs keeps a mark, a kill ring and a prefix argument, and Vim has
+its modes, operators, registers and command line. Each scheme's keys are below.
 
 #### CUA
 
@@ -417,3 +418,38 @@ and the clipboard, kills in a row join into one, and `C-y` pastes text copied
 in another application. The prefix argument shows as the mode label while it
 is typed. `C-x C-s` and `C-x C-w` dispatch `SaveBuffer` and `WriteFile`, which
 the application handles to save. `EmacsState` holds the mark and the kill ring.
+
+#### Vim
+
+| | Keys |
+|---|---|
+| Modes | `i` `a` `I` `A` `o` `O` insert, `R` replace, `v` `V` Ctrl-V visual, Escape back to normal |
+| Motions | `h` `j` `k` `l`, `w` `b` `e` `ge`, `0` `^` `$`, `gg` `G`, `f` `t` `F` `T` `;` `,`, `%`, `{` `}`, `H` `M` `L`, `/` `?` `n` `N` `*` `#` |
+| Operators | `d` `c` `y` `>` `<` `g~` `gu` `gU`, doubled for lines, with counts such as `2d3w` |
+| Text objects | `iw` `aw`, quotes, brackets, `it` `at` for tags, `ip` `ap` |
+| Editing | `x` `X` `D` `C` `Y` `s` `S` `r` `~` `J` `p` `P`, `u` and Ctrl-R, `.`, Ctrl-A and Ctrl-X |
+| Registers | `"a` to `"z`, `"A` to append, `"0` to `"9`, `"_`, `"+` and `"*` for the clipboard |
+| Command line | `:{n}`, `:s/pattern/replacement/g` on a line, a range or the selection, `:w`, `:q`, `:wq`, `:x` |
+
+Vim's keys are the same on every platform. Ctrl-V starts visual block mode, as
+in Vim on Unix. The clipboard and undo shortcuts stay: Cmd-C, Cmd-X, Cmd-V,
+Cmd-A and Cmd-Z on macOS, Ctrl-Shift-C and Ctrl-Shift-V on Windows and Linux.
+Other Ctrl and Cmd shortcuts reach the application, except Vim's own Ctrl keys
+such as Ctrl-R and Ctrl-W.
+
+While a command line is typed, the mode label shows it, such as `:s/a/b/`.
+`:w` dispatches `VimWrite`, `:q` dispatches `VimQuit`, and `:wq` and `:x` both.
+Any other command arrives as `VimCommand` with its text. Handle them around the
+editor:
+
+```rust
+use gpui_kit::component::input::{VimCommand, VimQuit, VimWrite};
+
+div()
+    .on_action(cx.listener(|this, _: &VimWrite, window, cx| this.save(window, cx)))
+    .on_action(cx.listener(|this, _: &VimQuit, window, cx| this.close(window, cx)))
+    .on_action(cx.listener(|this, action: &VimCommand, window, cx| {
+        this.run(&action.command, window, cx)
+    }))
+    .child(TextEditor::new(&document))
+```

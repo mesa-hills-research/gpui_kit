@@ -364,6 +364,49 @@ impl UndoManager {
         Some(replay)
     }
 
+    /// A mark for [`Self::changes_since`] and [`Self::group_since`]: the
+    /// history as it stands, with any open bracket committed and the next edit
+    /// starting a transaction of its own.
+    pub(super) fn mark(&mut self) -> usize {
+        self.break_transaction_coalescing();
+        self.undo_transactions.len()
+    }
+
+    /// The changes recorded since `mark`, in the order they were applied.
+    pub(super) fn changes_since(&self, mark: usize) -> Vec<Change> {
+        let start = mark.min(self.undo_transactions.len());
+        self.undo_transactions[start..]
+            .iter()
+            .flat_map(|transaction| transaction.changes.iter().cloned())
+            .collect()
+    }
+
+    /// Merge the transactions recorded since `mark` into one, so a command
+    /// made of several edits, such as Vim's change followed by the text typed
+    /// for it, undoes and redoes as one step. Undo restores the cursors from
+    /// before the first edit, redo those after the last.
+    pub(super) fn group_since(&mut self, mark: usize) {
+        self.break_transaction_coalescing();
+        let start = mark.min(self.undo_transactions.len());
+        if self.undo_transactions.len() <= start + 1 {
+            return;
+        }
+        let rest: Vec<UndoTransaction> = self.undo_transactions.drain(start + 1..).collect();
+        let first = &mut self.undo_transactions[start];
+        first.intent = EditIntent::Atomic;
+        for transaction in rest {
+            first.recorded_changes += transaction.recorded_changes;
+            first.last_batch_len = transaction.last_batch_len;
+            first.changes.extend(transaction.changes);
+            if transaction.selections_after.is_some() {
+                first.selections_after = transaction.selections_after;
+            }
+            if transaction.auto_closed_pairs_after.is_some() {
+                first.auto_closed_pairs_after = transaction.auto_closed_pairs_after;
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn has_undos(&self) -> bool {
         !self.undo_transactions.is_empty()
