@@ -1,6 +1,6 @@
-# mhr_gpui_kit
+# gpui_kit
 
-mhr_gpui_kit is Mesa Hills Research's fork of [GPUI Kit](https://github.com/longbridge/gpui-kit)
+This repository is Mesa Hills Research's fork of [GPUI Kit](https://github.com/longbridge/gpui-kit)
 (formerly gpui-component), the Rust desktop UI framework built on GPUI. It follows upstream
 releases and adds the changes listed below.
 
@@ -38,7 +38,7 @@ from:
 
 ```toml
 [dependencies]
-gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
+gpui-kit = { git = "https://github.com/mesa-hills-research/gpui_kit", rev = "<commit>" }
 ```
 
 The app gets the `gpui-pre` crates from crates.io, and the gpui fork leaves them unchanged apart
