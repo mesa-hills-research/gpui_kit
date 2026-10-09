@@ -236,6 +236,187 @@ ColorPicker:
     zh-HK: 透明度
     zh-TW: 透明度
     it: Alfa
+FontPicker:
+  search:
+    en: Search fonts
+    zh-CN: 搜索字体
+    zh-HK: 搜尋字型
+    zh-TW: 搜尋字型
+  monospace_only:
+    en: Monospace only
+    zh-CN: 仅显示等宽字体
+    zh-HK: 只顯示等寬字型
+    zh-TW: 只顯示等寬字型
+  weight:
+    en: Weight
+    zh-CN: 字重
+    zh-HK: 字重
+    zh-TW: 字重
+  italic:
+    en: Italic
+    zh-CN: 斜体
+    zh-HK: 斜體
+    zh-TW: 斜體
+  size:
+    en: Size
+    zh-CN: 字号
+    zh-HK: 字體大小
+    zh-TW: 字體大小
+  line_height:
+    en: Line height
+    zh-CN: 行高
+    zh-HK: 行高
+    zh-TW: 行高
+  features:
+    en: Features
+    zh-CN: 字体特性
+    zh-HK: 字型特性
+    zh-TW: 字型特性
+  added:
+    en: Added
+    zh-CN: 已添加
+    zh-HK: 已加入
+    zh-TW: 已加入
+  no_match:
+    en: No fonts match
+    zh-CN: 没有匹配的字体
+    zh-HK: 沒有相符的字型
+    zh-TW: 沒有相符的字型
+  weight.thin:
+    en: Thin
+    zh-CN: 极细
+    zh-HK: 極細
+    zh-TW: 極細
+  weight.extra_light:
+    en: Extra light
+    zh-CN: 特细
+    zh-HK: 特細
+    zh-TW: 特細
+  weight.light:
+    en: Light
+    zh-CN: 细体
+    zh-HK: 細體
+    zh-TW: 細體
+  weight.regular:
+    en: Regular
+    zh-CN: 常规
+    zh-HK: 標準
+    zh-TW: 標準
+  weight.medium:
+    en: Medium
+    zh-CN: 中等
+    zh-HK: 中等
+    zh-TW: 中等
+  weight.semibold:
+    en: Semibold
+    zh-CN: 半粗
+    zh-HK: 半粗
+    zh-TW: 半粗
+  weight.bold:
+    en: Bold
+    zh-CN: 粗体
+    zh-HK: 粗體
+    zh-TW: 粗體
+  weight.extra_bold:
+    en: Extra bold
+    zh-CN: 特粗
+    zh-HK: 特粗
+    zh-TW: 特粗
+  weight.black:
+    en: Black
+    zh-CN: 极粗
+    zh-HK: 極粗
+    zh-TW: 極粗
+  feature.liga:
+    en: Ligatures
+    zh-CN: 连字
+    zh-HK: 連字
+    zh-TW: 連字
+  feature.calt:
+    en: Contextual alternates
+    zh-CN: 上下文替代字
+    zh-HK: 上下文替代字
+    zh-TW: 上下文替代字
+  feature.dlig:
+    en: Discretionary ligatures
+    zh-CN: 自选连字
+    zh-HK: 選用連字
+    zh-TW: 選用連字
+  feature.kern:
+    en: Kerning
+    zh-CN: 字距调整
+    zh-HK: 字距調整
+    zh-TW: 字距調整
+  feature.zero:
+    en: Slashed zero
+    zh-CN: 带斜线的零
+    zh-HK: 斜線零
+    zh-TW: 斜線零
+  feature.tnum:
+    en: Tabular figures
+    zh-CN: 等宽数字
+    zh-HK: 等寬數字
+    zh-TW: 等寬數字
+  feature.pnum:
+    en: Proportional figures
+    zh-CN: 比例数字
+    zh-HK: 比例數字
+    zh-TW: 比例數字
+  feature.onum:
+    en: Old-style figures
+    zh-CN: 旧式数字
+    zh-HK: 舊式數字
+    zh-TW: 舊式數字
+  feature.lnum:
+    en: Lining figures
+    zh-CN: 齐线数字
+    zh-HK: 齊線數字
+    zh-TW: 齊線數字
+  feature.case:
+    en: Case-sensitive forms
+    zh-CN: 大写形式
+    zh-HK: 大寫形式
+    zh-TW: 大寫形式
+  feature.frac:
+    en: Fractions
+    zh-CN: 分数
+    zh-HK: 分數
+    zh-TW: 分數
+  feature.smcp:
+    en: Small capitals
+    zh-CN: 小型大写字母
+    zh-HK: 小型大寫字母
+    zh-TW: 小型大寫字母
+  feature.c2sc:
+    en: Capitals to small capitals
+    zh-CN: 大写转小型大写字母
+    zh-HK: 大寫轉小型大寫字母
+    zh-TW: 大寫轉小型大寫字母
+  feature.salt:
+    en: Stylistic alternates
+    zh-CN: 风格替代字
+    zh-HK: 風格替代字
+    zh-TW: 風格替代字
+  feature.swsh:
+    en: Swashes
+    zh-CN: 花饰字
+    zh-HK: 花飾字
+    zh-TW: 花飾字
+  feature.ordn:
+    en: Ordinals
+    zh-CN: 序数
+    zh-HK: 序數
+    zh-TW: 序數
+  feature.ss:
+    en: Stylistic set %{n}
+    zh-CN: 风格集 %{n}
+    zh-HK: 風格集 %{n}
+    zh-TW: 風格集 %{n}
+  feature.cv:
+    en: Character variant %{n}
+    zh-CN: 字符变体 %{n}
+    zh-HK: 字元變體 %{n}
+    zh-TW: 字元變體 %{n}
 Dialog:
   ok:
     en: OK
