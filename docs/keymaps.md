@@ -40,7 +40,8 @@ added at the end of the file and listed in the module docs of `mod.rs`.
 Every input's element has the key context `Input` and a `keymap` entry: `cua` for single-line
 inputs and editors, and the textarea's scheme for a textarea. A scheme binds in
 `Keymap::context()`, such as `Input && keymap == emacs`, so only the active scheme's keys apply.
-A scheme's state adds its own entries through `KeymapState::key_context`, and bindings that
+Every scheme's actions are registered on a textarea, and CUA's on every input, so the context
+alone decides which scheme a key reaches. A scheme's state adds its own entries through `KeymapState::key_context`, and bindings that
 depend on them extend the scheme's context:
 
 ```rust
