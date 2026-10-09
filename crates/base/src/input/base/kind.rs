@@ -138,6 +138,22 @@ pub trait InputExtras: Default + 'static {
         false
     }
 
+    /// Add the mode's entries to the input's key context: the keybinding
+    /// scheme, `keymap = cua` unless a textarea follows another.
+    fn key_context(&self, context: &mut gpui::KeyContext) {
+        context.set("keymap", crate::input::Keymap::Cua.name());
+    }
+
+    /// How the caret is drawn.
+    fn cursor_shape(&self) -> crate::input::CursorShape {
+        crate::input::CursorShape::Bar
+    }
+
+    /// Whether typed text goes into the text.
+    fn accepts_text_input(&self) -> bool {
+        true
+    }
+
     /// Underlines to paint within `range`, with their colours resolved
     /// against the editor style.
     fn underlines(
@@ -371,6 +387,17 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
     ) {
     }
 
+    /// Offers text the user typed to the mode before it is inserted. Returns
+    /// whether the mode took it, in which case it is not inserted.
+    fn takes_typed_text(
+        _state: &mut InputBaseState<Self>,
+        _text: &str,
+        _window: &mut Window,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) -> bool {
+        false
+    }
+
     /// Registers the actions that only this mode handles.
     fn register_actions(
         element: Stateful<Div>,
@@ -394,8 +421,8 @@ impl InputModeKind for InputMode {
 // and editor code, next to the features they dispatch to.
 
 /// What ordinary multi-line text adds on top of the shared engine:
-/// suggestions from an application's provider, marks, spell checking and an
-/// optional line-number gutter.
+/// suggestions from an application's provider, marks, spell checking, a
+/// keybinding scheme and an optional line-number gutter.
 ///
 /// A textarea that offers these stays a textarea: it keeps its own font and
 /// parses nothing, where [`EditorExtras`] carries a language's machinery.
@@ -405,6 +432,7 @@ pub struct TextareaExtras {
     pub(crate) marks: super::marks::Marks,
     pub(crate) spelling: super::spelling::Spelling,
     pub(crate) line_number: bool,
+    pub(crate) keymap: super::keymap::KeymapSettings,
 }
 
 /// What a code editor adds on top of multi-line text: language features.

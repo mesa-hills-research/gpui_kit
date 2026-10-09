@@ -9,7 +9,8 @@ use super::{InputBaseState, InputModeKind, TextareaExtras, TextareaMode};
 /// this type — those methods live on [`super::EditorState`]. What a textarea
 /// offers instead are suggestions from an application's provider (see
 /// [`super::SuggestionProvider`]), marks (see [`super::Mark`]), spell checking
-/// (see [`super::SpellChecker`]) and a line-number gutter.
+/// (see [`super::SpellChecker`]), keybinding schemes (see [`super::Keymap`])
+/// and a line-number gutter.
 pub type TextareaState = InputBaseState<TextareaMode>;
 
 impl InputModeKind for TextareaMode {
@@ -99,7 +100,17 @@ impl InputModeKind for TextareaMode {
         window: &mut Window,
     ) -> Stateful<Div> {
         let element = TextareaState::register_suggestion_actions(element, entity, window);
-        TextareaState::register_spelling_actions(element, entity, window)
+        let element = TextareaState::register_spelling_actions(element, entity, window);
+        TextareaState::register_keymap_actions(element, entity, window)
+    }
+
+    fn takes_typed_text(
+        state: &mut InputBaseState<Self>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) -> bool {
+        state.keymap_takes_typed_text(text, window, cx)
     }
 }
 
@@ -111,6 +122,18 @@ impl crate::input::InputExtras for TextareaExtras {
 
     fn line_number(&self) -> bool {
         self.line_number
+    }
+
+    fn key_context(&self, context: &mut gpui::KeyContext) {
+        self.keymap.key_context(context);
+    }
+
+    fn cursor_shape(&self) -> crate::input::CursorShape {
+        self.keymap.cursor_shape()
+    }
+
+    fn accepts_text_input(&self) -> bool {
+        self.keymap.accepts_text_input()
     }
 
     fn underlines(

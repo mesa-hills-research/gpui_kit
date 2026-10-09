@@ -1,4 +1,4 @@
-use crate::input::{InputExtras as _, InputModeKind};
+use crate::input::{CursorShape, InputExtras as _, InputModeKind};
 use gpui::Corners;
 use gpui::Half;
 use gpui::{
@@ -47,6 +47,8 @@ fn diagnostic_highlight_style(
 }
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
+/// The thickness of an underline caret.
+const UNDERLINE_CURSOR_HEIGHT: Pixels = px(2.);
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
 /// The space between the line numbers and what follows them in the gutter.
 pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(8.);
@@ -584,6 +586,7 @@ impl<M: InputModeKind> TextElement<M> {
         };
 
         let cursor_height = 0.85 * line_height;
+        let cursor_shape = state.extras.cursor_shape();
 
         for selection in state.selections.iter() {
             let is_active = selection.id == active_id;
@@ -696,14 +699,38 @@ impl<M: InputModeKind> TextElement<M> {
             // Apply the final horizontal offset to every caret after cursor-follow and
             // deferred scrolling have been resolved, regardless of selection order.
             let cursor_x = bounds.left() + cursor_pos.x + line_number_width;
-            cursor_infos.push(CursorRenderInfo {
-                bounds: Bounds::new(
+            let caret_bounds = match cursor_shape {
+                CursorShape::Bar => Bounds::new(
                     point(
                         cursor_x,
                         bounds.top() + cursor_pos.y + ((line_height - cursor_height) / 2.),
                     ),
                     size(CURSOR_WIDTH, cursor_height),
                 ),
+                CursorShape::Block | CursorShape::Underline => {
+                    // As wide as the character after the caret, or a space at
+                    // the end of a line.
+                    let width = state
+                        .text
+                        .chars_at(cursor)
+                        .next()
+                        .filter(|c| *c != '\n')
+                        .map(|c| caret_for(cursor_row, cursor + c.len_utf8(), false))
+                        .filter(|next| next.y == cursor_pos.y && next.x > cursor_pos.x)
+                        .map_or(last_layout.space_width, |next| next.x - cursor_pos.x);
+                    let height = if cursor_shape == CursorShape::Block {
+                        line_height
+                    } else {
+                        UNDERLINE_CURSOR_HEIGHT
+                    };
+                    Bounds::new(
+                        point(cursor_x, bounds.top() + cursor_pos.y + line_height - height),
+                        size(width, height),
+                    )
+                }
+            };
+            cursor_infos.push(CursorRenderInfo {
+                bounds: caret_bounds,
                 is_active,
             });
         }
@@ -3176,13 +3203,17 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 state.editor_paddings,
             )
         };
+        let state_cursor_shape = self.state.read(cx).extras.cursor_shape();
         let focused = focus_handle.is_focused(window);
         let bounds = prepaint.bounds;
         let text_align = prepaint.last_layout.text_align;
 
         window.handle_input(
             &focus_handle,
-            ElementInputHandler::new(bounds, self.state.clone()),
+            TypedTextHandler {
+                inner: ElementInputHandler::new(bounds, self.state.clone()),
+                state: self.state.clone(),
+            },
             cx,
         );
 
@@ -3381,8 +3412,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         // Paint blinking cursors (shared blink state for all carets)
         if focused && show_cursor {
+            // A block covers its character, so it lets the character show.
+            let caret = if state_cursor_shape == CursorShape::Block {
+                editor_style.caret.opacity(0.5)
+            } else {
+                editor_style.caret
+            };
             for cursor_info in prepaint.cursor_infos_with_scroll() {
-                window.paint_quad(fill(cursor_info.bounds, editor_style.caret));
+                window.paint_quad(fill(cursor_info.bounds, caret));
             }
         }
 
@@ -3723,6 +3760,151 @@ fn split_runs_by_bg_segments(
     }
 
     result
+}
+
+/// The platform's text input for an input's element: the engine's own
+/// handler, except that typed text goes to the mode first, so a keybinding
+/// scheme whose keys are commands keeps it out of the text.
+struct TypedTextHandler<M: InputModeKind> {
+    inner: ElementInputHandler<InputBaseState<M>>,
+    state: Entity<InputBaseState<M>>,
+}
+
+impl<M: InputModeKind> TypedTextHandler<M> {
+    fn mode_takes(&self, text: &str, window: &mut Window, cx: &mut App) -> bool {
+        self.state
+            .update(cx, |state, cx| M::takes_typed_text(state, text, window, cx))
+    }
+}
+
+impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
+    fn selected_text_range(
+        &mut self,
+        ignore_disabled_input: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<gpui::UTF16Selection> {
+        self.inner
+            .selected_text_range(ignore_disabled_input, window, cx)
+    }
+
+    fn marked_text_range(&mut self, window: &mut Window, cx: &mut App) -> Option<Range<usize>> {
+        self.inner.marked_text_range(window, cx)
+    }
+
+    fn text_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        adjusted_range: &mut Option<Range<usize>>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<String> {
+        self.inner
+            .text_for_range(range_utf16, adjusted_range, window, cx)
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        replacement_range: Option<Range<usize>>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if !self.mode_takes(text, window, cx) {
+            self.inner
+                .replace_text_in_range(replacement_range, text, window, cx);
+        }
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        new_selected_range: Option<Range<usize>>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if !self.mode_takes(new_text, window, cx) {
+            self.inner.replace_and_mark_text_in_range(
+                range_utf16,
+                new_text,
+                new_selected_range,
+                window,
+                cx,
+            );
+        }
+    }
+
+    fn unmark_text(&mut self, window: &mut Window, cx: &mut App) {
+        self.inner.unmark_text(window, cx);
+    }
+
+    fn paste(&mut self, item: gpui::ClipboardItem, window: &mut Window, cx: &mut App) {
+        self.inner.paste(item, window, cx);
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Bounds<Pixels>> {
+        self.inner.bounds_for_range(range_utf16, window, cx)
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        point: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<usize> {
+        self.inner.character_index_for_point(point, window, cx)
+    }
+
+    fn set_selected_text_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.inner.set_selected_text_range(range_utf16, window, cx);
+    }
+
+    fn element_bounds(&mut self, window: &mut Window, cx: &mut App) -> Option<Bounds<Pixels>> {
+        self.inner.element_bounds(window, cx)
+    }
+
+    fn text_length_utf16(&mut self, window: &mut Window, cx: &mut App) -> Option<usize> {
+        self.inner.text_length_utf16(window, cx)
+    }
+
+    fn apple_press_and_hold_enabled(&mut self) -> bool {
+        self.inner.apple_press_and_hold_enabled()
+    }
+
+    fn accepts_text_input(&mut self, window: &mut Window, cx: &mut App) -> bool {
+        self.inner.accepts_text_input(window, cx)
+    }
+
+    fn text_input_editable_range(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Range<usize>> {
+        self.inner.text_input_editable_range(window, cx)
+    }
+
+    fn prefers_ime_for_printable_keys(&mut self, window: &mut Window, cx: &mut App) -> bool {
+        self.inner.prefers_ime_for_printable_keys(window, cx)
+    }
+
+    fn text_input_configuration(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> gpui::TextInputConfiguration {
+        self.inner.text_input_configuration(window, cx)
+    }
 }
 
 #[cfg(test)]
