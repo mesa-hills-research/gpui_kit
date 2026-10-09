@@ -6,9 +6,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
-# GPUI Kit from the mhr_gpui_kit fork. It pins the matching gpui-pre release
+# GPUI Kit from Mesa Hills Research's fork. It pins the matching gpui-pre release
 # and re-exports it, so GPUI is `gpui_kit::*` and needs no entry of its own.
-gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", {{kit_ref}} }
+gpui-kit = { git = "https://github.com/mesa-hills-research/gpui_kit", {{kit_ref}} }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

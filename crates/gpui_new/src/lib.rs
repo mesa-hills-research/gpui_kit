@@ -11,11 +11,11 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The repository new apps take GPUI Kit from.
-pub const KIT_GIT: &str = "https://github.com/mesa-hills-research/mhr_gpui_kit";
+pub const KIT_GIT: &str = "https://github.com/mesa-hills-research/gpui_kit";
 
-/// The mhr_gpui_kit commit this generator was built from, empty when the
-/// build found none.
-pub const KIT_REV: &str = env!("MHR_GPUI_NEW_KIT_REV");
+/// The kit commit this generator was built from, empty when the build found
+/// none.
+pub const KIT_REV: &str = env!("GPUI_NEW_KIT_REV");
 
 /// One file of the template.
 pub struct TemplateFile {

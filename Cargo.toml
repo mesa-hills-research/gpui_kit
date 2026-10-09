@@ -12,7 +12,7 @@ members = [
     "crates/assets",
     "crates/fps",
     "crates/webview",
-    "crates/mhr_gpui_new",
+    "crates/gpui_new",
     "examples/app_assets",
     "examples/fps_monitor",
     "examples/hello_world",

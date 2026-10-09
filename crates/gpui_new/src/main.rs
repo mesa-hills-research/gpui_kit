@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use mhr_gpui_new::{Error, Project, generate};
+use gpui_new::{Error, Project, generate};
 
 const USAGE: &str = "\
 Creates a GPUI app with the title bar, menus and window frame set up for macOS,
 Windows and Linux.
 
-Usage: mhr_gpui_new <PATH> [OPTIONS]
+Usage: gpui_new <PATH> [OPTIONS]
 
 The crate is named after the last part of PATH, which must be missing or empty.
 
@@ -85,7 +85,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Option<Args>, Er
                 return Ok(None);
             }
             "-V" | "--version" => {
-                println!("mhr_gpui_new {}", env!("CARGO_PKG_VERSION"));
+                println!("gpui_new {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
             "--name" => name = Some(value("--name")?),

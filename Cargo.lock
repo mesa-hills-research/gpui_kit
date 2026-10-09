@@ -4665,6 +4665,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui_new"
+version = "0.1.0"
+dependencies = [
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "granit-parser"
 version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6396,13 +6403,6 @@ dependencies = [
  "log",
  "objc",
  "paste",
-]
-
-[[package]]
-name = "mhr_gpui_new"
-version = "0.1.0"
-dependencies = [
- "toml 0.8.23",
 ]
 
 [[package]]

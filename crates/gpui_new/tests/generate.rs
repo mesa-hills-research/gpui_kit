@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use mhr_gpui_new::{Contents, FILES, Project, generate};
+use gpui_new::{Contents, FILES, Project, generate};
 
 /// A fresh, missing directory named `name` for one test.
 fn scratch(name: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let base = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
-        "mhr_gpui_new-{}-{}",
+        "gpui_new-{}-{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
@@ -19,7 +19,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_mhr_gpui_new"))
+    Command::new(env!("CARGO_BIN_EXE_gpui_new"))
         .args(args)
         .output()
         .unwrap()
@@ -29,7 +29,7 @@ fn run_ok(args: &[&str]) {
     let output = run(args);
     assert!(
         output.status.success(),
-        "mhr_gpui_new {args:?} failed:\n{}",
+        "gpui_new {args:?} failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 }
@@ -155,11 +155,11 @@ fn the_manifest_parses_and_names_the_crate() {
         assert_eq!(package["edition"].as_str(), Some("2024"));
 
         let kit = manifest["dependencies"]["gpui-kit"].as_table().unwrap();
-        assert_eq!(kit["git"].as_str(), Some(mhr_gpui_new::KIT_GIT));
+        assert_eq!(kit["git"].as_str(), Some(gpui_new::KIT_GIT));
         match (kit.get("rev"), kit.get("branch")) {
-            (Some(rev), None) => assert_eq!(rev.as_str(), Some(mhr_gpui_new::KIT_REV)),
+            (Some(rev), None) => assert_eq!(rev.as_str(), Some(gpui_new::KIT_REV)),
             (None, Some(branch)) => {
-                assert!(mhr_gpui_new::KIT_REV.is_empty());
+                assert!(gpui_new::KIT_REV.is_empty());
                 assert_eq!(branch.as_str(), Some("main"));
             }
             other => panic!("gpui-kit is pinned by {other:?}"),
@@ -281,8 +281,8 @@ fn help_and_version() {
     for flag in ["--help", "-h"] {
         let output = run(&[flag]);
         assert!(output.status.success());
-        assert!(String::from_utf8_lossy(&output.stdout).contains("Usage: mhr_gpui_new"));
+        assert!(String::from_utf8_lossy(&output.stdout).contains("Usage: gpui_new"));
     }
     let output = run(&["--version"]);
-    assert!(String::from_utf8_lossy(&output.stdout).starts_with("mhr_gpui_new "));
+    assert!(String::from_utf8_lossy(&output.stdout).starts_with("gpui_new "));
 }

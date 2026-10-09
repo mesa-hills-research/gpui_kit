@@ -1,7 +1,7 @@
 # {{display_name}}
 
 {{display_name}} is a desktop app for macOS, Windows and Linux, built with
-[GPUI](https://www.gpui.rs) and [GPUI Kit](https://github.com/mesa-hills-research/mhr_gpui_kit).
+[GPUI](https://www.gpui.rs) and [GPUI Kit](https://github.com/mesa-hills-research/gpui_kit).
 
 ## Running it
 

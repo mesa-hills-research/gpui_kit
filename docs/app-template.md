@@ -1,14 +1,14 @@
-# New apps with mhr_gpui_new
+# New apps with gpui_new
 
-`mhr_gpui_new` writes a GPUI app that looks and behaves like a native app on macOS, Windows and
+`gpui_new` writes a GPUI app that looks and behaves like a native app on macOS, Windows and
 Linux from its first build: its own title bar with the platform's window controls, the platform's
 menus, a window frame on every Linux desktop, an app icon, and release builds that log to a file.
 
 ## Usage
 
 ```sh
-cargo install --git https://github.com/mesa-hills-research/mhr_gpui_kit mhr_gpui_new
-mhr_gpui_new <PATH> [--name <NAME>] [--app-id <ID>] [--no-git]
+cargo install --git https://github.com/mesa-hills-research/gpui_kit gpui_new
+gpui_new <PATH> [--name <NAME>] [--app-id <ID>] [--no-git]
 ```
 
 | Argument | Meaning |
@@ -50,24 +50,24 @@ a window drag. `can_close` is where an app asks about unsaved work.
 
 ## The kit version
 
-The new app's `Cargo.toml` pins `gpui-kit` to the mhr_gpui_kit commit the generator was built
-from, so the template and the kit match. A generator built outside a Git checkout of the kit
+The new app's `Cargo.toml` pins `gpui-kit` to the commit of this repository the generator was
+built from, so the template and the kit match. A generator built outside a Git checkout of the kit
 follows the `main` branch instead.
 
 To build an app against a local checkout of the kit, add a patch to the app's `Cargo.toml` or to
 its `.cargo/config.toml`:
 
 ```toml
-[patch."https://github.com/mesa-hills-research/mhr_gpui_kit"]
-gpui-kit = { path = "../mhr_gpui_kit/crates/kit" }
+[patch."https://github.com/mesa-hills-research/gpui_kit"]
+gpui-kit = { path = "../gpui_kit/crates/kit" }
 ```
 
 ## Changing the template
 
-The template lives in `crates/mhr_gpui_new/template` and is compiled into the generator. Text
+The template lives in `crates/gpui_new/template` and is compiled into the generator. Text
 files take the placeholders `{{crate_name}}`, `{{display_name}}`, `{{app_id}}`, `{{year}}` and
 `{{kit_ref}}`. A new file also needs an entry in `FILES` in `src/lib.rs`. Test with
 
 ```sh
-cargo test -p mhr_gpui_new
+cargo test -p gpui_new
 ```

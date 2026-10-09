@@ -1,5 +1,5 @@
 //! Records the kit commit this generator is built from, so new apps depend on
-//! the same mhr_gpui_kit their template was written against.
+//! the same kit their template was written against.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -11,10 +11,10 @@ fn main() {
     let rev = kit_rev(&manifest_dir).unwrap_or_default();
     if rev.is_empty() {
         println!(
-            "cargo:warning=no mhr_gpui_kit git commit found, new apps will follow the kit's main branch"
+            "cargo:warning=no git commit of the kit found, new apps will follow the kit's main branch"
         );
     }
-    println!("cargo:rustc-env=MHR_GPUI_NEW_KIT_REV={rev}");
+    println!("cargo:rustc-env=GPUI_NEW_KIT_REV={rev}");
 }
 
 fn kit_rev(dir: &Path) -> Option<String> {
