@@ -26,6 +26,10 @@ tree-sitter-c-sharp 0.23.5 (https://github.com/tree-sitter/tree-sitter-c-sharp),
   csharp/highlights.scm, adapted together with nvim-treesitter's query
   Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors.
 
+tree-sitter-cmake 0.7.5 (https://github.com/uyha/tree-sitter-cmake), MIT
+  cmake/highlights.scm, adapted
+  Copyright (c) 2025 Uy Ha
+
 tree-sitter-cpp 0.23.4 (https://github.com/tree-sitter/tree-sitter-cpp), MIT
   cpp/highlights.scm
   Copyright (c) 2014 Max Brunsfeld

@@ -546,7 +546,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-cmake")]
-            Self::CMake => (tree_sitter_cmake::LANGUAGE, "", "", ""),
+            Self::CMake => (
+                tree_sitter_cmake::LANGUAGE,
+                include_str!("languages/cmake/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-typescript")]
             Self::TypeScript => (
                 tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
@@ -885,6 +890,43 @@ service Catalog {
                 ("Catalog", "type"),
                 ("GetProduct", "function"),
                 ("returns", "keyword"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-cmake")]
+    fn test_cmake_highlights() {
+        let source = r#"cmake_minimum_required(VERSION 3.20)
+# Build the app.
+set(APP_NAME "demo-${PROJECT_VERSION}")
+if(WIN32 AND NOT MSVC)
+  target_compile_options(app PRIVATE $<$<CONFIG:Debug>:-g>)
+  option(DEMO_TESTS "Build the tests" OFF)
+endif()
+function(add_demo name)
+endfunction()
+"#;
+        assert_highlights(
+            "cmake",
+            source,
+            &[
+                ("cmake_minimum_required", "function"),
+                ("VERSION", "constant"),
+                ("3.20", "number"),
+                ("# Build the app.", "comment"),
+                ("APP_NAME", "variable"),
+                ("\"demo-", "string"),
+                ("${", "punctuation.special"),
+                ("PROJECT_VERSION", "variable"),
+                ("if", "keyword"),
+                ("AND", "keyword"),
+                ("$<$<CONFIG:Debug>:-g>", "string.special"),
+                ("OFF", "boolean"),
+                ("function", "keyword"),
+                ("add_demo", "function"),
+                ("name", "variable.parameter"),
+                ("endfunction", "keyword"),
             ],
         );
     }
