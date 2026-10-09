@@ -612,7 +612,13 @@ impl RenderOnce for Input {
                 },
                 highlight_styles: cx.theme().highlight_theme.clone(),
                 editor_invisible: cx.theme().highlight_theme.style.editor_invisible,
-                editor_active_line: cx.theme().highlight_theme.style.editor_active_line,
+                // A code editor marks the caret's line. A textarea doesn't.
+                editor_active_line: cx
+                    .theme()
+                    .highlight_theme
+                    .style
+                    .editor_active_line
+                    .filter(|_| state.presentation(cx).is_code_editor()),
                 editor_gutter_background: cx.theme().highlight_theme.style.editor_gutter_background,
                 editor_gutter_border: Some(cx.theme().editor_gutter_border()),
                 fold_icon_renderer: Some(Rc::new(|ix, is_folded| {
