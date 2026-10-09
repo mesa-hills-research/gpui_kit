@@ -83,6 +83,7 @@ pub use commands::{
     MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
     SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
 };
+pub use emacs::{EmacsState, SaveBuffer, WriteFile};
 pub use vim::{VimMode, VimState};
 
 /// Which keybinding scheme a textarea follows.
