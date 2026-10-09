@@ -11,6 +11,7 @@
 //! | `emacs` | [`Keymap::Emacs`] |
 //! | `vim` | [`Keymap::Vim`] |
 //! | `common` | keys every scheme can share: arrows, Backspace, Enter, Tab… |
+//! | `commands` | editing commands any scheme can bind (see below) |
 //!
 //! # Key contexts
 //!
@@ -32,20 +33,26 @@
 //!
 //! # Editing commands
 //!
-//! The actions schemes bind to:
+//! The actions schemes bind to. Most are the engine's own:
 //!
 //! - Moving: [`MoveLeft`](super::MoveLeft), `MoveRight`, `MoveUp`, `MoveDown`,
 //!   `MoveHome` and `MoveEnd` (the visual row), `MoveToStartOfLine` and
 //!   `MoveToEndOfLine`, `MoveToPreviousWord` (start of the word),
-//!   `MoveToNextWord` (end of the word), `MoveToStart`, `MoveToEnd`,
-//!   `MovePageUp`, `MovePageDown`.
+//!   `MoveToNextWord` (end of the word), [`MoveToNextWordStart`],
+//!   [`MoveToParagraphStart`], [`MoveToParagraphEnd`], `MoveToStart`,
+//!   `MoveToEnd`, `MovePageUp`, `MovePageDown`.
 //! - Selecting: `SelectLeft`, `SelectRight`, `SelectUp`, `SelectDown`
 //!   (in `crate::actions`), `SelectToStartOfLine`, `SelectToEndOfLine`,
-//!   `SelectToPreviousWordStart`, `SelectToNextWordEnd`, `SelectToStart`,
-//!   `SelectToEnd`, `SelectAll`.
+//!   `SelectToPreviousWordStart`, `SelectToNextWordEnd`,
+//!   [`SelectToNextWordStart`], [`SelectToParagraphStart`],
+//!   [`SelectToParagraphEnd`], `SelectToStart`, `SelectToEnd`, `SelectAll`.
 //! - Deleting: `Backspace`, `Delete`, `DeleteToBeginningOfLine`,
-//!   `DeleteToEndOfLine`, `DeleteToPreviousWordStart`, `DeleteToNextWordEnd`.
-//! - Lines: `Enter`, `Indent`, `Outdent`, `IndentInline`, `OutdentInline`.
+//!   `DeleteToEndOfLine`, `DeleteToPreviousWordStart`, `DeleteToNextWordEnd`,
+//!   [`DeleteLine`].
+//! - Lines: `Enter`, [`NewlineAbove`], [`NewlineBelow`], [`JoinLines`],
+//!   `Indent`, `Outdent`, `IndentInline`, `OutdentInline`.
+//! - Changing text: [`TransposeCharacters`], [`ConvertToUpperCase`],
+//!   [`ConvertToLowerCase`], [`ConvertToTitleCase`].
 //! - Clipboard and history: `Cut`, `Copy`, `Paste`, `Undo`, `Redo`.
 //! - Everything else: `Escape`, `Search`, `Replace`, `ShowContextMenu`,
 //!   `ShowCharacterPalette`, `AddCursorAbove`, `AddCursorBelow`, and the
@@ -54,6 +61,7 @@
 //! A command only one scheme needs, such as Emacs's kill ring or Vim's
 //! operators, lives in that scheme's module with the state it keeps.
 
+mod commands;
 mod common;
 mod cua;
 mod emacs;
@@ -70,6 +78,11 @@ use serde::{Deserialize, Serialize};
 
 use super::TextareaState;
 
+pub use commands::{
+    ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, DeleteLine, JoinLines,
+    MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
+    SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
+};
 pub use vim::{VimMode, VimState};
 
 /// Which keybinding scheme a textarea follows.
@@ -319,13 +332,15 @@ impl TextareaState {
         }
     }
 
-    /// Registers every scheme's own actions on the textarea's root element. A scheme's actions are bound only in its own
+    /// Registers the editing commands and every scheme's own actions on the
+    /// textarea's root element. A scheme's actions are bound only in its own
     /// context, so the others never reach them.
     pub(crate) fn register_keymap_actions(
         element: Stateful<Div>,
         entity: &Entity<Self>,
         window: &mut Window,
     ) -> Stateful<Div> {
+        let element = commands::register_actions(element, entity, window);
         let element = emacs::register_actions(element, entity, window);
         vim::register_actions(element, entity, window)
     }

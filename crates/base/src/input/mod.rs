@@ -108,7 +108,12 @@ pub use highlighting::{
 };
 pub use indent::TabSize;
 pub use input::{Input, InputState};
-pub use keymap::{CursorShape, Keymap, KeymapPlatform, KeymapState, VimMode, VimState};
+pub use keymap::{
+    ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,
+    Keymap, KeymapPlatform, KeymapState, MoveToNextWordStart, MoveToParagraphEnd,
+    MoveToParagraphStart, NewlineAbove, NewlineBelow, SelectToNextWordStart, SelectToParagraphEnd,
+    SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
+};
 pub use kind::{
     EditorExtras, EditorMode, InputExtras, InputMode, InputModeKind, MultiLineMode, TextareaExtras,
     TextareaMode,
