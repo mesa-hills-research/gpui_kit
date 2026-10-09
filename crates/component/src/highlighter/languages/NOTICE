@@ -91,6 +91,10 @@ tree-sitter-svelte-next 0.1.1 (https://github.com/PRRPCHT/tree-sitter-svelte-nex
   svelte/highlights.scm, svelte/injections.scm
   Copyright (c) 2024 Amaan Qureshi
 
+tree-sitter-swift 0.7.4 (https://github.com/alex-pinkus/tree-sitter-swift), MIT
+  swift/highlights.scm, adapted
+  Copyright (c) 2021 alex-pinkus
+
 tree-sitter-toml-ng 0.7.0 (https://github.com/tree-sitter-grammars/tree-sitter-toml), MIT
   toml/highlights.scm
   Copyright (c) Ika <ikatyang@gmail.com> (https://github.com/ikatyang)

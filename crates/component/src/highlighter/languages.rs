@@ -497,7 +497,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-swift")]
-            Self::Swift => (tree_sitter_swift::LANGUAGE, "", "", ""),
+            Self::Swift => (
+                tree_sitter_swift::LANGUAGE,
+                include_str!("languages/swift/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-scala")]
             Self::Scala => (
                 tree_sitter_scala::LANGUAGE,
@@ -792,6 +797,49 @@ public class Greeter<T> : IGreeter where T : class
                 ("\\n", "string.escape"),
                 ("Delay", "function"),
                 ("null", "constant.builtin"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-swift")]
+    fn test_swift_highlights() {
+        let source = r#"import SwiftUI
+
+/// A tappable view.
+struct CounterView: View {
+    @State private var count = 0
+    var body: some View {
+        Button("Add \(count)") { count += 1 }
+            .padding(.horizontal)
+    }
+
+    func reset(to value: Int) {
+        print(items[0], self)
+    }
+}
+"#;
+        assert_highlights(
+            "swift",
+            source,
+            &[
+                ("import", "keyword"),
+                ("/// A tappable view.", "comment.doc"),
+                ("CounterView", "type"),
+                ("State", "attribute"),
+                ("private", "keyword"),
+                ("count", "property"),
+                ("0", "number"),
+                ("Button", "type"),
+                ("\"Add ", "string"),
+                ("\\(", "punctuation.special"),
+                ("padding", "function"),
+                ("horizontal", "constant"),
+                ("reset", "function"),
+                ("value", "variable.parameter"),
+                ("print", "function"),
+                ("items", "variable"),
+                ("self", "variable.special"),
             ],
         );
     }
