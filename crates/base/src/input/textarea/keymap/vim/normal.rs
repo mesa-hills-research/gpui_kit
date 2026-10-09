@@ -207,7 +207,11 @@ impl VimState {
                     let offset = text::normal_offset(&state.text, target.offset);
                     self.reset_pending();
                     self.mode = VimMode::Normal;
-                    state.move_to(offset, None, cx);
+                    match motion.caret_motion() {
+                        Some(caret_motion) => state
+                            .caret_motion(caret_motion, |state| state.move_to(offset, None, cx)),
+                        None => state.move_to(offset, None, cx),
+                    }
                     self.remember_want(target.want, column, offset);
                 } else {
                     self.reset_pending();

@@ -8,7 +8,7 @@ use gpui::{Context, Div, Entity, InteractiveElement as _, Stateful, Window, acti
 
 use crate::input::{
     RopeExt as _, TextareaState, cursor::CursorSelection, movement::MoveDirection,
-    undo_manager::EditIntent,
+    smooth_caret::CaretMotion, undo_manager::EditIntent,
 };
 
 actions!(
@@ -269,12 +269,14 @@ impl TextareaState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.move_all_cursors(
-            |s, sel| (s.next_word_start_after(sel.cursor_offset()), None, false),
-            None,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Word, |this| {
+            this.move_all_cursors(
+                |s, sel| (s.next_word_start_after(sel.cursor_offset()), None, false),
+                None,
+                window,
+                cx,
+            )
+        });
     }
 
     fn select_to_next_word_start(

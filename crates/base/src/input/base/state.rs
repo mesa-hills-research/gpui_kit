@@ -32,6 +32,7 @@ use super::{
     kind::InputModeKind,
     mask_pattern::normalize_number_input,
     mode::LayoutMode,
+    smooth_caret::CaretMotion,
     undo_manager::{EditIntent, UndoManager},
 };
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
@@ -219,6 +220,8 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) scroll_beyond_last_line: Option<usize>,
     pub(super) cursor_surrounding_lines: Option<usize>,
     pub(super) blink_cursor: Entity<BlinkCursor>,
+    /// The smooth caret's options and the glide in progress.
+    pub(super) smooth_caret: super::smooth_caret::SmoothCaret,
     pub(super) loading: bool,
     /// The cursors and selections.
     ///
@@ -572,6 +575,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             scroll_beyond_last_line: None,
             cursor_surrounding_lines: None,
             blink_cursor,
+            smooth_caret: Default::default(),
             undo_manager,
             inline_tokens: None,
             pending_token: None,
@@ -1709,13 +1713,15 @@ impl<M: InputModeKind> InputBaseState<M> {
             }
         }
 
-        self.delete_selections(
-            false,
-            EditIntent::Backspace,
-            |s, offset| s.previous_boundary(offset)..offset,
-            window,
-            cx,
-        );
+        self.caret_motion(CaretMotion::Backspace, |this| {
+            this.delete_selections(
+                false,
+                EditIntent::Backspace,
+                |s, offset| s.previous_boundary(offset)..offset,
+                window,
+                cx,
+            )
+        });
     }
 
     pub(super) fn delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
@@ -3628,6 +3634,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             let old_text = self.text.clone();
             self.mode.adjust_auto_closed_pair(range, new_text.len());
             self.text.replace(range.clone(), new_text);
+            self.smooth_caret.note_edit(range.clone(), new_text.len());
 
             M::adjust_annotations(self, range, new_text.len());
             M::did_edit(self, range, new_text.len(), cx);
@@ -10696,6 +10703,53 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
     ) {
         self.wrapping_indent = wrapping_indent;
         self.display_map.set_wrapping_indent(wrapping_indent, cx);
+        cx.notify();
+    }
+
+    /// Glide the caret to where it moves instead of jumping there, and draw a
+    /// typed character only as the caret passes it. Off by default.
+    ///
+    /// Typing, Backspace, the arrow keys and the word motions glide the caret
+    /// along its row, and every other movement is instant. Only drawing is
+    /// animated: the text, the undo history and everything else that reads
+    /// the text change at once. While the system asks for reduced motion the
+    /// caret moves at once. [`SmoothCaretOptions`] sets what glides and how
+    /// fast.
+    ///
+    /// [`SmoothCaretOptions`]: crate::input::SmoothCaretOptions
+    pub fn smooth_caret(mut self, enabled: bool) -> Self {
+        self.smooth_caret.enabled = enabled;
+        self
+    }
+
+    /// Turn the smooth caret on or off. See [`Self::smooth_caret`].
+    pub fn set_smooth_caret(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.smooth_caret.enabled = enabled;
+        if !enabled {
+            self.smooth_caret.stop();
+        }
+        cx.notify();
+    }
+
+    /// Whether the smooth caret is on. See [`Self::smooth_caret`].
+    pub fn has_smooth_caret(&self) -> bool {
+        self.smooth_caret.enabled
+    }
+
+    /// Set what the smooth caret glides and how fast. It takes effect while
+    /// the smooth caret is on.
+    pub fn smooth_caret_options(mut self, options: super::SmoothCaretOptions) -> Self {
+        self.smooth_caret.options = options;
+        self
+    }
+
+    /// See [`Self::smooth_caret_options`].
+    pub fn set_smooth_caret_options(
+        &mut self,
+        options: super::SmoothCaretOptions,
+        cx: &mut Context<Self>,
+    ) {
+        self.smooth_caret.options = options;
         cx.notify();
     }
 }

@@ -14,7 +14,7 @@ use super::{
     VimState, search,
     text::{self, Cursor, Step},
 };
-use crate::input::TextareaState;
+use crate::input::{TextareaState, smooth_caret::CaretMotion};
 
 /// Where the caret goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,6 +185,22 @@ impl Env<'_> {
 }
 
 impl Motion {
+    /// How the smooth caret glides for this motion in normal mode: `h` and `l`
+    /// move by a character, and the word motions by a word. Every other
+    /// motion moves the caret at once.
+    pub(super) fn caret_motion(self) -> Option<CaretMotion> {
+        match self {
+            Motion::Left | Motion::Right | Motion::WrappingLeft | Motion::WrappingRight => {
+                Some(CaretMotion::Grapheme)
+            }
+            Motion::NextWordStart { .. }
+            | Motion::PreviousWordStart { .. }
+            | Motion::NextWordEnd { .. }
+            | Motion::PreviousWordEnd { .. } => Some(CaretMotion::Word),
+            _ => None,
+        }
+    }
+
     /// Motions that put deleted text in register 1 even within one line,
     /// and that `'` and `` ` `` would record as jumps.
     pub(super) fn is_jump(self) -> bool {

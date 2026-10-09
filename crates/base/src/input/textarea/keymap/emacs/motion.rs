@@ -14,7 +14,7 @@ use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::input::{
     MoveDown, MoveEnd, MoveHome, MoveLeft, MovePageDown, MovePageUp, MoveRight, MoveToEnd,
     MoveToStart, MoveUp, RopeExt as _, SelectToEnd, SelectToEndOfLine, SelectToStart,
-    SelectToStartOfLine, TextareaState,
+    SelectToStartOfLine, TextareaState, smooth_caret::CaretMotion,
 };
 
 /// Where a motion goes. Named after its action.
@@ -156,8 +156,12 @@ fn step(
         (PreviousPage, false) => state.page_up(&MovePageUp, window, cx),
         (NextPage, true) => select_page(state, true, cx),
         (PreviousPage, true) => select_page(state, false, cx),
-        (ForwardWord, _) => move_by(state, extend, forward_word, window, cx),
-        (BackwardWord, _) => move_by(state, extend, backward_word, window, cx),
+        (ForwardWord, _) => state.caret_motion(CaretMotion::Word, |state| {
+            move_by(state, extend, forward_word, window, cx)
+        }),
+        (BackwardWord, _) => state.caret_motion(CaretMotion::Word, |state| {
+            move_by(state, extend, backward_word, window, cx)
+        }),
         (ForwardSentence, _) => move_by(state, extend, forward_sentence, window, cx),
         (BackwardSentence, _) => move_by(state, extend, backward_sentence, window, cx),
         (ForwardParagraph, _) => move_by(
