@@ -437,7 +437,7 @@ mod spelling_tests {
 
     use gpui::{
         AppContext as _, Context, Entity, IntoElement, Modifiers, MouseButton, MouseDownEvent,
-        MouseUpEvent, ParentElement as _, Render, SharedString, Styled as _, Task, TestAppContext,
+        MouseUpEvent, ParentElement as _, Render, SharedString, Task, TestAppContext,
         VisualTestContext, Window, div, px,
     };
 
