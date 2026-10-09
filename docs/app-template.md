@@ -32,6 +32,7 @@ assets/             the icon as SVG and Windows .ico
 packaging/linux/    <app id>.desktop and a 256 px icon
 README.md
 .gitignore
+.cargo/config.toml  has Cargo fetch the private kit with the git CLI
 ```
 
 | | macOS | Windows | Linux |

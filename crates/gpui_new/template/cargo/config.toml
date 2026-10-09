@@ -1,0 +1,3 @@
+# Cargo fetches the private gpui-kit repository with the git CLI, which uses git's credentials.
+[net]
+git-fetch-with-cli = true

@@ -54,11 +54,13 @@ macro_rules! binary {
     };
 }
 
-/// Every file of the template. `Cargo.toml` and `.gitignore` carry other
-/// names in `template/` so that Cargo and Git leave the template alone.
+/// Every file of the template. `Cargo.toml`, `.gitignore` and
+/// `.cargo/config.toml` carry other names in `template/` so that Cargo and Git
+/// leave the template alone.
 pub const FILES: &[TemplateFile] = &[
     text!("Cargo.toml.tmpl" => "Cargo.toml"),
     text!("gitignore" => ".gitignore"),
+    text!("cargo/config.toml" => ".cargo/config.toml"),
     text!("README.md"),
     text!("build.rs"),
     text!("src/main.rs"),
