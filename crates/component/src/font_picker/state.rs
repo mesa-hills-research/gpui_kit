@@ -457,7 +457,7 @@ impl FontPickerState {
                 added: family.is_added(),
             })
             .collect();
-        let chosen = self.settings.family().clone();
+        let chosen = self.chosen_family_name();
         self.family_select.update(cx, |select, cx| {
             select.set_items(SearchableVec::new(items), window, cx);
             select.set_selected_value(&chosen, window, cx);
@@ -465,13 +465,18 @@ impl FontPickerState {
         });
     }
 
+    /// The chosen family's name as the catalog spells it, which the
+    /// settings may not match in case.
+    fn chosen_family_name(&self) -> SharedString {
+        self.family()
+            .map(|family| family.name().clone())
+            .unwrap_or_else(|| self.settings.family().clone())
+    }
+
     /// Select the chosen family's row in the list and scroll to it.
     fn sync_family_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let family = self.settings.family().clone();
-        let chosen = self
-            .family()
-            .map(|family| family.name().clone())
-            .unwrap_or_else(|| family.clone());
+        let chosen = self.chosen_family_name();
         self.family_select.update(cx, |select, cx| {
             if select.selected_value() != Some(&chosen) {
                 select.set_selected_value(&chosen, window, cx);

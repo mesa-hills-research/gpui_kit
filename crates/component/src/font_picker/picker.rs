@@ -130,7 +130,7 @@ impl Chosen {
         }
     }
 
-    /// Whether the user switched a feature away from the font's own choice.
+    /// How many features the user switched away from the font's own choice.
     fn changed_features(&self) -> usize {
         self.features
             .iter()
