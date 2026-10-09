@@ -40,9 +40,24 @@ class ContrastMath(unittest.TestCase):
 class KitReplay(unittest.TestCase):
     def test_key_tables_match_the_rust_sources(self):
         source = kit.keys_from_source()
+        self.assertEqual(source["theme"], kit.THEME_KEYS)
         self.assertEqual(source["colors"], kit.COLOR_KEYS)
+        self.assertEqual(source["color_aliases"], kit.COLOR_ALIASES)
         self.assertEqual(source["syntax"], kit.SYNTAX_KEYS)
+        self.assertEqual(source["syntax_aliases"], kit.SYNTAX_ALIASES)
         self.assertEqual(set(source["highlight"]), set(kit.HIGHLIGHT_KEYS))
+
+    def test_schema_lists_every_key_the_kit_reads(self):
+        source = kit.keys_from_source()
+        defs = json.loads(validate.SCHEMA_PATH.read_text())["$defs"]
+        props = lambda name: set(defs[name]["properties"])  # noqa: E731
+        self.assertEqual(props("ThemeConfig"), set(source["theme"]))
+        self.assertEqual(props("ThemeConfigColors"), set(source["colors"]) | set(source["color_aliases"]))
+        self.assertEqual(props("HighlightThemeStyle"), set(source["highlight"]))
+        self.assertEqual(props("SyntaxColors"), set(source["syntax"]) | set(source["syntax_aliases"]))
+        for name in ("ThemeConfigColors", "HighlightThemeStyle"):
+            for key, prop in defs[name]["properties"].items():
+                self.assertTrue(prop.get("description"), f"{name}.{key} has no description")
 
     def test_aliases_apply_unless_the_key_is_set(self):
         theme = {"name": "T", "mode": "light", "colors": {

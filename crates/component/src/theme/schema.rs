@@ -368,28 +368,28 @@ pub struct ThemeConfigColors {
     /// Button info hover background color, `info.background` at 30% opacity by default.
     #[serde(rename = "button.info.hover.background")]
     pub button_info_hover: Option<SharedString>,
-    /// Button primary background color, fallback to `primary`.
+    /// Button primary background color, fallback to `primary.background`.
     #[serde(rename = "button.primary.background")]
     pub button_primary: Option<SharedString>,
-    /// Button primary active background color, fallback to `primary_active`.
+    /// Button primary active background color, fallback to `primary.active.background`.
     #[serde(rename = "button.primary.active.background")]
     pub button_primary_active: Option<SharedString>,
-    /// Button primary text color, fallback to `primary_foreground`.
+    /// Button primary text color, fallback to `primary.foreground`.
     #[serde(rename = "button.primary.foreground")]
     pub button_primary_foreground: Option<SharedString>,
-    /// Button primary hover background color, fallback to `primary_hover`.
+    /// Button primary hover background color, fallback to `primary.hover.background`.
     #[serde(rename = "button.primary.hover.background")]
     pub button_primary_hover: Option<SharedString>,
-    /// Button secondary background color, fallback to `secondary`.
+    /// Button secondary background color, fallback to `secondary.background`.
     #[serde(rename = "button.secondary.background")]
     pub button_secondary: Option<SharedString>,
-    /// Button secondary active background color, fallback to `secondary_active`.
+    /// Button secondary active background color, fallback to `secondary.active.background`.
     #[serde(rename = "button.secondary.active.background")]
     pub button_secondary_active: Option<SharedString>,
-    /// Button secondary text color, fallback to `secondary_foreground`.
+    /// Button secondary text color, fallback to `secondary.foreground`.
     #[serde(rename = "button.secondary.foreground")]
     pub button_secondary_foreground: Option<SharedString>,
-    /// Button secondary hover background color, fallback to `secondary_hover`.
+    /// Button secondary hover background color, fallback to `secondary.hover.background`.
     #[serde(rename = "button.secondary.hover.background")]
     pub button_secondary_hover: Option<SharedString>,
     /// Button success background color, `success.background` at 20% opacity by default.
@@ -729,6 +729,7 @@ pub struct ThemeConfigColors {
     /// Base magenta color.
     #[serde(rename = "base.magenta")]
     magenta: Option<String>,
+    /// Base light magenta color.
     #[serde(rename = "base.magenta.light")]
     magenta_light: Option<String>,
     /// Base red color.

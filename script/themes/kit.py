@@ -558,7 +558,7 @@ def _struct_keys(source: str, struct: str) -> list[str]:
     keys, rename = [], None
     for line in m.group(1).splitlines():
         line = line.strip()
-        r = re.match(r'#\[serde\(rename = "([^"]+)"\)\]', line)
+        r = re.match(r'#\[serde\(.*\brename = "([^"]+)"', line)
         if r:
             rename = r.group(1)
             continue
@@ -573,12 +573,20 @@ def _struct_keys(source: str, struct: str) -> list[str]:
     return keys
 
 
-def keys_from_source() -> dict[str, list[str]]:
+def _aliases(source: str, const: str) -> dict[str, str]:
+    m = re.search(r"const " + const + r"\b[^=]*=\s*\[(.*?)\];", source, re.S)
+    return dict(re.findall(r'\(\s*"([^"]+)",\s*"([^"]+)",?\s*\)', m.group(1))) if m else {}
+
+
+def keys_from_source() -> dict:
     schema = (THEME_DIR / "schema.rs").read_text()
     registry = REGISTRY_RS.read_text()
     hl = _struct_keys(registry, "HighlightThemeStyle") + _struct_keys(registry, "StatusColors")
     return {
+        "theme": _struct_keys(schema, "ThemeConfig"),
         "colors": _struct_keys(schema, "ThemeConfigColors"),
+        "color_aliases": _aliases(schema, "COLOR_ALIASES"),
         "highlight": hl,
         "syntax": _struct_keys(registry, "SyntaxColors"),
+        "syntax_aliases": _aliases(schema, "SYNTAX_ALIASES"),
     }
