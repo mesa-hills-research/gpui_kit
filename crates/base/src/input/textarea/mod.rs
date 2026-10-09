@@ -8,13 +8,22 @@ use super::{InputBaseState, InputModeKind, TextareaExtras, TextareaMode};
 /// facilities such as languages, diagnostics, folding, and LSP do not exist on
 /// this type — those methods live on [`super::EditorState`]. What a textarea
 /// offers instead are suggestions from an application's provider (see
-/// [`super::SuggestionProvider`]) and a line-number gutter.
+/// [`super::SuggestionProvider`]), marks (see [`super::Mark`]) and a
+/// line-number gutter.
 pub type TextareaState = InputBaseState<TextareaMode>;
 
 impl InputModeKind for TextareaMode {
     const MULTI_LINE: bool = true;
 
     type Extras = TextareaExtras;
+
+    fn adjust_annotations(
+        state: &mut InputBaseState<Self>,
+        range: &std::ops::Range<usize>,
+        new_len: usize,
+    ) {
+        state.extras.marks.adjust_for_edit(range, new_len);
+    }
 
     fn did_edit(
         state: &mut InputBaseState<Self>,
@@ -92,6 +101,14 @@ impl crate::input::InputExtras for TextareaExtras {
 
     fn line_number(&self) -> bool {
         self.line_number
+    }
+
+    fn underlines(
+        &self,
+        range: &std::ops::Range<usize>,
+        style: &crate::input::InputEditorStyle,
+    ) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> {
+        self.marks.underlines(range, style)
     }
 }
 

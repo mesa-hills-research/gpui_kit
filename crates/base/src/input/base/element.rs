@@ -2282,15 +2282,19 @@ impl<M: InputModeKind> TextElement<M> {
                 ..
             } => (highlighter.borrow_mut(), diagnostics),
             _ => {
-                return (!state.masked)
-                    .then(|| {
-                        compose_decoration_collections(
-                            Vec::new(),
-                            state.extras.decoration_layers().into_iter(),
-                            visible_byte_range,
-                        )
-                    })
-                    .flatten();
+                if state.masked {
+                    return None;
+                }
+                let styles = compose_decoration_collections(
+                    Vec::new(),
+                    state.extras.decoration_layers().into_iter(),
+                    visible_byte_range.clone(),
+                )
+                .unwrap_or_default();
+                let underlines = state
+                    .extras
+                    .underlines(&visible_byte_range, &state.editor_style);
+                return compose_decorations(styles, underlines, visible_byte_range);
             }
         };
         let Some(highlighter) = highlighter.as_mut() else {

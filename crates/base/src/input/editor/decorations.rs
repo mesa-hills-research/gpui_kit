@@ -82,7 +82,7 @@ impl TextDecoration {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct DecorationCollectionId(usize);
+pub(super) struct DecorationCollectionId(usize);
 
 /// An independently managed collection of [`TextDecoration`]s.
 ///
@@ -220,6 +220,10 @@ impl RangeDecorationCollection {
 
 /// Both text styles and geometric decorations share normalization and edit affinity.
 pub(crate) trait TrackedDecoration {
+    /// Whether an edit that replaces all of the range removes it, instead of
+    /// stretching it over the replacement.
+    const DROP_WHEN_REPLACED: bool = false;
+
     fn range(&self) -> &Range<usize>;
     fn range_mut(&mut self) -> &mut Range<usize>;
 }
@@ -335,14 +339,14 @@ impl<T> Default for DecorationCollections<T> {
 }
 
 impl<T: TrackedDecoration> DecorationCollections<T> {
-    fn create(&mut self, decorations: Vec<T>) -> DecorationCollectionId {
+    pub(super) fn create(&mut self, decorations: Vec<T>) -> DecorationCollectionId {
         let id = DecorationCollectionId(self.next_id);
         self.next_id += 1;
         self.entries.insert(id, DecorationEntries::new(decorations));
         id
     }
 
-    fn set(&mut self, id: DecorationCollectionId, decorations: Vec<T>) -> bool {
+    pub(super) fn set(&mut self, id: DecorationCollectionId, decorations: Vec<T>) -> bool {
         let Some(current) = self.entries.get_mut(&id) else {
             return false;
         };
@@ -359,7 +363,7 @@ impl<T: TrackedDecoration> DecorationCollections<T> {
         true
     }
 
-    fn get(&self, id: DecorationCollectionId) -> Option<&[T]> {
+    pub(super) fn get(&self, id: DecorationCollectionId) -> Option<&[T]> {
         self.entries
             .get(&id)
             .map(|entry| entry.decorations.as_slice())
@@ -374,9 +378,13 @@ impl<T: TrackedDecoration> DecorationCollections<T> {
             let mut remap = Vec::with_capacity(len);
             let mut retained = 0;
             entry.decorations.retain_mut(|decoration| {
+                let replaced = T::DROP_WHEN_REPLACED
+                    && !edited_range.is_empty()
+                    && edited_range.start <= decoration.range().start
+                    && decoration.range().end <= edited_range.end;
                 *decoration.range_mut() =
                     adjust_range_for_edit(decoration.range(), edited_range, inserted_len);
-                let keep = !decoration.range().is_empty();
+                let keep = !replaced && !decoration.range().is_empty();
                 remap.push(if keep { retained } else { usize::MAX });
                 retained += usize::from(keep);
                 keep
@@ -427,7 +435,7 @@ impl<T: TrackedDecoration> DecorationCollections<T> {
     }
 }
 
-fn adjust_range_for_edit(
+pub(super) fn adjust_range_for_edit(
     range: &Range<usize>,
     edited_range: &Range<usize>,
     inserted_len: usize,
@@ -473,7 +481,7 @@ fn adjust_range_for_edit(
     start..end
 }
 
-fn normalize<T: TrackedDecoration>(text: &Rope, decorations: Vec<T>) -> Vec<T> {
+pub(super) fn normalize<T: TrackedDecoration>(text: &Rope, decorations: Vec<T>) -> Vec<T> {
     decorations
         .into_iter()
         .filter_map(|mut decoration| {

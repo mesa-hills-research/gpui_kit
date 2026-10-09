@@ -53,6 +53,8 @@ pub mod language_config;
 mod layout;
 #[path = "editor/lsp/mod.rs"]
 mod lsp;
+#[path = "textarea/marks.rs"]
+mod marks;
 #[path = "base/mask_pattern.rs"]
 mod mask_pattern;
 #[path = "base/mode.rs"]
@@ -117,6 +119,7 @@ pub use lsp::{
     ShowDocumentHandler,
 };
 pub use lsp_types::Position;
+pub use marks::{Mark, MarkCollection, MarkStyle};
 pub use mask_pattern::MaskPattern;
 #[cfg(target_os = "macos")]
 #[doc(hidden)]

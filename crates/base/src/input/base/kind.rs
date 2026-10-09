@@ -137,6 +137,16 @@ pub trait InputExtras: Default + 'static {
     fn line_number(&self) -> bool {
         false
     }
+
+    /// Underlines to paint within `range`, with their colours resolved
+    /// against the editor style.
+    fn underlines(
+        &self,
+        _range: &std::ops::Range<usize>,
+        _style: &crate::input::InputEditorStyle,
+    ) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> {
+        Vec::new()
+    }
 }
 
 /// A mode with nothing extra to render.
@@ -375,14 +385,15 @@ impl InputModeKind for InputMode {
 // and editor code, next to the features they dispatch to.
 
 /// What ordinary multi-line text adds on top of the shared engine:
-/// suggestions from an application's provider and an optional line-number
-/// gutter.
+/// suggestions from an application's provider, marks and an optional
+/// line-number gutter.
 ///
 /// A textarea that offers these stays a textarea: it keeps its own font and
 /// parses nothing, where [`EditorExtras`] carries a language's machinery.
 #[derive(Default)]
 pub struct TextareaExtras {
     pub(crate) suggestions: super::suggestions::Suggestions,
+    pub(crate) marks: super::marks::Marks,
     pub(crate) line_number: bool,
 }
 
