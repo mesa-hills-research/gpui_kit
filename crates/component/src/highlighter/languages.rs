@@ -371,15 +371,6 @@ impl Language {
     pub(super) fn config(&self) -> GrammarConfig {
         let (language, query, injection, locals) = match self {
             Self::Plain => return GrammarConfig::plain(self.name()),
-            // Mesquite has no grammar for these yet, so they show as plain text.
-            #[cfg(feature = "tree-sitter-astro")]
-            Self::Astro => return GrammarConfig::plain(self.name()),
-            #[cfg(feature = "tree-sitter-diff")]
-            Self::Diff => return GrammarConfig::plain(self.name()),
-            #[cfg(feature = "tree-sitter-graphql")]
-            Self::GraphQL => return GrammarConfig::plain(self.name()),
-            #[cfg(feature = "tree-sitter-jsdoc")]
-            Self::JsDoc => return GrammarConfig::plain(self.name()),
             Self::Json => (
                 tree_sitter_json::LANGUAGE,
                 include_str!("languages/json/highlights.scm"),
@@ -449,6 +440,13 @@ impl Language {
                 include_str!("languages/javascript/injections.scm"),
                 include_str!("languages/javascript/locals.scm"),
             ),
+            #[cfg(feature = "tree-sitter-jsdoc")]
+            Self::JsDoc => (
+                tree_sitter_jsdoc::LANGUAGE,
+                include_str!("languages/jsdoc/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-zig")]
             Self::Zig => (
                 tree_sitter_zig::LANGUAGE,
@@ -516,6 +514,8 @@ impl Language {
             ),
             #[cfg(feature = "tree-sitter-csharp")]
             Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
+            #[cfg(feature = "tree-sitter-graphql")]
+            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, "", "", ""),
             #[cfg(feature = "tree-sitter-proto")]
             Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
             #[cfg(feature = "tree-sitter-make")]
@@ -540,6 +540,13 @@ impl Language {
                 include_str!("languages/tsx/highlights.scm"),
                 "",
                 include_str!("languages/typescript/locals.scm"),
+            ),
+            #[cfg(feature = "tree-sitter-diff")]
+            Self::Diff => (
+                tree_sitter_diff::LANGUAGE,
+                include_str!("languages/diff/highlights.scm"),
+                "",
+                "",
             ),
             #[cfg(feature = "tree-sitter-elixir")]
             Self::Elixir => (
@@ -567,6 +574,13 @@ impl Language {
                 tree_sitter_php::LANGUAGE_PHP,
                 include_str!("languages/php/highlights.scm"),
                 include_str!("languages/php/injections.scm"),
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-astro")]
+            Self::Astro => (
+                tree_sitter_astro_next::LANGUAGE,
+                include_str!("languages/astro/highlights.scm"),
+                include_str!("languages/astro/injections.scm"),
                 "",
             ),
             #[cfg(feature = "tree-sitter-kotlin")]
