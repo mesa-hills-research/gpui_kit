@@ -590,7 +590,12 @@ impl RenderOnce for Input {
         state.ensure_highlighter_factory(crate::highlighter::input_highlighter_factory(), cx);
         state.set_editor_style(
             gpui_base::input::InputEditorStyle {
-                foreground: cx.theme().foreground,
+                // A code editor's text takes the theme's `editor.foreground`.
+                foreground: if state.presentation(cx).is_code_editor() {
+                    cx.theme().editor_foreground()
+                } else {
+                    cx.theme().foreground
+                },
                 muted_foreground: cx.theme().muted_foreground,
                 // The gutter and ghost lines paint over the text, so they take
                 // the background the frame shows, made opaque.
@@ -621,6 +626,12 @@ impl RenderOnce for Input {
                     .filter(|_| state.presentation(cx).is_code_editor()),
                 editor_gutter_background: cx.theme().highlight_theme.style.editor_gutter_background,
                 editor_gutter_border: Some(cx.theme().editor_gutter_border()),
+                editor_line_number: cx.theme().highlight_theme.style.editor_line_number,
+                editor_active_line_number: cx
+                    .theme()
+                    .highlight_theme
+                    .style
+                    .editor_active_line_number,
                 fold_icon_renderer: Some(Rc::new(|ix, is_folded| {
                     Button::new(("fold-icon", ix))
                         .ghost()
@@ -841,6 +852,9 @@ impl RenderOnce for Input {
             })
             .items_center()
             .gap(gap_x)
+            .when(presentation.is_code_editor(), |this| {
+                this.text_color(cx.theme().editor_foreground())
+            })
             .refine_style(&self.style)
             .when(
                 focused && self.appearance && self.bordered && self.focus_bordered,

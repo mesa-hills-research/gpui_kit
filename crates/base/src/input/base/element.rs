@@ -3131,10 +3131,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
             {
                 let line_no: SharedString =
                     displayed_line_number(buffer_line + 1).to_string().into();
+                let style = &state.editor_style;
                 let color = if current_row == Some(buffer_line) {
-                    state.editor_style.foreground
+                    style.editor_active_line_number.unwrap_or(style.foreground)
                 } else {
-                    state.editor_style.muted_foreground
+                    style.editor_line_number.unwrap_or(style.muted_foreground)
                 };
                 let runs = [run(line_no.len(), color)];
 

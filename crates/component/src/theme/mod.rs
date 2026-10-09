@@ -499,6 +499,16 @@ impl Theme {
             .unwrap_or_else(|| self.input_background())
     }
 
+    /// Text in a code editor: the theme's `editor.foreground`, or its
+    /// `foreground` color when that is unset.
+    #[inline]
+    pub(crate) fn editor_foreground(&self) -> Hsla {
+        self.highlight_theme
+            .style
+            .editor_foreground
+            .unwrap_or(self.foreground)
+    }
+
     /// The line between an editor's line numbers and its text: the theme's
     /// `editor.gutter.border`, or its `border` color when that is unset.
     #[inline]

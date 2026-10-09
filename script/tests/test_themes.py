@@ -44,6 +44,16 @@ class KitReplay(unittest.TestCase):
         self.assertEqual(source["syntax"], kit.SYNTAX_KEYS)
         self.assertEqual(set(source["highlight"]), set(kit.HIGHLIGHT_KEYS))
 
+    def test_editor_keys_are_checked(self):
+        theme = {"name": "T", "mode": "dark", "colors": {"foreground": "#FFFFFF", "muted.foreground": "#FFFFFF"},
+                 "highlight": {"editor.background": "#000000", "editor.foreground": "#333333",
+                               "editor.line_number": "#222222", "syntax": {}}}
+        results = {res.check.id: res for res in checks.evaluate(kit.resolve_theme(theme))}
+        self.assertFalse(results["editor.text"].ok)
+        self.assertFalse(results["editor.line_number"].ok)
+        # The active line's number falls back to the editor's text color.
+        self.assertEqual(results["editor.active_line_number"].fg_hex, "#333333")
+
     def test_missing_keys_fall_back_like_the_kit(self):
         theme = {"name": "T", "mode": "light", "colors": {"primary.background": "#0000FF", "background": "#FFFFFF"}}
         tokens = kit.resolve_theme(theme).tokens
