@@ -1064,7 +1064,28 @@ impl LineLayout {
             return;
         }
 
-        for (ix, line) in self.wrapped_lines.iter().enumerate() {
+        for ix in 0..self.wrapped_lines.len() {
+            self.paint_row_background(ix, pos, line_height, text_align, align_width, window, cx);
+        }
+    }
+
+    /// Paint the glyph background quads of the visual line `ix` alone. `pos` is the origin of
+    /// the whole line, as for [`Self::paint_background`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn paint_row_background(
+        &self,
+        ix: usize,
+        pos: Point<Pixels>,
+        line_height: Pixels,
+        text_align: TextAlign,
+        align_width: Option<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if !self.has_background {
+            return;
+        }
+        if let Some(line) = self.wrapped_lines.get(ix) {
             _ = line.paint_background(
                 pos + point(self.line_indent(ix), ix * line_height),
                 line_height,
@@ -1085,20 +1106,45 @@ impl LineLayout {
         window: &mut Window,
         cx: &mut App,
     ) {
-        for (ix, line) in self.wrapped_lines.iter().enumerate() {
-            _ = line.paint(
-                pos + point(self.line_indent(ix), ix * line_height),
-                line_height,
-                text_align,
-                align_width,
-                window,
-                cx,
-            );
+        for ix in 0..self.wrapped_lines.len() {
+            self.paint_row(ix, pos, line_height, text_align, align_width, window, cx);
         }
+    }
 
-        // Paint whitespace indicators
+    /// Paint the visual line `ix` alone, with its whitespace indicators. `pos` is the origin of
+    /// the whole line, as for [`Self::paint`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn paint_row(
+        &self,
+        ix: usize,
+        pos: Point<Pixels>,
+        line_height: Pixels,
+        text_align: TextAlign,
+        align_width: Option<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(line) = self.wrapped_lines.get(ix) else {
+            return;
+        };
+        _ = line.paint(
+            pos + point(self.line_indent(ix), ix * line_height),
+            line_height,
+            text_align,
+            align_width,
+            window,
+            cx,
+        );
+
+        // Paint whitespace indicators. They are recorded row by row.
         if let Some(indicators) = self.whitespace_indicators.as_ref() {
-            for (line_index, x_position, is_tab) in &self.whitespace_chars {
+            let first = self
+                .whitespace_chars
+                .partition_point(|(line_index, _, _)| *line_index < ix);
+            for (_, x_position, is_tab) in self.whitespace_chars[first..]
+                .iter()
+                .take_while(|(line_index, _, _)| *line_index == ix)
+            {
                 let invisible = if *is_tab {
                     indicators.tab.clone()
                 } else {
@@ -1106,8 +1152,8 @@ impl LineLayout {
                 };
 
                 let origin = point(
-                    pos.x + *x_position + self.line_indent(*line_index),
-                    pos.y + *line_index as f32 * line_height,
+                    pos.x + *x_position + self.line_indent(ix),
+                    pos.y + ix as f32 * line_height,
                 );
 
                 _ = invisible.paint(origin, line_height, text_align, align_width, window, cx);
