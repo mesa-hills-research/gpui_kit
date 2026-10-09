@@ -1,0 +1,44 @@
+# Midnight: a deep navy night sky with gold for the accent, starlight text, and moonlight blue,
+# aurora green and coral in the code.
+
+family = "Midnight"
+file = "midnight.json"
+
+[options]
+shadow = true
+primary_text = "dark"
+active_line = "accent"
+
+[[themes]]
+name = "Midnight"
+mode = "dark"
+background = "oklch(0.20 0.045 265)"
+sidebar = "oklch(0.175 0.04 265)"
+title_bar = "oklch(0.185 0.042 265)"
+tab_bar = "oklch(0.17 0.038 265)"
+popover = "oklch(0.25 0.05 265)"
+foreground = "oklch(0.93 0.015 250)"
+muted = "oklch(0.72 0.035 255)"
+accent = "oklch(0.83 0.13 85)"
+
+[themes.semantic]
+red = "oklch(0.72 0.15 22)"
+orange = "oklch(0.79 0.13 60)"
+yellow = "oklch(0.86 0.13 90)"
+green = "oklch(0.80 0.11 155)"
+cyan = "oklch(0.82 0.08 210)"
+blue = "oklch(0.76 0.10 255)"
+magenta = "oklch(0.78 0.10 305)"
+
+[themes.syntax]
+keyword = "oklch(0.82 0.12 82)"
+function = "oklch(0.82 0.08 235)"
+type = "oklch(0.84 0.06 205)"
+string = "oklch(0.82 0.10 155)"
+number = "oklch(0.76 0.11 30)"
+comment = "oklch(0.62 0.04 260)"
+property = "oklch(0.88 0.035 250)"
+attribute = "oklch(0.78 0.10 300)"
+escape = "oklch(0.76 0.11 30)"
+special = "oklch(0.78 0.10 300)"
+punctuation = "oklch(0.70 0.03 255)"

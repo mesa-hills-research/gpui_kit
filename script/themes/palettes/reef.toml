@@ -1,0 +1,80 @@
+# Reef: the ocean. Sunlit shallows in aqua and coral, or the deep sea in dark teal with
+# bioluminescent cyan, coral and jellyfish pink.
+
+family = "Reef"
+file = "reef.json"
+
+[options]
+shadow = true
+
+[[themes]]
+name = "Reef Light"
+mode = "light"
+background = "oklch(0.978 0.012 195)"
+sidebar = "oklch(0.948 0.026 192)"
+title_bar = "oklch(0.962 0.02 193)"
+tab_bar = "oklch(0.94 0.028 192)"
+popover = "oklch(0.99 0.006 195)"
+foreground = "oklch(0.28 0.05 230)"
+muted = "oklch(0.48 0.04 220)"
+accent = "oklch(0.60 0.16 35)"
+ring = "oklch(0.55 0.10 205)"
+link = "oklch(0.48 0.12 240)"
+primary_text = "light"
+
+[themes.semantic]
+red = "oklch(0.54 0.18 25)"
+orange = "oklch(0.62 0.15 50)"
+yellow = "oklch(0.72 0.13 88)"
+green = "oklch(0.52 0.11 160)"
+cyan = "oklch(0.55 0.10 205)"
+blue = "oklch(0.50 0.12 245)"
+magenta = "oklch(0.52 0.16 345)"
+
+[themes.syntax]
+keyword = "oklch(0.55 0.16 30)"
+function = "oklch(0.48 0.10 225)"
+type = "oklch(0.48 0.09 175)"
+string = "oklch(0.48 0.10 145)"
+number = "oklch(0.52 0.15 345)"
+comment = "oklch(0.56 0.03 210)"
+property = "oklch(0.40 0.06 230)"
+attribute = "oklch(0.50 0.12 300)"
+escape = "oklch(0.52 0.15 345)"
+special = "oklch(0.55 0.16 30)"
+punctuation = "oklch(0.48 0.03 220)"
+
+[[themes]]
+name = "Reef Dark"
+mode = "dark"
+background = "oklch(0.19 0.035 220)"
+sidebar = "oklch(0.165 0.03 222)"
+title_bar = "oklch(0.175 0.032 221)"
+tab_bar = "oklch(0.16 0.03 222)"
+popover = "oklch(0.24 0.04 220)"
+foreground = "oklch(0.93 0.025 200)"
+muted = "oklch(0.72 0.04 210)"
+accent = "oklch(0.82 0.13 195)"
+primary_text = "dark"
+
+[themes.semantic]
+red = "oklch(0.72 0.15 25)"
+orange = "oklch(0.78 0.13 50)"
+yellow = "oklch(0.88 0.11 90)"
+green = "oklch(0.84 0.12 165)"
+cyan = "oklch(0.84 0.11 195)"
+blue = "oklch(0.76 0.10 245)"
+magenta = "oklch(0.78 0.13 345)"
+
+[themes.syntax]
+keyword = "oklch(0.74 0.14 30)"
+function = "oklch(0.85 0.12 195)"
+type = "oklch(0.84 0.12 165)"
+string = "oklch(0.88 0.07 85)"
+number = "oklch(0.78 0.13 345)"
+comment = "oklch(0.62 0.04 215)"
+property = "oklch(0.87 0.05 205)"
+attribute = "oklch(0.76 0.12 300)"
+escape = "oklch(0.78 0.13 345)"
+special = "oklch(0.74 0.14 30)"
+punctuation = "oklch(0.70 0.04 210)"

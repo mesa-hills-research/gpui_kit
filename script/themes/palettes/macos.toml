@@ -1,6 +1,5 @@
-# macOS: neutral greys, the system accent on buttons, selection, focus rings and the caret,
-# quiet separators, and an Xcode-flavoured syntax palette. One light and one dark theme per
-# system accent color, with blue as the default.
+# macOS: neutral greys, the system blue on buttons, selection, focus rings and the caret,
+# quiet separators, and an Xcode-flavoured syntax palette.
 
 family = "macOS"
 file = "macos.json"
@@ -12,7 +11,6 @@ primary_text = "light"
 
 [[themes]]
 name = "macOS Light"
-accent_name = "macOS {accent} Light"
 mode = "light"
 background = "#FFFFFF"
 foreground = "#1D1D1F"
@@ -64,7 +62,6 @@ punctuation = "#4E4E52"
 
 [[themes]]
 name = "macOS Dark"
-accent_name = "macOS {accent} Dark"
 mode = "dark"
 background = "#1E1E1E"
 foreground = "#DFDFE0"
@@ -114,40 +111,3 @@ escape = "#D0BF69"
 special = "#FC5FA3"
 title = "#5DD8FF"
 punctuation = "#B4B4B8"
-
-[[accents]]
-name = "Purple"
-light = "#953D96"
-dark = "#A550A7"
-
-[[accents]]
-name = "Pink"
-light = "#E8458F"
-dark = "#F7609F"
-
-[[accents]]
-name = "Red"
-light = "#E0383E"
-dark = "#FF5257"
-
-[[accents]]
-name = "Orange"
-light = "#F7821B"
-dark = "#F7821B"
-
-[[accents]]
-name = "Yellow"
-light = "#FCB827"
-dark = "#FFC600"
-light_overrides = { primary_text = "dark" }
-dark_overrides = { primary_text = "dark" }
-
-[[accents]]
-name = "Green"
-light = "#62BA46"
-dark = "#62BA46"
-
-[[accents]]
-name = "Graphite"
-light = "#8C8C8C"
-dark = "#8C8C8C"

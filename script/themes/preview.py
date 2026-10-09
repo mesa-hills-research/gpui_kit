@@ -71,6 +71,119 @@ def syntax_style(theme: dict, name: str) -> dict:
         name = name.split(".")[0]
 
 
+GROUP_ORDER = [
+    "Text", "Window", "Sidebar", "Menus", "Lists and tables", "Tabs", "Inputs", "Buttons",
+    "Status colors", "Focus and accent", "Charts", "Controls and borders", "Editor", "Syntax",
+]
+
+BUTTON_NAMES = {"": "Default", "primary": "Primary", "secondary": "Secondary", "danger": "Danger",
+                "success": "Success", "warning": "Warning", "info": "Info"}
+
+
+def describe(check: checks.Check) -> tuple[str, str]:
+    """The UI element a check belongs to, and a plain description of what it measures."""
+    i = check.id
+    if i.startswith("button."):
+        parts = i.split(".")[1:]
+        variant = parts[0] if parts[0] in BUTTON_NAMES and parts[0] else ""
+        rest = parts[1:] if variant else parts
+        name = BUTTON_NAMES[variant] + " button"
+        if rest and rest[0] == "ghost":
+            return "Buttons", "Ghost button, hover: text on its fill"
+        state = rest[0] if rest and rest[0] in ("hover", "active") else ""
+        state_name = {"hover": "hover", "active": "pressed"}.get(state, "")
+        if rest and rest[-1] == "fill":
+            return "Buttons", f"{name}: hover fill against the resting fill"
+        return "Buttons", f"{name}{', ' + state_name if state_name else ''}: text on its fill"
+    if i.startswith("syntax."):
+        return "Syntax", check.label.replace("Syntax: ", "Syntax on the editor background: ")
+    if i.startswith(("editor.", "diagnostic.")):
+        return "Editor", check.label
+    if i.startswith("sidebar"):
+        return "Sidebar", check.label
+    if i.startswith(("popover", "menu.")):
+        return "Menus", check.label
+    if i.startswith(("list", "table")):
+        return ("Focus and accent" if i == "table.active.border" else "Lists and tables"), check.label
+    if i.startswith("tab"):
+        return "Tabs", check.label
+    if i.startswith(("input.placeholder", "ring.input")) or i == "input":
+        return "Inputs", check.label
+    if i in ("title_bar", "status_bar", "title_bar.border"):
+        return "Window", check.label
+    if i.startswith(("danger.", "success.", "warning.", "info.", "base.")) or i == "primary.fill":
+        return "Status colors", check.label
+    if i in ("ring", "primary.ui"):
+        return "Focus and accent", check.label
+    if i.startswith("chart."):
+        return "Charts", check.label
+    if i in ("input.border", "scrollbar", "switch", "border", "sidebar.border", "table.row.border"):
+        return "Controls and borders", check.label
+    return "Text", check.label
+
+
+def _key_for(ref: str, r: kit.Resolved):
+    """The theme key a check reference reads: ("colors" | "highlight" | "syntax", key)."""
+    if ref.startswith("fg:"):
+        return ("colors", ref[3:])
+    if ref.startswith("syn:"):
+        return ("syntax", ref[4:])
+    if ref.startswith("@"):
+        name = ref[1:]
+        table = {
+            "editor_bg": ("highlight", "editor.background"),
+            "active_line": ("highlight", "editor.active_line.background"),
+            "gutter": ("highlight", "editor.gutter.background"),
+            "gutter_border": ("highlight", "editor.gutter.border"),
+            "selection": ("colors", "selection.background"), "search": ("colors", "selection.background"),
+            "invisible": ("highlight", "editor.invisible"),
+            "ghost_hover": ("colors", "accent.background"),
+        }
+        if name in table:
+            return table[name]
+        if name == "input_bg":
+            return ("colors", "input.border" if r.mode == "dark" else "background")
+        if name.startswith("alert:"):
+            return ("colors", name[6:] + ".background")
+        if name.startswith("status:"):
+            return ("highlight", name[7:])
+        return None
+    return ("colors", ref)
+
+
+def _sets(theme: dict, where: tuple) -> bool:
+    kind, key = where
+    hl = theme.get("highlight")
+    if kind == "colors":
+        value = (theme.get("colors") or {}).get(key)
+        if not isinstance(value, str):
+            return False
+        try:
+            kit.parse_token(value)
+            return True
+        except ValueError:
+            return False
+    if kind == "highlight":
+        return bool(hl) and isinstance(hl.get(key), str)
+    # A syntax color always comes from the theme's own syntax map unless it has no highlight section.
+    return bool(hl)
+
+
+def from_kit_default(check: checks.Check, theme: dict, r: kit.Resolved) -> bool:
+    """True when the failing pair uses a kit fallback for a key the theme leaves unset."""
+    for stack in (check.fg, check.bg):
+        refs = list(stack)
+        while refs:
+            ref = refs.pop()
+            if ref == "@gutter" and not _sets(theme, ("highlight", "editor.gutter.background")):
+                continue  # an unset gutter paints nothing, so the layer below decides
+            where = _key_for(ref, r)
+            if where and not _sets(theme, where):
+                return True
+            break
+    return False
+
+
 def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
     r = kit.resolve_theme(theme)
     t, hl = r.tokens, r.highlight
@@ -92,12 +205,15 @@ def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
                 }
     results = checks.evaluate(r)
     summary = checks.summarize(results)
-    fails = [
-        {"l": res.check.level, "r": round(res.ratio, 2), "m": res.minimum, "fg": res.fg_hex, "bg": res.bg_hex,
-         "t": res.check.label}
-        for res in sorted(results, key=lambda x: (checks.LEVEL_ORDER.index(x.check.level), x.ratio))
-        if not res.ok
-    ]
+    fails = []
+    for res in sorted(results, key=lambda x: (GROUP_ORDER.index(describe(x.check)[0]), x.ratio)):
+        if res.ok:
+            continue
+        group, label = describe(res.check)
+        fails.append({
+            "g": group, "t": label, "r": round(res.ratio, 3), "m": res.minimum,
+            "fg": res.fg_hex, "bg": res.bg_hex, "k": from_kit_default(res.check, theme, r),
+        })
     v = {
         "bg": bg_css(t["background"]), "fg": css(fg), "muted": css(t["muted.foreground"].color),
         "border": css(t["border"].color),
@@ -157,10 +273,13 @@ def render(themes: list[dict]) -> str:
     new_fail = sum(1 for t in themes if t["new"] and t["fails"])
     old = [t for t in themes if not t["new"]]
     old_fail = sum(1 for t in old if t["fails"])
-    intro = (
-        f"{n_new} new themes ({'all passing' if not new_fail else f'{new_fail} failing'}) and "
-        f"{len(old)} existing ones ({old_fail} with failing checks)."
-    )
+    issues = sum(len(t["fails"]) for t in old)
+    kit_issues = sum(1 for t in old for f in t["fails"] if f["k"])
+    new_part = (f"{n_new} new themes, all passing every check." if not new_fail
+                else f"{n_new} new themes, {new_fail} with contrast issues.")
+    old_part = (f" {len(old)} existing themes, {old_fail} with contrast issues "
+                f"({issues} in all, {kit_issues} of them from kit defaults)." if old else "")
+    intro = new_part + old_part
     return TEMPLATE.replace("/*DATA*/", payload.replace("</", "<\\/")).replace("{{INTRO}}", html.escape(intro))
 
 
@@ -221,15 +340,23 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
 .head .meta { color: var(--ink-2); font-size: 12px; }
 .head .tag { margin-left: auto; font-size: 12px; font-weight: 600; }
 .ok { color: var(--ok); } .bad { color: var(--bad); }
-.sum { padding: 8px 12px 12px; font-size: 12px; color: var(--ink-2); }
-.sum .lv { display: inline-block; margin-right: 10px; white-space: nowrap; }
-.sum details { margin-top: 6px; }
-.sum summary { cursor: pointer; color: var(--ink); }
-.sum ul { margin: 6px 0 0; padding: 0; list-style: none; max-height: 220px; overflow: auto; }
-.sum li { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
-.sw { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 18px; border-radius: 4px;
-  font: 600 11px/1 ui-monospace, Menlo, monospace; border: 1px solid var(--line); flex: none; }
-.sum li .why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum { padding: 10px 12px 12px; font-size: 13px; color: var(--ink-2); }
+.sum .pass { margin: 0; color: var(--ok); }
+.sum summary { cursor: pointer; color: var(--ink); font-weight: 600; padding: 4px 0; min-height: 28px; }
+.sum .legend { margin: 6px 0 4px; font-size: 12px; }
+.sum h3 { font-size: 12px; margin: 10px 0 2px; color: var(--ink); text-transform: uppercase; letter-spacing: .04em; }
+.sum ul { margin: 0; padding: 0; list-style: none; }
+.sum li { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "sw what num" "sw what src";
+  column-gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); }
+.sw { grid-area: sw; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 26px; border-radius: 5px;
+  font: 600 13px/1 ui-monospace, Menlo, monospace; border: 1px solid var(--line); }
+.sum .what { grid-area: what; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.sum .hex { display: block; color: var(--ink-2); font: 11px/1.4 ui-monospace, Menlo, monospace; }
+.sum .hex i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--line); margin: 0 3px 0 0; vertical-align: -1px; }
+.sum .num { grid-area: num; text-align: right; white-space: nowrap; }
+.src { grid-area: src; justify-self: end; font-size: 11px; padding: 1px 6px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); }
+.src.kit { color: var(--ink-2); border-style: dashed; }
+.src.theme { color: var(--bad); border-color: currentColor; }
 
 /* The mock app. Every color comes from the theme. */
 .app { position: relative; display: grid; grid-template-rows: 30px 1fr 22px; height: 360px;
@@ -293,7 +420,7 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
 <body>
 <header>
   <h1>Theme preview</h1>
-  <p>{{INTRO}} Each card is drawn from the colors the kit resolves for the theme, with its contrast checks below.</p>
+  <p>{{INTRO}} Each card is drawn from the colors the kit resolves for the theme. Tap a card's contrast line to see each issue.</p>
   <div class="filters" role="toolbar" aria-label="Filter themes">
     <button data-f="set" data-v="all" aria-pressed="true">All</button>
     <button data-f="set" data-v="new" aria-pressed="false">New</button>
@@ -326,15 +453,36 @@ function codeLine(theme, i) {
   const cur = i === D.active ? " cur" : "";
   return `<div class="ln${cur}"><span class="gut">${i + 1}</span><span>${out || " "}</span></div>`;
 }
+// Two decimals, or three when two would round a failing ratio up to its minimum.
+const ratio = f => parseFloat(f.r.toFixed(2)) >= f.m ? f.r.toFixed(3) : f.r.toFixed(2);
 function card(t) {
   const vars = Object.entries(t.v).filter(([k]) => k !== "shadow").map(([k, v]) => `--${k}:${v}`).join(";");
   const lines = D.code.map((_, i) => codeLine(t, i)).join("");
-  const levels = Object.entries(t.summary).map(([lv, s]) =>
-    `<span class="lv ${s.failed ? "bad" : ""}">${lv} ${s.checks - s.failed}/${s.checks}</span>`).join("");
-  const fails = t.fails.length ? `<details><summary>${t.fails.length} failing check${t.fails.length > 1 ? "s" : ""}</summary><ul>${
-    t.fails.map(f => `<li><span class="sw" style="background:${f.bg};color:${f.fg}">Aa</span><b>${f.r.toFixed(2)}</b>
-      <span>/ ${f.m}</span><span class="why">${esc(f.l)} · ${esc(f.t)}</span></li>`).join("")}</ul></details>` : "";
-  const tag = t.fails.length ? `<span class="tag bad">${t.fails.length} failing</span>` : `<span class="tag ok">All checks pass</span>`;
+  const total = Object.values(t.summary).reduce((a, s) => a + s.checks, 0);
+  const n = t.fails.length, kitN = t.fails.filter(f => f.k).length;
+  const plural = n === 1 ? "issue" : "issues";
+  const headline = n === 0 ? `No contrast issues in ${total} checks`
+    : `${n} contrast ${plural}` + (kitN === n ? ", all from kit defaults" : kitN ? `, ${kitN} from kit defaults` : "");
+  let body = "";
+  if (n) {
+    const groups = [];
+    for (const f of t.fails) {
+      let g = groups.find(x => x.name === f.g);
+      if (!g) { g = { name: f.g, items: [] }; groups.push(g); }
+      g.items.push(f);
+    }
+    body = `<p class="legend"><span class="src theme">theme</span> a color the theme sets ·
+      <span class="src kit">kit default</span> the kit's fallback for a key the theme leaves out</p>` +
+      groups.map(g => `<h3>${esc(g.name)}</h3><ul>${g.items.map(f => `<li>
+        <span class="sw" style="background:${f.bg};color:${f.fg}">Aa</span>
+        <span class="what">${esc(f.t)}<span class="hex"><i style="background:${f.fg}"></i>${f.fg}
+          on <i style="background:${f.bg}"></i>${f.bg}</span></span>
+        <span class="num"><b>${ratio(f)}</b> of ${f.m}</span>
+        <span class="src ${f.k ? "kit" : "theme"}">${f.k ? "kit default" : "theme"}</span></li>`).join("")}</ul>`).join("");
+  }
+  const fails = n ? `<details><summary>${esc(headline)}</summary>${body}</details>`
+    : `<p class="pass">${esc(headline)}</p>`;
+  const tag = n ? `<span class="tag bad">${n} contrast ${plural}</span>` : `<span class="tag ok">All checks pass</span>`;
   return `<section class="card" data-new="${t.new}" data-mode="${t.mode}">
   <div class="head"><h2>${esc(t.name)}</h2><span class="meta">${esc(t.file)} · ${t.mode}${t.new ? " · new" : ""}</span>${tag}</div>
   <div class="app${t.v.shadow ? " shadow" : ""}" style="${vars}">
@@ -361,7 +509,7 @@ function card(t) {
     <div class="pop"><div><span>Cut</span><span>⌘X</span></div><div class="h"><span>Copy</span><span>⌘C</span></div>
       <div><span>Paste</span><span>⌘V</span></div><hr><div><span>Rename…</span><span>F2</span></div></div>
   </div>
-  <div class="sum">${levels}${fails}</div>
+  <div class="sum">${fails}</div>
 </section>`;
 }
 const grid = document.getElementById("grid");

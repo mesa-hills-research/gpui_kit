@@ -139,8 +139,35 @@ foreground moves only when nothing else can, and only the colors that fail move 
 `preview` writes one self-contained HTML page with a small mock app for each theme: title
 bar, sidebar with active and hovered rows, tabs, an editor with line numbers, syntax colors,
 a selection and search matches, buttons, inputs, a menu and a status bar, each drawn from the
-colors the kit resolves. Every card lists its contrast results. Filters at the top switch
-between new and existing themes and between light and dark.
+colors the kit resolves. Under each card a line counts the theme's contrast issues and opens
+into a list grouped by part of the interface, with both colors, the ratio and the minimum.
+Each issue is marked as coming from a color the theme sets or from the kit's fallback for a
+key the theme leaves out. Filters at the top switch between generated and other themes and
+between light and dark.
+
+## Generated themes
+
+| File | Themes | Character |
+| --- | --- | --- |
+| `macos.json` | macOS Light, macOS Dark | Neutral greys, the system blue, Xcode-style code colors |
+| `ember.json` | Ember Light, Ember Dark | Ivory or charcoal lit by a glowing orange |
+| `glacier.json` | Glacier Light, Glacier Dark | Frost and blue slate with an ice-cyan accent |
+| `beacon.json` | Beacon Light, Beacon Dark | High contrast, with text at 7:1 |
+| `sorbet.json` | Sorbet Light, Sorbet Dark | Soft pastels on lavender cream or plum grey |
+| `mesa.json` | Mesa Light, Mesa Dark | High desert sand, terracotta and sage |
+| `prism.json` | Prism Light, Prism Dark | Vivid, fully saturated colors |
+| `lantern.json` | Lantern Light, Lantern Dark | Evening amber with almost no blue light |
+| `folio.json` | Folio Light, Folio Dark | Paper and ink for reading and writing |
+| `fern.json` | Fern Light, Fern Dark | Calm woodland greens |
+| `radar.json` | Radar Green, Radar Amber | A phosphor screen in a dark room |
+| `kiln.json` | Kiln Light, Kiln Dark | Warm charcoal or ivory with a fired-clay accent |
+| `holly.json` | Holly Light, Holly Dark | Christmas: cranberry, pine, gold and snow |
+| `haunt.json` | Haunt | Halloween night: pumpkin and witch violet on violet-black |
+| `onyx.json` | Onyx | True black for OLED screens, with soft text and a mint accent |
+| `midnight.json` | Midnight | Deep navy night sky with a gold accent |
+| `ash.json` | Ash | A dim dark grey for people who find dark themes too dark |
+| `reef.json` | Reef Light, Reef Dark | Sunlit aqua shallows or the deep sea |
+| `gazette.json` | Gazette | Newsprint: black ink, headline red, little else |
 
 ## Tests
 

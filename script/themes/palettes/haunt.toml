@@ -1,0 +1,44 @@
+# Haunt: Halloween night. Pumpkin orange on violet-black, with witch violet, poison green,
+# candy corn and blood red in the code.
+
+family = "Haunt"
+file = "haunt.json"
+
+[options]
+shadow = true
+primary_text = "dark"
+
+[[themes]]
+name = "Haunt"
+mode = "dark"
+background = "oklch(0.165 0.018 320)"
+sidebar = "oklch(0.2 0.035 305)"
+title_bar = "oklch(0.185 0.03 305)"
+tab_bar = "oklch(0.155 0.016 320)"
+popover = "oklch(0.235 0.04 305)"
+foreground = "oklch(0.92 0.02 90)"
+muted = "oklch(0.70 0.03 300)"
+accent = "oklch(0.72 0.17 50)"
+
+[themes.semantic]
+red = "oklch(0.68 0.19 22)"
+orange = "oklch(0.75 0.16 52)"
+yellow = "oklch(0.87 0.14 92)"
+green = "oklch(0.84 0.17 128)"
+cyan = "oklch(0.80 0.10 190)"
+blue = "oklch(0.74 0.11 270)"
+magenta = "oklch(0.74 0.15 305)"
+
+[themes.syntax]
+keyword = "oklch(0.75 0.16 52)"
+function = "oklch(0.74 0.15 305)"
+type = "oklch(0.84 0.17 128)"
+string = "oklch(0.87 0.09 80)"
+number = "oklch(0.68 0.18 22)"
+comment = "oklch(0.64 0.03 300)"
+property = "oklch(0.88 0.03 90)"
+attribute = "oklch(0.78 0.12 335)"
+escape = "oklch(0.84 0.17 128)"
+special = "oklch(0.68 0.18 22)"
+operator = "oklch(0.80 0.10 52)"
+punctuation = "oklch(0.68 0.03 300)"

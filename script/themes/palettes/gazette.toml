@@ -1,0 +1,51 @@
+# Gazette: newsprint. Near-black ink on grey-beige paper, a headline red for the accent and for
+# strings, bold keywords and italic comments, and little other color.
+
+family = "Gazette"
+file = "gazette.json"
+
+[options]
+shadow = false
+primary_text = "light"
+
+[options.styles]
+keyword = { font_weight = 700 }
+comment = { font_style = "italic" }
+
+[[themes]]
+name = "Gazette"
+mode = "light"
+background = "oklch(0.95 0.008 90)"
+sidebar = "oklch(0.925 0.008 90)"
+title_bar = "oklch(0.94 0.008 90)"
+tab_bar = "oklch(0.92 0.008 90)"
+popover = "oklch(0.97 0.006 90)"
+control = "oklch(0.975 0.005 90)"
+foreground = "oklch(0.18 0 0)"
+muted = "oklch(0.45 0 0)"
+accent = "oklch(0.52 0.19 27)"
+link = "oklch(0.42 0.08 255)"
+
+[themes.semantic]
+red = "oklch(0.50 0.19 27)"
+orange = "oklch(0.56 0.13 55)"
+yellow = "oklch(0.66 0.12 85)"
+green = "oklch(0.48 0.09 150)"
+cyan = "oklch(0.50 0.06 210)"
+blue = "oklch(0.45 0.08 255)"
+magenta = "oklch(0.48 0.12 330)"
+
+[themes.syntax]
+keyword = "oklch(0.18 0 0)"
+function = "oklch(0.42 0.07 255)"
+type = "oklch(0.40 0.04 60)"
+string = "oklch(0.48 0.17 27)"
+number = "oklch(0.46 0.10 50)"
+comment = "oklch(0.50 0 0)"
+property = "oklch(0.32 0 0)"
+attribute = "oklch(0.44 0.05 255)"
+escape = "oklch(0.46 0.10 50)"
+special = "oklch(0.48 0.17 27)"
+operator = "oklch(0.18 0 0)"
+punctuation = "oklch(0.40 0 0)"
+title = "oklch(0.18 0 0)"
