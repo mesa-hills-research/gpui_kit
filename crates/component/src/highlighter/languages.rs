@@ -515,7 +515,12 @@ impl Language {
             #[cfg(feature = "tree-sitter-csharp")]
             Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
             #[cfg(feature = "tree-sitter-graphql")]
-            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, "", "", ""),
+            Self::GraphQL => (
+                tree_sitter_graphql::LANGUAGE,
+                include_str!("languages/graphql/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-proto")]
             Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
             #[cfg(feature = "tree-sitter-make")]
@@ -705,5 +710,111 @@ mod tests {
             })
             .collect();
         assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-graphql")]
+    fn test_graphql_highlights() {
+        let source = r#"query Hero($episode: Episode = JEDI) @cached {
+  hero(episode: $episode) {
+    name
+    ...HeroFields
+  }
+}
+
+"The hero type."
+type Character implements Node {
+  friends(first: Int = 10): [Character!]!
+}
+"#;
+        assert_highlights(
+            "graphql",
+            source,
+            &[
+                ("query", "keyword"),
+                ("Hero", "function"),
+                ("$episode", "variable.parameter"),
+                ("Episode", "type"),
+                ("JEDI", "constant"),
+                ("cached", "attribute"),
+                ("hero", "property"),
+                ("HeroFields", "function"),
+                ("\"The hero type.\"", "comment.doc"),
+                ("implements", "keyword"),
+                ("Character", "type"),
+                ("friends", "property"),
+                ("first", "variable.parameter"),
+                ("10", "number"),
+            ],
+        );
+    }
+
+    /// Highlights `source` and asserts that each `(text, capture)` pair renders
+    /// with that capture, using a theme that styles every highlight name.
+    #[cfg(any(
+        feature = "tree-sitter-cmake",
+        feature = "tree-sitter-csharp",
+        feature = "tree-sitter-graphql",
+        feature = "tree-sitter-proto",
+        feature = "tree-sitter-swift",
+    ))]
+    #[track_caller]
+    fn assert_highlights(language: &str, source: &str, expected: &[(&str, &str)]) {
+        use crate::highlighter::{SyntaxHighlighter, registry::HIGHLIGHT_NAMES};
+        use std::sync::Mutex;
+
+        /// Gives each capture name its own hue, so the rendered style tells which
+        /// capture won. Names without a theme key stay unstyled, as in a real theme.
+        #[derive(Default)]
+        struct CaptureColors(Mutex<Vec<String>>);
+
+        impl gpui_base::input::HighlightStyleResolver for CaptureColors {
+            fn style(&self, name: &str) -> Option<gpui::HighlightStyle> {
+                let prefix = name.split('.').next().unwrap_or(name);
+                if !HIGHLIGHT_NAMES.contains(&name) && !HIGHLIGHT_NAMES.contains(&prefix) {
+                    return None;
+                }
+                let mut names = self.0.lock().unwrap();
+                let index = match names.iter().position(|n| n == name) {
+                    Some(index) => index,
+                    None => {
+                        names.push(name.to_string());
+                        names.len() - 1
+                    }
+                };
+                Some(gpui::HighlightStyle {
+                    color: Some(gpui::hsla(index as f32 / 1000., 1., 0.5, 1.)),
+                    ..Default::default()
+                })
+            }
+        }
+
+        let rope = ropey::Rope::from_str(source);
+        let mut highlighter = SyntaxHighlighter::new(language);
+        highlighter.update(None, &rope, None);
+        let colors = CaptureColors::default();
+        let styles = highlighter.styles(&(0..source.len()), &colors);
+        let names = colors.0.into_inner().unwrap();
+
+        for (text, capture) in expected {
+            let start = source
+                .find(text)
+                .unwrap_or_else(|| panic!("{text:?} is not in the {language} source"));
+            let range = start..start + text.len();
+            let rendered: Vec<&str> = styles
+                .iter()
+                .filter(|(style_range, _)| {
+                    style_range.start < range.end && range.start < style_range.end
+                })
+                .map(|(_, style)| match style.color {
+                    Some(color) => names[(color.h * 1000.).round() as usize].as_str(),
+                    None => "(none)",
+                })
+                .collect();
+            assert!(
+                !rendered.is_empty() && rendered.iter().all(|name| name == capture),
+                "{language}: {text:?} renders as {rendered:?}, expected {capture:?}"
+            );
+        }
     }
 }

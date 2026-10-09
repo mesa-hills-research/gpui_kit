@@ -1,10 +1,15 @@
 Highlight queries from tree-sitter grammars
 
-The query files listed below come from the grammar repositories named with them,
-at the versions given. Each is distributed under
-the MIT License, except tree-sitter-astro-next and tree-sitter-elixir, which are
+The query files listed below come from the projects named with them, at the
+versions given. Files marked "adapted" were changed to use this kit's highlight
+names. Each project is distributed under the MIT License, except
+nvim-treesitter, tree-sitter-astro-next and tree-sitter-elixir, which are
 under the Apache License 2.0 (its text is in LICENSE-APACHE at the root of this
 repository). The MIT License text follows the list.
+
+nvim-treesitter (https://github.com/nvim-treesitter/nvim-treesitter, commit e289100), Apache-2.0
+  graphql/highlights.scm, adapted
+  The LICENSE names no copyright holder. The authors are the nvim-treesitter contributors.
 
 tree-sitter-astro-next 0.1.1 (https://github.com/PRRPCHT/tree-sitter-astro-next), Apache-2.0
   astro/highlights.scm, astro/injections.scm
