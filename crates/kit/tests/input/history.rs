@@ -1,12 +1,12 @@
 use gpui_kit::{
     AppContext, ClipboardItem, Context, Entity, TestAppContext, Window, WindowHandle,
-    component::input::{Input, InputEvent, InputState},
+    component::input::{Input, InputEvent, InputState, KeymapPlatform},
     div,
     prelude::*,
     test::TestWindowExt,
 };
 
-use crate::common;
+use crate::{common, platform};
 
 #[cfg(target_os = "macos")]
 const UNDO: &str = "cmd-z";
@@ -40,7 +40,15 @@ impl Render for HistoryInputs {
 }
 
 fn inputs(cx: &mut TestAppContext) -> (WindowHandle<gpui_kit::base::Root>, Entity<HistoryInputs>) {
-    cx.update(gpui_kit::init);
+    inputs_on(KeymapPlatform::current(), cx)
+}
+
+/// The inputs, with the text keymaps of `platform`.
+fn inputs_on(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+) -> (WindowHandle<gpui_kit::base::Root>, Entity<HistoryInputs>) {
+    platform::init(platform, cx);
     common::open_window(cx, None, |window, cx| {
         cx.new(|cx| HistoryInputs {
             text: cx.new(|cx| InputState::new(window, cx)),
@@ -320,82 +328,86 @@ fn unicode_selection_deletion_restores_text_and_active_end_on_undo(cx: &mut Test
 
 #[gpui_kit::test]
 fn cut_then_paste_replacement_restore_each_selection_and_clipboard(cx: &mut TestAppContext) {
-    let (handle, content) = inputs(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click("text", cx);
-        window.input("abcDEF", cx);
-        for _ in 0..3 {
-            window.press("shift-left", cx);
-        }
-        window.press("secondary-x", cx);
-        assert_eq!(window.find("text").value(), Some("abc"));
-        window.press("home", cx);
-        window.press("shift-right", cx);
-        window.press("shift-right", cx);
-        window.press(PASTE, cx);
-        assert_eq!(window.find("text").value(), Some("DEFc"));
-        window.press(UNDO, cx);
-        assert_eq!(window.find("text").value(), Some("abc"));
-        let state = content.read(cx).text.read(cx);
-        assert_eq!(state.selected_range(), 0..2);
-        assert_eq!(state.cursor(), 2);
-        window.press(UNDO, cx);
-        assert_eq!(window.find("text").value(), Some("abcDEF"));
-        let state = content.read(cx).text.read(cx);
-        assert_eq!(state.selected_range(), 3..6);
-        assert_eq!(state.cursor(), 3);
-        for (value, cursor) in [("abc", 3), ("DEFc", 3)] {
-            window.press(REDO, cx);
-            assert_eq!(window.find("text").value(), Some(value));
+    platform::each(cx, |keys, cx| {
+        let (handle, content) = inputs_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click("text", cx);
+            window.input("abcDEF", cx);
+            for _ in 0..3 {
+                window.press("shift-left", cx);
+            }
+            window.press(&keys.primary("x"), cx);
+            assert_eq!(window.find("text").value(), Some("abc"));
+            window.press(keys.line_start(), cx);
+            window.press("shift-right", cx);
+            window.press("shift-right", cx);
+            window.press(&keys.primary("v"), cx);
+            assert_eq!(window.find("text").value(), Some("DEFc"));
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(window.find("text").value(), Some("abc"));
+            let state = content.read(cx).text.read(cx);
+            assert_eq!(state.selected_range(), 0..2);
+            assert_eq!(state.cursor(), 2);
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(window.find("text").value(), Some("abcDEF"));
+            let state = content.read(cx).text.read(cx);
+            assert_eq!(state.selected_range(), 3..6);
+            assert_eq!(state.cursor(), 3);
+            for (value, cursor) in [("abc", 3), ("DEFc", 3)] {
+                window.press(keys.redo(), cx);
+                assert_eq!(window.find("text").value(), Some(value));
+                assert_eq!(
+                    content.read(cx).text.read(cx).selected_range(),
+                    cursor..cursor
+                );
+            }
             assert_eq!(
-                content.read(cx).text.read(cx).selected_range(),
-                cursor..cursor
+                cx.read_from_clipboard().unwrap().text().as_deref(),
+                Some("DEF")
             );
-        }
-        assert_eq!(
-            cx.read_from_clipboard().unwrap().text().as_deref(),
-            Some("DEF")
-        );
-    })
-    .unwrap();
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn normalized_paste_undo_restores_unicode_selection_in_both_directions(cx: &mut TestAppContext) {
-    let (handle, content) = inputs(cx);
-    for reversed in [false, true] {
-        cx.update_window(handle.into(), |_, window, cx| {
-            window.click("text", cx);
-            window.press("secondary-a", cx);
-            window.input("[e\u{301}🦀]", cx);
-            // Select the interior using line boundaries, excluding the ASCII
-            // brackets. This isolates history from scalar/grapheme step counts.
-            if reversed {
-                window.press("left", cx);
-                window.press("shift-home", cx);
-                window.press("shift-right", cx);
-            } else {
-                window.press("home", cx);
-                window.press("right", cx);
-                window.press("shift-end", cx);
-                window.press("shift-left", cx);
-            }
-            assert_eq!(
-                content.read(cx).text.read(cx).selected_value(),
-                "e\u{301}🦀"
-            );
-            cx.write_to_clipboard(ClipboardItem::new_string("中\r\n\t文".into()));
-            window.press(PASTE, cx);
-            assert_eq!(window.find("text").value(), Some("[中\t文]"));
-            window.press(UNDO, cx);
-            assert_eq!(window.find("text").value(), Some("[e\u{301}🦀]"));
-            let state = content.read(cx).text.read(cx);
-            assert_eq!(state.selected_range(), 1..8);
-            assert_eq!(state.cursor(), if reversed { 1 } else { 8 });
-            window.press(REDO, cx);
-            assert_eq!(window.find("text").value(), Some("[中\t文]"));
-            assert_eq!(content.read(cx).text.read(cx).selected_range(), 8..8);
-        })
-        .unwrap();
-    }
+    platform::each(cx, |keys, cx| {
+        let (handle, content) = inputs_on(keys.platform(), cx);
+        for reversed in [false, true] {
+            cx.update_window(handle.into(), |_, window, cx| {
+                window.click("text", cx);
+                window.press(&keys.primary("a"), cx);
+                window.input("[e\u{301}🦀]", cx);
+                // Select the interior using line boundaries, excluding the ASCII
+                // brackets. This isolates history from scalar/grapheme step counts.
+                if reversed {
+                    window.press("left", cx);
+                    window.press(&format!("shift-{}", keys.line_start()), cx);
+                    window.press("shift-right", cx);
+                } else {
+                    window.press(keys.line_start(), cx);
+                    window.press("right", cx);
+                    window.press(&format!("shift-{}", keys.line_end()), cx);
+                    window.press("shift-left", cx);
+                }
+                assert_eq!(
+                    content.read(cx).text.read(cx).selected_value(),
+                    "e\u{301}🦀"
+                );
+                cx.write_to_clipboard(ClipboardItem::new_string("中\r\n\t文".into()));
+                window.press(&keys.primary("v"), cx);
+                assert_eq!(window.find("text").value(), Some("[中\t文]"));
+                window.press(&keys.primary("z"), cx);
+                assert_eq!(window.find("text").value(), Some("[e\u{301}🦀]"));
+                let state = content.read(cx).text.read(cx);
+                assert_eq!(state.selected_range(), 1..8);
+                assert_eq!(state.cursor(), if reversed { 1 } else { 8 });
+                window.press(keys.redo(), cx);
+                assert_eq!(window.find("text").value(), Some("[中\t文]"));
+                assert_eq!(content.read(cx).text.read(cx).selected_range(), 8..8);
+            })
+            .unwrap();
+        }
+    });
 }

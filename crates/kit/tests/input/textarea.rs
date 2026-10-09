@@ -3,14 +3,14 @@ use gpui_kit::{
     App, AppContext, ClipboardItem, Context, ElementId, Entity, InputEvent as _, Modifiers,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta,
     Subscription, TestAppContext, Window, WindowHandle,
-    component::input::{InputEvent, Textarea, TextareaState},
+    component::input::{InputEvent, KeymapPlatform, Textarea, TextareaState},
     div, point,
     prelude::*,
     px, size,
     test::{TestSupportExt, TestWindowExt},
 };
 
-use crate::common;
+use crate::{common, platform};
 
 #[cfg(target_os = "macos")]
 const START: &str = "cmd-up";
@@ -21,10 +21,6 @@ const END: &str = "cmd-down";
 #[cfg(not(target_os = "macos"))]
 const END: &str = "ctrl-end";
 
-#[cfg(target_os = "macos")]
-const WORD_MODIFIER: &str = "alt";
-#[cfg(not(target_os = "macos"))]
-const WORD_MODIFIER: &str = "ctrl";
 #[cfg(target_os = "macos")]
 const LINE_END: &str = "cmd-right";
 #[cfg(not(target_os = "macos"))]
@@ -57,7 +53,20 @@ fn composer(
     Entity<Composer>,
     Entity<TextareaState>,
 ) {
-    cx.update(gpui_kit::init);
+    composer_on(KeymapPlatform::current(), cx, configure)
+}
+
+/// The composer, with the text keymaps of `platform`.
+fn composer_on(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+    configure: impl FnOnce(TextareaState) -> TextareaState,
+) -> (
+    WindowHandle<gpui_kit::base::Root>,
+    Entity<Composer>,
+    Entity<TextareaState>,
+) {
+    platform::init(platform, cx);
     let (window, view) = common::open_window(cx, Some(size(px(480.), px(480.))), |window, cx| {
         cx.new(|cx| {
             let text = cx.new(|cx| configure(TextareaState::new(window, cx)));
@@ -663,35 +672,45 @@ fn document_selection_reverses_across_anchor_and_deletes_only_selected_text(
 
 #[gpui_kit::test]
 fn word_navigation_selection_and_deletion_preserve_adjacent_lines(cx: &mut TestAppContext) {
-    let (handle, _, text) = composer(cx, |state| {
-        state.rows(3).default_value("one two\nthree four")
+    platform::each(cx, |keys, cx| {
+        let (handle, _, text) = composer_on(keys.platform(), cx, |state| {
+            state.rows(3).default_value("one two\nthree four")
+        });
+        // Going right by word, Windows stops at the start of "two", so the
+        // selection to the line's end leaves the space before it.
+        let (moved, first) = if keys.is_windows() {
+            (4, "one ")
+        } else {
+            (3, "one")
+        };
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(target(&text), cx);
+            window.press(keys.text_start(), cx);
+            window.press(&keys.word("right"), cx);
+            assert_eq!(text.read(cx).cursor(), moved);
+            window.press(&keys.word("shift-right"), cx);
+            assert_eq!(text.read(cx).selected_range(), moved..7);
+            window.press("delete", cx);
+            assert_eq!(text.read(cx).value(), format!("{first}\nthree four"));
+            window.press(keys.text_end(), cx);
+            window.press(&keys.word("left"), cx);
+            assert_eq!(text.read(cx).cursor(), format!("{first}\nthree ").len());
+            window.press(&keys.word("delete"), cx);
+            assert_eq!(text.read(cx).value(), format!("{first}\nthree "));
+            window.press("backspace", cx);
+            window.press(&keys.word("shift-left"), cx);
+            let three = first.len() + 1;
+            assert_eq!(text.read(cx).selected_range(), three..three + 5);
+            window.press(&keys.word("backspace"), cx);
+            assert_eq!(text.read(cx).value(), format!("{first}\n"));
+            window.press(keys.text_start(), cx);
+            window.press(&keys.word("right"), cx);
+            window.press(&keys.word("backspace"), cx);
+            assert_eq!(text.read(cx).value(), "\n");
+            assert_eq!(text.read(cx).cursor(), 0);
+        })
+        .unwrap();
     });
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(target(&text), cx);
-        window.press(START, cx);
-        window.press(&format!("{WORD_MODIFIER}-right"), cx);
-        assert_eq!(text.read(cx).cursor(), 3);
-        window.press(&format!("{WORD_MODIFIER}-shift-right"), cx);
-        assert_eq!(text.read(cx).selected_range(), 3..7);
-        window.press("delete", cx);
-        assert_eq!(text.read(cx).value(), "one\nthree four");
-        window.press(END, cx);
-        window.press(&format!("{WORD_MODIFIER}-left"), cx);
-        assert_eq!(text.read(cx).cursor(), "one\nthree ".len());
-        window.press(&format!("{WORD_MODIFIER}-delete"), cx);
-        assert_eq!(text.read(cx).value(), "one\nthree ");
-        window.press("backspace", cx);
-        window.press(&format!("{WORD_MODIFIER}-shift-left"), cx);
-        assert_eq!(text.read(cx).selected_range(), 4..9);
-        window.press(&format!("{WORD_MODIFIER}-backspace"), cx);
-        assert_eq!(text.read(cx).value(), "one\n");
-        window.press(START, cx);
-        window.press(&format!("{WORD_MODIFIER}-right"), cx);
-        window.press(&format!("{WORD_MODIFIER}-backspace"), cx);
-        assert_eq!(text.read(cx).value(), "\n");
-        assert_eq!(text.read(cx).cursor(), 0);
-    })
-    .unwrap();
 }
 
 #[gpui_kit::test]
@@ -736,40 +755,44 @@ fn pointer_drag_across_unicode_rows_preserves_direction_and_replaces_selection(
 #[gpui_kit::test]
 fn page_navigation_preserves_column_and_clamps_at_document_boundaries(cx: &mut TestAppContext) {
     let value = vec!["abcdef"; 30].join("\n");
-    let (handle, _, text) = composer(cx, |state| state.rows(4).default_value(value.clone()));
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(target(&text), cx);
-        window.press(START, cx);
-        for _ in 0..3 {
-            window.press("right", cx);
-        }
-        let state = text.read(cx);
-        let page_rows =
-            (state.input_bounds().size.height / state.cursor_layout().unwrap().1) as usize;
-        assert!(
-            page_rows > 0 && page_rows < 29,
-            "fixture must have a partial-document viewport"
-        );
-        window.press("pagedown", cx);
-        let cursor = text.read(cx).cursor();
-        assert_eq!(
-            cursor,
-            3 + page_rows * 7,
-            "PageDown moves one visible page at the same column"
-        );
-        assert_eq!(cursor % 7, 3);
-        assert_caret_visible(text.read(cx));
-        window.press("pageup", cx);
-        assert_eq!(text.read(cx).cursor(), 3);
-        window.press(END, cx);
-        window.press("pagedown", cx);
-        assert_eq!(text.read(cx).selected_range(), value.len()..value.len());
-        window.press(START, cx);
-        window.press("pageup", cx);
-        assert_eq!(text.read(cx).selected_range(), 0..0);
-        assert_eq!(text.read(cx).value(), value);
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, _, text) = composer_on(keys.platform(), cx, |state| {
+            state.rows(4).default_value(value.clone())
+        });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(target(&text), cx);
+            window.press(keys.text_start(), cx);
+            for _ in 0..3 {
+                window.press("right", cx);
+            }
+            let state = text.read(cx);
+            let page_rows =
+                (state.input_bounds().size.height / state.cursor_layout().unwrap().1) as usize;
+            assert!(
+                page_rows > 0 && page_rows < 29,
+                "fixture must have a partial-document viewport"
+            );
+            window.press(keys.page_down(), cx);
+            let cursor = text.read(cx).cursor();
+            assert_eq!(
+                cursor,
+                3 + page_rows * 7,
+                "PageDown moves one visible page at the same column"
+            );
+            assert_eq!(cursor % 7, 3);
+            assert_caret_visible(text.read(cx));
+            window.press(keys.page_up(), cx);
+            assert_eq!(text.read(cx).cursor(), 3);
+            window.press(keys.text_end(), cx);
+            window.press(keys.page_down(), cx);
+            assert_eq!(text.read(cx).selected_range(), value.len()..value.len());
+            window.press(keys.text_start(), cx);
+            window.press(keys.page_up(), cx);
+            assert_eq!(text.read(cx).selected_range(), 0..0);
+            assert_eq!(text.read(cx).value(), value);
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]

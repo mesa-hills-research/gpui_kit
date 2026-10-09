@@ -2,12 +2,12 @@
 //! GPUI's `Window::handle_a11y_action` is private: native SetValue dispatch
 //! cannot currently be covered through the public test API.
 
-use crate::common;
+use crate::{common, platform};
 use gpui_kit::{
     App, AppContext, ClipboardItem, Context, Entity, FocusHandle, Focusable, Subscription,
     TestAppContext, Window, WindowHandle,
     base::Root,
-    component::input::{Input, InputContentType, InputEvent, InputState},
+    component::input::{Input, InputContentType, InputEvent, InputState, KeymapPlatform},
     div, point,
     prelude::*,
     test::TestWindowExt,
@@ -61,7 +61,16 @@ fn fixture(
     cx: &mut TestAppContext,
     configure: impl FnOnce(InputState) -> InputState,
 ) -> (WindowHandle<Root>, Entity<Constraints>) {
-    cx.update(gpui_kit::init);
+    fixture_on(KeymapPlatform::current(), cx, configure)
+}
+
+/// The fixture, with the text keymaps of `platform`.
+fn fixture_on(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+    configure: impl FnOnce(InputState) -> InputState,
+) -> (WindowHandle<Root>, Entity<Constraints>) {
+    platform::init(platform, cx);
     common::open_window(cx, None, |window, cx| {
         cx.new(|cx| {
             let input = cx.new(|cx| configure(InputState::new(window, cx)));
@@ -819,40 +828,34 @@ fn protected_input_does_not_invoke_paste_hook_and_reenable_restores_it(cx: &mut 
 
 #[gpui_kit::test]
 fn masked_word_delete_takes_the_secret_and_undo_preserves_privacy(cx: &mut TestAppContext) {
-    let (handle, view) = fixture(cx, |input| input.default_value("first second").masked(true));
-    ui(handle, cx, |window, cx| {
-        window.click("constrained", cx);
-        window.press("end", cx);
-        let modifier = if cfg!(target_os = "macos") {
-            "alt"
-        } else {
-            "ctrl"
-        };
-        window.press(&format!("{modifier}-backspace"), cx);
-        assert_eq!(window.find("constrained").value(), None);
+    platform::each(cx, |keys, cx| {
+        let (handle, view) = fixture_on(keys.platform(), cx, |input| {
+            input.default_value("first second").masked(true)
+        });
+        ui(handle, cx, |window, cx| {
+            window.click("constrained", cx);
+            window.press(keys.line_end(), cx);
+            window.press(&keys.word("backspace"), cx);
+            assert_eq!(window.find("constrained").value(), None);
+        });
+        assert_owner(handle, &view, cx, "", 1);
+        ui(handle, cx, |window, cx| {
+            window.press(&keys.primary("z"), cx);
+            window.press(keys.line_start(), cx);
+            window.press(&keys.word("delete"), cx);
+            assert_eq!(window.find("constrained").value(), None);
+        });
+        assert_owner(handle, &view, cx, "", 3);
+        ui(handle, cx, |window, cx| {
+            window.press(&keys.primary("z"), cx);
+            clipboard(cx, "public");
+            window.press(&keys.primary("a"), cx);
+            window.press(&keys.primary("c"), cx);
+            assert_clipboard(cx, "public");
+            assert_eq!(window.find("constrained").value(), None);
+        });
+        assert_owner(handle, &view, cx, "first second", 4);
     });
-    assert_owner(handle, &view, cx, "", 1);
-    ui(handle, cx, |window, cx| {
-        shortcut(window, "z", cx);
-        window.press("home", cx);
-        let modifier = if cfg!(target_os = "macos") {
-            "alt"
-        } else {
-            "ctrl"
-        };
-        window.press(&format!("{modifier}-delete"), cx);
-        assert_eq!(window.find("constrained").value(), None);
-    });
-    assert_owner(handle, &view, cx, "", 3);
-    ui(handle, cx, |window, cx| {
-        shortcut(window, "z", cx);
-        clipboard(cx, "public");
-        shortcut(window, "a", cx);
-        shortcut(window, "c", cx);
-        assert_clipboard(cx, "public");
-        assert_eq!(window.find("constrained").value(), None);
-    });
-    assert_owner(handle, &view, cx, "first second", 4);
 }
 
 #[gpui_kit::test]

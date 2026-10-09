@@ -13,6 +13,8 @@ mod editor;
 mod history;
 #[path = "input/lifecycle.rs"]
 mod lifecycle;
+#[path = "input/platform.rs"]
+mod platform;
 #[path = "input/spelling.rs"]
 mod spelling;
 #[path = "input/textarea.rs"]

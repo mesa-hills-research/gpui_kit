@@ -1,9 +1,9 @@
-use crate::common;
+use crate::{common, platform};
 use gpui_kit::{
     App, AppContext, ClipboardItem, Context, Entity, IntoElement, Render, SharedString,
     Subscription, TestAppContext, Window, WindowHandle,
     base::Root,
-    component::input::{Enter, Input, InputEvent, InputState},
+    component::input::{Enter, Input, InputEvent, InputState, KeymapPlatform},
     div, point,
     prelude::*,
     px, size,
@@ -43,7 +43,15 @@ impl Render for EditingForm {
 }
 
 fn editing_form(cx: &mut TestAppContext) -> (WindowHandle<Root>, Entity<EditingForm>) {
-    cx.update(gpui_kit::init);
+    editing_form_on(KeymapPlatform::current(), cx)
+}
+
+/// The form, with the text keymaps of `platform`.
+fn editing_form_on(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+) -> (WindowHandle<Root>, Entity<EditingForm>) {
+    platform::init(platform, cx);
     common::open_window(cx, Some(size(px(640.), px(360.))), |window, cx| {
         cx.new(|cx| {
             let first = cx.new(|cx| InputState::new(window, cx));
@@ -80,89 +88,95 @@ fn assert_edit(
 
 #[gpui_kit::test]
 fn shift_arrows_reverse_selection_and_typing_replaces_it(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("abcd", cx);
-        window.press("shift-left", cx);
-        window.press("shift-left", cx);
-        assert_edit(&input, "abcd", 2..4, 2, cx);
-        window.press("shift-right", cx);
-        assert_edit(&input, "abcd", 3..4, 3, cx);
-        window.input("X", cx);
-        assert_edit(&input, "abcX", 4..4, 4, cx);
-        assert_eq!(window.find("editing-first").value(), Some("abcX"));
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("abcd", cx);
+            window.press("shift-left", cx);
+            window.press("shift-left", cx);
+            assert_edit(&input, "abcd", 2..4, 2, cx);
+            window.press("shift-right", cx);
+            assert_edit(&input, "abcd", 3..4, 3, cx);
+            window.input("X", cx);
+            assert_edit(&input, "abcX", 4..4, 4, cx);
+            assert_eq!(window.find("editing-first").value(), Some("abcX"));
 
-        window.press("home", cx);
-        window.press("shift-right", cx);
-        window.press("shift-right", cx);
-        assert_edit(&input, "abcX", 0..2, 2, cx);
-        window.input("Y", cx);
-        assert_edit(&input, "YcX", 1..1, 1, cx);
-    })
-    .unwrap();
+            window.press(keys.line_start(), cx);
+            window.press("shift-right", cx);
+            window.press("shift-right", cx);
+            assert_edit(&input, "abcX", 0..2, 2, cx);
+            window.input("Y", cx);
+            assert_edit(&input, "YcX", 1..1, 1, cx);
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn home_end_and_shift_select_line_boundaries(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("alpha beta", cx);
-        window.press("home", cx);
-        assert_edit(&input, "alpha beta", 0..0, 0, cx);
-        window.press("right", cx);
-        window.press("shift-end", cx);
-        assert_edit(&input, "alpha beta", 1..10, 10, cx);
-        window.input("!", cx);
-        assert_edit(&input, "a!", 2..2, 2, cx);
-        window.press("shift-home", cx);
-        assert_edit(&input, "a!", 0..2, 0, cx);
-        window.press("end", cx);
-        assert_edit(&input, "a!", 2..2, 2, cx);
-        window.input("?", cx);
-        assert_eq!(window.find("editing-first").value(), Some("a!?"));
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("alpha beta", cx);
+            window.press(keys.line_start(), cx);
+            assert_edit(&input, "alpha beta", 0..0, 0, cx);
+            window.press("right", cx);
+            window.press(&format!("shift-{}", keys.line_end()), cx);
+            assert_edit(&input, "alpha beta", 1..10, 10, cx);
+            window.input("!", cx);
+            assert_edit(&input, "a!", 2..2, 2, cx);
+            window.press(&format!("shift-{}", keys.line_start()), cx);
+            assert_edit(&input, "a!", 0..2, 0, cx);
+            window.press(keys.line_end(), cx);
+            assert_edit(&input, "a!", 2..2, 2, cx);
+            window.input("?", cx);
+            assert_eq!(window.find("editing-first").value(), Some("a!?"));
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn backspace_and_delete_remove_opposite_sides_and_stop_at_boundaries(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("abcd", cx);
-        window.press("left", cx);
-        window.press("left", cx);
-        assert_edit(&input, "abcd", 2..2, 2, cx);
-        window.press("backspace", cx);
-        assert_edit(&input, "acd", 1..1, 1, cx);
-        window.press("delete", cx);
-        assert_edit(&input, "ad", 1..1, 1, cx);
-        window.press("home", cx);
-        window.press("backspace", cx);
-        assert_edit(&input, "ad", 0..0, 0, cx);
-        window.press("end", cx);
-        window.press("delete", cx);
-        assert_edit(&input, "ad", 2..2, 2, cx);
-        window.press("shift-home", cx);
-        window.press("delete", cx);
-        assert_edit(&input, "", 0..0, 0, cx);
-        window.press("backspace", cx);
-        window.press("delete", cx);
-        assert_eq!(window.find("editing-first").value(), Some(""));
-        window.input("abcd", cx);
-        window.press("left", cx);
-        window.press("shift-left", cx);
-        window.press("shift-left", cx);
-        assert_edit(&input, "abcd", 1..3, 1, cx);
-        window.press("backspace", cx);
-        assert_edit(&input, "ad", 1..1, 1, cx);
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("abcd", cx);
+            window.press("left", cx);
+            window.press("left", cx);
+            assert_edit(&input, "abcd", 2..2, 2, cx);
+            window.press("backspace", cx);
+            assert_edit(&input, "acd", 1..1, 1, cx);
+            window.press("delete", cx);
+            assert_edit(&input, "ad", 1..1, 1, cx);
+            window.press(keys.line_start(), cx);
+            window.press("backspace", cx);
+            assert_edit(&input, "ad", 0..0, 0, cx);
+            window.press(keys.line_end(), cx);
+            window.press("delete", cx);
+            assert_edit(&input, "ad", 2..2, 2, cx);
+            window.press(&format!("shift-{}", keys.line_start()), cx);
+            window.press("delete", cx);
+            assert_edit(&input, "", 0..0, 0, cx);
+            window.press("backspace", cx);
+            window.press("delete", cx);
+            assert_eq!(window.find("editing-first").value(), Some(""));
+            window.input("abcd", cx);
+            window.press("left", cx);
+            window.press("shift-left", cx);
+            window.press("shift-left", cx);
+            assert_edit(&input, "abcd", 1..3, 1, cx);
+            window.press("backspace", cx);
+            assert_edit(&input, "ad", 1..1, 1, cx);
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
@@ -392,77 +406,95 @@ fn tab_moves_between_inputs_with_passive_prefix_and_suffix(cx: &mut TestAppConte
     .unwrap();
 }
 
-fn word_key(window: &mut Window, key: &str, cx: &mut App) {
-    let modifier = if cfg!(target_os = "macos") {
-        "alt"
-    } else {
-        "ctrl"
-    };
-    window.press(&format!("{modifier}-{key}"), cx);
-}
-
 #[gpui_kit::test]
 fn word_navigation_and_selection_keep_the_original_anchor(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("alpha beta gamma", cx);
-        word_key(window, "left", cx);
-        assert_edit(&input, "alpha beta gamma", 11..11, 11, cx);
-        word_key(window, "left", cx);
-        assert_edit(&input, "alpha beta gamma", 6..6, 6, cx);
-        word_key(window, "shift-left", cx);
-        assert_edit(&input, "alpha beta gamma", 0..6, 0, cx);
-        word_key(window, "shift-right", cx);
-        assert_edit(&input, "alpha beta gamma", 5..6, 5, cx);
-        word_key(window, "shift-right", cx);
-        assert_edit(&input, "alpha beta gamma", 6..10, 10, cx);
-        window.input("B", cx);
-        assert_edit(&input, "alpha B gamma", 7..7, 7, cx);
-        word_key(window, "right", cx);
-        assert_edit(&input, "alpha B gamma", 13..13, 13, cx);
-        word_key(window, "right", cx);
-        assert_edit(&input, "alpha B gamma", 13..13, 13, cx);
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("alpha beta gamma", cx);
+            window.press(&keys.word("left"), cx);
+            assert_edit(&input, "alpha beta gamma", 11..11, 11, cx);
+            window.press(&keys.word("left"), cx);
+            assert_edit(&input, "alpha beta gamma", 6..6, 6, cx);
+            window.press(&keys.word("shift-left"), cx);
+            assert_edit(&input, "alpha beta gamma", 0..6, 0, cx);
+            if keys.is_windows() {
+                // Windows stops at the start of each word, so the caret comes
+                // back to the anchor before it passes it, and a word takes the
+                // space after it.
+                window.press(&keys.word("shift-right"), cx);
+                assert_edit(&input, "alpha beta gamma", 6..6, 6, cx);
+                window.press(&keys.word("shift-right"), cx);
+                assert_edit(&input, "alpha beta gamma", 6..11, 11, cx);
+                window.input("B", cx);
+                assert_edit(&input, "alpha Bgamma", 7..7, 7, cx);
+                window.press(&keys.word("right"), cx);
+                assert_edit(&input, "alpha Bgamma", 12..12, 12, cx);
+                window.press(&keys.word("right"), cx);
+                assert_edit(&input, "alpha Bgamma", 12..12, 12, cx);
+            } else {
+                // macOS and Linux stop at the end of each word going right.
+                window.press(&keys.word("shift-right"), cx);
+                assert_edit(&input, "alpha beta gamma", 5..6, 5, cx);
+                window.press(&keys.word("shift-right"), cx);
+                assert_edit(&input, "alpha beta gamma", 6..10, 10, cx);
+                window.input("B", cx);
+                assert_edit(&input, "alpha B gamma", 7..7, 7, cx);
+                window.press(&keys.word("right"), cx);
+                assert_edit(&input, "alpha B gamma", 13..13, 13, cx);
+                window.press(&keys.word("right"), cx);
+                assert_edit(&input, "alpha B gamma", 13..13, 13, cx);
+            }
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn word_deletion_respects_selection_and_empty_boundaries(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("alpha beta gamma", cx);
-        word_key(window, "backspace", cx);
-        assert_edit(&input, "alpha beta ", 11..11, 11, cx);
-        window.press("home", cx);
-        word_key(window, "backspace", cx);
-        assert_edit(&input, "alpha beta ", 0..0, 0, cx);
-        word_key(window, "delete", cx);
-        assert_edit(&input, " beta ", 0..0, 0, cx);
-        window.press("right", cx);
-        window.press("shift-right", cx);
-        word_key(window, "delete", cx);
-        assert_edit(&input, " eta ", 1..1, 1, cx);
-        window.press("secondary-a", cx);
-        word_key(window, "backspace", cx);
-        for key in [
-            "left",
-            "right",
-            "shift-left",
-            "shift-right",
-            "backspace",
-            "delete",
-        ] {
-            word_key(window, key, cx);
-            assert_edit(&input, "", 0..0, 0, cx);
-        }
-        window.input("recovered", cx);
-        assert_eq!(window.find("editing-first").value(), Some("recovered"));
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        // Deleting a word forward on Windows takes the space after it too.
+        let (word_deleted, selection_deleted) = if keys.is_windows() {
+            ("beta ", "bta ")
+        } else {
+            (" beta ", " eta ")
+        };
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("alpha beta gamma", cx);
+            window.press(&keys.word("backspace"), cx);
+            assert_edit(&input, "alpha beta ", 11..11, 11, cx);
+            window.press(keys.line_start(), cx);
+            window.press(&keys.word("backspace"), cx);
+            assert_edit(&input, "alpha beta ", 0..0, 0, cx);
+            window.press(&keys.word("delete"), cx);
+            assert_edit(&input, word_deleted, 0..0, 0, cx);
+            window.press("right", cx);
+            window.press("shift-right", cx);
+            window.press(&keys.word("delete"), cx);
+            assert_edit(&input, selection_deleted, 1..1, 1, cx);
+            window.press(&keys.primary("a"), cx);
+            window.press(&keys.word("backspace"), cx);
+            for key in [
+                "left",
+                "right",
+                "shift-left",
+                "shift-right",
+                "backspace",
+                "delete",
+            ] {
+                window.press(&keys.word(key), cx);
+                assert_edit(&input, "", 0..0, 0, cx);
+            }
+            window.input("recovered", cx);
+            assert_eq!(window.find("editing-first").value(), Some("recovered"));
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
@@ -494,38 +526,40 @@ fn shift_home_and_end_cross_the_anchor_without_resetting_it(cx: &mut TestAppCont
 
 #[gpui_kit::test]
 fn clipboard_normalization_preserves_tabs_and_unicode_graphemes(cx: &mut TestAppContext) {
-    let (handle, form) = editing_form(cx);
-    cx.update_window(handle.into(), |_, window, cx| {
-        let input = form.read(cx).first.clone();
-        window.click("editing-first", cx);
-        window.input("[]", cx);
-        window.press("left", cx);
-        let payload = "e\u{301}\r\n\t👩‍💻\r中\n";
-        cx.write_to_clipboard(ClipboardItem::new_string(payload.into()));
-        window.press("secondary-v", cx);
-        let value = "[e\u{301}\t👩‍💻中]";
-        let end = value.len() - 1;
-        assert_edit(&input, value, end..end, end, cx);
-        window.press("left", cx);
-        // Arrow selection advances by Unicode scalar, so select the woman,
-        // joiner and laptop before replacing the complete pasted sequence.
-        for _ in 0..3 {
-            window.press("shift-left", cx);
-        }
-        assert_eq!(input.read(cx).selected_value(), "👩‍💻");
-        window.input("X", cx);
-        assert_eq!(
-            window.find("editing-first").value(),
-            Some("[e\u{301}\tX中]")
-        );
-        window.press("home", cx);
-        window.press("right", cx);
-        // The base letter and combining accent are two scalar steps.
-        window.press("shift-right", cx);
-        window.press("shift-right", cx);
-        assert_eq!(input.read(cx).selected_value(), "e\u{301}");
-        window.press("delete", cx);
-        assert_eq!(window.find("editing-first").value(), Some("[\tX中]"));
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, form) = editing_form_on(keys.platform(), cx);
+        cx.update_window(handle.into(), |_, window, cx| {
+            let input = form.read(cx).first.clone();
+            window.click("editing-first", cx);
+            window.input("[]", cx);
+            window.press("left", cx);
+            let payload = "e\u{301}\r\n\t👩‍💻\r中\n";
+            cx.write_to_clipboard(ClipboardItem::new_string(payload.into()));
+            window.press(&keys.primary("v"), cx);
+            let value = "[e\u{301}\t👩‍💻中]";
+            let end = value.len() - 1;
+            assert_edit(&input, value, end..end, end, cx);
+            window.press("left", cx);
+            // Arrow selection advances by Unicode scalar, so select the woman,
+            // joiner and laptop before replacing the complete pasted sequence.
+            for _ in 0..3 {
+                window.press("shift-left", cx);
+            }
+            assert_eq!(input.read(cx).selected_value(), "👩‍💻");
+            window.input("X", cx);
+            assert_eq!(
+                window.find("editing-first").value(),
+                Some("[e\u{301}\tX中]")
+            );
+            window.press(keys.line_start(), cx);
+            window.press("right", cx);
+            // The base letter and combining accent are two scalar steps.
+            window.press("shift-right", cx);
+            window.press("shift-right", cx);
+            assert_eq!(input.read(cx).selected_value(), "e\u{301}");
+            window.press("delete", cx);
+            assert_eq!(window.find("editing-first").value(), Some("[\tX中]"));
+        })
+        .unwrap();
+    });
 }

@@ -3,14 +3,17 @@
 use gpui_kit::{
     AppContext, ClipboardItem, Context, Entity, InputEvent, Modifiers, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, TestAppContext, Window, WindowHandle,
-    component::input::{Editor, EditorState, FoldRange},
+    component::input::{Editor, EditorState, FoldRange, KeymapPlatform},
     div,
     prelude::*,
     px, size,
     test::TestWindowExt,
 };
 
-use crate::common;
+use crate::{
+    common,
+    platform::{self, Keys},
+};
 
 struct EditorFixture {
     state: Entity<EditorState>,
@@ -31,7 +34,17 @@ fn editor(
     language: &'static str,
     value: &'static str,
 ) -> (WindowHandle<gpui_kit::base::Root>, Entity<EditorState>) {
-    editor_with_readonly(cx, language, value, false)
+    editor_on(KeymapPlatform::current(), cx, language, value)
+}
+
+/// An editor with the text keymaps of `platform`.
+fn editor_on(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+    language: &'static str,
+    value: &'static str,
+) -> (WindowHandle<gpui_kit::base::Root>, Entity<EditorState>) {
+    open_editor(platform, cx, language, value, false)
 }
 
 fn editor_with_readonly(
@@ -40,7 +53,17 @@ fn editor_with_readonly(
     value: &'static str,
     readonly: bool,
 ) -> (WindowHandle<gpui_kit::base::Root>, Entity<EditorState>) {
-    cx.update(gpui_kit::init);
+    open_editor(KeymapPlatform::current(), cx, language, value, readonly)
+}
+
+fn open_editor(
+    platform: KeymapPlatform,
+    cx: &mut TestAppContext,
+    language: &'static str,
+    value: &'static str,
+    readonly: bool,
+) -> (WindowHandle<gpui_kit::base::Root>, Entity<EditorState>) {
+    platform::init(platform, cx);
     let (handle, view) = common::open_window(cx, Some(size(px(800.), px(480.))), |window, cx| {
         cx.new(|cx| EditorFixture {
             readonly,
@@ -56,13 +79,7 @@ fn editor_with_readonly(
 }
 
 fn add_cursor_below() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "cmd-alt-down"
-    } else if cfg!(target_os = "windows") {
-        "ctrl-alt-down"
-    } else {
-        "shift-alt-down"
-    }
+    Keys::host().add_cursor_below()
 }
 
 fn replace_shortcut() -> &'static str {
@@ -81,18 +98,8 @@ fn platform_shortcut(macos: &'static str, other: &'static str) -> &'static str {
     }
 }
 
-fn add_cursor_above() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "cmd-alt-up"
-    } else if cfg!(target_os = "windows") {
-        "ctrl-alt-up"
-    } else {
-        "shift-alt-up"
-    }
-}
-
 fn redo_shortcut() -> &'static str {
-    platform_shortcut("cmd-shift-z", "ctrl-y")
+    Keys::host().redo()
 }
 
 #[gpui_kit::test]
@@ -553,71 +560,82 @@ fn block_indent_at_a_caret_changes_only_its_line(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn word_and_document_movement_select_and_replace_across_lines(cx: &mut TestAppContext) {
     let value = "alpha beta\ngamma delta";
-    let (handle, state) = editor(cx, "plaintext", value);
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(("input", state.entity_id()), cx);
-        window.press(platform_shortcut("cmd-up", "ctrl-home"), cx);
-        window.press(platform_shortcut("alt-right", "ctrl-right"), cx);
-        assert_eq!(state.read(cx).selected_range(), 5..5);
-        window.press(platform_shortcut("alt-shift-right", "ctrl-shift-right"), cx);
-        assert_eq!(state.read(cx).selected_range(), 5..10);
-        window.press(platform_shortcut("alt-left", "ctrl-left"), cx);
-        assert_eq!(state.read(cx).selected_range(), 6..6);
-        window.press(platform_shortcut("alt-shift-left", "ctrl-shift-left"), cx);
-        assert_eq!(state.read(cx).selected_range(), 0..6);
-        assert_eq!(state.read(cx).cursor(), 0);
-        window.press(platform_shortcut("cmd-down", "ctrl-end"), cx);
-        assert_eq!(state.read(cx).selected_range(), value.len()..value.len());
-        window.press(platform_shortcut("cmd-shift-up", "ctrl-shift-home"), cx);
-        assert_eq!(state.read(cx).selected_range(), 0..value.len());
-        assert_eq!(state.read(cx).cursor(), 0);
-        window.press("left", cx);
-        window.press(platform_shortcut("cmd-shift-down", "ctrl-shift-end"), cx);
-        assert_eq!(state.read(cx).cursor(), value.len());
-        assert_eq!(state.read(cx).selected_range(), 0..value.len());
-        window.input("中🦀", cx);
-        assert_eq!(state.read(cx).value(), "中🦀");
-        // Native input dispatches one keystroke per character. Replacing the
-        // selection with 中 is atomic; typing 🦀 starts a separate typing run.
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), "中");
-        assert_eq!(state.read(cx).selected_range(), 3..3);
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), value);
-        assert_eq!(state.read(cx).selected_range(), 0..value.len());
-        assert_eq!(state.read(cx).cursor(), value.len());
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, state) = editor_on(keys.platform(), cx, "plaintext", value);
+        // Going right by word, Windows stops at the start of the next word,
+        // macOS and Linux at the end of the word.
+        let (moved, selected) = if keys.is_windows() {
+            (6..6, 6..10)
+        } else {
+            (5..5, 5..10)
+        };
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("input", state.entity_id()), cx);
+            window.press(keys.text_start(), cx);
+            window.press(&keys.word("right"), cx);
+            assert_eq!(state.read(cx).selected_range(), moved);
+            window.press(&keys.word("shift-right"), cx);
+            assert_eq!(state.read(cx).selected_range(), selected);
+            window.press(&keys.word("left"), cx);
+            assert_eq!(state.read(cx).selected_range(), 6..6);
+            window.press(&keys.word("shift-left"), cx);
+            assert_eq!(state.read(cx).selected_range(), 0..6);
+            assert_eq!(state.read(cx).cursor(), 0);
+            window.press(keys.text_end(), cx);
+            assert_eq!(state.read(cx).selected_range(), value.len()..value.len());
+            window.press(&format!("shift-{}", keys.text_start()), cx);
+            assert_eq!(state.read(cx).selected_range(), 0..value.len());
+            assert_eq!(state.read(cx).cursor(), 0);
+            window.press("left", cx);
+            window.press(&format!("shift-{}", keys.text_end()), cx);
+            assert_eq!(state.read(cx).cursor(), value.len());
+            assert_eq!(state.read(cx).selected_range(), 0..value.len());
+            window.input("中🦀", cx);
+            assert_eq!(state.read(cx).value(), "中🦀");
+            // Native input dispatches one keystroke per character. Replacing the
+            // selection with 中 is atomic; typing 🦀 starts a separate typing run.
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), "中");
+            assert_eq!(state.read(cx).selected_range(), 3..3);
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            assert_eq!(state.read(cx).selected_range(), 0..value.len());
+            assert_eq!(state.read(cx).cursor(), value.len());
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn page_movement_preserves_column_and_clamps_at_document_edges(cx: &mut TestAppContext) {
-    let (handle, state) = editor(cx, "plaintext", "");
     let value = vec!["abcd"; 100].join("\n");
-    cx.update_window(handle.into(), |_, window, cx| {
-        state.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
-        window.render_frame(cx);
-        window.click(("input", state.entity_id()), cx);
-        window.press(platform_shortcut("cmd-up", "ctrl-home"), cx);
-        window.press("right", cx);
-        window.press("right", cx);
-        window.press("pagedown", cx);
-        let next_page = state.read(cx).cursor();
-        assert!(next_page > 7 && next_page < value.len() - 5);
-        assert_eq!(next_page % 5, 2);
-        assert!(state.read(cx).scroll_offset().y < px(0.));
-        window.press("pageup", cx);
-        assert_eq!(state.read(cx).selected_range(), 2..2);
-        window.press("pageup", cx);
-        assert_eq!(state.read(cx).cursor(), 2);
-        window.press(platform_shortcut("cmd-down", "ctrl-end"), cx);
-        window.press("left", cx);
-        window.press("left", cx);
-        window.press("pagedown", cx);
-        assert_eq!(state.read(cx).cursor(), value.len() - 2);
-        assert_eq!(state.read(cx).value(), value);
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, state) = editor_on(keys.platform(), cx, "plaintext", "");
+        cx.update_window(handle.into(), |_, window, cx| {
+            state.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
+            window.render_frame(cx);
+            window.click(("input", state.entity_id()), cx);
+            window.press(keys.text_start(), cx);
+            window.press("right", cx);
+            window.press("right", cx);
+            window.press(keys.page_down(), cx);
+            let next_page = state.read(cx).cursor();
+            assert!(next_page > 7 && next_page < value.len() - 5);
+            assert_eq!(next_page % 5, 2);
+            assert!(state.read(cx).scroll_offset().y < px(0.));
+            window.press(keys.page_up(), cx);
+            assert_eq!(state.read(cx).selected_range(), 2..2);
+            window.press(keys.page_up(), cx);
+            assert_eq!(state.read(cx).cursor(), 2);
+            window.press(keys.text_end(), cx);
+            window.press("left", cx);
+            window.press("left", cx);
+            window.press(keys.page_down(), cx);
+            assert_eq!(state.read(cx).cursor(), value.len() - 2);
+            assert_eq!(state.read(cx).value(), value);
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
@@ -653,42 +671,44 @@ fn gutter_fold_and_unfold_change_vertical_navigation_without_editing(cx: &mut Te
 #[gpui_kit::test]
 fn multicursor_copy_cut_paste_and_redo_restore_every_selection(cx: &mut TestAppContext) {
     let value = "ab\ncd\nef";
-    let (handle, state) = editor(cx, "plaintext", value);
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(("input", state.entity_id()), cx);
-        // Add upwards so clipboard order cannot accidentally follow creation order.
-        window.press(platform_shortcut("cmd-down", "ctrl-end"), cx);
-        window.press("home", cx);
-        window.press(add_cursor_above(), cx);
-        window.press(add_cursor_above(), cx);
-        window.press("shift-right", cx);
-        window.press("secondary-c", cx);
-        assert_eq!(
-            cx.read_from_clipboard().unwrap().text().as_deref(),
-            Some("a\nc\ne")
-        );
-        assert_eq!(state.read(cx).value(), value);
-        window.press("secondary-x", cx);
-        assert_eq!(state.read(cx).value(), "b\nd\nf");
-        assert_eq!(
-            cx.read_from_clipboard().unwrap().text().as_deref(),
-            Some("a\nc\ne")
-        );
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), value);
-        window.press(redo_shortcut(), cx);
-        assert_eq!(state.read(cx).value(), "b\nd\nf");
-        window.press("secondary-v", cx);
-        assert_eq!(state.read(cx).value(), value);
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), "b\nd\nf");
-        window.press(redo_shortcut(), cx);
-        assert_eq!(state.read(cx).value(), value);
-        window.press("escape", cx);
-        window.input("!", cx);
-        assert_eq!(state.read(cx).value(), "ab\ncd\ne!f");
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, state) = editor_on(keys.platform(), cx, "plaintext", value);
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("input", state.entity_id()), cx);
+            // Add upwards so clipboard order cannot accidentally follow creation order.
+            window.press(keys.text_end(), cx);
+            window.press(keys.line_start(), cx);
+            window.press(keys.add_cursor_above(), cx);
+            window.press(keys.add_cursor_above(), cx);
+            window.press("shift-right", cx);
+            window.press(&keys.primary("c"), cx);
+            assert_eq!(
+                cx.read_from_clipboard().unwrap().text().as_deref(),
+                Some("a\nc\ne")
+            );
+            assert_eq!(state.read(cx).value(), value);
+            window.press(&keys.primary("x"), cx);
+            assert_eq!(state.read(cx).value(), "b\nd\nf");
+            assert_eq!(
+                cx.read_from_clipboard().unwrap().text().as_deref(),
+                Some("a\nc\ne")
+            );
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            window.press(keys.redo(), cx);
+            assert_eq!(state.read(cx).value(), "b\nd\nf");
+            window.press(&keys.primary("v"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), "b\nd\nf");
+            window.press(keys.redo(), cx);
+            assert_eq!(state.read(cx).value(), value);
+            window.press("escape", cx);
+            window.input("!", cx);
+            assert_eq!(state.read(cx).value(), "ab\ncd\ne!f");
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
@@ -1004,61 +1024,71 @@ fn multicursor_block_indent_outdent_is_one_history_entry(cx: &mut TestAppContext
 #[gpui_kit::test]
 fn word_deletion_at_multiple_cursors_restores_ranges_on_undo(cx: &mut TestAppContext) {
     let value = "one two\nred fox";
-    let (handle, state) = editor(cx, "plaintext", value);
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(("input", state.entity_id()), cx);
-        window.press(platform_shortcut("cmd-up", "ctrl-home"), cx);
-        window.press(add_cursor_below(), cx);
-        window.press(platform_shortcut("alt-delete", "ctrl-delete"), cx);
-        assert_eq!(state.read(cx).value(), " two\n fox");
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), value);
-        window.press("end", cx);
-        window.press(platform_shortcut("alt-backspace", "ctrl-backspace"), cx);
-        assert_eq!(state.read(cx).value(), "one \nred ");
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), value);
-        window.input("!", cx);
-        assert_eq!(state.read(cx).value(), "one two!\nred fox!");
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, state) = editor_on(keys.platform(), cx, "plaintext", value);
+        // Deleting a word forward on Windows takes the space after it too.
+        let deleted = if keys.is_windows() {
+            "two\nfox"
+        } else {
+            " two\n fox"
+        };
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("input", state.entity_id()), cx);
+            window.press(keys.text_start(), cx);
+            window.press(keys.add_cursor_below(), cx);
+            window.press(&keys.word("delete"), cx);
+            assert_eq!(state.read(cx).value(), deleted);
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            window.press(keys.line_end(), cx);
+            window.press(&keys.word("backspace"), cx);
+            assert_eq!(state.read(cx).value(), "one \nred ");
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            window.input("!", cx);
+            assert_eq!(state.read(cx).value(), "one two!\nred fox!");
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]
 fn unwrapped_editor_scrolls_horizontally_and_navigates_logical_lines(cx: &mut TestAppContext) {
-    let (handle, state) = editor(cx, "plaintext", "");
     let first_line = "abcdefghij".repeat(80);
     let value = format!("{first_line}\nlast");
-    cx.update_window(handle.into(), |_, window, cx| {
-        state.update(cx, |state, cx| {
-            state.set_soft_wrap(false, window, cx);
-            state.set_value(value.clone(), window, cx);
-        });
-        window.render_frame(cx);
-        window.click(("input", state.entity_id()), cx);
-        window.press(platform_shortcut("cmd-up", "ctrl-home"), cx);
-        window.press("end", cx);
-        assert_eq!(state.read(cx).cursor(), first_line.len());
-        assert!(state.read(cx).scroll_offset().x < px(0.));
-        assert_eq!(state.read(cx).scroll_offset().y, px(0.));
-        window.press("down", cx);
-        assert_eq!(state.read(cx).cursor(), value.len());
-        window.press("up", cx);
-        assert_eq!(state.read(cx).cursor(), first_line.len());
-        window.press("shift-home", cx);
-        assert_eq!(state.read(cx).selected_range(), 0..first_line.len());
-        window.press("secondary-c", cx);
-        assert_eq!(
-            cx.read_from_clipboard().unwrap().text().as_deref(),
-            Some(first_line.as_str())
-        );
-        window.input("X", cx);
-        assert_eq!(state.read(cx).value(), "X\nlast");
-        window.press("secondary-z", cx);
-        assert_eq!(state.read(cx).value(), value);
-        assert_eq!(state.read(cx).selected_range(), 0..first_line.len());
-    })
-    .unwrap();
+    platform::each(cx, |keys, cx| {
+        let (handle, state) = editor_on(keys.platform(), cx, "plaintext", "");
+        cx.update_window(handle.into(), |_, window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_soft_wrap(false, window, cx);
+                state.set_value(value.clone(), window, cx);
+            });
+            window.render_frame(cx);
+            window.click(("input", state.entity_id()), cx);
+            window.press(keys.text_start(), cx);
+            window.press(keys.line_end(), cx);
+            assert_eq!(state.read(cx).cursor(), first_line.len());
+            assert!(state.read(cx).scroll_offset().x < px(0.));
+            assert_eq!(state.read(cx).scroll_offset().y, px(0.));
+            window.press("down", cx);
+            assert_eq!(state.read(cx).cursor(), value.len());
+            window.press("up", cx);
+            assert_eq!(state.read(cx).cursor(), first_line.len());
+            window.press(&format!("shift-{}", keys.line_start()), cx);
+            assert_eq!(state.read(cx).selected_range(), 0..first_line.len());
+            window.press(&keys.primary("c"), cx);
+            assert_eq!(
+                cx.read_from_clipboard().unwrap().text().as_deref(),
+                Some(first_line.as_str())
+            );
+            window.input("X", cx);
+            assert_eq!(state.read(cx).value(), "X\nlast");
+            window.press(&keys.primary("z"), cx);
+            assert_eq!(state.read(cx).value(), value);
+            assert_eq!(state.read(cx).selected_range(), 0..first_line.len());
+        })
+        .unwrap();
+    });
 }
 
 #[gpui_kit::test]

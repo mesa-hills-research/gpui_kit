@@ -43,6 +43,13 @@ The existing CI test matrix runs these targets on Linux, macOS and Windows.
 Keyboard cases use each platform's actual command bindings. A local Linux
 pass does not replace the macOS and Windows jobs.
 
+Where the keys or their results differ between platforms, such as Home on
+macOS or Ctrl-Right on Windows, a case runs once for each platform with that
+platform's keymap bound, through `platform::each` in
+[`platform.rs`](platform.rs). It presses the platform's keys through `Keys`
+and checks the platform's results, so a run on any one system checks all
+three keymaps, and a failure names the keymap it failed with.
+
 ## Regressions found by this suite
 
 - `constraints::disabled_single_and_double_click_do_not_focus_the_editor`:
@@ -167,7 +174,10 @@ pointer events, and assert the result after each meaningful step. See
 [`lifecycle.rs`](lifecycle.rs) for a workflow applied to all three controls.
 
 Use `window.input` for typing and `window.press` for commands such as Enter,
-Backspace and Undo. Command presses use native key-down/key-up events; do not
+Backspace and Undo. For a command whose key differs between platforms, write
+the case with `platform::each` and press `Keys`, such as `keys.line_start()`
+or `keys.word("backspace")`, rather than a key of one platform. Command
+presses use native key-down/key-up events; do not
 simulate Enter by injecting a newline through an IME text callback. Unicode
 typing through `window.input` does not establish OS IME coverage. Prepare clipboard
 data through the test application's clipboard, then send the Paste shortcut. Calling `set_value`, `replace_all`,
