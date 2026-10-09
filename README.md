@@ -6,7 +6,7 @@ releases and adds the changes listed below.
 
 It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
 GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
-[mhr_gpui](https://github.com/mesa-hills-research/mhr_gpui), the fork of those crates.
+[Mesa Hills Research's fork of those crates](https://github.com/mesa-hills-research/gpui).
 
 ## Changes from upstream
 
@@ -20,13 +20,13 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   [Textarea: suggestions](website/component/textarea.md#suggestions).
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
-- **GPUI from mhr_gpui.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre` crates
-  at one commit of mhr_gpui on GitHub. To work on both repositories together, see
-  [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-mhr_gpui-alongside).
+- **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
+  crates at one commit of the fork on GitHub. To work on both repositories together, see
+  [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
 - **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
   suggestion menu, a list and a popup menu render headlessly on Linux, in light and dark themes
   and at scale factors 2 and 2.625, and are compared with the PNGs in
-  `crates/kit/tests/screenshots`. They run with the kit's tests and use mhr_gpui's
+  `crates/kit/tests/screenshots`. They run with the kit's tests and use the gpui fork's
   `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
 - **A generator for new apps** (`mhr_gpui_new`), described in [Starting a new app](#starting-a-new-app).
@@ -41,9 +41,9 @@ from:
 gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
 ```
 
-The app gets the `gpui-pre` crates from crates.io, and mhr_gpui leaves them unchanged apart from
-test support, so the app needs no patch for them. Fetching this private repository needs GitHub
-access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
+The app gets the `gpui-pre` crates from crates.io, and the gpui fork leaves them unchanged apart
+from test support, so the app needs no patch for them. Fetching this private repository needs
+GitHub access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`).
 
 ## Starting a new app

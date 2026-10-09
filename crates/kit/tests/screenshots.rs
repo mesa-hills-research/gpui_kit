@@ -1,7 +1,7 @@
-//! Golden screenshots of GPUI Kit components, rendered by mhr_gpui's gpui-pre-screenshot on
-//! Mesa's software Vulkan driver. The goldens live in `tests/screenshots`. On a mismatch the
+//! Golden screenshots of GPUI Kit components, rendered by the gpui fork's gpui-pre-screenshot
+//! on Mesa's software Vulkan driver. The goldens live in `tests/screenshots`. On a mismatch the
 //! actual image and a diff go to `tests/screenshots/failures`, and `UPDATE_GOLDENS=1` rewrites
-//! the goldens. mhr_gpui's `docs/screenshots.md` explains how to review and update them.
+//! the goldens. The gpui fork's `docs/screenshots.md` explains how to review and update them.
 #![cfg(target_os = "linux")]
 
 use std::rc::Rc;

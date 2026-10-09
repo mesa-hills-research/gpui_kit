@@ -85,11 +85,11 @@ chrono = "0.4.38"
 gpui = { workspace = true, features = ["test-support"] }
 lsp-types.workspace = true
 
-# The golden-image harness for tests/screenshots.rs, from mhr_gpui at the same rev as the gpui
+# The golden-image harness for tests/screenshots.rs, from the gpui fork at the same rev as the gpui
 # crates in the workspace's [patch.crates-io]. Its goldens are drawn by Mesa's software Vulkan
 # driver, on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/mhr_gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
+gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "1de725be7269c2e2ab903ce2ea981f7fe6a7e5ae" }
 
 [[test]]
 name = "window"

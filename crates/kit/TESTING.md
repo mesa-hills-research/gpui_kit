@@ -117,9 +117,9 @@ complete golden-image suite.
 
 `tests/screenshots.rs` renders components headlessly and compares the pixels with the PNGs in
 `tests/screenshots`: buttons, inputs and a textarea, a textarea's suggestion menu, a list and a
-popup menu, in light and dark themes. It draws with mhr_gpui's `gpui-pre-screenshot` on Mesa's
-software Vulkan driver (`mesa-vulkan-drivers` on Debian and Ubuntu), so a display and a GPU are
-optional, and it runs with the kit's other tests on Linux:
+popup menu, in light and dark themes. It draws with the gpui fork's `gpui-pre-screenshot` on
+Mesa's software Vulkan driver (`mesa-vulkan-drivers` on Debian and Ubuntu), so a display and a
+GPU are optional, and it runs with the kit's other tests on Linux:
 
 ```sh
 cargo test -p gpui-kit --features test-support --test screenshots --locked
@@ -130,49 +130,50 @@ round anti-aliased edges a level or two apart. A screenshot that differs by more
 and writes the capture and a diff to `tests/screenshots/failures`. The failure message names the
 driver that drew the golden next to the current one. After an intended change,
 `UPDATE_GOLDENS=1` rewrites the goldens that differ by more than the tolerance.
-mhr_gpui's [screenshot docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md)
+The gpui fork's [screenshot docs](https://github.com/mesa-hills-research/gpui/blob/main/docs/screenshots.md)
 cover writing these tests, reviewing failures and allowing a tolerance.
 
-## Working on mhr_gpui alongside
+## Working on the gpui fork alongside
 
-The gpui crates come from [mhr_gpui](https://github.com/mesa-hills-research/mhr_gpui) at the
-commit `Cargo.toml` names. The repository is private, so building needs GitHub access to it.
+The gpui crates come from
+[Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui) at the commit
+`Cargo.toml` names. The repository is private, so building needs GitHub access to it.
 `.cargo/config.toml` sets `net.git-fetch-with-cli = true`, which has cargo fetch it with the git
 CLI and its credentials.
 
-To build against an mhr_gpui checkout beside this repository instead, put these patches in
+To build against a checkout of the fork beside this repository instead, put these patches in
 `.cargo/local.toml`, a file git ignores and `.cargo/config.toml` includes:
 
 ```toml
 [patch.crates-io]
-gpui-pre                   = { path = "../mhr_gpui/crates/gpui" }
-gpui-pre-apple             = { path = "../mhr_gpui/crates/gpui_apple" }
-gpui-pre-bench-metrics     = { path = "../mhr_gpui/crates/bench_metrics" }
-gpui-pre-collections       = { path = "../mhr_gpui/crates/collections" }
-gpui-pre-derive-refineable = { path = "../mhr_gpui/crates/refineable/derive_refineable" }
-gpui-pre-http-client       = { path = "../mhr_gpui/crates/http_client" }
-gpui-pre-http-client-tls   = { path = "../mhr_gpui/crates/http_client_tls" }
-gpui-pre-linux             = { path = "../mhr_gpui/crates/gpui_linux" }
-gpui-pre-macos             = { path = "../mhr_gpui/crates/gpui_macos" }
-gpui-pre-macros            = { path = "../mhr_gpui/crates/gpui_macros" }
-gpui-pre-perf              = { path = "../mhr_gpui/tooling/perf" }
-gpui-pre-platform          = { path = "../mhr_gpui/crates/gpui_platform" }
-gpui-pre-refineable        = { path = "../mhr_gpui/crates/refineable" }
-gpui-pre-reqwest-client    = { path = "../mhr_gpui/crates/reqwest_client" }
-gpui-pre-scheduler         = { path = "../mhr_gpui/crates/scheduler" }
-gpui-pre-shared-string     = { path = "../mhr_gpui/crates/gpui_shared_string" }
-gpui-pre-sum-tree          = { path = "../mhr_gpui/crates/sum_tree" }
-gpui-pre-util              = { path = "../mhr_gpui/crates/gpui_util" }
-gpui-pre-util-macros       = { path = "../mhr_gpui/crates/util_macros" }
-gpui-pre-web               = { path = "../mhr_gpui/crates/gpui_web" }
-gpui-pre-wgpu              = { path = "../mhr_gpui/crates/gpui_wgpu" }
-gpui-pre-windows           = { path = "../mhr_gpui/crates/gpui_windows" }
-gpui-pre-zlog              = { path = "../mhr_gpui/crates/zlog" }
-gpui-pre-ztracing          = { path = "../mhr_gpui/crates/ztracing" }
-gpui-pre-ztracing-macro    = { path = "../mhr_gpui/crates/ztracing_macro" }
+gpui-pre                   = { path = "../gpui/crates/gpui" }
+gpui-pre-apple             = { path = "../gpui/crates/gpui_apple" }
+gpui-pre-bench-metrics     = { path = "../gpui/crates/bench_metrics" }
+gpui-pre-collections       = { path = "../gpui/crates/collections" }
+gpui-pre-derive-refineable = { path = "../gpui/crates/refineable/derive_refineable" }
+gpui-pre-http-client       = { path = "../gpui/crates/http_client" }
+gpui-pre-http-client-tls   = { path = "../gpui/crates/http_client_tls" }
+gpui-pre-linux             = { path = "../gpui/crates/gpui_linux" }
+gpui-pre-macos             = { path = "../gpui/crates/gpui_macos" }
+gpui-pre-macros            = { path = "../gpui/crates/gpui_macros" }
+gpui-pre-perf              = { path = "../gpui/tooling/perf" }
+gpui-pre-platform          = { path = "../gpui/crates/gpui_platform" }
+gpui-pre-refineable        = { path = "../gpui/crates/refineable" }
+gpui-pre-reqwest-client    = { path = "../gpui/crates/reqwest_client" }
+gpui-pre-scheduler         = { path = "../gpui/crates/scheduler" }
+gpui-pre-shared-string     = { path = "../gpui/crates/gpui_shared_string" }
+gpui-pre-sum-tree          = { path = "../gpui/crates/sum_tree" }
+gpui-pre-util              = { path = "../gpui/crates/gpui_util" }
+gpui-pre-util-macros       = { path = "../gpui/crates/util_macros" }
+gpui-pre-web               = { path = "../gpui/crates/gpui_web" }
+gpui-pre-wgpu              = { path = "../gpui/crates/gpui_wgpu" }
+gpui-pre-windows           = { path = "../gpui/crates/gpui_windows" }
+gpui-pre-zlog              = { path = "../gpui/crates/zlog" }
+gpui-pre-ztracing          = { path = "../gpui/crates/ztracing" }
+gpui-pre-ztracing-macro    = { path = "../gpui/crates/ztracing_macro" }
 
-[patch."https://github.com/mesa-hills-research/mhr_gpui"]
-gpui-pre-screenshot        = { path = "../mhr_gpui/crates/gpui_screenshot" }
+[patch."https://github.com/mesa-hills-research/gpui"]
+gpui-pre-screenshot        = { path = "../gpui/crates/gpui_screenshot" }
 ```
 
 Cargo records the local paths in `Cargo.lock`, so run the first build without `--locked`. Before
