@@ -115,6 +115,7 @@ pub use keymap::{
     MoveToParagraphStart, NewlineAbove, NewlineBelow, SelectToNextWordStart, SelectToParagraphEnd,
     SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
 };
+pub use keymap::{EmacsState, SaveBuffer, WriteFile};
 pub use kind::{
     EditorExtras, EditorMode, InputExtras, InputMode, InputModeKind, MultiLineMode, TextareaExtras,
     TextareaMode,

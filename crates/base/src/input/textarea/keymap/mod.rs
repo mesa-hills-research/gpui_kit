@@ -69,7 +69,7 @@ mod emacs;
 pub(crate) mod test;
 mod vim;
 
-use std::any::Any;
+use std::{any::Any, ops::Range};
 
 use gpui::{
     Action, App, Context, Div, Entity, KeyBinding, KeyContext, SharedString, Stateful, Window,
@@ -83,6 +83,7 @@ pub use commands::{
     MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
     SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
 };
+pub use emacs::{EmacsState, SaveBuffer, WriteFile};
 pub use vim::{VimMode, VimState};
 
 /// Which keybinding scheme a textarea follows.
@@ -226,6 +227,12 @@ pub trait KeymapState: Any {
     fn accepts_text_input(&self) -> bool {
         true
     }
+
+    /// Follow an edit that replaced `range` with `new_len` bytes, to keep
+    /// offsets the state holds, such as Emacs's mark, on the same text.
+    fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
+        _ = (range, new_len);
+    }
 }
 
 /// A binding in `context`, for building a scheme's table.
@@ -271,6 +278,12 @@ impl KeymapSettings {
         self.state
             .as_ref()
             .is_none_or(|state| state.accepts_text_input())
+    }
+
+    pub(crate) fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
+        if let Some(state) = &mut self.state {
+            state.adjust_for_edit(range, new_len);
+        }
     }
 }
 

@@ -358,7 +358,9 @@ Only the active scheme's keys apply. A scheme with modes reports the current
 one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
 the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
 state to show the label in a status bar. CUA binds the platform's shortcuts,
-and Emacs and Vim bind their basic motions so far.
+and Emacs's keys are below. Vim binds its basic motions so far.
+
+#### CUA
 
 CUA follows each platform's own text fields, in every input and editor:
 
@@ -387,3 +389,31 @@ move (Shift selects), Ctrl-D and Ctrl-H delete, Ctrl-K cuts to the end of the li
 it back, Ctrl-T swaps two characters, Ctrl-O opens a line, Ctrl-V moves a page down and Ctrl-L
 centers the caret. The commands these keys use are in `gpui_kit::component::input::cua`, for an
 application that binds them to other keys.
+
+#### Emacs
+
+Meta is Alt on Windows and Linux and Option on macOS, and Escape followed by a
+key works as Meta too. On macOS, Cmd keeps Copy, Cut, Paste, Undo, Redo and
+Select All.
+
+| Keys | Command |
+|---|---|
+| `C-f` `C-b` `C-n` `C-p`, the arrows | Character, line |
+| `M-f` `M-b`, `C-a` `C-e`, `M-m` | Word, line start and end, indentation |
+| `M-a` `M-e`, `M-{` `M-}` | Sentence, paragraph |
+| `M-<` `M->`, `C-v` `M-v` | Start and end of the text, page |
+| `C-Space` or `C-@`, `C-x C-x`, `C-x h` | Set the mark, swap the caret and the mark, select all |
+| `C-g` | Deactivate the mark, cancel a prefix |
+| `C-k`, `M-d`, `M-Backspace`, `C-w` | Kill to the end of the line, word, word before, region |
+| `M-w`, `C-y`, `M-y` | Copy the region, yank, swap the yank for the kill before it |
+| `C-d`, `C-t` `M-t`, `M-u` `M-l` `M-c` | Delete, transpose, change case |
+| `C-o`, `C-j`, `M-^` | Open a line, new line, join to the line before |
+| `C-/` `C-_` `C-x u` | Undo |
+| `C-s` `C-r` | Search forward and back |
+| `C-u`, `M-0` to `M-9`, `M--` | Prefix argument, a count for the next command |
+
+Motions extend the region while the mark is active. Kills go to the kill ring
+and the clipboard, kills in a row join into one, and `C-y` pastes text copied
+in another application. The prefix argument shows as the mode label while it
+is typed. `C-x C-s` and `C-x C-w` dispatch `SaveBuffer` and `WriteFile`, which
+the application handles to save. `EmacsState` holds the mark and the kill ring.
