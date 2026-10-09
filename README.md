@@ -12,6 +12,7 @@ GPUI to the `gpui-pre` 0.3.8 snapshot.
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.
+- **A generator for new apps** (`mhr_gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it
 
@@ -22,6 +23,19 @@ from:
 [dependencies]
 gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
 ```
+
+## Starting a new app
+
+`mhr_gpui_new` creates an app with the title bar, menus, window frame, icon and logging set up for
+macOS, Windows and Linux:
+
+```sh
+cargo install --git https://github.com/mesa-hills-research/mhr_gpui_kit mhr_gpui_new
+mhr_gpui_new my-app --name "My App" --app-id com.example.MyApp
+cd my-app && cargo run
+```
+
+[docs/app-template.md](docs/app-template.md) describes the generated app.
 
 ## Following upstream
 
