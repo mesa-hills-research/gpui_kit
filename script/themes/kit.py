@@ -9,6 +9,7 @@ is judged by the colors that end up on screen, not only by the keys it sets.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -196,6 +197,42 @@ def parse_token(value: str) -> Tok:
 # apply_config
 
 
+# The contrast the kit gives text it derives (`TEXT_CONTRAST` in schema.rs).
+TEXT_CONTRAST = 4.5
+
+
+def oklch(L: float, Ch: float, h: float) -> C.RGBA:
+    """The kit's `oklch()`: out-of-gamut channels are clipped one by one."""
+    hr = math.radians(h)
+    return C.from_oklab(L, Ch * math.cos(hr), Ch * math.sin(hr))
+
+
+def readable_text(color: C.RGBA, backgrounds: list, minimum: float) -> C.RGBA:
+    """`readable_text` in color.rs: `color` as text reaching `minimum` contrast on every one of
+    `backgrounds`, made darker or lighter in steps of 0.01 OKLCH lightness when it falls short."""
+
+    def reads(c):
+        return all(C.wcag(c, b) >= minimum for b in backgrounds)
+
+    def worst(c):
+        return min(C.wcag(c, b) for b in backgrounds)
+
+    color = C.blend(backgrounds[0], color)
+    if reads(color):
+        return color
+    darker = worst(C.BLACK) >= worst(C.WHITE)
+    L, Ch, h = C.to_oklch(color)
+    step = -0.01 if darker else 0.01
+    for i in range(1, 101):
+        l = max(0.0, min(1.0, L + step * i))
+        candidate = oklch(l, Ch, h)
+        if reads(candidate):
+            return candidate
+        if l in (0.0, 1.0):
+            break
+    return C.BLACK if darker else C.WHITE
+
+
 def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     """Resolve a theme's `colors` the way `ThemeColor::apply_config` does.
 
@@ -243,6 +280,16 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     def mixt(c: C.RGBA, f: float) -> C.RGBA:  # `c.mix_oklab(transparent, f)`
         return C.opacity(c, f)
 
+    def tinted_button(name: str, c: C.RGBA) -> None:
+        """apply_tinted_button!: the color at 20%, 30% and 40%, with text that reads on all three."""
+        prefix = f"button.{name}."
+        bg(prefix + "background", mixt(c, 0.2))
+        bg(prefix + "hover.background", mixt(c, 0.3))
+        bg(prefix + "active.background", mixt(c, 0.4))
+        states = ("background", "hover.background", "active.background")
+        fills = [C.blend(background, t[prefix + state].color) for state in states]
+        col(prefix + "foreground", readable_text(c, fills, TEXT_CONTRAST))
+
     background = bg("background")
     for name in ("red", "green", "blue", "magenta", "yellow", "cyan"):
         base = col(f"base.{name}")
@@ -288,10 +335,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
             bg(f"{name}.active.background", C.blend(background, C.hsl_darken(c, active_darken)))
         else:
             bg(f"{name}.active.background", C.hsl_darken(c, active_darken))
-        bg(f"button.{name}.background", mixt(c, 0.2))
-        col(f"button.{name}.foreground", c)
-        bg(f"button.{name}.hover.background", mixt(c, 0.3))
-        bg(f"button.{name}.active.background", mixt(c, 0.4))
+        tinted_button(name, c)
 
     accent = bg("accent.background", t["secondary.background"])
     col("accent.foreground", foreground)
@@ -313,10 +357,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     bg("danger.active.background", C.hsl_darken(danger, active_darken))
     col("danger.foreground", primary_fg)
     bg("danger.hover.background", C.blend(background, C.opacity(danger, 0.9)))
-    bg("button.danger.background", mixt(danger, 0.2))
-    col("button.danger.foreground", danger)
-    bg("button.danger.hover.background", mixt(danger, 0.3))
-    bg("button.danger.active.background", mixt(danger, 0.4))
+    tinted_button("danger", danger)
     bg("description_list.label.background", C.blend(background, C.opacity(border, 0.2)))
     col("description_list.label.foreground", t["muted.foreground"].color)
     col("drag.border", C.opacity(primary, 0.65))

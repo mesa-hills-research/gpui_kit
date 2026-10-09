@@ -7,9 +7,13 @@ use serde::{Deserialize, Serialize};
 use crate::highlighter::{HighlightTheme, HighlightThemeStyle};
 
 use super::color::{
-    try_parse_background, try_parse_background_clamped, try_parse_color, try_parse_theme_color,
+    readable_text, try_parse_background, try_parse_background_clamped, try_parse_color,
+    try_parse_theme_color,
 };
 use super::{Colorize, SemanticThemeTokens, Theme, ThemeColor, ThemeMode, ThemeToken, ThemeTokens};
+
+/// The contrast of text colors the kit derives: WCAG's 4.5:1 for body text.
+const TEXT_CONTRAST: f32 = 4.5;
 
 fn try_parse_theme_token(value: &str) -> anyhow::Result<ThemeToken> {
     Ok(ThemeToken::new(
@@ -278,28 +282,30 @@ pub struct ThemeConfigColors {
     /// Default Button hover background color.
     #[serde(rename = "button.hover.background")]
     pub button_hover: Option<SharedString>,
-    /// Button danger background color, fallback to `danger`.
+    /// Button danger background color, `danger.background` at 20% opacity by default.
     #[serde(rename = "button.danger.background")]
     pub button_danger: Option<SharedString>,
-    /// Button danger active background color, fallback to `danger_active`.
+    /// Button danger active background color, `danger.background` at 40% opacity by default.
     #[serde(rename = "button.danger.active.background")]
     pub button_danger_active: Option<SharedString>,
-    /// Button danger text color, fallback to `danger_foreground`.
+    /// Button danger text color. Defaults to `danger.background`, darkened or
+    /// lightened until it reaches 4.5:1 contrast on the button in every state.
     #[serde(rename = "button.danger.foreground")]
     pub button_danger_foreground: Option<SharedString>,
-    /// Button danger hover background color, fallback to `danger_hover`.
+    /// Button danger hover background color, `danger.background` at 30% opacity by default.
     #[serde(rename = "button.danger.hover.background")]
     pub button_danger_hover: Option<SharedString>,
-    /// Button info background color, fallback to `info`.
+    /// Button info background color, `info.background` at 20% opacity by default.
     #[serde(rename = "button.info.background")]
     pub button_info: Option<SharedString>,
-    /// Button info active background color, fallback to `info_active`.
+    /// Button info active background color, `info.background` at 40% opacity by default.
     #[serde(rename = "button.info.active.background")]
     pub button_info_active: Option<SharedString>,
-    /// Button info text color, fallback to `info_foreground`.
+    /// Button info text color. Defaults to `info.background`, darkened or
+    /// lightened until it reaches 4.5:1 contrast on the button in every state.
     #[serde(rename = "button.info.foreground")]
     pub button_info_foreground: Option<SharedString>,
-    /// Button info hover background color, fallback to `info_hover`.
+    /// Button info hover background color, `info.background` at 30% opacity by default.
     #[serde(rename = "button.info.hover.background")]
     pub button_info_hover: Option<SharedString>,
     /// Button primary background color, fallback to `primary`.
@@ -326,28 +332,30 @@ pub struct ThemeConfigColors {
     /// Button secondary hover background color, fallback to `secondary_hover`.
     #[serde(rename = "button.secondary.hover.background")]
     pub button_secondary_hover: Option<SharedString>,
-    /// Button success background color, fallback to `success`.
+    /// Button success background color, `success.background` at 20% opacity by default.
     #[serde(rename = "button.success.background")]
     pub button_success: Option<SharedString>,
-    /// Button success active background color, fallback to `success_active`.
+    /// Button success active background color, `success.background` at 40% opacity by default.
     #[serde(rename = "button.success.active.background")]
     pub button_success_active: Option<SharedString>,
-    /// Button success text color, fallback to `success_foreground`.
+    /// Button success text color. Defaults to `success.background`, darkened or
+    /// lightened until it reaches 4.5:1 contrast on the button in every state.
     #[serde(rename = "button.success.foreground")]
     pub button_success_foreground: Option<SharedString>,
-    /// Button success hover background color, fallback to `success_hover`.
+    /// Button success hover background color, `success.background` at 30% opacity by default.
     #[serde(rename = "button.success.hover.background")]
     pub button_success_hover: Option<SharedString>,
-    /// Button warning background color, fallback to `warning`.
+    /// Button warning background color, `warning.background` at 20% opacity by default.
     #[serde(rename = "button.warning.background")]
     pub button_warning: Option<SharedString>,
-    /// Button warning active background color, fallback to `warning_active`.
+    /// Button warning active background color, `warning.background` at 40% opacity by default.
     #[serde(rename = "button.warning.active.background")]
     pub button_warning_active: Option<SharedString>,
-    /// Button warning text color, fallback to `warning_foreground`.
+    /// Button warning text color. Defaults to `warning.background`, darkened or
+    /// lightened until it reaches 4.5:1 contrast on the button in every state.
     #[serde(rename = "button.warning.foreground")]
     pub button_warning_foreground: Option<SharedString>,
-    /// Button warning hover background color, fallback to `warning_hover`.
+    /// Button warning hover background color, `warning.background` at 30% opacity by default.
     #[serde(rename = "button.warning.hover.background")]
     pub button_warning_hover: Option<SharedString>,
     /// Background color for GroupBox.
@@ -787,6 +795,30 @@ impl ThemeColor {
         let active_darken = if config.mode.is_dark() { 0.2 } else { 0.1 };
         let hover_opacity = 0.9;
         let transparent = gpui::transparent_black();
+
+        // A tinted status button: the status color at 20%, 30% and 40% over the
+        // background, with text in the same color, darkened or lightened until it
+        // reads on all three.
+        macro_rules! apply_tinted_button {
+            ($color:ident, $button:ident, $hover:ident, $active:ident, $foreground:ident) => {
+                apply_background_color!(
+                    $button,
+                    fallback = self.$color.mix_oklab(transparent, 0.2)
+                );
+                apply_background_color!($hover, fallback = self.$color.mix_oklab(transparent, 0.3));
+                apply_background_color!(
+                    $active,
+                    fallback = self.$color.mix_oklab(transparent, 0.4)
+                );
+                let fills = [self.$button, self.$hover, self.$active]
+                    .map(|fill| self.background.blend(fill));
+                apply_color!(
+                    $foreground,
+                    fallback = readable_text(self.$color, &fills, TEXT_CONTRAST)
+                );
+            };
+        }
+
         let button_background = if config.mode.is_dark() {
             self.input.mix_oklab(transparent, 0.3)
         } else {
@@ -846,18 +878,12 @@ impl ThemeColor {
             success_active,
             fallback = self.success.darken(active_darken)
         );
-        apply_background_color!(
+        apply_tinted_button!(
+            success,
             button_success,
-            fallback = self.success.mix_oklab(transparent, 0.2)
-        );
-        apply_color!(button_success_foreground, fallback = self.success);
-        apply_background_color!(
             button_success_hover,
-            fallback = self.success.mix_oklab(transparent, 0.3)
-        );
-        apply_background_color!(
             button_success_active,
-            fallback = self.success.mix_oklab(transparent, 0.4)
+            button_success_foreground
         );
         apply_background_color!(info, fallback = self.cyan);
         apply_color!(info_foreground, fallback = self.primary_foreground);
@@ -866,18 +892,12 @@ impl ThemeColor {
             fallback = self.background.blend(self.info.opacity(hover_opacity))
         );
         apply_background_color!(info_active, fallback = self.info.darken(active_darken));
-        apply_background_color!(
+        apply_tinted_button!(
+            info,
             button_info,
-            fallback = self.info.mix_oklab(transparent, 0.2)
-        );
-        apply_color!(button_info_foreground, fallback = self.info);
-        apply_background_color!(
             button_info_hover,
-            fallback = self.info.mix_oklab(transparent, 0.3)
-        );
-        apply_background_color!(
             button_info_active,
-            fallback = self.info.mix_oklab(transparent, 0.4)
+            button_info_foreground
         );
         apply_background_color!(warning, fallback = self.yellow);
         apply_color!(warning_foreground, fallback = self.primary_foreground);
@@ -889,18 +909,12 @@ impl ThemeColor {
             warning_active,
             fallback = self.background.blend(self.warning.darken(active_darken))
         );
-        apply_background_color!(
+        apply_tinted_button!(
+            warning,
             button_warning,
-            fallback = self.warning.mix_oklab(transparent, 0.2)
-        );
-        apply_color!(button_warning_foreground, fallback = self.warning);
-        apply_background_color!(
             button_warning_hover,
-            fallback = self.warning.mix_oklab(transparent, 0.3)
-        );
-        apply_background_color!(
             button_warning_active,
-            fallback = self.warning.mix_oklab(transparent, 0.4)
+            button_warning_foreground
         );
 
         // Other colors
@@ -933,18 +947,12 @@ impl ThemeColor {
             danger_hover,
             fallback = self.background.blend(self.danger.opacity(0.9))
         );
-        apply_background_color!(
+        apply_tinted_button!(
+            danger,
             button_danger,
-            fallback = self.danger.mix_oklab(transparent, 0.2)
-        );
-        apply_color!(button_danger_foreground, fallback = self.danger);
-        apply_background_color!(
             button_danger_hover,
-            fallback = self.danger.mix_oklab(transparent, 0.3)
-        );
-        apply_background_color!(
             button_danger_active,
-            fallback = self.danger.mix_oklab(transparent, 0.4)
+            button_danger_foreground
         );
         apply_background_color!(
             description_list_label,
@@ -1224,6 +1232,97 @@ mod tests {
 
         theme.apply_config(&std::rc::Rc::new(ThemeConfig::default()));
         assert_eq!(theme.chart_grid, theme.border.opacity(0.6));
+    }
+
+    #[test]
+    fn test_tinted_buttons_derive_readable_text() {
+        let pale = serde_json::json!({
+            "background": "#ffffff",
+            "danger.background": "#ff8080",
+            "warning.background": "#ffe066",
+            "success.background": "#7ce08a",
+            "info.background": "#7fd8f0"
+        });
+        let deep = serde_json::json!({
+            "background": "#202020",
+            "danger.background": "#8b1a1a",
+            "warning.background": "#7a5c00",
+            "success.background": "#1e5e2a",
+            "info.background": "#14506b"
+        });
+        let configs = [
+            ("light", serde_json::json!({})),
+            ("dark", serde_json::json!({})),
+            ("light", pale),
+            ("dark", deep),
+        ];
+        for (mode, colors) in configs {
+            let config = serde_json::from_value::<ThemeConfig>(
+                serde_json::json!({ "name": "Tinted", "mode": mode, "colors": colors }),
+            )
+            .unwrap();
+            let mut theme = Theme::default();
+            theme.apply_config(&std::rc::Rc::new(config));
+            let buttons = [
+                (
+                    theme.button_danger_foreground,
+                    [
+                        theme.button_danger,
+                        theme.button_danger_hover,
+                        theme.button_danger_active,
+                    ],
+                ),
+                (
+                    theme.button_success_foreground,
+                    [
+                        theme.button_success,
+                        theme.button_success_hover,
+                        theme.button_success_active,
+                    ],
+                ),
+                (
+                    theme.button_warning_foreground,
+                    [
+                        theme.button_warning,
+                        theme.button_warning_hover,
+                        theme.button_warning_active,
+                    ],
+                ),
+                (
+                    theme.button_info_foreground,
+                    [
+                        theme.button_info,
+                        theme.button_info_hover,
+                        theme.button_info_active,
+                    ],
+                ),
+            ];
+            for (text, fills) in buttons {
+                for fill in fills {
+                    let fill = theme.background.blend(fill);
+                    let ratio = crate::theme::color::contrast_ratio(text, fill);
+                    assert!(
+                        ratio >= 4.5,
+                        "{mode}: {ratio} for {} on {}",
+                        text.to_hex(),
+                        fill.to_hex()
+                    );
+                }
+            }
+        }
+
+        // Text a theme sets stays as it is.
+        let config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Set",
+            "colors": { "button.danger.foreground": "#ff0000" }
+        }))
+        .unwrap();
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(config));
+        assert_eq!(
+            theme.button_danger_foreground,
+            try_parse_color("#ff0000").unwrap()
+        );
     }
 
     #[test]

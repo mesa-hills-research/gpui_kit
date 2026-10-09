@@ -44,6 +44,24 @@ class KitReplay(unittest.TestCase):
         self.assertEqual(source["syntax"], kit.SYNTAX_KEYS)
         self.assertEqual(set(source["highlight"]), set(kit.HIGHLIGHT_KEYS))
 
+    def test_derived_tinted_button_text_reads_in_every_state(self):
+        themes = [
+            {"name": "L", "mode": "light", "colors": {}},
+            {"name": "D", "mode": "dark", "colors": {}},
+            {"name": "Pale", "mode": "light", "colors": {
+                "background": "#FFFFFF", "danger.background": "#FF8080", "warning.background": "#FFE066",
+                "success.background": "#7CE08A", "info.background": "#7FD8F0"}},
+            {"name": "Deep", "mode": "dark", "colors": {
+                "background": "#202020", "danger.background": "#8B1A1A", "warning.background": "#7A5C00",
+                "success.background": "#1E5E2A", "info.background": "#14506B"}},
+        ]
+        for theme in themes:
+            results = {res.check.id: res for res in checks.evaluate(kit.resolve_theme(theme))}
+            for status in ("danger", "success", "warning", "info"):
+                for state in ("", "hover.", "active."):
+                    with self.subTest(theme=theme["name"], button=status + " " + state):
+                        self.assertGreaterEqual(results[f"button.{status}.{state}text"].ratio, 4.5)
+
     def test_editor_keys_are_checked(self):
         theme = {"name": "T", "mode": "dark", "colors": {"foreground": "#FFFFFF", "muted.foreground": "#FFFFFF"},
                  "highlight": {"editor.background": "#000000", "editor.foreground": "#333333",
@@ -59,10 +77,12 @@ class KitReplay(unittest.TestCase):
         tokens = kit.resolve_theme(theme).tokens
         # selection falls back to primary and is capped at 30% opacity
         self.assertEqual(C.to_hex(tokens["selection.background"].color), "#0000FF4C")
-        # the danger button is the danger color at 20% with danger-colored text
+        # the danger button is the danger color at 20%, its text the danger color made darker
         danger = tokens["danger.background"].color
-        self.assertEqual(tokens["button.danger.foreground"].color, danger)
+        text = tokens["button.danger.foreground"].color
         self.assertAlmostEqual(tokens["button.danger.background"].color[3], danger[3] * 0.2)
+        self.assertLess(C.to_oklch(text)[0], C.to_oklch(danger)[0])
+        self.assertAlmostEqual(C.rgb_to_hsl(text)[0], C.rgb_to_hsl(danger)[0], places=2)
 
     def test_list_active_is_capped(self):
         theme = {"name": "T", "mode": "dark", "colors": {"list.active.background": "#FF0000"}}
