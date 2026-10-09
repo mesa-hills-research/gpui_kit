@@ -55,11 +55,13 @@ def with_alpha(c: RGBA, a: float) -> RGBA:
 
 def over(top: RGBA, bottom: RGBA) -> RGBA:
     """Source-over compositing with straight alpha."""
-    ta, ba = top[3], bottom[3]
-    a = ta + ba * (1 - ta)
+    top_alpha, bottom_alpha = top[3], bottom[3]
+    a = top_alpha + bottom_alpha * (1 - top_alpha)
     if a <= 0:
         return TRANSPARENT
-    rgb = tuple((top[i] * ta + bottom[i] * ba * (1 - ta)) / a for i in range(3))
+    rgb = tuple(
+        (top[i] * top_alpha + bottom[i] * bottom_alpha * (1 - top_alpha)) / a for i in range(3)
+    )
     return (*rgb, a)
 
 
