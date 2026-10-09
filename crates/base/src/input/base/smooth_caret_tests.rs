@@ -608,7 +608,7 @@ fn character_motions_of_every_scheme_glide(cx: &mut TestAppContext) {
 /// glide ends at once, and the caret is drawn where it is.
 #[gpui::test]
 fn large_and_vertical_moves_are_instant_and_end_a_glide(cx: &mut TestAppContext) {
-    let instant: [(&str, fn(&mut Glider)); 14] = [
+    let instant: [(&str, fn(&mut Glider)); 16] = [
         ("up", |g| g.test.keys("up")),
         ("down", |g| g.test.keys("down")),
         ("page up", |g| g.test.keys("pageup")),
@@ -619,6 +619,8 @@ fn large_and_vertical_moves_are_instant_and_end_a_glide(cx: &mut TestAppContext)
         ("the end of the text", |g| g.test.keys("ctrl-end")),
         ("enter", |g| g.test.keys("enter")),
         ("a selection", |g| g.test.keys("shift-left")),
+        ("deleting a word", |g| g.test.keys("ctrl-backspace")),
+        ("cut", |g| g.test.keys("shift-home ctrl-x")),
         ("select all", |g| g.test.dispatch(SelectAll)),
         ("undo", |g| g.test.dispatch(Undo)),
         ("redo", |g| {
@@ -650,6 +652,58 @@ fn large_and_vertical_moves_are_instant_and_end_a_glide(cx: &mut TestAppContext)
         glider.advance(FRAME_MS);
         assert_eq!(glider.frames_requested(), 0, "{what}: no more frames");
     }
+}
+
+#[gpui::test]
+fn vim_deletes_a_word_at_once(cx: &mut TestAppContext) {
+    let mut glider = Glider::with(cx, Keymap::Vim, KeymapPlatform::Linux, "ˇone two three");
+    glider.test.keys("w");
+    assert!(glider.sample().is_some());
+    glider.test.keys("d w");
+    glider.test.assert("one ˇthree");
+    glider.assert_still("dw");
+    glider.test.keys("x");
+    glider.assert_still("x");
+}
+
+#[gpui::test]
+fn an_arrow_key_during_typing_aims_the_glide_anew(cx: &mut TestAppContext) {
+    let mut glider = Glider::new(cx, "abˇcd");
+    glider.test.type_text("xy");
+    glider.advance(20);
+    let typing = glider.gliding();
+    assert!(typing.plan.splits_row());
+    glider.test.keys("left");
+    // The caret keeps its place and its speed, and turns toward the new
+    // target. The typed text it had not reached is drawn at once: only
+    // typing uncovers.
+    let moving = glider.gliding();
+    assert!((moving.x - typing.x).abs() < 1e-3);
+    assert!((moving.velocity - typing.velocity).abs() < 1e-2);
+    assert!(moving.plan.target_x < typing.plan.target_x);
+    assert!(!moving.plan.splits_row());
+    glider.run(200);
+    glider.assert_still("after the arrow key");
+    glider.test.assert("abxˇycd");
+}
+
+#[gpui::test]
+fn menus_and_scrolling_follow_the_caret_not_the_glide(cx: &mut TestAppContext) {
+    let mut glider = Glider::new(cx, &format!("{}ˇ", "a".repeat(80)));
+    glider
+        .test
+        .update(|state, window, cx| state.set_soft_wrap(false, window, cx));
+    let input = glider
+        .test
+        .textarea
+        .read_with(&glider.test.cx, |state, _| state.input_bounds());
+    glider.test.type_text("b");
+    let sample = glider.gliding();
+    // The frame of the keystroke scrolls the caret into view, and menus
+    // open at it, while the glide is still behind.
+    assert_eq!(glider.caret_x(), sample.plan.target_x);
+    assert!(sample.plan.target_x < input.right());
+    assert!(sample.plan.caret_x < sample.plan.target_x);
 }
 
 #[gpui::test]
@@ -934,18 +988,18 @@ fn the_text_changes_at_once(cx: &mut TestAppContext) {
         .update(|state, _, cx| state.set_spell_checker(Some(checker), cx));
 
     // No time passes, so every glide is still to come.
-    glider.test.type_text("teh");
+    glider.test.type_text("fox");
     assert!(glider.sample().is_some());
-    glider.test.assert("The tehˇ");
+    glider.test.assert("The foxˇ");
     assert_eq!(
         checked.borrow().last().map(String::as_str),
-        Some("The teh"),
+        Some("The fox"),
         "the spell checker sees the text"
     );
     glider.test.dispatch(Undo);
     glider.test.assert("The ˇ");
     glider.test.dispatch(Redo);
-    glider.test.assert("The tehˇ");
+    glider.test.assert("The foxˇ");
 }
 
 #[gpui::test]
