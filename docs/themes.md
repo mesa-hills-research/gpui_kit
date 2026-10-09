@@ -15,15 +15,15 @@ python3 script/themes preview -o preview.html   # an HTML page showing every the
 
 `check` validates each file against [`.theme-schema.json`](../.theme-schema.json), then works
 out the colors the kit will actually paint: it applies the same fallbacks for keys a theme
-leaves out, derives the same hover and pressed colors, caps `list.active.background` and
-`table.active.background` at 20% opacity and `selection.background` at 30%, and composites
-every translucent color over the surface beneath it. It then measures the contrast of each
-pair the interface draws: text on every surface, list and table rows at rest, hovered and
-selected, menus, tabs, the title and status bars, inputs, every button variant and state,
-semantic colors as text and as fills, focus rings, borders, the scrollbar thumb, and in the
-editor the text, line numbers, gutter separator, caret, selection, search matches,
-diagnostics and every syntax color on the editor background, on the active line and under a
-selection.
+leaves out, derives the same hover and pressed colors and the same text for tinted status
+buttons, caps `list.active.background` and `table.active.background` at 20% opacity and
+`selection.background` at 30%, and composites every translucent color over the surface beneath
+it. It then measures the contrast of each pair the interface draws: text on every surface,
+list and table rows at rest, hovered and selected, menus, tabs, the title and status bars,
+inputs, every button variant and state, semantic colors as text and as fills, focus rings,
+borders, the scrollbar thumb, and in the editor the text, line numbers, the caret line's
+number, gutter separator, caret, selection, search matches, diagnostics and every syntax color
+on the editor background, on the active line and under a selection.
 
 Each failing pair is listed with its ratio, the minimum it needed, the two colors and where
 it appears. The exit status is 1 when anything fails.
@@ -32,13 +32,17 @@ it appears. The exit status is 1 when anything fails.
 | --- | --- |
 | `--summary` | One line per theme with pass counts per level |
 | `--all` | List passing checks too |
-| `--notes` | List keys the kit ignores, such as `link.foreground` (the kit reads `link`) or `comment.doc` in `syntax` (spelled `comment_doc`) |
+| `--notes` | List keys the kit ignores, such as Zed's `panel.background` |
 | `--json` | Machine-readable results |
 | `--report` | Exit 0 even when checks fail |
 
-The kit draws editor text in `foreground` and line numbers in `muted.foreground`. The
-`editor.foreground` and `editor.line_number` keys stay in theme files for compatibility with
-Zed themes, and the checker judges the colors the kit uses.
+The kit also reads the names Zed themes and older theme files use for a few keys, listed in
+the schema: `link.foreground` for `link`, `drag_border` for `drag.border`, `comment.doc` for
+`comment_doc` and so on. A theme that sets both names gets the kit's own.
+
+A code editor draws its text in `editor.foreground`, and editor gutters draw line numbers in
+`editor.line_number` and the caret line's number in `editor.active_line_number`. They default
+to `foreground`, `muted.foreground` and the editor's text color.
 
 ## Contrast rules
 
@@ -175,6 +179,6 @@ between light and dark.
 python3 -m unittest discover -s script/tests
 ```
 
-The tests cover the contrast math, compare the checker's key tables with the kit's Rust
-sources, and confirm every spec still produces passing themes identical to the files in
+The tests cover the contrast math, compare the checker's key tables and the schema with the
+kit's Rust sources, and confirm every spec still produces passing themes identical to the files in
 `themes/`.

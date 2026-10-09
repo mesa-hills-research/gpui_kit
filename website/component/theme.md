@@ -44,9 +44,15 @@ Background tokens that opt in to gradient rendering can also use CSS-style two-s
 
 Top-level theme fields, such as `cx.theme().button_primary`, remain solid `Hsla` values for compatibility. Code that needs the full resolved token can use `cx.theme().tokens.button_primary`; its `.color` field is the solid representative color, and its `.background` field contains the configured `Background`, including gradients.
 
+## Key names
+
+A few keys also go by the names Zed themes use, such as `link.foreground` for `link` and `comment.doc` for `comment_doc`. [`.theme-schema.json`](https://github.com/longbridge/gpui-kit/blob/main/.theme-schema.json) lists them all. When a theme sets both names, the kit's own name wins.
+
 ## Editor colors
 
-In a theme's `highlight` section, `editor.gutter.border` colors the line between an editor's line numbers and its text. It defaults to `border`.
+In a theme's `highlight` section, `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.
+
+`editor.gutter.border` colors the line between an editor's line numbers and its text. It defaults to `border`.
 
 ## Theme Registry
 
