@@ -354,12 +354,14 @@ let document = cx.new(|cx| TextareaState::new(window, cx).text_editor().keymap(K
 document.update(cx, |document, cx| document.set_keymap(Keymap::Emacs, cx));
 ```
 
-Only the active scheme's keys apply. A scheme with modes reports the current
-one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
-the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
-state to show the label in a status bar. CUA binds each platform's own
-shortcuts, Emacs keeps a mark, a kill ring and a prefix argument, and Vim has
-its modes, operators, registers and command line. Each scheme's keys are below.
+Only the active scheme's keys apply. A switch starts the new scheme afresh,
+Vim in normal mode, and keeps the selection and the undo history. A scheme
+with modes reports the current one through `keymap_mode_label`, such as
+`NORMAL` or `INSERT` in Vim, and draws the caret as `cursor_shape` says: a
+block in Vim's normal mode. Observe the state to show the label in a status
+bar. CUA binds each platform's own shortcuts, Emacs keeps a mark, a kill ring
+and a prefix argument, and Vim has its modes, operators, registers and command
+line. Each scheme's keys are below.
 
 #### CUA
 
