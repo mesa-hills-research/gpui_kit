@@ -197,3 +197,142 @@ Textarea::new(&notes).suggestion_item(|item, _, _| {
         .child(item.suggestion().label().clone())
 })
 ```
+
+## Text editor
+
+`TextareaState::text_editor` sets a textarea up for writing: line numbers, the
+search panel and soft wrap. `TextEditor` renders it filling its parent, with
+square corners and no border.
+
+```rust
+use gpui_kit::component::input::{TextEditor, TextareaState};
+
+let document = cx.new(|cx| {
+    TextareaState::new(window, cx)
+        .text_editor()
+        .spell_checker(Rc::new(Dictionary::default()))
+        .suggestion_provider(Rc::new(Words::default()))
+        .default_value(text)
+});
+
+TextEditor::new(&document)
+```
+
+Each part also works on its own, on any textarea: `line_number(true)`,
+`searchable(true)`, `spell_checker` and [suggestions](#suggestions).
+
+### Spell checking
+
+The application owns the dictionary through a `SpellChecker`: it finds the
+misspelled words, suggests replacements and learns new words. The textarea
+decides when to check, draws the underlines and offers the fixes.
+
+```rust
+use gpui_kit::component::input::{SpellCheck, SpellCheckRequest, SpellChecker};
+
+#[derive(Default)]
+struct Dictionary {
+    words: RefCell<HashSet<String>>,
+}
+
+impl SpellChecker for Dictionary {
+    fn check(&self, request: &SpellCheckRequest, _: &mut App) -> Task<anyhow::Result<SpellCheck>> {
+        let words = self.words.borrow();
+        let mut misspelled = Vec::new();
+        for range in request.ranges() {
+            let line = request.text().slice(range.clone()).to_string();
+            let mut start = range.start;
+            for word in line.split(|c: char| !c.is_alphabetic()) {
+                if !word.is_empty() && !words.contains(&word.to_lowercase()) {
+                    misspelled.push(start..start + word.len());
+                }
+                start += word.len() + 1;
+            }
+        }
+        Task::ready(Ok(SpellCheck {
+            misspelled,
+            ..Default::default()
+        }))
+    }
+
+    fn suggestions(&self, word: &str, _: &mut App) -> Vec<SharedString> {
+        // The closest known words, best first.
+        nearest(&self.words.borrow(), word)
+    }
+
+    fn add_to_dictionary(&self, word: &str, _: &mut App) {
+        self.words.borrow_mut().insert(word.to_lowercase());
+    }
+}
+```
+
+The first render checks all of the text. After that, an edit marks its lines,
+and once typing pauses for `SpellChecker::debounce` (300 ms by default) only
+those lines are checked again. Between checks the underlines move with the
+text. A misspelling that ends at the caret right after typing is marked once
+the caret leaves the word. A slow checker can return a pending task and work in
+the background, and its answer moves along with the edits made meanwhile.
+
+`set_spell_checking(false)` turns checking off and clears the underlines,
+`set_spell_checker` swaps the checker, and `refresh_spelling(cx)` has every
+textarea check again after the dictionary changed elsewhere, for example in a
+settings page.
+
+### Fixing a misspelling
+
+Right-click an underlined word, or press Shift-F10 or the Menu key with the
+caret in it, and the context menu lists up to five of the checker's
+suggestions, **Add to Dictionary** and **Ignore** above Cut, Copy, Paste and
+Select All. Choosing a suggestion replaces the word in one undo step. Add to
+Dictionary calls `SpellChecker::add_to_dictionary` and clears every underline
+of the word, and Ignore stops marking it in this textarea. `SpellEvent`
+reports each of these.
+
+The items dispatch `ReplaceMisspelling`, `AddToDictionary` and
+`IgnoreMisspelling`, which the textarea handles. `misspelling_at(offset)` gives
+the word under a position and the same actions, for fixes offered elsewhere,
+such as a toolbar.
+
+### Your own menu items
+
+`context_menu_at` builds the menu knowing where it opened: the offset, the word
+there, a misspelling and its suggestions, and the marks. `spelling_items` and
+`standard_items` add the default groups, so an application's items can go
+around them:
+
+```rust
+TextEditor::new(&document).context_menu_at(|menu, target, _, _| {
+    let menu = target.spelling_items(menu);
+    let menu = match target.word() {
+        Some(word) => menu
+            .menu(format!("Define “{word}”"), Box::new(Define(word.clone())))
+            .separator(),
+        None => menu,
+    };
+    target.standard_items(menu)
+})
+```
+
+### Marks
+
+Marks underline ranges of the text and move with edits. The spelling
+underlines are marks, and an application adds its own, such as grammar hints
+or comments:
+
+```rust
+use gpui_kit::component::input::{Mark, MarkStyle};
+
+let hints = document.update(cx, |document, cx| document.create_mark_collection(cx));
+hints.set(
+    vec![Mark::new(4..9, MarkStyle::Grammar).with_data("Passive voice")],
+    cx,
+);
+```
+
+`MarkStyle::Spelling` and `MarkStyle::Grammar` draw wavy underlines in the
+theme's error and info colours, and `MarkStyle::Underline` a straight or wavy
+one in a colour of your choice. A mark keeps its place while text is typed
+around it and goes away when an edit replaces all of its text. `splice`
+replaces the marks in a range, for a check that covers part of the text.
+`marks_at` reads back what is under a position, and `ContextMenuTarget::marks`
+what is under the menu.

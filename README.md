@@ -18,15 +18,25 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   caret, or both, while staying a plain text area. Answers for text that has since changed are
   dropped, and the provider hears every edit with a revision. See
   [Textarea: suggestions](website/component/textarea.md#suggestions).
+- **A text editor** (`gpui-base`, `gpui-component`). `TextareaState::text_editor` and
+  `TextEditor` make a textarea a prose editor with line numbers, search and the application's
+  spell checker. Misspelled words get wavy underlines that move with edits, and a right-click on
+  one, or Shift-F10 and the Menu key at the caret, offers the checker's suggestions, Add to
+  Dictionary and Ignore. Line numbers, marks (underlines that follow the text) and a context menu
+  that knows the clicked word work on any textarea. See
+  [Textarea: text editor](website/component/textarea.md#text-editor).
+- **Status colours without tree-sitter** (`gpui-component`). Without the `tree-sitter` feature,
+  diagnostic and status colours fall back to the theme's red, yellow, blue, green and cyan, as
+  they do with it, where upstream made them transparent.
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
 - **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
-  suggestion menu, a list and a popup menu render headlessly on Linux, in light and dark themes
-  and at scale factors 2 and 2.625, and are compared with the PNGs in
-  `crates/kit/tests/screenshots`. They run with the kit's tests and use the gpui fork's
+  suggestion menu, a text editor and its spelling menu, a list and a popup menu render headlessly
+  on Linux, in light and dark themes and at scale factors 2 and 2.625, and are compared with the
+  PNGs in `crates/kit/tests/screenshots`. They run with the kit's tests and use the gpui fork's
   `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).

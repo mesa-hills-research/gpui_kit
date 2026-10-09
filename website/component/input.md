@@ -233,6 +233,10 @@ Input::new(&input).context_menu(|menu, window, cx| {
 })
 ```
 
+Shift-F10 and the Menu key open the menu at the caret. A textarea's menu can
+also be built from where it opened: see
+[Textarea: your own menu items](./textarea.md#your-own-menu-items).
+
 ### Touch Selection
 
 On a touch screen, a long press selects the word under the finger and keeps
