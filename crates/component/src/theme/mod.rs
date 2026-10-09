@@ -782,18 +782,29 @@ mod semantic_token_tests {
     }
 }
 
+/// The base font size a theme gets when it sets none.
+pub(crate) const DEFAULT_FONT_SIZE: Pixels = px(16.);
+/// The monospace font size a theme gets when it sets none.
+pub(crate) const DEFAULT_MONO_FONT_SIZE: Pixels = px(13.);
+/// The radius of general elements when a theme sets none.
+pub(crate) const DEFAULT_RADIUS: Pixels = px(6.);
+/// The radius of large elements when a theme sets none.
+pub(crate) const DEFAULT_RADIUS_LG: Pixels = px(8.);
+/// Whether controls cast shadows when a theme does not say.
+pub(crate) const DEFAULT_SHADOW: bool = true;
+
 impl From<&ThemeColor> for Theme {
     fn from(colors: &ThemeColor) -> Self {
         Theme {
             mode: ThemeMode::default(),
             transparent: Hsla::transparent_black(),
             font_family: ".SystemUIFont".into(),
-            font_size: px(16.),
+            font_size: DEFAULT_FONT_SIZE,
             mono_font_family: mono_font::default_mono_font_family(),
-            mono_font_size: px(13.),
-            radius: px(6.),
-            radius_lg: px(8.),
-            shadow: true,
+            mono_font_size: DEFAULT_MONO_FONT_SIZE,
+            radius: DEFAULT_RADIUS,
+            radius_lg: DEFAULT_RADIUS_LG,
+            shadow: DEFAULT_SHADOW,
             focus_ring: true,
             scrollbar_mode: ScrollbarMode::default(),
             notification: NotificationSettings::default(),
@@ -1013,6 +1024,47 @@ mod update_tests {
             assert_eq!(theme.primary, red);
             assert_eq!(theme.tokens.primary, red.into());
             assert_eq!(gpui_base::Theme::global(cx).tokens.colors.primary, red);
+        });
+    }
+
+    /// Switching from a square, flat theme to one that sets neither radius
+    /// nor shadow brings the defaults back, through a mode change too, and
+    /// switching to the mode of the square theme brings its settings back.
+    #[gpui::test]
+    fn switching_themes_resets_what_the_next_theme_leaves_out(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            init(cx);
+            let config = |json| Rc::new(serde_json::from_value::<ThemeConfig>(json).unwrap());
+            let square = config(serde_json::json!({
+                "name": "Square",
+                "mode": "dark",
+                "radius": 0,
+                "radius.lg": 0,
+                "shadow": false
+            }));
+            let plain_dark = config(serde_json::json!({ "name": "Plain Dark", "mode": "dark" }));
+            let plain_light = config(serde_json::json!({ "name": "Plain", "mode": "light" }));
+            let settings = |cx: &App| {
+                let theme = Theme::global(cx);
+                (theme.radius, theme.radius_lg, theme.shadow)
+            };
+            let square_settings = (px(0.), px(0.), false);
+            let default_settings = (DEFAULT_RADIUS, DEFAULT_RADIUS_LG, DEFAULT_SHADOW);
+
+            Theme::update(cx, |theme| theme.apply_config(&square));
+            assert_eq!(settings(cx), square_settings);
+            Theme::update(cx, |theme| theme.apply_config(&plain_dark));
+            assert_eq!(settings(cx), default_settings);
+
+            Theme::update(cx, |theme| theme.apply_config(&square));
+            Theme::update(cx, |theme| theme.apply_config(&plain_light));
+            assert_eq!(settings(cx), default_settings);
+
+            // Square is still the dark theme: changing to dark loads it again.
+            Theme::change(ThemeMode::Dark, None, cx);
+            assert_eq!(settings(cx), square_settings);
+            Theme::change(ThemeMode::Light, None, cx);
+            assert_eq!(settings(cx), default_settings);
         });
     }
 

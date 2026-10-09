@@ -11,7 +11,10 @@ use super::color::{
     readable_text, try_parse_background, try_parse_background_clamped, try_parse_color,
     try_parse_theme_color,
 };
-use super::{Colorize, SemanticThemeTokens, Theme, ThemeColor, ThemeMode, ThemeToken, ThemeTokens};
+use super::{
+    Colorize, DEFAULT_FONT_SIZE, DEFAULT_MONO_FONT_SIZE, DEFAULT_RADIUS, DEFAULT_RADIUS_LG,
+    DEFAULT_SHADOW, SemanticThemeTokens, Theme, ThemeColor, ThemeMode, ThemeToken, ThemeTokens,
+};
 
 /// Other names theme files use for color keys, as `(alias, key)`: the names in
 /// Zed themes and in earlier default themes. A key set under its own name wins
@@ -1130,20 +1133,27 @@ impl ThemeColor {
 
 impl Theme {
     /// Apply the given theme configuration to the current theme.
+    ///
+    /// Every setting the file leaves out takes its default for the file's
+    /// mode, so nothing of the theme applied before carries over: its colors,
+    /// syntax highlighting, fonts and sizes, radii and shadow. Settings a
+    /// theme file has no key for, such as [`Theme::scrollbar_mode`] and
+    /// [`Theme::focus_ring`], stay as they are.
     pub fn apply_config(&mut self, config: &Rc<ThemeConfig>) {
         if config.mode.is_dark() {
             self.dark_theme = config.clone();
         } else {
             self.light_theme = config.clone();
         }
-        if let Some(style) = &config.highlight {
-            let highlight_theme = Arc::new(HighlightTheme {
+        self.highlight_theme = match &config.highlight {
+            Some(style) => Arc::new(HighlightTheme {
                 name: config.name.to_string(),
                 appearance: config.mode,
                 style: style.clone(),
-            });
-            self.highlight_theme = highlight_theme.clone();
-        }
+            }),
+            None if config.mode.is_dark() => HighlightTheme::default_dark(),
+            None => HighlightTheme::default_light(),
+        };
 
         let default_colors = if config.mode.is_dark() {
             ThemeColor::dark()
@@ -1151,27 +1161,23 @@ impl Theme {
             ThemeColor::light()
         };
 
-        if let Some(font_size) = config.font_size {
-            self.font_size = px(font_size);
-        }
-        if let Some(font_family) = &config.font_family {
-            self.font_family = font_family.clone();
-        }
-        if let Some(mono_font_family) = &config.mono_font_family {
-            self.mono_font_family = mono_font_family.clone();
-        }
-        if let Some(mono_font_size) = config.mono_font_size {
-            self.mono_font_size = px(mono_font_size);
-        }
-        if let Some(radius) = config.radius {
-            self.radius = px(radius as f32);
-        }
-        if let Some(radius_lg) = config.radius_lg {
-            self.radius_lg = px(radius_lg as f32);
-        }
-        if let Some(shadow) = config.shadow {
-            self.shadow = shadow;
-        }
+        self.font_size = config.font_size.map_or(DEFAULT_FONT_SIZE, px);
+        self.font_family = config
+            .font_family
+            .clone()
+            .unwrap_or_else(super::system_font::default_font_family);
+        self.mono_font_family = config
+            .mono_font_family
+            .clone()
+            .unwrap_or_else(super::mono_font::default_installed_mono_font_family);
+        self.mono_font_size = config.mono_font_size.map_or(DEFAULT_MONO_FONT_SIZE, px);
+        self.radius = config
+            .radius
+            .map_or(DEFAULT_RADIUS, |radius| px(radius as f32));
+        self.radius_lg = config
+            .radius_lg
+            .map_or(DEFAULT_RADIUS_LG, |radius| px(radius as f32));
+        self.shadow = config.shadow.unwrap_or(DEFAULT_SHADOW);
 
         self.tokens = self.colors.apply_config(&config, &default_colors);
         self.mode = config.mode;
@@ -1293,6 +1299,95 @@ mod tests {
 
         theme.apply_config(&std::rc::Rc::new(ThemeConfig::default()));
         assert_eq!(theme.chart_grid, theme.border.opacity(0.6));
+    }
+
+    /// A theme's radius, shadow, fonts and syntax colors last only until the
+    /// next theme: one that leaves them out gets the defaults, whichever
+    /// theme came before.
+    #[test]
+    fn test_apply_config_resets_the_settings_a_theme_leaves_out() {
+        let square = std::rc::Rc::new(
+            serde_json::from_value::<ThemeConfig>(serde_json::json!({
+                "name": "Square",
+                "mode": "dark",
+                "radius": 0,
+                "radius.lg": 0,
+                "shadow": false,
+                "font.size": 20,
+                "font.family": "Inter",
+                "mono_font.family": "JetBrains Mono",
+                "mono_font.size": 11,
+                "colors": { "background": "#000000" },
+                "highlight": {
+                    "editor.background": "#000000",
+                    "syntax": { "comment": { "color": "#00ff00" } }
+                }
+            }))
+            .unwrap(),
+        );
+        let plain = |mode: &str| {
+            std::rc::Rc::new(
+                serde_json::from_value::<ThemeConfig>(serde_json::json!({
+                    "name": "Plain",
+                    "mode": mode,
+                    "colors": { "background": "#336699" }
+                }))
+                .unwrap(),
+            )
+        };
+        let defaults = Theme::default();
+
+        for mode in ["dark", "light"] {
+            let plain = plain(mode);
+            let mut theme = Theme::default();
+            theme.apply_config(&square);
+            assert_eq!(theme.radius, px(0.));
+            assert_eq!(theme.radius_lg, px(0.));
+            assert!(!theme.shadow);
+            assert_eq!(theme.font_size, px(20.));
+            assert_eq!(theme.font_family, "Inter");
+            assert_eq!(theme.mono_font_family, "JetBrains Mono");
+            assert_eq!(theme.mono_font_size, px(11.));
+            assert_eq!(theme.highlight_theme.name, "Square");
+
+            theme.apply_config(&plain);
+            assert_eq!(theme.radius, defaults.radius, "{mode}");
+            assert_eq!(theme.radius_lg, defaults.radius_lg, "{mode}");
+            assert_eq!(theme.shadow, defaults.shadow, "{mode}");
+            assert_eq!(theme.font_size, defaults.font_size, "{mode}");
+            // The default families, or the installed fonts they resolve to
+            // once a test with fonts has resolved them.
+            let ui_fonts = [
+                defaults.font_family.clone(),
+                crate::theme::system_font::default_font_family(),
+            ];
+            assert!(ui_fonts.contains(&theme.font_family), "{mode}");
+            let mono_fonts = [
+                defaults.mono_font_family.clone(),
+                crate::theme::mono_font::default_installed_mono_font_family(),
+            ];
+            assert!(mono_fonts.contains(&theme.mono_font_family), "{mode}");
+            assert_eq!(theme.mono_font_size, defaults.mono_font_size, "{mode}");
+            let default_highlight = if mode == "dark" {
+                crate::highlighter::HighlightTheme::default_dark()
+            } else {
+                crate::highlighter::HighlightTheme::default_light()
+            };
+            assert!(std::sync::Arc::ptr_eq(
+                &theme.highlight_theme,
+                &default_highlight
+            ));
+
+            // The other way round, the second theme's settings apply.
+            let mut theme = Theme::default();
+            theme.apply_config(&plain);
+            theme.apply_config(&square);
+            assert_eq!(theme.radius, px(0.));
+            assert_eq!(theme.radius_lg, px(0.));
+            assert!(!theme.shadow);
+            assert_eq!(theme.font_family, "Inter");
+            assert_eq!(theme.highlight_theme.name, "Square");
+        }
     }
 
     #[test]

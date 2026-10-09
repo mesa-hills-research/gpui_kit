@@ -50,7 +50,7 @@ A few keys also go by the names Zed themes use, such as `link.foreground` for `l
 
 ## Editor colors
 
-In a theme's `highlight` section, `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.
+In a theme's `highlight` section, `editor.background` is the background of a code editor and a text editor, the input background by default. `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.
 
 `editor.gutter.border` colors the line between an editor's line numbers and its text. It defaults to `border`.
 
@@ -85,6 +85,8 @@ pub fn init(cx: &mut App) {
     }
 }
 ```
+
+`apply_config` replaces the whole theme. A setting the file leaves out, such as `radius`, `shadow`, a font or the `highlight` section, gets its default for the file's mode, so nothing of the theme before carries over. An application that sets its own font size or radius on the theme applies it again after switching themes.
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html

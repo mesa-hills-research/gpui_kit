@@ -269,6 +269,34 @@ mod tests {
         });
     }
 
+    /// Switching from a theme with square corners and no shadow to one that
+    /// sets neither brings back the default corners and shadow.
+    #[gpui_kit::test]
+    fn switching_themes_drops_the_previous_themes_radius(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let config = |json| Rc::new(serde_json::from_value::<ThemeConfig>(json).unwrap());
+        let square = config(serde_json::json!({
+            "name": "Square",
+            "mode": "dark",
+            "radius": 0,
+            "radius.lg": 0,
+            "shadow": false
+        }));
+        let plain = config(serde_json::json!({ "name": "Plain", "mode": "light" }));
+        let defaults = cx.update(|cx| {
+            let theme = cx.theme();
+            (theme.radius, theme.radius_lg, theme.shadow)
+        });
+
+        cx.update(|cx| apply_theme_config(square, cx));
+        cx.read(|cx| assert_eq!(cx.theme().radius, px(0.)));
+        cx.update(|cx| apply_theme_config(plain, cx));
+        cx.read(|cx| {
+            let theme = cx.theme();
+            assert_eq!((theme.radius, theme.radius_lg, theme.shadow), defaults);
+        });
+    }
+
     #[test]
     fn state_serializes_the_selected_radius() {
         let state = State {
