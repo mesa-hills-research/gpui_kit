@@ -117,7 +117,7 @@ complete golden-image suite.
 
 `tests/screenshots.rs` renders components headlessly and compares the pixels with the PNGs in
 `tests/screenshots`: buttons, inputs and a textarea, a textarea's suggestion menu, a text editor,
-its spelling menu and line-number gutters, a list and a popup menu, in light and dark themes. It draws with the gpui fork's `gpui-pre-screenshot` on
+its spelling menu and line-number gutters, a list, a popup menu and a font picker, in light and dark themes. It draws with the gpui fork's `gpui-pre-screenshot` on
 Mesa's software Vulkan driver (`mesa-vulkan-drivers` on Debian and Ubuntu), so a display and a
 GPU are optional, and it runs with the kit's other tests on Linux:
 

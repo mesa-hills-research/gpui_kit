@@ -4049,6 +4049,7 @@ dependencies = [
  "gpui-pre-screenshot",
  "gpui-pre-web",
  "lsp-types 0.97.0",
+ "serde_json",
 ]
 
 [[package]]
