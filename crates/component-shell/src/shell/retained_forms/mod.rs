@@ -15,6 +15,7 @@ use gpui_component::{
     calendar::{Calendar, CalendarState},
     color_picker::{ColorPicker, ColorPickerState},
     date_picker::{DatePicker, DatePickerState},
+    font_picker::{FontPicker, FontPickerState},
     input::{Input, InputState, NumberInput, OtpInput, OtpState},
     slider::{Slider, SliderState},
     time_field::{TimeField, TimeFieldState},
@@ -60,6 +61,7 @@ mod tests {
                 "OtpState",
                 "SliderState",
                 "ColorPickerState",
+                "FontPickerState",
                 "DatePickerState",
                 "TimeFieldState",
             ]
@@ -72,6 +74,7 @@ mod tests {
                 "OtpInput",
                 "Slider",
                 "ColorPicker",
+                "FontPicker",
                 "Calendar",
                 "DatePicker",
                 "TimeField"
@@ -153,6 +156,9 @@ enum FormOp {
     Label(String),
     AccessibilityLabel(String),
     Months(usize),
+    PreviewText(String),
+    Compact,
+    CollapsibleFeatures(bool),
 }
 
 fn bool_op(
@@ -344,6 +350,26 @@ impl ComponentMaterializer for ColorPickerMaterializer {
             picker = match op {
                 FormOp::Label(value) => picker.label(value.clone()),
                 FormOp::AccessibilityLabel(value) => picker.accessibility_label(value.clone()),
+                _ => picker,
+            };
+        }
+        finish_leaf(&mut request, picker)
+    }
+}
+
+struct FontPickerMaterializer;
+impl ComponentMaterializer for FontPickerMaterializer {
+    fn materialize(&self, mut request: MaterializeRequest<'_>) -> anyhow::Result<gpui::AnyElement> {
+        let state = state_entity!(request, FontPickerState);
+        let mut picker = FontPicker::new(&state);
+        for op in request
+            .methods()
+            .filter_map(|method| method.payload().downcast_ref::<FormOp>())
+        {
+            picker = match op {
+                FormOp::PreviewText(value) => picker.preview_text(value.clone()),
+                FormOp::Compact => picker.compact(),
+                FormOp::CollapsibleFeatures(value) => picker.collapsible_features(*value),
                 _ => picker,
             };
         }
@@ -549,6 +575,18 @@ pub fn register(registry: &mut ComponentRegistry) -> Result<(), RegistryError> {
     )?;
     registry.register_state(
         StateDescriptor::new(
+            "FontPickerState",
+            "FontPickerState",
+            vec![],
+            |_, window, cx| Ok(Box::new(cx.new(|cx| FontPickerState::new(window, cx)))),
+        )
+        .with_documentation(
+            "Retained font choice: family, weight, style, size, line height and OpenType \
+             features, listing the system's fonts once they are read in the background.",
+        ),
+    )?;
+    registry.register_state(
+        StateDescriptor::new(
             "DatePickerState",
             "DatePickerState",
             vec![],
@@ -647,6 +685,45 @@ pub fn register(registry: &mut ComponentRegistry) -> Result<(), RegistryError> {
         ],
         "A retained color picker with preview and commit behavior.",
         ColorPickerMaterializer,
+    ))?;
+    registry.register(component(
+        "FontPicker",
+        "FontPickerState",
+        vec![
+            MethodDescriptor::new(
+                "preview_text",
+                vec![ArgumentDescriptor::new("text", ArgumentSchema::String)],
+                |arguments| string_op(arguments, "FontPicker.preview_text", FormOp::PreviewText),
+            )
+            .with_documentation("Sets the text of the preview line drawn in the chosen font."),
+            MethodDescriptor::new("compact", vec![], |_| {
+                Ok(ComponentPayload::new(FormOp::Compact))
+            })
+            .with_documentation(
+                "Lays the picker out as labelled rows for a settings page, with the families in \
+                 a dropdown and the OpenType features behind a disclosure.",
+            ),
+            MethodDescriptor::new(
+                "collapsible_features",
+                vec![ArgumentDescriptor::new(
+                    "collapsible",
+                    ArgumentSchema::Boolean,
+                )],
+                |arguments| {
+                    bool_op(
+                        arguments,
+                        "FontPicker.collapsible_features",
+                        FormOp::CollapsibleFeatures,
+                    )
+                },
+            )
+            .with_documentation(
+                "Shows the OpenType features behind a disclosure the user opens. Off by default.",
+            ),
+        ],
+        "A retained font picker: a searchable list of families, the chosen family's weights, \
+         italic, size, line height and OpenType features, and a preview line.",
+        FontPickerMaterializer,
     ))?;
     registry.register(component(
         "Calendar",

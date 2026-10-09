@@ -1,4 +1,4 @@
-//! Retained textarea and typed resizable-layout bindings.
+//! Retained textarea, text editor and typed resizable-layout bindings.
 //!
 //! `Scrollbar` is intentionally not registered: its public constructor requires
 //! a concrete `ScrollbarHandle`, and the shell does not expose scroll handles as
@@ -10,12 +10,14 @@ pub(super) use super::support::{Empty, bool_method};
 pub(super) use super::typed_child::{Carrier, take};
 
 mod resizable;
+mod text_editor;
 mod textarea;
 
 use gpui_shell::{ComponentRegistry, RegistryError};
 
 pub(super) fn register(registry: &mut ComponentRegistry) -> Result<(), RegistryError> {
     textarea::register(registry)?;
+    text_editor::register(registry)?;
     resizable::register(registry)?;
     Ok(())
 }
@@ -45,7 +47,7 @@ mod tests {
                 .descriptors()
                 .map(|item| item.name())
                 .collect::<Vec<_>>(),
-            ["Textarea", "ResizablePanel", "Resizable"]
+            ["Textarea", "TextEditor", "ResizablePanel", "Resizable"]
         );
     }
 }

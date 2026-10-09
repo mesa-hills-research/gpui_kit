@@ -149,7 +149,7 @@ fn all_retained_form_bindings_materialize_and_keep_their_state_across_frames(
 import { div, View } from "gpui-kit";
 import {
   Calendar, CalendarState, ColorPicker, ColorPickerState,
-  DatePicker, DatePickerState, Input, InputState, NumberInput,
+  DatePicker, DatePickerState, FontPicker, FontPickerState, Input, InputState, NumberInput,
   OtpInput, OtpState, Slider, SliderState,
 } from "gpui-component";
 export default class RetainedForms extends View {
@@ -158,6 +158,7 @@ export default class RetainedForms extends View {
     this.otp = OtpState(6);
     this.slider = SliderState();
     this.color = ColorPickerState();
+    this.font = FontPickerState();
     this.calendar = CalendarState();
     this.date = DatePickerState();
   }
@@ -168,6 +169,7 @@ export default class RetainedForms extends View {
       .child(new OtpInput(this.otp).w(320).groups(3).disabled(false))
       .child(new Slider(this.slider).vertical().reverse().disabled(false))
       .child(new ColorPicker(this.color).label("Accent").accessibility_label("Accent color"))
+      .child(new FontPicker(this.font).compact().collapsible_features(true).preview_text("Preview"))
       .child(new Calendar(this.calendar).number_of_months(2))
       .child(new DatePicker(this.date).placeholder("Choose date").disabled(false));
   }
@@ -194,6 +196,7 @@ export default class RetainedForms extends View {
             "OtpInput",
             "Slider",
             "ColorPicker",
+            "FontPicker",
             "Calendar",
             "DatePicker",
             ":aria_label(registered)",
@@ -203,6 +206,9 @@ export default class RetainedForms extends View {
             ":reverse(registered)",
             ":label(registered)",
             ":accessibility_label(registered)",
+            ":compact(registered)",
+            ":collapsible_features(registered)",
+            ":preview_text(registered)",
             ":number_of_months(registered)",
             ".w[Number(320.0)]",
         ] {

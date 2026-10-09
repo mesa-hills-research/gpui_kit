@@ -42,6 +42,16 @@ export const stories = [
     api: "Textarea",
   }),
   pendingStory({
+    id: "text-editor",
+    title: "Text Editor",
+    group: "Inputs",
+    rustStory: "TextEditorStory",
+    description: "A textarea set up for prose, and a picker for the font to write in.",
+    states: ["line numbers", "soft wrap", "search", "read-only"],
+    availability: "pending",
+    api: "TextEditor",
+  }),
+  pendingStory({
     id: "number-input",
     title: "NumberInput",
     group: "Inputs",

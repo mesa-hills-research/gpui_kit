@@ -70,6 +70,7 @@ export const coveredBy = [
   { route: "table", registrations: ["Table"] },
   { route: "tabs", registrations: ["TabBar", "Tab"] },
   { route: "tag", registrations: ["Tag"] },
+  { route: "text-editor", registrations: ["TextEditor", "FontPicker"] },
   { route: "textarea", registrations: ["Textarea"] },
   { route: "time-field", registrations: ["TimeField"] },
   { route: "toggle", registrations: ["Toggle"] },

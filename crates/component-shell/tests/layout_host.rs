@@ -105,6 +105,26 @@ fn layout_catalog_has_closed_real_state_and_typed_layout_contracts() {
             .iter()
             .any(|method| method.name() == "readonly")
     );
+    let text_editor = frozen
+        .descriptors()
+        .find(|item| item.name() == "TextEditor")
+        .unwrap();
+    assert_eq!(
+        text_editor.constructors()[0].arguments()[0].schema(),
+        &gpui_shell::ArgumentSchema::Entity("TextareaState")
+    );
+    let state = frozen
+        .states()
+        .find(|state| state.export() == "TextareaState")
+        .unwrap();
+    assert_eq!(
+        state
+            .arguments()
+            .iter()
+            .map(|argument| argument.name())
+            .collect::<Vec<_>>(),
+        ["initial_value", "text_editor"]
+    );
 
     let resizable = frozen
         .descriptors()
@@ -146,6 +166,37 @@ export default class App extends View {
         ":readonly(registered)",
         ":bordered(registered)",
         ".p[Number(2.0)]",
+    ] {
+        assert!(second.contains(expected), "missing `{expected}`:\n{second}");
+    }
+}
+
+#[gpui::test]
+fn text_editor_draws_its_state_with_methods_and_style(cx: &mut TestAppContext) {
+    let source = r#"
+import { View } from "gpui-kit";
+import { TextEditor, TextareaState } from "gpui-component";
+export default class App extends View {
+  init() { this.document = TextareaState("A short note", true); }
+  render() { return new TextEditor(this.document).bordered(true).readonly(true).aria_label("Document").disabled(false).h(160); }
+}
+"#;
+    let (mut context, view, _app) = mount(cx, source);
+    draw(&mut context, view.clone());
+    let first = context.update(|_, cx| {
+        assert_eq!(view.read(cx).build_error(), None);
+        view.read(cx).snapshot().unwrap().debug_tree()
+    });
+    context.update(|_, cx| view.update(cx, |view, cx| view.refresh(cx)));
+    draw(&mut context, view.clone());
+    let second = context.update(|_, cx| view.read(cx).snapshot().unwrap().debug_tree());
+    assert_eq!(first, second);
+    for expected in [
+        "TextEditor",
+        ":bordered(registered)",
+        ":readonly(registered)",
+        ":aria_label(registered)",
+        ".h[Number(160.0)]",
     ] {
         assert!(second.contains(expected), "missing `{expected}`:\n{second}");
     }

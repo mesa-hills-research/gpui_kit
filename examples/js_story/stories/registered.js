@@ -55,6 +55,8 @@ import {
   EmptyMedia,
   EmptyTitle,
   Field,
+  FontPicker,
+  FontPickerState,
   Form,
   GroupBox,
   HoverCard,
@@ -139,6 +141,7 @@ import {
   TableHeader,
   TableRow,
   Text,
+  TextEditor,
   Textarea,
   TextareaState,
   TimeField,
@@ -241,6 +244,11 @@ const tokenDraft = {
   ],
 };
 
+const textEditorDocument =
+  "A text editor for prose\n\n" +
+  "The editor numbers its lines, wraps long ones at the edge of the view and has a find panel. " +
+  "A line as long as this one wraps instead of scrolling sideways, so the whole paragraph stays in view.";
+
 export function initializeRegisteredExamples() {
   retained("token-input", () => { const input = InputState(); input.set_value(tokenDraft); return input; });
   retained("questionnaire-direction", () => InputState("Type another direction…"));
@@ -268,11 +276,17 @@ export function initializeRegisteredExamples() {
   retained("textarea-notes", () =>
     TextareaState("Ship the component gallery with verified interactive examples."),
   );
+  retained("text-editor", () => TextareaState(textEditorDocument, true));
+  retained("text-editor-readonly", () =>
+    TextareaState("fn main() {\n    println!(\"read-only\");\n}", true),
+  );
   retained("slider-default", () => SliderState(36));
   retained("slider-reverse", () => SliderState(68));
   retained("slider-vertical", () => SliderState(54));
   retained("slider-disabled", () => SliderState(24));
   retained("color-picker", () => ColorPickerState());
+  retained("font-picker", () => FontPickerState());
+  retained("font-picker-compact", () => FontPickerState());
   retained("date-picker", () => DatePickerState());
   retained("time-field", () => TimeFieldState());
   retained("time-field-disabled", () => TimeFieldState());
@@ -1340,6 +1354,36 @@ export function registeredExamples(surface, cx) {
           ),
         },
       ];
+    case "TextEditor":
+      return [
+        {
+          label: "Line numbers, search and soft wrap",
+          description: "Its state is created with TextareaState(text, true).",
+          element: asElement(
+            new TextEditor(
+              retained("text-editor", () => TextareaState(textEditorDocument, true)),
+            )
+              .aria_label("Document")
+              .w_full()
+              .h(200),
+          ),
+        },
+        {
+          label: "Bordered and read-only",
+          element: asElement(
+            new TextEditor(
+              retained("text-editor-readonly", () =>
+                TextareaState("fn main() {\n    println!(\"read-only\");\n}", true),
+              ),
+            )
+              .aria_label("Read-only document")
+              .bordered(true)
+              .readonly(true)
+              .w_full()
+              .h(96),
+          ),
+        },
+      ];
     case "Textarea":
       return [
         {
@@ -1516,6 +1560,28 @@ export function registeredExamples(surface, cx) {
             new ColorPicker(retained("color-picker", () => ColorPickerState()))
               .label("Accent color")
               .accessibility_label("Choose an accent color"),
+          ),
+        },
+      ];
+    case "FontPicker":
+      return [
+        {
+          label: "Families, weights, size and features",
+          description: "The installed fonts load in the background.",
+          element: asElement(
+            new FontPicker(retained("font-picker", () => FontPickerState()))
+              .preview_text("Sphinx of black quartz, judge my vow.")
+              .collapsible_features(true)
+              .w_full()
+              .h(360),
+          ),
+        },
+        {
+          label: "Compact, for a settings page",
+          element: asElement(
+            new FontPicker(retained("font-picker-compact", () => FontPickerState()))
+              .compact()
+              .w_full(),
           ),
         },
       ];

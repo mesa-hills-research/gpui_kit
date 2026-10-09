@@ -397,6 +397,25 @@
     },
     {
       "source": "ui",
+      "name": "font_picker",
+      "classification": "component",
+      "registration": {
+        "status": "registered",
+        "descriptor": "FontPicker",
+        "exports": [
+          "FontPicker"
+        ],
+        "states": [
+          {
+            "export": "FontPickerState",
+            "kind": "FontPickerState",
+            "role": "retained-control-state"
+          }
+        ]
+      }
+    },
+    {
+      "source": "ui",
       "name": "form",
       "classification": "component",
       "registration": {
@@ -2436,6 +2455,25 @@
         "descriptor": "Tag",
         "exports": [
           "Tag"
+        ]
+      }
+    },
+    {
+      "source": "story",
+      "name": "text_editor",
+      "classification": "component",
+      "registration": {
+        "status": "registered",
+        "descriptor": "TextEditor",
+        "exports": [
+          "TextEditor"
+        ],
+        "states": [
+          {
+            "export": "TextareaState",
+            "kind": "TextareaState",
+            "role": "shared-retained-control-state"
+          }
         ]
       }
     },
