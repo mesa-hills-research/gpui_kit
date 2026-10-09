@@ -287,7 +287,18 @@ settings page.
 Right-click an underlined word, or press Shift-F10 or the Menu key with the
 caret in it, and the context menu lists up to five of the checker's
 suggestions, **Add to Dictionary** and **Ignore** above Cut, Copy, Paste and
-Select All. Choosing a suggestion replaces the word in one undo step. Add to
+Select All. A text editor's menu is drawn by GPUI in the theme's colors on
+every platform, and the arrow keys and Enter work in it. A plain textarea shows
+the operating system's menu on macOS and Windows. `context_menu_style` on
+either picks one or the other:
+
+```rust
+use gpui_kit::component::input::ContextMenuStyle;
+
+TextEditor::new(&document).context_menu_style(ContextMenuStyle::Native)
+```
+
+Choosing a suggestion replaces the word in one undo step. Add to
 Dictionary calls `SpellChecker::add_to_dictionary` and clears every underline
 of the word, and Ignore stops marking it in this textarea. `SpellEvent`
 reports each of these.

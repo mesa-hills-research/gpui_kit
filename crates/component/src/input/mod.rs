@@ -20,7 +20,7 @@ pub(crate) use clear_button::*;
 pub use content_type::*;
 #[cfg(not(feature = "tree-sitter"))]
 pub struct Tree;
-pub use context_menu::ContextMenuTarget;
+pub use context_menu::{ContextMenuStyle, ContextMenuTarget};
 /// The shared editing engine. Internal to the framework: components reach it
 /// through the concrete state of their control, never across the public API.
 pub(crate) use gpui_base::input::InputBaseState;

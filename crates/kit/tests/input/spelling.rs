@@ -1,9 +1,6 @@
 //! Text editor spelling workflows: a right-click or Shift-F10 on a misspelled
-//! word opens the drawn context menu, and its items fix the word.
-//!
-//! The drawn menu stands in for the operating system's on Linux. On macOS and
-//! Windows the menu is native, so these cases run on Linux only.
-#![cfg(not(any(target_os = "macos", target_os = "windows")))]
+//! word opens the context menu GPUI draws on every platform, and its items fix
+//! the word.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -183,4 +180,29 @@ async fn shift_f10_opens_the_fixes_and_add_to_dictionary_unmarks_the_word(cx: &m
     cx.run_until_parked();
     assert!(marked(cx).is_empty());
     assert_eq!(value(&document, cx), "teh end, teh start");
+}
+
+/// The menu is driven from the keyboard: Shift-F10 opens it at the caret, the
+/// arrow keys move through the items and Enter chooses one.
+#[gpui_kit::test]
+async fn the_keyboard_opens_the_menu_and_chooses_a_fix(cx: &mut TestAppContext) {
+    let (window, document) = writer(cx, "I saw teh cat");
+    cx.update(|cx| document.update(cx, |document, cx| document.set_selected_range(7..7, cx)));
+    cx.update_window(window.into(), |_, window, cx| window.press("shift-f10", cx))
+        .unwrap();
+    cx.wait_for(window.into(), Duration::from_secs(1), |window, _| {
+        window.try_find("popup-menu").is_some()
+    })
+    .await;
+    cx.update_window(window.into(), |_, window, cx| {
+        window.press("down", cx);
+        window.press("down", cx);
+        window.press("enter", cx);
+    })
+    .unwrap();
+    cx.wait_for(window.into(), Duration::from_secs(1), |window, _| {
+        window.try_find("popup-menu").is_none()
+    })
+    .await;
+    assert_eq!(value(&document, cx), "I saw tea cat");
 }

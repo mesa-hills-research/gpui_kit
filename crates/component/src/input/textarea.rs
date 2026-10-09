@@ -5,7 +5,7 @@ use gpui::{
     Window, prelude::FluentBuilder as _,
 };
 
-use super::{ContextMenuTarget, Input, TextareaState};
+use super::{ContextMenuStyle, ContextMenuTarget, Input, TextareaState};
 use crate::native_menu::NativeMenu;
 use crate::{RoleOverride, Sizable, Size, StyledExt as _};
 
@@ -40,6 +40,8 @@ pub struct Textarea {
 
     /// Paint the theme's editor background. See [`Input::editor_surface`].
     editor_surface: bool,
+
+    context_menu_style: ContextMenuStyle,
 }
 
 impl Textarea {
@@ -95,6 +97,7 @@ impl Textarea {
             token_hover_listener: None,
             suggestion_item: None,
             editor_surface: false,
+            context_menu_style: ContextMenuStyle::default(),
         }
     }
 
@@ -218,6 +221,20 @@ impl Textarea {
         self
     }
 
+    /// What draws the right-click menu: the operating system's menu on macOS
+    /// and Windows, the default, or GPUI's menu in the theme's colors with
+    /// [`ContextMenuStyle::Drawn`].
+    pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.context_menu_style = style;
+        self
+    }
+
+    /// The style [`Self::context_menu_style`] set, for tests.
+    #[cfg(test)]
+    pub(crate) fn current_context_menu_style(&self) -> ContextMenuStyle {
+        self.context_menu_style
+    }
+
     /// Intercept paste payloads (images, files) before the default text insertion.
     ///
     /// `true` consumes the paste so nothing is inserted, `false` falls through
@@ -279,6 +296,7 @@ impl Textarea {
             .suggestion_item_renderer(self.suggestion_item)
             .context_menu_target_builder(self.context_menu_target_builder)
             .editor_surface(self.editor_surface)
+            .context_menu_style(self.context_menu_style)
             .refine_style(&self.style)
     }
 }

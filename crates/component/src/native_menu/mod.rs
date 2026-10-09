@@ -41,8 +41,8 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
-// Drawn-menu fallback (used on platforms without an OS-native popup, e.g. Linux).
-// Compiled on all platforms because `Root` holds the overlay entity.
+// The drawn menu: the fallback on platforms without an OS-native popup (e.g.
+// Linux), and what `NativeMenu::show_drawn` shows everywhere.
 mod fallback;
 pub(crate) use fallback::FallbackMenuOverlay;
 
@@ -260,6 +260,24 @@ impl NativeMenu {
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         fallback::show(self.items, position, window, cx);
+    }
+
+    /// Pop up the menu at `position` as a [`crate::menu::PopupMenu`] drawn by
+    /// GPUI in the theme's colors, on every platform, as [`Self::show`] does
+    /// where the operating system has no popup menu.
+    ///
+    /// It is drawn by the window's [`crate::Root`] and keeps inside the
+    /// window. In a window without one, the menu shows natively where the
+    /// platform has native menus, and not at all elsewhere.
+    pub fn show_drawn(self, position: Point<Pixels>, window: &mut Window, cx: &mut App) {
+        if self.items.is_empty() {
+            return;
+        }
+        if fallback::can_show(window, cx) {
+            fallback::show(self.items, position, window, cx);
+        } else {
+            self.show(position, window, cx);
+        }
     }
 }
 

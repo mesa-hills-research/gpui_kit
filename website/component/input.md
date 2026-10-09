@@ -233,6 +233,9 @@ Input::new(&input).context_menu(|menu, window, cx| {
 })
 ```
 
+On macOS and Windows the menu is the operating system's. `context_menu_style(ContextMenuStyle::Drawn)`
+shows GPUI's menu in the theme's colors instead, as on Linux.
+
 Shift-F10 and the Menu key open the menu at the caret. A textarea's menu can
 also be built from where it opened: see
 [Textarea: your own menu items](./textarea.md#your-own-menu-items).

@@ -2,13 +2,14 @@ use gpui::{
     App, Entity, IntoElement, RenderOnce, SharedString, StyleRefinement, Styled, Window, relative,
 };
 
-use super::{ContextMenuTarget, SuggestionItemContext, Textarea, TextareaState};
+use super::{ContextMenuStyle, ContextMenuTarget, SuggestionItemContext, Textarea, TextareaState};
 use crate::native_menu::NativeMenu;
 use crate::{Sizable, Size};
 
 /// A textarea laid out as a text editor: it fills its parent's height, with
 /// square corners and no border, on the theme's `editor.background` like a
-/// code editor.
+/// code editor. Its right-click menu is drawn by GPUI in the theme's colors on
+/// every platform, see [`Self::context_menu_style`].
 ///
 /// Give it a state set up with [`TextareaState::text_editor`], which turns on
 /// line numbers, the search panel and soft wrap:
@@ -38,7 +39,8 @@ impl TextEditor {
                 .h(relative(1.))
                 .bordered(false)
                 .rounded_none()
-                .editor_surface(true),
+                .editor_surface(true)
+                .context_menu_style(ContextMenuStyle::Drawn),
         }
     }
 
@@ -87,6 +89,14 @@ impl TextEditor {
         self
     }
 
+    /// What draws the right-click menu: GPUI's menu in the theme's colors,
+    /// the default, or the operating system's menu on macOS and Windows with
+    /// [`ContextMenuStyle::Native`].
+    pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.textarea = self.textarea.context_menu_style(style);
+        self
+    }
+
     /// See [`Textarea::suggestion_item`].
     pub fn suggestion_item<R: IntoElement>(
         mut self,
@@ -122,5 +132,48 @@ impl Styled for TextEditor {
 impl RenderOnce for TextEditor {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         self.textarea
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{AppContext as _, Render, TestAppContext};
+
+    use super::*;
+
+    struct Probe;
+
+    impl Render for Probe {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            gpui::div()
+        }
+    }
+
+    /// A text editor's menu is drawn by GPUI whatever the platform, unless
+    /// the application asks for the native one. A textarea keeps the native
+    /// menu where there is one.
+    #[gpui::test]
+    fn the_text_editor_menu_is_drawn_on_every_platform(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let _ = cx.add_window_view(|window, cx| {
+            let state = cx.new(|cx| TextareaState::new(window, cx).text_editor());
+            let platforms = ["windows", "macos", "linux", "freebsd", "android", "ios"];
+
+            let style = TextEditor::new(&state)
+                .textarea
+                .current_context_menu_style();
+            assert_eq!(style, ContextMenuStyle::Drawn);
+            assert!(platforms.iter().all(|os| !style.uses_os_menu(os)));
+
+            let native = TextEditor::new(&state)
+                .context_menu_style(ContextMenuStyle::Native)
+                .textarea
+                .current_context_menu_style();
+            assert!(native.uses_os_menu("windows") && native.uses_os_menu("macos"));
+
+            let textarea = Textarea::new(&state).current_context_menu_style();
+            assert_eq!(textarea, ContextMenuStyle::Native);
+            Probe
+        });
     }
 }

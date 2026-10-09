@@ -20,7 +20,7 @@ use crate::{Sizable, StyleSized};
 use gpui_base::InputBase as BaseInput;
 use rust_i18n::t;
 
-use super::context_menu::{ContextMenuTarget, standard_items};
+use super::context_menu::{ContextMenuStyle, ContextMenuTarget, standard_items};
 use super::state::{TextInputState, sync_focused_input_registry};
 use super::{InputContentType, InputState, sync_native_content_type};
 use crate::ThemeStyled as _;
@@ -153,6 +153,9 @@ pub struct Input {
     /// Paint the theme's editor background, as a code editor does. Set for
     /// [`super::TextEditor`].
     editor_surface: bool,
+
+    /// What draws the right-click menu.
+    context_menu_style: ContextMenuStyle,
 }
 
 /// Builds a textarea's context menu from where it opened. See
@@ -269,6 +272,7 @@ impl Input {
             suggestion_item_renderer: None,
             context_menu_target_builder: None,
             editor_surface: false,
+            context_menu_style: ContextMenuStyle::default(),
         }
     }
 
@@ -412,7 +416,8 @@ impl Input {
         self
     }
 
-    /// Sets a custom context menu builder for the input, shown as a native OS menu.
+    /// Sets a custom context menu builder for the input, shown in its
+    /// [`Self::context_menu_style`].
     ///
     /// If set, this overrides the built-in right-click context menu. It shows
     /// only while the state's context menu is enabled, which is the default.
@@ -421,6 +426,14 @@ impl Input {
         f: impl Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu + 'static,
     ) -> Self {
         self.context_menu_builder = Some(Rc::new(f));
+        self
+    }
+
+    /// What draws the right-click menu: the operating system's menu on macOS
+    /// and Windows, the default, or GPUI's menu in the theme's colors with
+    /// [`ContextMenuStyle::Drawn`].
+    pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.context_menu_style = style;
         self
     }
 
@@ -688,6 +701,7 @@ impl RenderOnce for Input {
         state.set_text_align(text_align, cx);
         let custom = self.context_menu_builder.clone();
         let custom_at = self.context_menu_target_builder.clone();
+        let context_menu_style = self.context_menu_style;
         // Weak: the state keeps this handler, and must not keep itself alive.
         let textarea = match &state {
             TextInputState::Textarea(textarea) => Some(textarea.downgrade()),
@@ -727,7 +741,7 @@ impl RenderOnce for Input {
                     }
                     standard_items(menu, capabilities)
                 };
-                menu.show(position, window, cx);
+                context_menu_style.show(menu, position, window, cx);
             }),
             cx,
         );
