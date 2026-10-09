@@ -1,5 +1,6 @@
 mod clear_button;
 mod content_type;
+mod context_menu;
 mod input;
 mod token;
 pub use gpui_base::input::{
@@ -19,6 +20,7 @@ pub(crate) use clear_button::*;
 pub use content_type::*;
 #[cfg(not(feature = "tree-sitter"))]
 pub struct Tree;
+pub use context_menu::ContextMenuTarget;
 /// The shared editing engine. Internal to the framework: components reach it
 /// through the concrete state of their control, never across the public API.
 pub(crate) use gpui_base::input::InputBaseState;
@@ -27,6 +29,11 @@ pub use gpui_base::input::{
     SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionItemContext,
     SuggestionOptions, SuggestionProvider, SuggestionRequest, SuggestionTrigger, TextChange,
     TextEdit,
+};
+pub use gpui_base::input::{
+    AddToDictionary, IgnoreMisspelling, InputContextMenuCapabilities, Mark, MarkCollection,
+    MarkStyle, Misspelling, ReplaceMisspelling, ShowContextMenu, SpellCheck, SpellCheckRequest,
+    SpellChecker, SpellEvent, refresh_spelling,
 };
 pub use gpui_base::input::{
     Backspace, BufferPoint, CodeActionItem, CodeActionProvider, CompletionMenuOptions,

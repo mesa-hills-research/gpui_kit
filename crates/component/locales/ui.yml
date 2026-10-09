@@ -320,6 +320,21 @@ Input:
     zh-CN: 显示代码操作
     zh-HK: 顯示代碼操作
     zh-TW: 顯示程式碼動作
+  Add to Dictionary:
+    en: Add to Dictionary
+    zh-CN: 添加到词典
+    zh-HK: 加入字典
+    zh-TW: 加入字典
+  Ignore:
+    en: Ignore
+    zh-CN: 忽略
+    zh-HK: 忽略
+    zh-TW: 忽略
+  No Suggestions:
+    en: No Suggestions
+    zh-CN: 无建议
+    zh-HK: 沒有建議
+    zh-TW: 沒有建議
 Settings:
   search_placeholder:
     en: Search...

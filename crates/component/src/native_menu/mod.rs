@@ -188,6 +188,46 @@ impl NativeMenu {
         self
     }
 
+    /// The items as text, for tests: a label, with " (disabled)" when it is,
+    /// and "-" for a separator.
+    #[cfg(test)]
+    pub(crate) fn item_labels(&self) -> Vec<String> {
+        self.items
+            .iter()
+            .map(|item| match item {
+                NativeMenuItem::Separator => "-".to_string(),
+                NativeMenuItem::Item {
+                    label, disabled, ..
+                }
+                | NativeMenuItem::Submenu {
+                    label, disabled, ..
+                } => {
+                    if *disabled {
+                        format!("{label} (disabled)")
+                    } else {
+                        label.to_string()
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// The actions of the items, for tests, in order. Separators and
+    /// submenus have none.
+    #[cfg(test)]
+    pub(crate) fn item_actions(&self) -> Vec<Box<dyn Action>> {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                NativeMenuItem::Item {
+                    action: Some(action),
+                    ..
+                } => Some(action.boxed_clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Whether the menu has no items.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()

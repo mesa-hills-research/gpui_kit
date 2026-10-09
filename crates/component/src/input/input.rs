@@ -20,6 +20,7 @@ use crate::{Sizable, StyleSized};
 use gpui_base::InputBase as BaseInput;
 use rust_i18n::t;
 
+use super::context_menu::{ContextMenuTarget, standard_items};
 use super::state::{TextInputState, sync_focused_input_registry};
 use super::{InputContentType, InputState, sync_native_content_type};
 use crate::ThemeStyled as _;
@@ -145,7 +146,15 @@ pub struct Input {
     /// How a textarea's suggestion menu renders each suggestion, in place of
     /// the default row.
     suggestion_item_renderer: Option<gpui_base::input::SuggestionItemRenderer>,
+
+    /// A textarea's context menu builder that is told where the menu opened.
+    context_menu_target_builder: Option<ContextMenuTargetBuilder>,
 }
+
+/// Builds a textarea's context menu from where it opened. See
+/// [`super::Textarea::context_menu_at`].
+pub(crate) type ContextMenuTargetBuilder =
+    Rc<dyn Fn(NativeMenu, &ContextMenuTarget, &mut Window, &mut App) -> NativeMenu>;
 
 impl Sizable for Input {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
@@ -254,7 +263,18 @@ impl Input {
             token_click_listener: None,
             token_hover_listener: None,
             suggestion_item_renderer: None,
+            context_menu_target_builder: None,
         }
+    }
+
+    /// Build a textarea's context menu knowing where it opened. See
+    /// [`super::Textarea::context_menu_at`].
+    pub(crate) fn context_menu_target_builder(
+        mut self,
+        builder: Option<ContextMenuTargetBuilder>,
+    ) -> Self {
+        self.context_menu_target_builder = builder;
+        self
     }
 
     /// How a textarea's suggestion menu renders each suggestion. See
@@ -634,10 +654,24 @@ impl RenderOnce for Input {
         state.set_readonly(self.readonly, cx);
         state.set_text_align(text_align, cx);
         let custom = self.context_menu_builder.clone();
+        let custom_at = self.context_menu_target_builder.clone();
+        // Weak: the state keeps this handler, and must not keep itself alive.
+        let textarea = match &state {
+            TextInputState::Textarea(textarea) => Some(textarea.downgrade()),
+            _ => None,
+        };
         state.on_context_menu(
             Rc::new(move |_, capabilities, position, window, cx| {
-                let menu = if let Some(custom) = custom.as_ref() {
+                let textarea = textarea.as_ref().and_then(|textarea| textarea.upgrade());
+                let menu = if let Some(build) = custom_at.as_ref()
+                    && let Some(textarea) = textarea.as_ref()
+                {
+                    let target = ContextMenuTarget::new(textarea, capabilities, cx);
+                    build(NativeMenu::new(), &target, window, cx)
+                } else if let Some(custom) = custom.as_ref() {
                     custom(NativeMenu::new(), window, cx)
+                } else if let Some(textarea) = textarea.as_ref() {
+                    ContextMenuTarget::new(textarea, capabilities, cx).default_menu()
                 } else {
                     let enabled = !capabilities.is_disabled();
                     // A read-only input can still navigate the code, it only
@@ -658,29 +692,7 @@ impl RenderOnce for Input {
                             )
                             .separator();
                     }
-                    menu.menu_with_disabled(
-                        t!("Input.Cut"),
-                        !(editable && capabilities.is_copyable()),
-                        Box::new(gpui_base::input::Cut),
-                    )
-                    .menu_with_disabled(
-                        t!("Input.Copy"),
-                        !capabilities.is_copyable(),
-                        Box::new(gpui_base::input::Copy),
-                    )
-                    // Offered whenever the text can change, without peeking
-                    // at the clipboard: the synchronous read is always empty
-                    // on the web, and an empty clipboard pastes nothing.
-                    .menu_with_disabled(
-                        t!("Input.Paste"),
-                        !editable,
-                        Box::new(gpui_base::input::Paste),
-                    )
-                    .separator()
-                    .menu(
-                        t!("Input.Select All"),
-                        Box::new(gpui_base::input::SelectAll),
-                    )
+                    standard_items(menu, capabilities)
                 };
                 menu.show(position, window, cx);
             }),

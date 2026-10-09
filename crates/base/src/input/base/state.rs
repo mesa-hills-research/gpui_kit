@@ -2159,7 +2159,8 @@ impl<M: InputModeKind> InputBaseState<M> {
 
         if let Some(handler) = self.context_menu_handler.clone() {
             let capabilities = self.context_menu_capabilities().offset(offset);
-            cx.defer_in(window, move |_, window, cx| {
+            // Outside this state's update, so the menu builder can read it.
+            window.defer(cx, move |window, cx| {
                 handler(NativeMenu::new(), capabilities, position, window, cx);
             });
         }
