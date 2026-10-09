@@ -14,6 +14,7 @@ crates/base/src/input/textarea/keymap/
   cua/          CUA: its tables, and the commands it binds beyond the engine's
   emacs/        Emacs: its table, EmacsState (the mark, the kill ring) and its own actions
   vim/          Vim: its table, VimState (the mode) and its own actions, one module per area
+  switching.rs  tests for switching schemes while one is in use
   test.rs       KeymapTest, for driving a textarea with keystrokes in tests
 ```
 
@@ -92,6 +93,11 @@ The textarea creates it whenever it switches to the scheme. The state answers th
 
 It also hears every edit through `adjust_for_edit`, to keep offsets it holds, such as Emacs's
 mark, on the same text.
+
+`set_keymap` drops the old scheme's state, so the next scheme starts afresh: Vim in normal mode,
+Emacs with no mark or prefix argument, and the caret back to a bar. The selection and the undo
+history belong to the text and stay. Whatever a scheme should forget at a switch belongs in its
+state.
 
 The scheme's actions reach the state with `state.keymap_state_mut::<VimState>()` and call
 `cx.notify()` after changing it, so the key context, the caret and the label follow. Typed text

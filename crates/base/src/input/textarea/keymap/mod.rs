@@ -66,6 +66,8 @@ mod common;
 pub mod cua;
 mod emacs;
 #[cfg(test)]
+mod switching;
+#[cfg(test)]
 pub(crate) mod test;
 mod vim;
 
@@ -308,7 +310,8 @@ impl TextareaState {
     }
 
     /// Switch to the keybinding scheme `keymap`. The scheme starts afresh,
-    /// for Vim in normal mode.
+    /// Vim in normal mode and Emacs with no mark or prefix argument, and the
+    /// old scheme's state goes. The selection and the undo history stay.
     pub fn set_keymap(&mut self, keymap: Keymap, cx: &mut Context<Self>) {
         self.extras.keymap.set(keymap);
         cx.notify();
