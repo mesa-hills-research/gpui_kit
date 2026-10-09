@@ -243,10 +243,10 @@ FontPicker:
     zh-HK: 搜尋字型
     zh-TW: 搜尋字型
   family:
-    en: Font
-    zh-CN: 字体
-    zh-HK: 字型
-    zh-TW: 字型
+    en: Family
+    zh-CN: 字体系列
+    zh-HK: 字型系列
+    zh-TW: 字型系列
   loading:
     en: Loading fonts…
     zh-CN: 正在读取字体…

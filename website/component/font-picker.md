@@ -54,7 +54,7 @@ options:
 FontPicker::new(&picker).compact()
 ```
 
-- **Font**: a dropdown of the families with a search field, and the
+- **Family**: a dropdown of the families with a search field, and the
   **Monospace only** checkbox.
 - **Weight**: the family's weights, and **Italic**.
 - **Size** and **Line height**.
