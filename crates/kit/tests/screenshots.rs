@@ -15,8 +15,9 @@ use gpui_kit::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
         input::{
-            Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker,
-            Suggestion, SuggestionProvider, SuggestionRequest, TextEditor, Textarea, TextareaState,
+            Editor, EditorState, Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest,
+            SpellChecker, Suggestion, SuggestionProvider, SuggestionRequest, TextEditor, Textarea,
+            TextareaState,
         },
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
@@ -473,6 +474,65 @@ fn text_editor_menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+struct Gutters {
+    short: Entity<TextareaState>,
+    long: Entity<TextareaState>,
+    code: Entity<EditorState>,
+}
+
+impl Render for Gutters {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let frame = || div().h(px(72.)).border_1().border_color(cx.theme().border);
+        page(cx)
+            .child(frame().child(TextEditor::new(&self.short)))
+            .child(frame().child(TextEditor::new(&self.long)))
+            .child(frame().child(Editor::new(&self.code).bordered(false).h(px(70.))))
+    }
+}
+
+/// Line-number gutters sized to the last line's number: a text editor with a few lines takes
+/// two digits, one scrolled to its end shows three, and a code editor keeps a column for its
+/// folding markers.
+fn gutters() -> Screenshot {
+    let mut app = app(ThemeMode::Light);
+    let opened = Rc::new(std::cell::RefCell::new(None));
+    let window = open(&mut app, (320., 300.), SCALE, {
+        let opened = opened.clone();
+        move |window, cx| {
+            let short = cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .text_editor()
+                    .default_value("A short note.\nIt has three lines.\nThe last one.")
+            });
+            let long_text = (1..=120)
+                .map(|line| format!("Line {line} of a long document."))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let long = cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .text_editor()
+                    .default_value(long_text)
+            });
+            let code = cx.new(|cx| {
+                EditorState::new(window, cx)
+                    .language("rust")
+                    .default_value("fn main() {\n    println!(\"compact\");\n}")
+            });
+            long.update(cx, |long, cx| long.focus(window, cx));
+            *opened.borrow_mut() = Some(long.clone());
+            Gutters { short, long, code }
+        }
+    });
+    let long = opened.borrow_mut().take().unwrap();
+    app.capture(window).unwrap();
+    act(&mut app, window, |window, cx| {
+        let end = long.read(cx).text().len();
+        long.update(cx, |long, cx| long.set_selected_range(end..end, cx));
+        window.press("down", cx);
+    });
+    app.capture(window).unwrap()
+}
+
 #[test]
 fn buttons_light() {
     goldens().assert("buttons", &buttons(ThemeMode::Light, SCALE));
@@ -518,6 +578,11 @@ fn textarea_suggestion_menu() {
 #[test]
 fn textarea_suggestion_menu_dark() {
     goldens().assert("suggestions-dark", &suggestion_menu(ThemeMode::Dark));
+}
+
+#[test]
+fn compact_line_number_gutters() {
+    goldens().assert("gutters", &gutters());
 }
 
 #[test]

@@ -48,11 +48,12 @@ fn diagnostic_highlight_style(
 
 const BOTTOM_MARGIN_ROWS: usize = 3;
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
-pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(6.);
+/// The space between the line numbers and what follows them in the gutter.
+pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(8.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 const MAX_HIGHLIGHT_LINE_LENGTH: usize = 10_000;
-const MIN_LINE_NUMBER_DIGITS: usize = 3;
+const MIN_LINE_NUMBER_DIGITS: usize = 2;
 const MAX_LINE_NUMBER_DIGITS: usize = 7;
 const MAX_DISPLAYED_LINE_NUMBER: usize = 9_999_999;
 
@@ -1101,22 +1102,24 @@ impl<M: InputModeKind> TextElement<M> {
         (visible_range, visible_buffer_lines, visible_top)
     }
 
-    /// Return (line_number_width, line_number_len)
+    /// Return (line_number_width, line_number_len, the width of the column
+    /// the numbers are right-aligned in)
     fn layout_line_numbers(
         state: &InputBaseState<M>,
         text: &Rope,
         font_size: Pixels,
         style: &TextStyle,
         window: &mut Window,
-    ) -> (Pixels, usize) {
+    ) -> (Pixels, usize, Pixels) {
         let total_lines = text.lines_len();
-        // Reserve three digits for small documents, then follow the actual
-        // line count up to seven digits.
+        // Room for the last line's number: two digits for small documents,
+        // then the actual count up to seven digits.
         let line_number_len = line_number_len(total_lines);
+        let mut number_column = px(0.);
 
         let mut line_number_width = if state.shows_line_numbers() {
-            let empty_line_number = window.text_system().shape_line(
-                "+".repeat(line_number_len).into(),
+            let widest_number = window.text_system().shape_line(
+                "0".repeat(line_number_len).into(),
                 font_size,
                 &[TextRun {
                     len: line_number_len,
@@ -1128,8 +1131,9 @@ impl<M: InputModeKind> TextElement<M> {
                 }],
                 None,
             );
+            number_column = widest_number.width;
 
-            empty_line_number.width + LINE_NUMBER_RIGHT_MARGIN
+            number_column + LINE_NUMBER_RIGHT_MARGIN
         } else if state.is_code_editor() {
             LINE_NUMBER_RIGHT_MARGIN
         } else {
@@ -1141,7 +1145,7 @@ impl<M: InputModeKind> TextElement<M> {
             line_number_width += FOLD_ICON_HITBOX_WIDTH
         }
 
-        (line_number_width, line_number_len)
+        (line_number_width, line_number_len, number_column)
     }
 
     /// Layout shaped lines for whitespace indicators (space and tab).
@@ -2435,6 +2439,8 @@ pub(super) struct PrepaintState {
     ///
     /// The child is the soft lines.
     line_numbers: Option<Vec<SmallVec<[ShapedLine; 1]>>>,
+    /// The width the line numbers are right-aligned in.
+    line_number_column: Pixels,
     /// Size of the scrollable area by entire lines.
     scroll_size: Size<Pixels>,
     /// Caret bounds for every selection, active flagged.
@@ -2742,7 +2748,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         };
 
         // Calculate the width of the line numbers
-        let (line_number_width, line_number_len) =
+        let (line_number_width, _, line_number_column) =
             Self::layout_line_numbers(&state, &text, text_size, &text_style, window);
 
         let mut bounds = bounds;
@@ -3067,41 +3073,29 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let state = self.state.read(cx);
         let line_numbers = if state.shows_line_numbers() {
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
-            let other_line_runs = vec![TextRun {
-                len: line_number_len,
+            let run = |len: usize, color: Hsla| TextRun {
+                len,
                 font: style.font(),
-                color: state.editor_style.muted_foreground,
+                color,
                 background_color: None,
                 underline: None,
                 strikethrough: None,
-            }];
-            let current_line_runs = vec![TextRun {
-                len: line_number_len,
-                font: style.font(),
-                color: state.editor_style.foreground,
-                background_color: None,
-                underline: None,
-                strikethrough: None,
-            }];
+            };
 
-            // build line numbers
+            // build line numbers, unpadded: paint right-aligns them
             for (line, &buffer_line) in last_layout
                 .lines
                 .iter()
                 .zip(last_layout.visible_buffer_lines.iter())
             {
-                let line_no: SharedString = format!(
-                    "{:>width$}",
-                    displayed_line_number(buffer_line + 1),
-                    width = line_number_len
-                )
-                .into();
-
-                let runs = if current_row == Some(buffer_line) {
-                    &current_line_runs
+                let line_no: SharedString =
+                    displayed_line_number(buffer_line + 1).to_string().into();
+                let color = if current_row == Some(buffer_line) {
+                    state.editor_style.foreground
                 } else {
-                    &other_line_runs
+                    state.editor_style.muted_foreground
                 };
+                let runs = [run(line_no.len(), color)];
 
                 let mut sub_lines: SmallVec<[ShapedLine; 1]> = SmallVec::new();
                 sub_lines.push(
@@ -3143,6 +3137,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             last_layout,
             scroll_size,
             line_numbers,
+            line_number_column,
             cursor_infos,
             cursor_scroll_offset,
             current_row,
@@ -3434,7 +3429,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 }
 
                 for line in lines {
-                    _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
+                    // Right-aligned in the column, so the digits line up.
+                    let x = p.x + (prepaint.line_number_column - line.width).max(px(0.));
+                    _ = line.paint(
+                        point(x, p.y),
+                        line_height,
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
                     offset_y += line_height;
                 }
 
@@ -3731,10 +3735,12 @@ mod tests {
     };
 
     #[test]
-    fn line_number_column_stays_at_three_digits_then_grows_up_to_seven() {
-        assert_eq!(line_number_len(1), 3);
-        assert_eq!(line_number_len(9), 3);
-        assert_eq!(line_number_len(10), 3);
+    fn line_number_column_stays_at_two_digits_then_grows_up_to_seven() {
+        assert_eq!(line_number_len(1), 2);
+        assert_eq!(line_number_len(9), 2);
+        assert_eq!(line_number_len(10), 2);
+        assert_eq!(line_number_len(99), 2);
+        assert_eq!(line_number_len(100), 3);
         assert_eq!(line_number_len(999), 3);
         assert_eq!(line_number_len(1_000), 4);
         assert_eq!(line_number_len(999_999), 6);
@@ -3932,7 +3938,7 @@ mod tests {
                 .unwrap()
                 .line_number_width;
 
-            let longer_text = "x\n".repeat(99);
+            let longer_text = "x\n".repeat(98);
             editor.update(cx, |state, cx| {
                 state.set_value(longer_text.as_str(), window, cx)
             });
@@ -3943,7 +3949,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .line_number_width;
-            assert_eq!(middle, narrow, "one to three digits must share a width");
+            assert_eq!(middle, narrow, "one and two digits must share a width");
 
             let longest_text = "x\n".repeat(999);
             editor.update(cx, |state, cx| {
@@ -4405,9 +4411,9 @@ mod tests {
 
         assert_eq!(
             layout.bounds,
-            Bounds::new(point(px(51.), px(18.)), size(px(262.), px(87.)))
+            Bounds::new(point(px(49.), px(18.)), size(px(264.), px(87.)))
         );
-        assert_eq!(layout.scroll_size, size(px(972.), px(200.)));
+        assert_eq!(layout.scroll_size, size(px(974.), px(200.)));
 
         let layout_without_gutter =
             EditorScrollbarLayout::new(input_bounds, px(0.), size(px(500.), px(120.)), paddings);

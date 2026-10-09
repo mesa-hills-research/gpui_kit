@@ -25,6 +25,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   Dictionary and Ignore. Line numbers, marks (underlines that follow the text) and a context menu
   that knows the clicked word work on any textarea. See
   [Textarea: text editor](website/component/textarea.md#text-editor).
+- **Compact line numbers** (`gpui-base`). The line-number gutter of the code editor and of a
+  textarea is as wide as the last line's number needs, from two digits, with the numbers
+  right-aligned, and leaves room for folding markers only while folding is on.
 - **Status colours without tree-sitter** (`gpui-component`). Without the `tree-sitter` feature,
   diagnostic and status colours fall back to the theme's red, yellow, blue, green and cyan, as
   they do with it, where upstream made them transparent.
@@ -34,9 +37,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
 - **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
-  suggestion menu, a text editor and its spelling menu, a list and a popup menu render headlessly
-  on Linux, in light and dark themes and at scale factors 2 and 2.625, and are compared with the
-  PNGs in `crates/kit/tests/screenshots`. They run with the kit's tests and use the gpui fork's
+  suggestion menu, a text editor, its spelling menu and line-number gutters, a list and a popup
+  menu render headlessly on Linux, in light and dark themes and at scale factors 2 and 2.625,
+  and are compared with the PNGs in `crates/kit/tests/screenshots`. They run with the kit's
+  tests and use the gpui fork's
   `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
