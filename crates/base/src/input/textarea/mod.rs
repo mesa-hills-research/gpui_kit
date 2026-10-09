@@ -146,12 +146,15 @@ impl RenderOnce for Textarea {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use gpui::{
-        AppContext as _, Context, IntoElement, ParentElement as _, Pixels, Render, Styled as _,
-        TestAppContext, VisualTestContext, div, px, size,
+        AppContext as _, Context, IntoElement, ParentElement as _, Pixels, Point, Render,
+        Styled as _, TestAppContext, VisualTestContext, div, px, size,
     };
 
     use super::*;
+    use crate::input::InputContextMenuCapabilities;
 
     struct Harness {
         textareas: Vec<Entity<TextareaState>>,
@@ -208,5 +211,39 @@ mod tests {
         );
         assert!(textareas[1].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
         assert!(!textareas[0].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
+    }
+
+    /// Shift-F10 and the Menu key open the context menu under the caret, as
+    /// a right-click on the caret's character would.
+    #[gpui::test]
+    fn the_keyboard_opens_the_context_menu_at_the_caret(cx: &mut TestAppContext) {
+        let (mut cx, textareas) = open(cx, vec![|state| state]);
+        let textarea = textareas[0].clone();
+        let opened: Rc<RefCell<Vec<(InputContextMenuCapabilities, Point<Pixels>)>>> =
+            Default::default();
+        cx.update(|window, cx| {
+            textarea.update(cx, |state, cx| {
+                let opened = opened.clone();
+                state.on_context_menu(Rc::new(move |_, capabilities, position, _, _| {
+                    opened.borrow_mut().push((capabilities, position));
+                }));
+                state.set_selected_range(3..3, cx);
+            });
+            window.draw(cx).clear(cx);
+        });
+
+        for key in ["shift-f10", "menu"] {
+            cx.simulate_keystrokes(key);
+            cx.run_until_parked();
+            let (capabilities, position) = opened.borrow_mut().pop().expect(key);
+            assert_eq!(capabilities.opened_at(), Some(3));
+            let caret = textarea.read_with(&cx, |state, _| state.range_to_bounds(&(3..3)).unwrap());
+            assert_eq!(position, caret.bottom_left());
+        }
+
+        textarea.update(&mut cx, |state, _| state.set_context_menu_enabled(false));
+        cx.simulate_keystrokes("shift-f10");
+        cx.run_until_parked();
+        assert!(opened.borrow().is_empty());
     }
 }

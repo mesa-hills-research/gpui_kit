@@ -119,6 +119,9 @@ actions!(
         Search,
         Replace,
         GoToDefinition,
+        /// Open the context menu at the caret, as a right-click there would.
+        /// Bound to Shift-F10 and the Menu key.
+        ShowContextMenu,
     ]
 );
 
@@ -177,6 +180,8 @@ pub(crate) fn init(cx: &mut App) {
             Some(CONTEXT),
         ),
         KeyBinding::new("escape", Escape, Some(CONTEXT)),
+        KeyBinding::new("shift-f10", ShowContextMenu, Some(CONTEXT)),
+        KeyBinding::new("menu", ShowContextMenu, Some(CONTEXT)),
         KeyBinding::new("up", MoveUp, Some(CONTEXT)),
         KeyBinding::new("down", MoveDown, Some(CONTEXT)),
         KeyBinding::new("left", MoveLeft, Some(CONTEXT)),
@@ -2153,11 +2158,31 @@ impl<M: InputModeKind> InputBaseState<M> {
         }
 
         if let Some(handler) = self.context_menu_handler.clone() {
-            let capabilities = self.context_menu_capabilities();
+            let capabilities = self.context_menu_capabilities().offset(offset);
             cx.defer_in(window, move |_, window, cx| {
                 handler(NativeMenu::new(), capabilities, position, window, cx);
             });
         }
+    }
+
+    /// Shift-F10 or the Menu key: the context menu under the caret.
+    fn on_action_show_context_menu(
+        &mut self,
+        _: &ShowContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.disabled || !self.enable_context_menu || self.context_menu_handler.is_none() {
+            cx.propagate();
+            return;
+        }
+        let offset = self.cursor();
+        let position = self
+            .range_to_bounds(&(offset..offset))
+            .map(|caret| caret.bottom_left())
+            .or_else(|| self.last_bounds.map(|bounds| bounds.origin))
+            .unwrap_or_default();
+        self.handle_right_click_menu(position, offset, window, cx);
     }
 
     pub(super) fn add_cursor_above(
@@ -4561,6 +4586,7 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
             .on_action(window.listener_for(&entity, InputBaseState::copy))
             .on_action(window.listener_for(&entity, InputBaseState::on_action_search))
             .on_action(window.listener_for(&entity, InputBaseState::on_action_replace))
+            .on_action(window.listener_for(&entity, InputBaseState::on_action_show_context_menu))
             .on_mouse_down(
                 MouseButton::Left,
                 window.listener_for(&entity, InputBaseState::on_mouse_down),
