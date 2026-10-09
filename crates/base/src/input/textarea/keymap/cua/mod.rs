@@ -1,8 +1,11 @@
 //! CUA: the platform's usual shortcuts, and every input's default.
 //!
-//! Inputs and editors always follow it. Ctrl carries the shortcuts on Windows
-//! and Linux and Cmd on macOS, where Ctrl and Option keep the Cocoa text keys
-//! (Ctrl-A and Ctrl-E, Option to move by word).
+//! Inputs and editors always follow it, so its own commands (in `commands`)
+//! work in every input. Ctrl carries the shortcuts on Windows and Linux and
+//! Cmd on macOS, where Ctrl and Option keep the Cocoa text keys (Ctrl-A and
+//! Ctrl-E, Option to move by word).
+
+mod commands;
 
 use gpui::KeyBinding;
 
@@ -15,6 +18,15 @@ use crate::input::{
     Search, SelectAll, SelectToEnd, SelectToEndOfLine, SelectToNextWordEnd,
     SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine, ShowCharacterPalette,
     ToggleCodeActions, Undo,
+};
+
+pub(crate) use commands::register_actions;
+pub use commands::{
+    DeleteToWordStartLeft, DeleteToWordStartRight, KillToEndOfLine, MoveBackwardToLineStart,
+    MoveForwardToLineEnd, MoveForwardToLineStart, MoveToWordStartLeft, MoveToWordStartRight,
+    OpenLine, ScrollCaretToCenter, ScrollPageDown, ScrollPageUp, ScrollToEnd, ScrollToStart,
+    SelectBackwardToLineStart, SelectForwardToLineEnd, SelectForwardToLineStart, SelectPageDown,
+    SelectPageUp, SelectToWordStartLeft, SelectToWordStartRight, Yank,
 };
 
 /// CUA's bindings on `platform`.

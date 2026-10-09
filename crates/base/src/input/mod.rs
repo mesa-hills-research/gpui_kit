@@ -108,6 +108,7 @@ pub use highlighting::{
 };
 pub use indent::TabSize;
 pub use input::{Input, InputState};
+pub use keymap::cua;
 pub use keymap::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,
     Keymap, KeymapPlatform, KeymapState, MoveToNextWordStart, MoveToParagraphEnd,
