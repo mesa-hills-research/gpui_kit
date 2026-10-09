@@ -1,5 +1,14 @@
 [default]
-extend-ignore-re = ['\\u\{[0-9A-Fa-f]+\}']
+extend-ignore-re = [
+    '\\u\{[0-9A-Fa-f]+\}',
+    # A keymap test selects part of "hello".
+    'hel«ˇlo»',
+    # A test that `crate_name` drops what isn't ASCII.
+    '"café"\)\.unwrap\(\), "caf"',
+]
+
+[default.extend-identifiers]
+PNGs = "PNGs"
 
 [default.extend-words]
 # Official Lucide icon name for the astroid curve.
@@ -23,3 +32,34 @@ extend-exclude = [
     # tree-sitter-make's query, kept as published.
     "crates/component/src/highlighter/languages/make/highlights.scm",
 ]
+
+# Spell-checking and suggestion tests misspell words on purpose.
+[type.spelling-tests]
+extend-glob = [
+    "screenshots.rs",
+    "spelling.rs",
+    "suggestion_menu.rs",
+    "suggestions.rs",
+    "textarea.rs",
+]
+
+[type.spelling-tests.extend-words]
+hel = "hel"
+recieve = "recieve"
+teh = "teh"
+
+# The text editor story's dictionary lists common misspellings.
+[type.text-editor-story]
+extend-glob = ["text_editor_story.rs"]
+
+[type.text-editor-story.extend-words]
+adress = "adress"
+beleive = "beleive"
+definately = "definately"
+occured = "occured"
+recieve = "recieve"
+seperate = "seperate"
+teh = "teh"
+tommorow = "tommorow"
+untill = "untill"
+wich = "wich"
