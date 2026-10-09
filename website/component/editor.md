@@ -106,9 +106,7 @@ matching Cargo feature, such as `tree-sitter-rust` or `tree-sitter-markdown`;
 use `tree-sitter-languages` to bundle all built-in grammars.
 
 Tree-sitter and the grammars come from [Mesquite](https://github.com/mesa-hills-research/mesquite),
-a pure Rust port, so these features build without a C compiler. Mesquite has no
-Astro, diff, GraphQL or JSDoc grammar yet. Their features still build, and those
-languages show as plain text.
+a pure Rust port, so these features build without a C compiler.
 
 To highlight another language, register a grammar from one of Mesquite's grammar
 crates with a highlight query, as `examples/editor` does for Haskell. Take the
