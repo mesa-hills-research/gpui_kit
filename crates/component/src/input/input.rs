@@ -149,6 +149,10 @@ pub struct Input {
 
     /// A textarea's context menu builder that is told where the menu opened.
     context_menu_target_builder: Option<ContextMenuTargetBuilder>,
+
+    /// Paint the theme's editor background, as a code editor does. Set for
+    /// [`super::TextEditor`].
+    editor_surface: bool,
 }
 
 /// Builds a textarea's context menu from where it opened. See
@@ -264,7 +268,16 @@ impl Input {
             token_hover_listener: None,
             suggestion_item_renderer: None,
             context_menu_target_builder: None,
+            editor_surface: false,
         }
+    }
+
+    /// Paint the theme's `editor.background` behind the text and the line
+    /// numbers, as a code editor does, instead of the input background. See
+    /// [`super::TextEditor`].
+    pub(crate) fn editor_surface(mut self, editor_surface: bool) -> Self {
+        self.editor_surface = editor_surface;
+        self
     }
 
     /// Build a textarea's context menu knowing where it opened. See
@@ -588,6 +601,8 @@ impl RenderOnce for Input {
         sync_focused_input_registry(&state, window, cx);
 
         state.ensure_highlighter_factory(crate::highlighter::input_highlighter_factory(), cx);
+        // A code editor and a text editor draw on the theme's editor background.
+        let editor_surface = self.editor_surface || state.presentation(cx).is_code_editor();
         state.set_editor_style(
             gpui_base::input::InputEditorStyle {
                 // A code editor's text takes the theme's `editor.foreground`.
@@ -599,8 +614,8 @@ impl RenderOnce for Input {
                 muted_foreground: cx.theme().muted_foreground,
                 // The gutter and ghost lines paint over the text, so they take
                 // the background the frame shows, made opaque.
-                background: if state.presentation(cx).is_code_editor() {
-                    cx.theme().editor_background()
+                background: if editor_surface {
+                    cx.theme().background.blend(cx.theme().editor_background())
                 } else {
                     cx.theme()
                         .background
@@ -766,7 +781,7 @@ impl RenderOnce for Input {
         };
 
         let (bg, _) = input_style(presentation.is_disabled(), cx);
-        let bg = if presentation.is_code_editor() {
+        let bg = if editor_surface {
             cx.theme().editor_background()
         } else {
             bg

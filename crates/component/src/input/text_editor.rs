@@ -7,7 +7,8 @@ use crate::native_menu::NativeMenu;
 use crate::{Sizable, Size};
 
 /// A textarea laid out as a text editor: it fills its parent's height, with
-/// square corners and no border.
+/// square corners and no border, on the theme's `editor.background` like a
+/// code editor.
 ///
 /// Give it a state set up with [`TextareaState::text_editor`], which turns on
 /// line numbers, the search panel and soft wrap:
@@ -36,7 +37,8 @@ impl TextEditor {
             textarea: Textarea::new(state)
                 .h(relative(1.))
                 .bordered(false)
-                .rounded_none(),
+                .rounded_none()
+                .editor_surface(true),
         }
     }
 

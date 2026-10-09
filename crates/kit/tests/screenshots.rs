@@ -475,6 +475,102 @@ fn text_editor_menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+struct Surfaces {
+    document: Entity<TextareaState>,
+    note: Entity<TextareaState>,
+}
+
+impl Render for Surfaces {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx)
+            .child(div().h(px(80.)).child(TextEditor::new(&self.document)))
+            .child(Textarea::new(&self.note).h(px(80.)))
+    }
+}
+
+/// The color a device pixel shows, as `[r, g, b]`.
+fn pixel(screenshot: &Screenshot, (x, y): (f32, f32)) -> [u8; 3] {
+    let [r, g, b, _] = screenshot
+        .image
+        .get_pixel((x * SCALE) as u32, (y * SCALE) as u32)
+        .0;
+    [r, g, b]
+}
+
+/// `color` as the 8-bit `[r, g, b]` a window shows it in.
+fn rgb(color: gpui_kit::Hsla) -> [u8; 3] {
+    let color = gpui_kit::Rgba::from(color);
+    [color.r, color.g, color.b].map(|channel| (channel * 255.).round() as u8)
+}
+
+/// Every bundled theme, light and dark, draws a text editor and its line-number gutter on the
+/// theme's `editor.background`, as a code editor, and a plain textarea on the input background.
+#[test]
+fn text_editor_draws_on_each_themes_editor_background() {
+    let mut app = app(ThemeMode::Light);
+    let themes_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes");
+    app.update(|cx| {
+        for entry in std::fs::read_dir(themes_dir).unwrap() {
+            let content = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            gpui_kit::component::ThemeRegistry::global_mut(cx)
+                .load_themes_from_str(&content)
+                .unwrap();
+        }
+    });
+    let window = open(&mut app, (240., 200.), SCALE, |window, cx| Surfaces {
+        document: cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .text_editor()
+                .default_value("Hi")
+        }),
+        note: cx.new(|cx| TextareaState::new(window, cx).default_value("Hi")),
+    });
+    let themes = app.update(|cx| {
+        gpui_kit::component::ThemeRegistry::global(cx)
+            .sorted_themes()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    assert!(themes.len() > 60, "found {} themes", themes.len());
+    let modes = themes.iter().map(|theme| theme.mode).collect::<Vec<_>>();
+    assert!(modes.contains(&ThemeMode::Light) && modes.contains(&ThemeMode::Dark));
+
+    for theme in themes {
+        let editor_background = theme
+            .highlight
+            .as_ref()
+            .and_then(|highlight| highlight.editor_background)
+            .unwrap_or_else(|| panic!("{} sets no editor.background", theme.name));
+        let input_background = app.update(|cx| {
+            Theme::update(cx, |current| current.apply_config(&theme));
+            let current = cx.theme();
+            current.background.blend(current.input_background())
+        });
+        let shot = app.capture(window).unwrap();
+        let close = |actual: [u8; 3], expected: [u8; 3]| {
+            actual.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 2)
+        };
+        // Below the one line: the text area right of the gutter, then the gutter itself.
+        for (place, at) in [("text", (200., 80.)), ("gutter", (22., 80.))] {
+            let actual = pixel(&shot, at);
+            assert!(
+                close(actual, rgb(editor_background)),
+                "{}: the text editor's {place} shows {actual:?}, editor.background is {:?}",
+                theme.name,
+                rgb(editor_background),
+            );
+        }
+        let actual = pixel(&shot, (200., 170.));
+        assert!(
+            close(actual, rgb(input_background)),
+            "{}: the textarea shows {actual:?}, the input background is {:?}",
+            theme.name,
+            rgb(input_background),
+        );
+    }
+}
+
 /// A text editor alone, for the smooth caret.
 struct Typing {
     document: Entity<TextareaState>,

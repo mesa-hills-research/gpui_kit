@@ -37,6 +37,9 @@ pub struct Textarea {
     paste_handler: Option<Rc<dyn Fn(&gpui::ClipboardItem, &mut Window, &mut App) -> bool>>,
 
     suggestion_item: Option<gpui_base::input::SuggestionItemRenderer>,
+
+    /// Paint the theme's editor background. See [`Input::editor_surface`].
+    editor_surface: bool,
 }
 
 impl Textarea {
@@ -91,7 +94,14 @@ impl Textarea {
             token_click_listener: None,
             token_hover_listener: None,
             suggestion_item: None,
+            editor_surface: false,
         }
+    }
+
+    /// Paint the theme's `editor.background`, as [`super::TextEditor`] does.
+    pub(crate) fn editor_surface(mut self, editor_surface: bool) -> Self {
+        self.editor_surface = editor_surface;
+        self
     }
 
     /// The element each suggestion renders as in the suggestion menu, in place
@@ -268,6 +278,7 @@ impl Textarea {
             })
             .suggestion_item_renderer(self.suggestion_item)
             .context_menu_target_builder(self.context_menu_target_builder)
+            .editor_surface(self.editor_surface)
             .refine_style(&self.style)
     }
 }

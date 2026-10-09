@@ -202,7 +202,8 @@ Textarea::new(&notes).suggestion_item(|item, _, _| {
 
 `TextareaState::text_editor` sets a textarea up for writing: line numbers, the
 search panel and soft wrap. `TextEditor` renders it filling its parent, with
-square corners and no border.
+square corners and no border, on the theme's `editor.background` like the
+[code editor](editor.md). A plain textarea keeps the input background.
 
 ```rust
 use gpui_kit::component::input::{TextEditor, TextareaState};
