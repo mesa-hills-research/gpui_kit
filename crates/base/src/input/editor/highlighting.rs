@@ -118,6 +118,8 @@ pub struct InputEditorStyle {
     pub editor_invisible: Option<Hsla>,
     pub editor_active_line: Option<Hsla>,
     pub editor_gutter_background: Option<Hsla>,
+    /// The line between the line numbers and the text. `None` draws no line.
+    pub editor_gutter_border: Option<Hsla>,
     pub fold_icon_renderer: Option<FoldIconRenderer>,
 }
 
@@ -173,6 +175,7 @@ impl Default for InputEditorStyle {
             editor_invisible: None,
             editor_active_line: None,
             editor_gutter_background: None,
+            editor_gutter_border: None,
             fold_icon_renderer: None,
         }
     }

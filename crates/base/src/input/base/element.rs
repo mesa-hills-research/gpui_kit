@@ -351,6 +351,20 @@ fn editor_gutter_bounds(
     }
 }
 
+/// The line between the gutter and the text, over the gutter's full height.
+/// It is one pixel wide, rounded to whole device pixels the way borders are,
+/// and sits on a device pixel in the middle of the margin before the text, so
+/// it stays crisp at fractional scale factors.
+fn gutter_separator_bounds(gutter_bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
+    let device_pixel = px(1. / window.scale_factor());
+    let width = window.pixel_snap(px(1.)).max(device_pixel);
+    let left = window.pixel_snap(gutter_bounds.right() - LINE_NUMBER_RIGHT_MARGIN.half());
+    Bounds::new(
+        point(left, gutter_bounds.top()),
+        size(width, gutter_bounds.size.height),
+    )
+}
+
 use super::MASK_CHAR;
 
 /// Convert a byte offset in the original text to a byte offset in the masked display string.
@@ -3225,6 +3239,9 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let active_line_color = editor_style
             .editor_active_line
             .map(|color| if disabled { color.opacity(0.5) } else { color });
+        let gutter_border_color = editor_style
+            .editor_gutter_border
+            .map(|color| if disabled { color.opacity(0.5) } else { color });
         let editor_background = if disabled {
             editor_style.background.opacity(0.5)
         } else {
@@ -3483,6 +3500,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 if !prepaint.ghost_lines.is_empty() && prepaint.current_row == Some(buffer_line) {
                     offset_y += prepaint.ghost_lines_height;
                 }
+            }
+
+            if let Some(color) = gutter_border_color {
+                window.paint_quad(fill(gutter_separator_bounds(gutter_bounds, window), color));
             }
         }
 
