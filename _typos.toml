@@ -1,8 +1,10 @@
 [default]
 extend-ignore-re = [
     '\\u\{[0-9A-Fa-f]+\}',
-    # A keymap test selects part of "hello".
-    'hel«ˇlo»',
+    # Keymap tests mark the caret and selections inside words, as in "baˇr"
+    # and "hel«ˇlo»", and type parts of words.
+    '\w*[ˇ«»]+\w*',
+    'type_text\("[^"]*"\)',
     # A test that `crate_name` drops what isn't ASCII.
     '"café"\)\.unwrap\(\), "caf"',
 ]
@@ -13,6 +15,8 @@ PNGs = "PNGs"
 [default.extend-words]
 # Official Lucide icon name for the astroid curve.
 astroid = "astroid"
+# Vim's `bck_word` and `bckend_word`, which its word motions follow.
+bck = "bck"
 # Correct Italian singular of "command".
 comando = "comando"
 # A deliberately misspelled manifest key: `crates/shell/src/plugin.rs` refuses
