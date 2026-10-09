@@ -11,7 +11,7 @@ crates/base/src/input/textarea/keymap/
   mod.rs        Keymap, KeymapPlatform, CursorShape, KeymapState, the textarea's API, dispatch
   common.rs     keys every scheme shares while editing: arrows, Backspace, Enter, Tab, Escape…
   commands.rs   editing commands any scheme can bind (paragraphs, lines, case, transpose)
-  cua.rs        CUA's table: the bindings every input had before schemes existed
+  cua/          CUA: its tables, and the commands it binds beyond the engine's
   emacs.rs      Emacs: its table, its state and its own actions
   vim/mod.rs    Vim: its table, VimState (the mode) and its own actions, one module per area
   test.rs       KeymapTest, for driving a textarea with keystrokes in tests
@@ -71,6 +71,47 @@ The conventions:
 - Emacs's Meta is Alt on Windows and Linux and Option on macOS, written `alt-` everywhere. On
   macOS, Cmd keeps the clipboard, history and Select All.
 - Vim binds the same keys on every platform.
+
+## CUA
+
+Single-line inputs and editors follow CUA whatever a textarea does, so its commands
+(`cua/commands.rs`, the `cua` actions) work in every input: the engine registers them on each
+one. A command from `commands.rs` registers on textareas only, so Ctrl-T on macOS, bound to
+`TransposeCharacters`, transposes in textareas alone.
+
+Each table follows the platform's own text views:
+
+| | macOS (Cocoa) | Windows (Word, Notepad) | Linux (GTK) |
+|---|---|---|---|
+| By word | Option-arrows: left to a word's start, right to its end | Ctrl-arrows: to word starts, stopping at line starts and ends | Ctrl-arrows: as on macOS |
+| By paragraph (a line) | Option-Up and Down: to the line's start, or end, then the next line's | Ctrl-Up as on macOS, Ctrl-Down to the next line's start | Ctrl-Up and Down as on macOS |
+| Home, End, Page Up, Page Down | Scroll and leave the caret. Shift-Home and Shift-End select to the ends of the text | Move the caret along the line or a page | As on Windows |
+| Redo | Cmd-Shift-Z | Ctrl-Y, Ctrl-Shift-Z | Ctrl-Shift-Z, Ctrl-Y |
+| Clipboard | Cmd-X, C, V | Ctrl-X, C, V and Shift-Delete, Ctrl-Insert, Shift-Insert | As on Windows |
+
+The less obvious choices:
+
+- Words split as the engine's other word commands split them, with Unicode's word boundaries:
+  `snake_case` and `café` are one word each, and a run of punctuation is a word of its own.
+  Windows stops at the start of every word, punctuation included, and at line starts and ends,
+  so Ctrl-Backspace at a line's start joins it to the line above.
+- Linux redoes with Ctrl-Shift-Z, the GNOME and KDE shortcut, and with Ctrl-Y, which GTK's text
+  widgets and many Linux applications also take. Windows takes both too.
+- Alt-Backspace undoes on Windows, the original CUA key that Windows edit controls and Office
+  still accept. Linux leaves it free.
+- Insert stays free: the editor has no overwrite mode.
+- macOS's Fn keys scroll as NSTextView does. Option-Page Up and Down and Ctrl-V move the caret a
+  page.
+- Ctrl-K on macOS cuts to the end of the line into a kill buffer the app shares, apart from the
+  clipboard. Kills in a row add to it, and Ctrl-Y puts it back, as in Cocoa.
+- Find and replace keep their shortcuts: Cmd-F and Ctrl-F search, Cmd-Option-F (and Cmd-Shift-F)
+  and Ctrl-H replace. In an input that isn't searchable the key passes on to the application, so
+  an application's own search still gets it. Shift-F10 and the Menu key open the context menu.
+
+`cua/tests.rs` presses every key of each platform's table in a textarea and checks the text,
+selection and caret, and its table of differences lists what each platform binds to the keys
+that differ. A new binding needs a case there, or the test that checks every binding is tested
+fails.
 
 ## State for modal schemes
 
