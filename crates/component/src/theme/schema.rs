@@ -2,7 +2,8 @@ use std::{rc::Rc, sync::Arc};
 
 use gpui::{Background, BoxShadow, FontWeight, Hsla, SharedString, px};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde_json::{Map, Value};
 
 use crate::highlighter::{HighlightTheme, HighlightThemeStyle};
 
@@ -12,8 +13,65 @@ use super::color::{
 };
 use super::{Colorize, SemanticThemeTokens, Theme, ThemeColor, ThemeMode, ThemeToken, ThemeTokens};
 
+/// Other names theme files use for color keys, as `(alias, key)`: the names in
+/// Zed themes and in earlier default themes. A key set under its own name wins
+/// over its alias.
+const COLOR_ALIASES: [(&str, &str); 9] = [
+    ("link.foreground", "link"),
+    ("link.hover.foreground", "link.hover"),
+    ("link.active.foreground", "link.active"),
+    ("drag_border", "drag.border"),
+    (
+        "description_list_label.background",
+        "description_list.label.background",
+    ),
+    (
+        "description_list_label.foreground",
+        "description_list.label.foreground",
+    ),
+    ("progress_bar.background", "progress.bar.background"),
+    ("slider.bar.background", "slider.background"),
+    ("window_border", "window.border"),
+];
+
+/// Other names for keys in a theme's `highlight.syntax`, as `(alias, key)`.
+/// `comment.doc` is the name the highlighter and Zed themes use.
+const SYNTAX_ALIASES: [(&str, &str); 1] = [("comment.doc", "comment_doc")];
+
 /// The contrast of text colors the kit derives: WCAG's 4.5:1 for body text.
 const TEXT_CONTRAST: f32 = 4.5;
+
+/// Moves each value `map` sets under an alias to the key the alias stands for,
+/// unless `map` sets that key too.
+fn apply_aliases(map: &mut Map<String, Value>, aliases: &[(&str, &str)]) {
+    for (alias, key) in aliases {
+        if let Some(value) = map.remove(*alias) {
+            map.entry(*key).or_insert(value);
+        }
+    }
+}
+
+fn deserialize_colors<'de, D>(deserializer: D) -> Result<ThemeConfigColors, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut colors = Map::deserialize(deserializer)?;
+    apply_aliases(&mut colors, &COLOR_ALIASES);
+    serde_json::from_value(Value::Object(colors)).map_err(D::Error::custom)
+}
+
+fn deserialize_highlight<'de, D>(deserializer: D) -> Result<Option<HighlightThemeStyle>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let Some(mut highlight) = Option::<Value>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    if let Some(syntax) = highlight.get_mut("syntax").and_then(Value::as_object_mut) {
+        apply_aliases(syntax, &SYNTAX_ALIASES);
+    }
+    serde_json::from_value(highlight).map_err(D::Error::custom)
+}
 
 fn try_parse_theme_token(value: &str) -> anyhow::Result<ThemeToken> {
     Ok(ThemeToken::new(
@@ -78,10 +136,12 @@ pub struct ThemeConfig {
     pub shadow: Option<bool>,
 
     /// The colors of the theme.
+    #[serde(deserialize_with = "deserialize_colors")]
     pub colors: ThemeConfigColors,
     /// The highlight theme, this part is combilbility with `style` section in Zed theme.
     ///
     /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/assets/themes/ayu/ayu.json#L9
+    #[serde(deserialize_with = "deserialize_highlight")]
     pub highlight: Option<HighlightThemeStyle>,
 }
 
@@ -1232,6 +1292,76 @@ mod tests {
 
         theme.apply_config(&std::rc::Rc::new(ThemeConfig::default()));
         assert_eq!(theme.chart_grid, theme.border.opacity(0.6));
+    }
+
+    #[test]
+    fn test_config_reads_the_other_names_of_keys() {
+        let config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Aliases",
+            "mode": "light",
+            "colors": {
+                "link.foreground": "#111111",
+                "link.hover.foreground": "#222222",
+                "drag_border": "#333333",
+                "progress_bar.background": "#444444",
+                "slider.bar.background": "#555555",
+                "description_list_label.foreground": "#666666",
+                "window_border": "#777777",
+                // Set under both names: the key's own name wins.
+                "link.active.foreground": "#888888",
+                "link.active": "#999999"
+            },
+            "highlight": {
+                "syntax": {
+                    "comment": { "color": "#aaaaaa" },
+                    "comment.doc": { "color": "#bbbbbb" }
+                }
+            }
+        }))
+        .unwrap();
+
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(config));
+        let color = |hex| try_parse_color(hex).unwrap();
+        assert_eq!(theme.link, color("#111111"));
+        assert_eq!(theme.link_hover, color("#222222"));
+        assert_eq!(theme.link_active, color("#999999"));
+        assert_eq!(theme.drag_border, color("#333333"));
+        assert_eq!(theme.progress_bar, color("#444444"));
+        assert_eq!(theme.slider_bar, color("#555555"));
+        assert_eq!(theme.description_list_label_foreground, color("#666666"));
+        assert_eq!(theme.window_border, color("#777777"));
+        assert_eq!(
+            theme
+                .highlight_theme
+                .style
+                .syntax
+                .style("comment.doc")
+                .unwrap()
+                .color,
+            Some(color("#bbbbbb"))
+        );
+    }
+
+    #[test]
+    fn test_config_with_a_key_under_both_names_loads() {
+        let config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Both",
+            "colors": { "drag_border": "#333333", "drag.border": "#444444" },
+            "highlight": {
+                "syntax": {
+                    "comment_doc": { "color": "#aaaaaa" },
+                    "comment.doc": { "color": "#bbbbbb" }
+                }
+            }
+        }))
+        .unwrap();
+        assert_eq!(config.colors.drag_border.as_deref(), Some("#444444"));
+        let syntax = config.highlight.unwrap().syntax;
+        assert_eq!(
+            syntax.style("comment.doc").unwrap().color,
+            Some(try_parse_color("#aaaaaa").unwrap())
+        );
     }
 
     #[test]

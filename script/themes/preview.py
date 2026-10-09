@@ -61,7 +61,7 @@ def bg_css(tok: kit.Tok) -> str:
 
 
 def syntax_style(theme: dict, name: str) -> dict:
-    raw = ((theme.get("highlight") or {}).get("syntax")) or {}
+    raw = kit.with_aliases(((theme.get("highlight") or {}).get("syntax")) or {}, kit.SYNTAX_ALIASES)
     while True:
         key = "comment_doc" if name == "comment.doc" else name
         if key in raw and isinstance(raw[key], dict) and raw[key].get("color"):

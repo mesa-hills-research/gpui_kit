@@ -69,8 +69,8 @@ HIGHLIGHT_KEYS = [
     "hint", "hint.background", "hint.border", "syntax",
 ]
 
-# Keys of `SyntaxColors`. `comment_doc` has no serde rename, so a file has to spell it with an
-# underscore even though the highlighter looks it up as `comment.doc`.
+# Keys of `SyntaxColors`. A file may also spell `comment_doc` as `comment.doc` (see
+# SYNTAX_ALIASES).
 SYNTAX_KEYS = [
     "attribute", "boolean", "comment", "comment_doc", "constant", "constructor", "embedded",
     "emphasis", "emphasis.strong", "enum", "function", "hint", "keyword", "label", "link_text",
@@ -91,6 +91,25 @@ HIGHLIGHT_NAMES = [
     "tag.doctype", "text.code.span", "text.literal", "title", "type", "variable", "variable.special",
     "variant",
 ]
+
+# Other names theme files use for color keys, as alias -> key (`COLOR_ALIASES` in schema.rs):
+# the names in Zed themes and in earlier default themes. A key a file sets under its own name
+# wins over its alias.
+COLOR_ALIASES = {
+    "link.foreground": "link",
+    "link.hover.foreground": "link.hover",
+    "link.active.foreground": "link.active",
+    "drag_border": "drag.border",
+    "description_list_label.background": "description_list.label.background",
+    "description_list_label.foreground": "description_list.label.foreground",
+    "progress_bar.background": "progress.bar.background",
+    "slider.bar.background": "slider.background",
+    "window_border": "window.border",
+}
+
+# The same for syntax keys (`SYNTAX_ALIASES` in schema.rs). `comment.doc` is the name the
+# highlighter and Zed themes use.
+SYNTAX_ALIASES = {"comment.doc": "comment_doc"}
 
 THEME_KEYS = [
     "is_default", "name", "mode", "font.size", "font.family", "mono_font.family", "mono_font.size",
@@ -197,6 +216,17 @@ def parse_token(value: str) -> Tok:
 # apply_config
 
 
+def with_aliases(values: dict, aliases: dict) -> dict:
+    """`apply_aliases` in schema.rs: move each value set under an alias to its key, unless the
+    file sets that key too."""
+    out = dict(values)
+    for alias, key in aliases.items():
+        if alias in out:
+            value = out.pop(alias)
+            out.setdefault(key, value)
+    return out
+
+
 # The contrast the kit gives text it derives (`TEXT_CONTRAST` in schema.rs).
 TEXT_CONTRAST = 4.5
 
@@ -240,6 +270,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     built-in theme itself, where the fallback is gpui's transparent black).
     """
     dark = mode == "dark"
+    colors = with_aliases(colors, COLOR_ALIASES)
     t: dict[str, Tok] = {}
     zero = Tok.solid(C.TRANSPARENT)
 
@@ -453,7 +484,7 @@ def parse_highlight(hl: dict | None) -> dict:
                 out[key] = C.parse_hex(v)
             except ValueError:
                 pass
-    for key, style in (hl.get("syntax") or {}).items():
+    for key, style in with_aliases(hl.get("syntax") or {}, SYNTAX_ALIASES).items():
         if key in SYNTAX_KEYS and isinstance(style, dict) and isinstance(style.get("color"), str):
             try:
                 out["syntax"][key] = C.parse_hex(style["color"])

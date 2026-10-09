@@ -44,6 +44,16 @@ class KitReplay(unittest.TestCase):
         self.assertEqual(source["syntax"], kit.SYNTAX_KEYS)
         self.assertEqual(set(source["highlight"]), set(kit.HIGHLIGHT_KEYS))
 
+    def test_aliases_apply_unless_the_key_is_set(self):
+        theme = {"name": "T", "mode": "light", "colors": {
+            "link.foreground": "#112233", "drag_border": "#445566", "drag.border": "#778899",
+        }, "highlight": {"syntax": {"comment.doc": {"color": "#AA0000"}}}}
+        r = kit.resolve_theme(theme)
+        self.assertEqual(C.to_hex(r.tokens["link"].color), "#112233")
+        self.assertEqual(C.to_hex(r.tokens["link.hover"].color), "#112233")
+        self.assertEqual(C.to_hex(r.tokens["drag.border"].color), "#778899")
+        self.assertEqual(C.to_hex(kit.syntax_color(r.highlight["syntax"], "comment.doc")), "#AA0000")
+
     def test_derived_tinted_button_text_reads_in_every_state(self):
         themes = [
             {"name": "L", "mode": "light", "colors": {}},
@@ -97,11 +107,16 @@ class KitReplay(unittest.TestCase):
         results = {r.check.id: r for r in checks.evaluate(kit.resolve_theme(theme))}
         self.assertLess(results["button.text"].ratio, 1.01)
 
-    def test_comment_doc_spelling_is_flagged(self):
-        data = {"name": "T", "themes": [{"name": "T", "mode": "light", "colors": {},
+    def test_an_alias_beside_its_key_is_flagged(self):
+        data = {"name": "T", "themes": [{"name": "T", "mode": "light", "colors": {"link.foreground": "#000000"},
                                          "highlight": {"syntax": {"comment.doc": {"color": "#000000"}}}}]}
+        self.assertEqual(validate.validate(data)[1], [])
+        theme = data["themes"][0]
+        theme["colors"]["link"] = "#111111"
+        theme["highlight"]["syntax"]["comment_doc"] = {"color": "#111111"}
         _, notes = validate.validate(data)
-        self.assertTrue(any("comment_doc" in n for n in notes))
+        self.assertTrue(any("link.foreground is ignored" in n for n in notes))
+        self.assertTrue(any("comment.doc is ignored" in n for n in notes))
 
 
 class GeneratedThemes(unittest.TestCase):
