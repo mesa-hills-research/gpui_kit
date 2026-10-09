@@ -582,7 +582,9 @@ fn cua_keys_stay_out_of_the_other_schemes(cx: &mut TestAppContext) {
             let (keys, before, after) = if platform.is_macos() {
                 ("alt-up", "ab\ncdˇ", "ab\nˇcd")
             } else {
-                ("ctrl-shift-z", "abˇ", "abxˇ")
+                // The caret starts on a character, where Vim's normal mode
+                // leaves it.
+                ("ctrl-shift-z", "aˇb", "axˇb")
             };
             let mut test = KeymapTest::new(cx, keymap, platform, before);
             test.update(|state, window, cx| state.insert("x", window, cx));
