@@ -56,6 +56,7 @@ pub use gpui_base::input::{EditorMode, InputMode, InputModeKind, TextareaMode};
 mod editor;
 mod group;
 mod state;
+mod text_editor;
 mod textarea;
 pub use editor::Editor;
 pub use gpui_base::input::{
@@ -68,6 +69,7 @@ pub use lsp_types::Position;
 pub use number_input::{NumberInput, NumberInputEvent, NumberStep, StepAction};
 pub use otp_input::*;
 pub use state::AnyInputState;
+pub use text_editor::TextEditor;
 pub use textarea::Textarea;
 
 pub(crate) fn init(cx: &mut gpui::App) {
