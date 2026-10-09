@@ -132,6 +132,9 @@ def _key_for(ref: str, r: kit.Resolved):
         name = ref[1:]
         table = {
             "editor_bg": ("highlight", "editor.background"),
+            "editor_fg": ("highlight", "editor.foreground"),
+            "line_number": ("highlight", "editor.line_number"),
+            "active_line_number": ("highlight", "editor.active_line_number"),
             "active_line": ("highlight", "editor.active_line.background"),
             "gutter": ("highlight", "editor.gutter.background"),
             "gutter_border": ("highlight", "editor.gutter.border"),
@@ -155,7 +158,10 @@ def _sets(theme: dict, where: tuple) -> bool:
     kind, key = where
     hl = theme.get("highlight")
     if kind == "colors":
-        value = (theme.get("colors") or {}).get(key)
+        colors = theme.get("colors") or {}
+        value = colors.get(key)
+        if value is None:
+            value = next((colors[a] for a, k in kit.COLOR_ALIASES.items() if k == key and a in colors), None)
         if not isinstance(value, str):
             return False
         try:
