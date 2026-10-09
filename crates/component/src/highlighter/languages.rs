@@ -532,7 +532,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-proto")]
-            Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
+            Self::Proto => (
+                tree_sitter_proto::LANGUAGE,
+                include_str!("languages/proto/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-make")]
             Self::Make => (
                 tree_sitter_make::LANGUAGE,
@@ -840,6 +845,46 @@ struct CounterView: View {
                 ("print", "function"),
                 ("items", "variable"),
                 ("self", "variable.special"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-proto")]
+    fn test_proto_highlights() {
+        let source = r#"syntax = "proto3";
+package shop.catalog;
+
+// A product.
+message Product {
+  string name = 1 [deprecated = true];
+  repeated Tag tags = 2;
+  enum Tag { TAG_UNSPECIFIED = 0; }
+}
+
+service Catalog {
+  rpc GetProduct(GetProductRequest) returns (Product);
+}
+"#;
+        assert_highlights(
+            "proto",
+            source,
+            &[
+                ("syntax", "keyword"),
+                ("\"proto3\"", "string.special"),
+                ("// A product.", "comment"),
+                ("message", "keyword"),
+                ("Product", "type"),
+                ("string", "type"),
+                ("name", "property"),
+                ("1", "number"),
+                ("deprecated", "property"),
+                ("true", "boolean"),
+                ("repeated", "keyword"),
+                ("TAG_UNSPECIFIED", "constant"),
+                ("Catalog", "type"),
+                ("GetProduct", "function"),
+                ("returns", "keyword"),
             ],
         );
     }
