@@ -1,0 +1,3 @@
+# The generator writes the template out as it is, so its text files keep LF line
+# endings on every platform.
+template/** text=auto eol=lf
