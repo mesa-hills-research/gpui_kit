@@ -125,10 +125,11 @@ optional, and it runs with the kit's other tests on Linux:
 cargo test -p gpui-kit --features test-support --test screenshots --locked
 ```
 
-A screenshot that differs from its golden fails the test and writes the capture and a diff to
-`tests/screenshots/failures`. After an intended change, `UPDATE_GOLDENS=1` rewrites the goldens
-that differ. Matches are exact, and another Mesa or LLVM version can move anti-aliased edges by a
-level or two. The failure message names the driver that drew the golden next to the current one.
+Matches allow each channel of each pixel to differ by up to 2 levels, since Mesa and LLVM releases
+round anti-aliased edges a level or two apart. A screenshot that differs by more fails the test
+and writes the capture and a diff to `tests/screenshots/failures`. The failure message names the
+driver that drew the golden next to the current one. After an intended change,
+`UPDATE_GOLDENS=1` rewrites the goldens that differ by more than the tolerance.
 mhr_gpui's [screenshot docs](https://github.com/mesa-hills-research/mhr_gpui/blob/main/docs/screenshots.md)
 cover writing these tests, reviewing failures and allowing a tolerance.
 

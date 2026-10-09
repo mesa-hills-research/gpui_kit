@@ -23,10 +23,16 @@ use gpui_kit::{
     div, px, size,
     test::TestWindowExt as _,
 };
-use gpui_screenshot::{Screenshot, ScreenshotApp, goldens};
+use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
 /// A typical phone's scale factor. Each golden is this many device pixels per logical pixel.
 const SCALE: f32 = 2.;
+
+/// The goldens in `tests/screenshots`. Mesa and LLVM releases round antialiased edges a level or
+/// two apart, so each channel of each pixel may differ from its golden by up to 2.
+fn goldens() -> Goldens {
+    gpui_screenshot::goldens!().tolerance(Tolerance::channel(2))
+}
 
 /// A headless app with GPUI Kit initialized in `mode`.
 fn app(mode: ThemeMode) -> ScreenshotApp {
@@ -344,49 +350,49 @@ fn suggestion_menu(mode: ThemeMode) -> Screenshot {
 
 #[test]
 fn buttons_light() {
-    goldens!().assert("buttons", &buttons(ThemeMode::Light, SCALE));
+    goldens().assert("buttons", &buttons(ThemeMode::Light, SCALE));
 }
 
 #[test]
 fn buttons_dark() {
-    goldens!().assert("buttons-dark", &buttons(ThemeMode::Dark, SCALE));
+    goldens().assert("buttons-dark", &buttons(ThemeMode::Dark, SCALE));
 }
 
 /// 2.625 is a common Android density (420 dpi). Fractional scales round edges and glyph
 /// positions differently from whole ones.
 #[test]
 fn buttons_at_a_fractional_scale() {
-    goldens!().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
+    goldens().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
 }
 
 #[test]
 fn input_and_textarea() {
-    goldens!().assert("fields", &fields());
+    goldens().assert("fields", &fields());
 }
 
 #[test]
 fn list_with_keyboard_cursor() {
-    goldens!().assert("list", &list());
+    goldens().assert("list", &list());
 }
 
 #[test]
 fn popup_menu() {
-    goldens!().assert("menu", &menu(ThemeMode::Light));
+    goldens().assert("menu", &menu(ThemeMode::Light));
 }
 
 #[test]
 fn popup_menu_dark() {
-    goldens!().assert("menu-dark", &menu(ThemeMode::Dark));
+    goldens().assert("menu-dark", &menu(ThemeMode::Dark));
 }
 
 #[test]
 fn textarea_suggestion_menu() {
-    goldens!().assert("suggestions", &suggestion_menu(ThemeMode::Light));
+    goldens().assert("suggestions", &suggestion_menu(ThemeMode::Light));
 }
 
 #[test]
 fn textarea_suggestion_menu_dark() {
-    goldens!().assert("suggestions-dark", &suggestion_menu(ThemeMode::Dark));
+    goldens().assert("suggestions-dark", &suggestion_menu(ThemeMode::Dark));
 }
 
 /// Renders every scene on three threads at once: each thread must produce the same pixels,
