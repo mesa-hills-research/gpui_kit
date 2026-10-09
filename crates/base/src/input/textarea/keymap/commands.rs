@@ -56,10 +56,10 @@ actions!(
 
 /// One edit of a batch, and where its cursor ends: a range relative to the
 /// start of the replacement.
-struct Edit {
-    range: Range<usize>,
-    text: String,
-    select: Range<usize>,
+pub(super) struct Edit {
+    pub(super) range: Range<usize>,
+    pub(super) text: String,
+    pub(super) select: Range<usize>,
 }
 
 fn is_word_char(c: char) -> bool {
@@ -83,7 +83,7 @@ impl TextareaState {
     }
 
     /// See [`MoveToParagraphStart`].
-    fn paragraph_start_before(&self, offset: usize) -> usize {
+    pub(super) fn paragraph_start_before(&self, offset: usize) -> usize {
         let mut row = self.text.offset_to_point(offset).row;
         while row > 0 && self.is_blank_row(row) {
             row -= 1;
@@ -95,7 +95,7 @@ impl TextareaState {
     }
 
     /// See [`MoveToParagraphEnd`].
-    fn paragraph_end_after(&self, offset: usize) -> usize {
+    pub(super) fn paragraph_end_after(&self, offset: usize) -> usize {
         let last = self.text.lines_len().saturating_sub(1);
         let mut row = self.text.offset_to_point(offset).row;
         while row < last && self.is_blank_row(row) {
@@ -158,7 +158,12 @@ impl TextareaState {
 
     /// Apply `edits` as one undo step and place a cursor, or a selection, for
     /// each. Overlapping edits after the first are dropped.
-    fn apply_edits(&mut self, mut edits: Vec<Edit>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn apply_edits(
+        &mut self,
+        mut edits: Vec<Edit>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.is_editable() || edits.is_empty() {
             return;
         }
@@ -307,7 +312,12 @@ impl TextareaState {
         self.apply_edits(edits, window, cx);
     }
 
-    fn join_lines(&mut self, _: &JoinLines, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn join_lines(
+        &mut self,
+        _: &JoinLines,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let last = self.text.lines_len().saturating_sub(1);
         let edits = self
             .selections
@@ -379,7 +389,7 @@ impl TextareaState {
         self.apply_edits(edits, window, cx);
     }
 
-    fn transpose_characters(
+    pub(super) fn transpose_characters(
         &mut self,
         _: &TransposeCharacters,
         window: &mut Window,
@@ -485,7 +495,7 @@ impl TextareaState {
 
 /// Each word's first letter upper-case and the rest lower-case. An
 /// apostrophe inside a word keeps it one word: "don't" becomes "Don't".
-fn title_case(text: &str) -> String {
+pub(super) fn title_case(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut in_word = false;
     for c in text.chars() {
