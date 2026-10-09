@@ -1,0 +1,76 @@
+# Mesa: the high desert. Sand and adobe, terracotta for the accent, sage, sky blue, ochre and
+# prickly-pear magenta in the code.
+
+family = "Mesa"
+file = "mesa.json"
+
+[options]
+shadow = true
+
+[[themes]]
+name = "Mesa Light"
+mode = "light"
+background = "oklch(0.965 0.02 80)"
+sidebar = "oklch(0.935 0.028 75)"
+title_bar = "oklch(0.95 0.024 78)"
+tab_bar = "oklch(0.93 0.026 76)"
+popover = "oklch(0.975 0.014 80)"
+foreground = "oklch(0.30 0.035 45)"
+muted = "oklch(0.50 0.035 55)"
+accent = "oklch(0.58 0.14 40)"
+
+[themes.semantic]
+red = "oklch(0.53 0.17 30)"
+orange = "oklch(0.62 0.14 55)"
+yellow = "oklch(0.72 0.13 85)"
+green = "oklch(0.53 0.10 140)"
+cyan = "oklch(0.55 0.07 210)"
+blue = "oklch(0.50 0.09 245)"
+magenta = "oklch(0.52 0.14 350)"
+
+[themes.syntax]
+keyword = "oklch(0.53 0.14 38)"
+function = "oklch(0.48 0.08 150)"
+type = "oklch(0.48 0.08 230)"
+string = "oklch(0.52 0.10 105)"
+number = "oklch(0.55 0.12 70)"
+comment = "oklch(0.58 0.03 70)"
+property = "oklch(0.42 0.05 45)"
+attribute = "oklch(0.50 0.13 350)"
+escape = "oklch(0.50 0.13 350)"
+special = "oklch(0.55 0.13 25)"
+punctuation = "oklch(0.48 0.025 55)"
+
+[[themes]]
+name = "Mesa Dark"
+mode = "dark"
+background = "oklch(0.225 0.02 45)"
+sidebar = "oklch(0.25 0.022 45)"
+title_bar = "oklch(0.24 0.021 45)"
+tab_bar = "oklch(0.21 0.019 45)"
+popover = "oklch(0.275 0.024 45)"
+foreground = "oklch(0.91 0.03 80)"
+muted = "oklch(0.70 0.035 70)"
+accent = "oklch(0.71 0.14 45)"
+
+[themes.semantic]
+red = "oklch(0.71 0.15 30)"
+orange = "oklch(0.78 0.13 60)"
+yellow = "oklch(0.86 0.12 90)"
+green = "oklch(0.79 0.10 140)"
+cyan = "oklch(0.79 0.07 205)"
+blue = "oklch(0.76 0.08 240)"
+magenta = "oklch(0.74 0.12 350)"
+
+[themes.syntax]
+keyword = "oklch(0.72 0.13 40)"
+function = "oklch(0.81 0.08 145)"
+type = "oklch(0.79 0.07 228)"
+string = "oklch(0.83 0.10 105)"
+number = "oklch(0.81 0.11 75)"
+comment = "oklch(0.64 0.03 65)"
+property = "oklch(0.84 0.05 70)"
+attribute = "oklch(0.75 0.11 350)"
+escape = "oklch(0.75 0.11 350)"
+special = "oklch(0.75 0.12 25)"
+punctuation = "oklch(0.72 0.03 65)"

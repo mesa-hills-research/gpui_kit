@@ -1,0 +1,76 @@
+# Fern: a calm woodland. Fern green on pale leaf or deep forest, with bark gold, moss, berry red
+# and a violet wildflower in the code.
+
+family = "Fern"
+file = "fern.json"
+
+[options]
+shadow = true
+
+[[themes]]
+name = "Fern Light"
+mode = "light"
+background = "oklch(0.975 0.012 145)"
+sidebar = "oklch(0.95 0.02 148)"
+title_bar = "oklch(0.962 0.016 146)"
+tab_bar = "oklch(0.94 0.02 148)"
+popover = "oklch(0.985 0.008 145)"
+foreground = "oklch(0.28 0.035 165)"
+muted = "oklch(0.50 0.03 160)"
+accent = "oklch(0.55 0.12 155)"
+
+[themes.semantic]
+red = "oklch(0.53 0.17 25)"
+orange = "oklch(0.62 0.14 55)"
+yellow = "oklch(0.72 0.13 90)"
+green = "oklch(0.55 0.12 150)"
+cyan = "oklch(0.55 0.08 200)"
+blue = "oklch(0.50 0.10 245)"
+magenta = "oklch(0.52 0.13 320)"
+
+[themes.syntax]
+keyword = "oklch(0.50 0.12 155)"
+function = "oklch(0.48 0.09 235)"
+type = "oklch(0.50 0.10 70)"
+string = "oklch(0.52 0.11 120)"
+number = "oklch(0.53 0.14 22)"
+comment = "oklch(0.58 0.03 150)"
+property = "oklch(0.42 0.06 200)"
+attribute = "oklch(0.50 0.11 305)"
+escape = "oklch(0.50 0.11 305)"
+special = "oklch(0.52 0.12 25)"
+punctuation = "oklch(0.48 0.025 160)"
+
+[[themes]]
+name = "Fern Dark"
+mode = "dark"
+background = "oklch(0.215 0.02 165)"
+sidebar = "oklch(0.24 0.024 165)"
+title_bar = "oklch(0.23 0.022 165)"
+tab_bar = "oklch(0.2 0.018 165)"
+popover = "oklch(0.265 0.026 165)"
+foreground = "oklch(0.91 0.025 135)"
+muted = "oklch(0.70 0.03 150)"
+accent = "oklch(0.76 0.13 155)"
+
+[themes.semantic]
+red = "oklch(0.72 0.14 25)"
+orange = "oklch(0.78 0.12 60)"
+yellow = "oklch(0.87 0.12 95)"
+green = "oklch(0.80 0.13 150)"
+cyan = "oklch(0.80 0.08 195)"
+blue = "oklch(0.76 0.09 240)"
+magenta = "oklch(0.76 0.10 320)"
+
+[themes.syntax]
+keyword = "oklch(0.78 0.13 155)"
+function = "oklch(0.80 0.08 230)"
+type = "oklch(0.82 0.10 80)"
+string = "oklch(0.84 0.11 125)"
+number = "oklch(0.75 0.12 25)"
+comment = "oklch(0.63 0.03 150)"
+property = "oklch(0.84 0.05 190)"
+attribute = "oklch(0.78 0.09 305)"
+escape = "oklch(0.78 0.09 305)"
+special = "oklch(0.76 0.11 30)"
+punctuation = "oklch(0.72 0.03 150)"

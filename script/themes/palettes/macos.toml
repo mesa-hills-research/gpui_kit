@@ -1,0 +1,153 @@
+# macOS: neutral greys, the system accent on buttons, selection, focus rings and the caret,
+# quiet separators, and an Xcode-flavoured syntax palette. One light and one dark theme per
+# system accent color, with blue as the default.
+
+family = "macOS"
+file = "macos.json"
+
+[options]
+shadow = false
+active_line = "accent"
+primary_text = "light"
+
+[[themes]]
+name = "macOS Light"
+accent_name = "macOS {accent} Light"
+mode = "light"
+background = "#FFFFFF"
+foreground = "#1D1D1F"
+muted = "#77777C"
+accent = "#007AFF"
+link = "#0068DA"
+sidebar = "#F2F2F3"
+title_bar = "#F6F6F6"
+status_bar = "#F6F6F6"
+tab_bar = "#EEEEEF"
+popover = "#F7F7F7"
+control = "#FFFFFF"
+secondary = "#EAEAEB"
+hover = "#EBEBEC"
+list_hover = "#F2F2F3"
+sidebar_active = "#DCDCDE"
+border = "#E2E2E3"
+input_border = "#CDCDCF"
+scrollbar = "#C2C2C4"
+scrollbar_hover = "#9C9C9F"
+switch_off = "#D9D9DB"
+
+[themes.semantic]
+red = "#FF3B30"
+orange = "#FF9500"
+yellow = "#FFCC00"
+green = "#28CD41"
+cyan = "#30B0C7"
+blue = "#007AFF"
+magenta = "#AF52DE"
+warning = "#FF9500"
+
+[themes.syntax]
+keyword = "#9B2393"
+function = "#2C6F78"
+type = "#0B4F79"
+string = "#C41A16"
+number = "#1C00CF"
+constant = "#1C00CF"
+comment = "#6E7781"
+property = "#6C36A9"
+attribute = "#815F03"
+preproc = "#643820"
+tag = "#0B4F79"
+escape = "#1C00CF"
+special = "#9B2393"
+title = "#0B4F79"
+punctuation = "#4E4E52"
+
+[[themes]]
+name = "macOS Dark"
+accent_name = "macOS {accent} Dark"
+mode = "dark"
+background = "#1E1E1E"
+foreground = "#DFDFE0"
+muted = "#98989D"
+accent = "#0A84FF"
+link = "#409CFF"
+sidebar = "#272727"
+title_bar = "#2A2A2A"
+status_bar = "#2A2A2A"
+tab_bar = "#242424"
+popover = "#2C2C2D"
+control = "#3B3B3C"
+secondary = "#363637"
+hover = "#38383A"
+list_hover = "#2A2A2B"
+sidebar_active = "#3D3D3F"
+border = "#383838"
+input_border = "#4A4A4C"
+scrollbar = "#5C5C5E"
+scrollbar_hover = "#7C7C80"
+switch_off = "#4A4A4C"
+knob = "#E4E4E4"
+
+[themes.semantic]
+red = "#FF453A"
+orange = "#FF9F0A"
+yellow = "#FFD60A"
+green = "#30D158"
+cyan = "#40C8E0"
+blue = "#0A84FF"
+magenta = "#BF5AF2"
+warning = "#FF9F0A"
+
+[themes.syntax]
+keyword = "#FC5FA3"
+function = "#67B7A4"
+type = "#5DD8FF"
+string = "#FC6A5D"
+number = "#D0BF69"
+constant = "#D0BF69"
+comment = "#7F8C98"
+property = "#B48CF2"
+attribute = "#BF8555"
+preproc = "#FD8F3F"
+tag = "#5DD8FF"
+escape = "#D0BF69"
+special = "#FC5FA3"
+title = "#5DD8FF"
+punctuation = "#B4B4B8"
+
+[[accents]]
+name = "Purple"
+light = "#953D96"
+dark = "#A550A7"
+
+[[accents]]
+name = "Pink"
+light = "#E8458F"
+dark = "#F7609F"
+
+[[accents]]
+name = "Red"
+light = "#E0383E"
+dark = "#FF5257"
+
+[[accents]]
+name = "Orange"
+light = "#F7821B"
+dark = "#F7821B"
+
+[[accents]]
+name = "Yellow"
+light = "#FCB827"
+dark = "#FFC600"
+light_overrides = { primary_text = "dark" }
+dark_overrides = { primary_text = "dark" }
+
+[[accents]]
+name = "Green"
+light = "#62BA46"
+dark = "#62BA46"
+
+[[accents]]
+name = "Graphite"
+light = "#8C8C8C"
+dark = "#8C8C8C"

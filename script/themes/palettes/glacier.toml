@@ -1,0 +1,78 @@
+# Glacier: frost and deep blue slate, an ice-cyan accent, mint and periwinkle in the code with
+# a single warm gold for escapes.
+
+family = "Glacier"
+file = "glacier.json"
+
+[options]
+shadow = true
+active_line = "accent"
+
+[[themes]]
+name = "Glacier Light"
+mode = "light"
+background = "oklch(0.98 0.008 230)"
+sidebar = "oklch(0.955 0.014 235)"
+title_bar = "oklch(0.965 0.012 233)"
+tab_bar = "oklch(0.945 0.015 235)"
+popover = "oklch(0.99 0.005 230)"
+foreground = "oklch(0.30 0.04 250)"
+muted = "oklch(0.50 0.035 245)"
+accent = "oklch(0.56 0.13 235)"
+
+[themes.semantic]
+red = "oklch(0.55 0.18 20)"
+orange = "oklch(0.62 0.15 55)"
+yellow = "oklch(0.72 0.14 90)"
+green = "oklch(0.55 0.12 160)"
+cyan = "oklch(0.56 0.10 210)"
+blue = "oklch(0.52 0.14 255)"
+magenta = "oklch(0.52 0.15 310)"
+
+[themes.syntax]
+keyword = "oklch(0.50 0.15 270)"
+function = "oklch(0.50 0.10 220)"
+type = "oklch(0.50 0.09 185)"
+string = "oklch(0.50 0.10 155)"
+number = "oklch(0.50 0.13 310)"
+comment = "oklch(0.58 0.03 240)"
+property = "oklch(0.42 0.06 240)"
+attribute = "oklch(0.55 0.12 70)"
+escape = "oklch(0.55 0.12 70)"
+special = "oklch(0.55 0.12 70)"
+punctuation = "oklch(0.50 0.03 245)"
+
+[[themes]]
+name = "Glacier Dark"
+mode = "dark"
+background = "oklch(0.215 0.022 245)"
+sidebar = "oklch(0.245 0.025 245)"
+title_bar = "oklch(0.23 0.024 245)"
+tab_bar = "oklch(0.2 0.021 245)"
+popover = "oklch(0.27 0.026 245)"
+foreground = "oklch(0.92 0.018 230)"
+muted = "oklch(0.70 0.03 235)"
+accent = "oklch(0.76 0.11 215)"
+
+[themes.semantic]
+red = "oklch(0.72 0.14 15)"
+orange = "oklch(0.78 0.12 60)"
+yellow = "oklch(0.86 0.11 95)"
+green = "oklch(0.80 0.11 165)"
+cyan = "oklch(0.80 0.10 205)"
+blue = "oklch(0.74 0.11 255)"
+magenta = "oklch(0.76 0.10 310)"
+
+[themes.syntax]
+keyword = "oklch(0.75 0.12 265)"
+function = "oklch(0.83 0.10 205)"
+type = "oklch(0.83 0.09 175)"
+string = "oklch(0.84 0.09 145)"
+number = "oklch(0.80 0.09 305)"
+comment = "oklch(0.62 0.035 240)"
+property = "oklch(0.86 0.045 225)"
+attribute = "oklch(0.84 0.10 85)"
+escape = "oklch(0.84 0.10 85)"
+special = "oklch(0.84 0.10 85)"
+operator = "oklch(0.80 0.06 220)"
+punctuation = "oklch(0.72 0.03 235)"

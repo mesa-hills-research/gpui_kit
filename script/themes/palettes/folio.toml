@@ -1,0 +1,79 @@
+# Folio: paper and ink for reading and writing. Blue-black ink on warm paper, red-ink strings
+# and pencil-grey italic comments, or cream on ink-black at night.
+
+family = "Folio"
+file = "folio.json"
+
+[options]
+shadow = false
+
+[options.styles]
+comment = { font_style = "italic" }
+
+[[themes]]
+name = "Folio Light"
+mode = "light"
+background = "oklch(0.972 0.012 90)"
+sidebar = "oklch(0.948 0.016 88)"
+title_bar = "oklch(0.96 0.014 89)"
+tab_bar = "oklch(0.94 0.017 88)"
+popover = "oklch(0.985 0.008 90)"
+foreground = "oklch(0.25 0.025 265)"
+muted = "oklch(0.50 0.025 260)"
+accent = "oklch(0.46 0.13 262)"
+
+[themes.semantic]
+red = "oklch(0.50 0.17 25)"
+orange = "oklch(0.58 0.13 55)"
+yellow = "oklch(0.68 0.12 85)"
+green = "oklch(0.50 0.10 155)"
+cyan = "oklch(0.52 0.08 210)"
+blue = "oklch(0.46 0.13 262)"
+magenta = "oklch(0.48 0.13 320)"
+
+[themes.syntax]
+keyword = "oklch(0.42 0.12 262)"
+function = "oklch(0.45 0.12 305)"
+type = "oklch(0.43 0.07 195)"
+string = "oklch(0.48 0.13 30)"
+number = "oklch(0.50 0.10 60)"
+comment = "oklch(0.55 0.03 80)"
+property = "oklch(0.38 0.04 262)"
+attribute = "oklch(0.46 0.08 330)"
+escape = "oklch(0.50 0.10 60)"
+special = "oklch(0.46 0.12 15)"
+punctuation = "oklch(0.45 0.02 262)"
+
+[[themes]]
+name = "Folio Dark"
+mode = "dark"
+background = "oklch(0.215 0.012 265)"
+sidebar = "oklch(0.24 0.014 265)"
+title_bar = "oklch(0.23 0.013 265)"
+tab_bar = "oklch(0.2 0.011 265)"
+popover = "oklch(0.265 0.016 265)"
+foreground = "oklch(0.91 0.022 85)"
+muted = "oklch(0.70 0.02 80)"
+accent = "oklch(0.74 0.10 258)"
+
+[themes.semantic]
+red = "oklch(0.72 0.13 25)"
+orange = "oklch(0.78 0.11 60)"
+yellow = "oklch(0.86 0.10 90)"
+green = "oklch(0.78 0.09 155)"
+cyan = "oklch(0.80 0.07 205)"
+blue = "oklch(0.74 0.10 258)"
+magenta = "oklch(0.76 0.10 320)"
+
+[themes.syntax]
+keyword = "oklch(0.77 0.09 262)"
+function = "oklch(0.80 0.09 305)"
+type = "oklch(0.81 0.065 195)"
+string = "oklch(0.79 0.10 35)"
+number = "oklch(0.82 0.08 75)"
+comment = "oklch(0.64 0.025 80)"
+property = "oklch(0.86 0.03 85)"
+attribute = "oklch(0.84 0.06 262)"
+escape = "oklch(0.82 0.08 75)"
+special = "oklch(0.78 0.10 15)"
+punctuation = "oklch(0.72 0.02 85)"

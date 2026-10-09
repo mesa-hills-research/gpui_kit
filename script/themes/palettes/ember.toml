@@ -1,0 +1,76 @@
+# Ember: charcoal and ivory lit by a glowing orange. Warm golds, sage and coral in the code.
+
+family = "Ember"
+file = "ember.json"
+
+[options]
+shadow = true
+
+[[themes]]
+name = "Ember Light"
+mode = "light"
+background = "oklch(0.975 0.012 80)"
+sidebar = "oklch(0.948 0.018 75)"
+title_bar = "oklch(0.96 0.016 78)"
+tab_bar = "oklch(0.94 0.018 76)"
+popover = "oklch(0.988 0.008 80)"
+foreground = "oklch(0.28 0.03 45)"
+muted = "oklch(0.52 0.03 55)"
+accent = "oklch(0.62 0.17 45)"
+
+[themes.semantic]
+red = "oklch(0.55 0.19 28)"
+orange = "oklch(0.62 0.16 55)"
+yellow = "oklch(0.72 0.15 85)"
+green = "oklch(0.55 0.13 140)"
+cyan = "oklch(0.58 0.09 200)"
+blue = "oklch(0.52 0.12 250)"
+magenta = "oklch(0.55 0.17 350)"
+
+[themes.syntax]
+keyword = "oklch(0.55 0.17 40)"
+function = "oklch(0.52 0.12 75)"
+type = "oklch(0.50 0.09 145)"
+string = "oklch(0.52 0.12 115)"
+number = "oklch(0.55 0.16 20)"
+comment = "oklch(0.58 0.03 65)"
+property = "oklch(0.45 0.05 55)"
+attribute = "oklch(0.55 0.13 355)"
+escape = "oklch(0.55 0.13 355)"
+special = "oklch(0.55 0.14 30)"
+punctuation = "oklch(0.50 0.02 60)"
+
+[[themes]]
+name = "Ember Dark"
+mode = "dark"
+background = "oklch(0.205 0.012 55)"
+sidebar = "oklch(0.235 0.014 55)"
+title_bar = "oklch(0.225 0.013 55)"
+tab_bar = "oklch(0.19 0.011 55)"
+popover = "oklch(0.255 0.015 55)"
+foreground = "oklch(0.91 0.025 80)"
+muted = "oklch(0.70 0.03 70)"
+accent = "oklch(0.72 0.16 52)"
+
+[themes.semantic]
+red = "oklch(0.70 0.17 28)"
+orange = "oklch(0.77 0.15 60)"
+yellow = "oklch(0.85 0.14 90)"
+green = "oklch(0.78 0.12 135)"
+cyan = "oklch(0.78 0.08 195)"
+blue = "oklch(0.74 0.09 245)"
+magenta = "oklch(0.74 0.12 350)"
+
+[themes.syntax]
+keyword = "oklch(0.74 0.15 45)"
+function = "oklch(0.85 0.12 88)"
+type = "oklch(0.80 0.09 140)"
+string = "oklch(0.82 0.11 112)"
+number = "oklch(0.76 0.12 20)"
+comment = "oklch(0.64 0.03 65)"
+property = "oklch(0.84 0.05 70)"
+attribute = "oklch(0.76 0.10 350)"
+escape = "oklch(0.78 0.12 350)"
+special = "oklch(0.78 0.11 30)"
+operator = "oklch(0.82 0.08 55)"
+punctuation = "oklch(0.70 0.03 65)"

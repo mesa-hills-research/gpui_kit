@@ -1,0 +1,84 @@
+# Radar: a phosphor screen in a dark room. Two dark themes, green and amber, built from shades
+# of one glowing hue, with a warm red kept for errors.
+
+family = "Radar"
+file = "radar.json"
+
+[options]
+shadow = false
+primary_text = "dark"
+
+[options.styles]
+keyword = { font_weight = 700 }
+
+[[themes]]
+name = "Radar Green"
+mode = "dark"
+background = "oklch(0.16 0.025 155)"
+sidebar = "oklch(0.185 0.03 155)"
+title_bar = "oklch(0.175 0.028 155)"
+tab_bar = "oklch(0.15 0.022 155)"
+popover = "oklch(0.21 0.035 155)"
+foreground = "oklch(0.88 0.16 148)"
+muted = "oklch(0.68 0.10 150)"
+accent = "oklch(0.86 0.18 145)"
+border = "oklch(0.32 0.06 150)"
+
+[themes.semantic]
+red = "oklch(0.72 0.16 30)"
+orange = "oklch(0.82 0.15 75)"
+yellow = "oklch(0.90 0.16 105)"
+green = "oklch(0.86 0.18 145)"
+cyan = "oklch(0.86 0.12 175)"
+blue = "oklch(0.84 0.11 170)"
+magenta = "oklch(0.84 0.13 125)"
+
+[themes.syntax]
+keyword = "oklch(0.93 0.19 140)"
+function = "oklch(0.86 0.13 170)"
+type = "oklch(0.88 0.15 120)"
+string = "oklch(0.80 0.11 155)"
+number = "oklch(0.90 0.13 105)"
+comment = "oklch(0.62 0.08 150)"
+property = "oklch(0.88 0.07 165)"
+attribute = "oklch(0.82 0.12 130)"
+escape = "oklch(0.92 0.12 100)"
+special = "oklch(0.90 0.13 105)"
+operator = "oklch(0.85 0.12 145)"
+punctuation = "oklch(0.70 0.10 150)"
+
+[[themes]]
+name = "Radar Amber"
+mode = "dark"
+background = "oklch(0.16 0.02 65)"
+sidebar = "oklch(0.185 0.025 65)"
+title_bar = "oklch(0.175 0.022 65)"
+tab_bar = "oklch(0.15 0.018 65)"
+popover = "oklch(0.21 0.03 65)"
+foreground = "oklch(0.84 0.14 72)"
+muted = "oklch(0.66 0.10 68)"
+accent = "oklch(0.82 0.16 70)"
+border = "oklch(0.32 0.05 65)"
+
+[themes.semantic]
+red = "oklch(0.70 0.17 30)"
+orange = "oklch(0.78 0.16 55)"
+yellow = "oklch(0.90 0.15 95)"
+green = "oklch(0.84 0.14 115)"
+cyan = "oklch(0.86 0.10 90)"
+blue = "oklch(0.84 0.09 85)"
+magenta = "oklch(0.76 0.14 40)"
+
+[themes.syntax]
+keyword = "oklch(0.92 0.15 85)"
+function = "oklch(0.80 0.14 60)"
+type = "oklch(0.87 0.10 102)"
+string = "oklch(0.76 0.10 78)"
+number = "oklch(0.89 0.13 115)"
+comment = "oklch(0.60 0.08 65)"
+property = "oklch(0.82 0.10 75)"
+attribute = "oklch(0.84 0.12 38)"
+escape = "oklch(0.84 0.12 38)"
+special = "oklch(0.84 0.12 38)"
+operator = "oklch(0.82 0.11 72)"
+punctuation = "oklch(0.68 0.09 68)"
