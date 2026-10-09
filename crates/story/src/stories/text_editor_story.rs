@@ -6,9 +6,11 @@ use gpui_kit::{
 };
 
 use gpui_kit::component::{
-    ActiveTheme as _, Sizable as _, h_flex,
+    ActiveTheme as _, Selectable as _, Sizable as _,
+    button::Button,
+    h_flex,
     input::{
-        RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker, SpellEvent, Suggestion,
+        Keymap, RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker, SpellEvent, Suggestion,
         SuggestionOptions, SuggestionProvider, SuggestionRequest, TextEditor, TextareaState,
     },
     switch::Switch,
@@ -135,7 +137,7 @@ pub struct TextEditorStory {
     line_numbers: bool,
     spell_check: bool,
     last_event: Option<SharedString>,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl super::Story for TextEditorStory {
@@ -144,7 +146,7 @@ impl super::Story for TextEditorStory {
     }
 
     fn description() -> &'static str {
-        "A textarea set up for prose: line numbers, spell checking and completions."
+        "A textarea set up for prose: line numbers, spell checking, completions and CUA, Emacs or Vim keys."
     }
 
     fn closable() -> bool {
@@ -170,7 +172,7 @@ impl TextEditorStory {
                 .suggestion_options(SuggestionOptions::default().menu(false).inline(true))
                 .default_value(DOCUMENT)
         });
-        let _subscription = cx.subscribe(&document, |this, _, event: &SpellEvent, cx| {
+        let on_spelling = cx.subscribe(&document, |this, _, event: &SpellEvent, cx| {
             this.last_event = Some(
                 match event {
                     SpellEvent::Replaced { word, with } => {
@@ -186,12 +188,14 @@ impl TextEditorStory {
             );
             cx.notify();
         });
+        // The caret position and the keymap's mode label follow the document.
+        let on_change = cx.observe(&document, |_, _, cx| cx.notify());
         Self {
             document,
             line_numbers: true,
             spell_check: true,
             last_event: None,
-            _subscription,
+            _subscriptions: vec![on_spelling, on_change],
         }
     }
 }
@@ -204,7 +208,10 @@ impl gpui_kit::Focusable for TextEditorStory {
 
 impl Render for TextEditorStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let position = self.document.read(cx).cursor_position();
+        let document = self.document.read(cx);
+        let position = document.cursor_position();
+        let keymap = document.current_keymap();
+        let mode = document.keymap_mode_label();
         v_flex()
             .size_full()
             .gap_3()
@@ -237,6 +244,24 @@ impl Render for TextEditorStory {
                                 cx.notify();
                             })),
                     )
+                    .child(h_flex().gap_1().children(Keymap::ALL.map(|scheme| {
+                        let label = match scheme {
+                            Keymap::Cua => "CUA",
+                            Keymap::Emacs => "Emacs",
+                            Keymap::Vim => "Vim",
+                        };
+                        Button::new(scheme.name())
+                            .xsmall()
+                            .outline()
+                            .label(label)
+                            .selected(keymap == scheme)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.document.update(cx, |document, cx| {
+                                    document.set_keymap(scheme, cx);
+                                    document.focus(window, cx);
+                                });
+                            }))
+                    })))
                     .child(
                         div()
                             .flex_1()
@@ -250,7 +275,14 @@ impl Render for TextEditorStory {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("{}:{}", position.line + 1, position.character + 1)),
+                            .child(match mode {
+                                Some(mode) => format!(
+                                    "{mode}  {}:{}",
+                                    position.line + 1,
+                                    position.character + 1
+                                ),
+                                None => format!("{}:{}", position.line + 1, position.character + 1),
+                            }),
                     ),
             )
             .child(
