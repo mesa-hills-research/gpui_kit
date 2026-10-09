@@ -31,6 +31,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Status colours without tree-sitter** (`gpui-component`). Without the `tree-sitter` feature,
   diagnostic and status colours fall back to the theme's red, yellow, blue, green and cyan, as
   they do with it, where upstream made them transparent.
+- **Highlighting through Mesquite** (`gpui-component`). The `tree-sitter` features take
+  tree-sitter and its grammars from [Mesquite](https://github.com/mesa-hills-research/mesquite),
+  a pure Rust port, so they build without a C compiler and cross-compile to Windows without
+  MinGW headers. Kotlin and Svelte use the tree-sitter-kotlin-ng and tree-sitter-svelte-ng
+  grammars. Astro, diff, GraphQL and JSDoc have no Mesquite grammar yet and show as plain text.
+  See [Editor: basic usage](website/component/editor.md#basic-usage).
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
