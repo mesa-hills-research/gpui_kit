@@ -38,6 +38,7 @@ collapsed: false
 - [OtpInput](otp-input) - 一次性验证码输入
 - [Speech](speech) - 通过系统或自定义识别器进行语音输入
 - [ColorPicker](color-picker) - 颜色选择器
+- [FontPicker](font-picker) - 字体族、字重、字号与特性
 - [Questionnaire](questionnaire) - 可组合的多步骤问卷与答案
 - [Form](form) - 表单容器与布局
 

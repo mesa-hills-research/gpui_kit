@@ -146,12 +146,18 @@ chrono = "0.4.38"
 # Code Editor
 lsp-types.workspace = true
 
+# Font picker: reads the families, weights and OpenType features of font files.
+fontdb = { version = "0.23", default-features = false, features = ["std"] }
+ttf-parser = "0.25"
+
 # Cross-platform time APIs (zero-cost on native, uses web APIs on WASM)
 instant.workspace = true
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 smol.workspace = true
+# Font picker: finds the installed fonts.
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap", "fontconfig"] }
 cpal = { version = "0.15.3", optional = true }
 # Tree-sitter and its grammars come from Mesquite, a pure Rust port, so no C compiler
 # is needed. Its crates keep tree-sitter's library names (`tree_sitter`,

@@ -54,6 +54,7 @@ collapsed: false
 - [OtpInput](otp-input) - One-time password input
 - [Speech](speech) - Dictation through the system recognizer or your own
 - [ColorPicker](color-picker) - Color selection interface
+- [FontPicker](font-picker) - Font family, weight, size and features
 - [Form](form) - Form container and layout
 
 ### Layout Components

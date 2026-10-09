@@ -7,6 +7,8 @@ pub(crate) use language_name::language_name;
 
 mod diagnostic_styles;
 pub(crate) use diagnostic_styles::*;
+mod status_colors;
+pub use status_colors::StatusColors;
 
 #[cfg(feature = "tree-sitter")]
 mod input_adapter;

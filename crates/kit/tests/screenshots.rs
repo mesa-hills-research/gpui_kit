@@ -4,7 +4,7 @@
 //! the goldens. The gpui fork's `docs/screenshots.md` explains how to review and update them.
 #![cfg(target_os = "linux")]
 
-use std::rc::Rc;
+use std::{borrow::Cow, rc::Rc};
 
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, InputEvent as _,
@@ -14,6 +14,7 @@ use gpui_kit::{
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
+        font_picker::{FontCatalog, FontPicker, FontPickerState, FontSettings},
         input::{
             Editor, EditorState, Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest,
             SpellChecker, Suggestion, SuggestionProvider, SuggestionRequest, TextEditor, Textarea,
@@ -532,6 +533,53 @@ fn gutters(scale: f32) -> Screenshot {
         window.press("down", cx);
     });
     app.capture(window).unwrap()
+}
+
+struct FontPickerView {
+    picker: Entity<FontPickerState>,
+}
+
+impl Render for FontPickerView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(FontPicker::new(&self.picker))
+    }
+}
+
+/// The font picker with JetBrains Mono chosen: the family list, its weight, its features with the
+/// slashed zero turned on, and the preview line.
+fn font_picker(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    let fonts: Vec<Cow<'static, [u8]>> = vec![
+        Cow::Borrowed(include_bytes!(
+            "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+        )),
+        Cow::Borrowed(include_bytes!("../../story-web/fonts/Inter-Regular.ttf")),
+    ];
+    app.add_fonts(fonts.clone()).unwrap();
+    let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());
+    let window = open(&mut app, (720., 400.), SCALE, move |window, cx| {
+        let picker = cx.new(|cx| {
+            FontPickerState::new(window, cx)
+                .catalog(catalog)
+                .default_settings(
+                    FontSettings::new("JetBrains Mono")
+                        .with_size(px(14.))
+                        .with_feature("zero", true),
+                )
+        });
+        FontPickerView { picker }
+    });
+    app.capture(window).unwrap()
+}
+
+#[test]
+fn font_picker_light() {
+    goldens().assert("font-picker", &font_picker(ThemeMode::Light));
+}
+
+#[test]
+fn font_picker_dark() {
+    goldens().assert("font-picker-dark", &font_picker(ThemeMode::Dark));
 }
 
 #[test]

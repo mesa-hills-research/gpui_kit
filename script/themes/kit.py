@@ -18,7 +18,9 @@ import colors as C
 
 ROOT = Path(__file__).resolve().parents[2]
 THEME_DIR = ROOT / "crates" / "component" / "src" / "theme"
-REGISTRY_RS = ROOT / "crates" / "component" / "src" / "highlighter" / "registry.rs"
+HIGHLIGHTER_DIR = ROOT / "crates" / "component" / "src" / "highlighter"
+REGISTRY_RS = HIGHLIGHTER_DIR / "registry.rs"
+STATUS_COLORS_RS = HIGHLIGHTER_DIR / "status_colors.rs"
 
 # Keys of `ThemeConfigColors`, in the order schema.rs declares them.
 COLOR_KEYS = [
@@ -581,7 +583,8 @@ def _aliases(source: str, const: str) -> dict[str, str]:
 def keys_from_source() -> dict:
     schema = (THEME_DIR / "schema.rs").read_text()
     registry = REGISTRY_RS.read_text()
-    hl = _struct_keys(registry, "HighlightThemeStyle") + _struct_keys(registry, "StatusColors")
+    status = STATUS_COLORS_RS.read_text()
+    hl = _struct_keys(registry, "HighlightThemeStyle") + _struct_keys(status, "StatusColors")
     return {
         "theme": _struct_keys(schema, "ThemeConfig"),
         "colors": _struct_keys(schema, "ThemeConfigColors"),
