@@ -58,6 +58,7 @@ pub use gpui_base::input::{
     SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
 };
 pub use gpui_base::input::{EditorMode, InputMode, InputModeKind, TextareaMode};
+pub use gpui_base::input::{VimCommand, VimQuit, VimWrite};
 #[doc(hidden)]
 mod editor;
 mod group;
