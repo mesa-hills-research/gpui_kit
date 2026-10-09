@@ -41,10 +41,9 @@ from:
 gpui-kit = { git = "https://github.com/mesa-hills-research/mhr_gpui_kit", rev = "<commit>" }
 ```
 
-Cargo applies only the root workspace's `[patch]` tables, so the app also patches the `gpui-pre`
-crates to mhr_gpui, at the commit this repository's `Cargo.toml` names (mhr_gpui's README shows
-how). Building needs GitHub access to the private mhr_gpui repository and
-`net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
+The app gets the `gpui-pre` crates from crates.io, and mhr_gpui leaves them unchanged apart from
+test support, so the app needs no patch for them. Fetching this private repository needs GitHub
+access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`).
 
 ## Starting a new app
