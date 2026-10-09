@@ -572,7 +572,15 @@ impl RenderOnce for Input {
             gpui_base::input::InputEditorStyle {
                 foreground: cx.theme().foreground,
                 muted_foreground: cx.theme().muted_foreground,
-                background: cx.theme().editor_background(),
+                // The gutter and ghost lines paint over the text, so they take
+                // the background the frame shows, made opaque.
+                background: if state.presentation(cx).is_code_editor() {
+                    cx.theme().editor_background()
+                } else {
+                    cx.theme()
+                        .background
+                        .blend(input_style(self.disabled, cx).0)
+                },
                 border: cx.theme().border,
                 selection: cx.theme().selection,
                 caret: cx.theme().caret,
@@ -609,7 +617,9 @@ impl RenderOnce for Input {
                     top: self.size.input_py(),
                     right: self.size.input_px(),
                     bottom: self.size.input_py(),
-                    left: if state.presentation(cx).is_code_editor() {
+                    left: if state.presentation(cx).is_code_editor()
+                        || state.presentation(cx).has_line_numbers()
+                    {
                         self.size.input_px().min(px(6.))
                     } else {
                         self.size.input_px()
