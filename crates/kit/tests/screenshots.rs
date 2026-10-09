@@ -633,6 +633,88 @@ fn font_picker(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+struct CompactFontPickerView {
+    picker: Entity<FontPickerState>,
+}
+
+impl Render for CompactFontPickerView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(FontPicker::new(&self.picker).compact())
+    }
+}
+
+/// The compact font picker with JetBrains Mono chosen and its slashed zero turned on: the
+/// family in a dropdown, the weight, size and line height in rows, the features behind a
+/// disclosure, open when `features` is set, and the preview line.
+fn compact_font_picker(mode: ThemeMode, features: bool) -> Screenshot {
+    let mut app = app(mode);
+    let fonts: Vec<Cow<'static, [u8]>> = vec![
+        Cow::Borrowed(include_bytes!(
+            "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+        )),
+        Cow::Borrowed(include_bytes!("../../story-web/fonts/Inter-Regular.ttf")),
+    ];
+    app.add_fonts(fonts.clone()).unwrap();
+    let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());
+    let height = if features { 720. } else { 340. };
+    let picker: Rc<RefCell<Option<Entity<FontPickerState>>>> = Rc::default();
+    let window = open(&mut app, (560., height), SCALE, {
+        let picker = picker.clone();
+        move |window, cx| {
+            let state = cx.new(|cx| {
+                FontPickerState::new(window, cx)
+                    .catalog(catalog)
+                    .default_settings(
+                        FontSettings::new("JetBrains Mono")
+                            .with_size(px(14.))
+                            .with_feature("zero", true),
+                    )
+            });
+            *picker.borrow_mut() = Some(state.clone());
+            CompactFontPickerView { picker: state }
+        }
+    });
+    if features {
+        let picker = picker.borrow().clone().unwrap();
+        act(&mut app, window, |_, cx| {
+            picker.update(cx, |picker, cx| picker.set_features_open(true, cx))
+        });
+    }
+    app.capture(window).unwrap()
+}
+
+#[test]
+fn compact_font_picker_light() {
+    goldens().assert(
+        "font-picker-compact",
+        &compact_font_picker(ThemeMode::Light, false),
+    );
+}
+
+#[test]
+fn compact_font_picker_dark() {
+    goldens().assert(
+        "font-picker-compact-dark",
+        &compact_font_picker(ThemeMode::Dark, false),
+    );
+}
+
+#[test]
+fn compact_font_picker_features_light() {
+    goldens().assert(
+        "font-picker-compact-features",
+        &compact_font_picker(ThemeMode::Light, true),
+    );
+}
+
+#[test]
+fn compact_font_picker_features_dark() {
+    goldens().assert(
+        "font-picker-compact-features-dark",
+        &compact_font_picker(ThemeMode::Dark, true),
+    );
+}
+
 #[test]
 fn font_picker_light() {
     goldens().assert("font-picker", &font_picker(ThemeMode::Light));
