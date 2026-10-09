@@ -31,6 +31,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   operators, text objects, registers and command line. See
   [Textarea: keybindings](website/component/textarea.md#keybindings), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
+- **A smooth caret** (`gpui-base`). `smooth_caret(true)` on a textarea or the code editor glides
+  the caret to where it moves. A typed character is uncovered by the caret as it passes, and the
+  rest of the line follows it. Off by default. See
+  [Textarea: smooth caret](website/component/textarea.md#smooth-caret).
 - **Compact line numbers** (`gpui-base`). The line-number gutter of the code editor and of a
   textarea is as wide as the last line's number needs, from two digits, with the numbers
   right-aligned, and leaves room for folding markers only while folding is on.

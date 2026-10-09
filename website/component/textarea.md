@@ -455,3 +455,36 @@ div()
     }))
     .child(TextEditor::new(&document))
 ```
+
+## Smooth caret
+
+`smooth_caret(true)` makes the caret glide to where it moves instead of jumping. A typed
+character is uncovered by the caret as it passes over it, and the rest of the line moves along
+with the caret. Backspace glides the caret back over the deleted character. The arrow keys and
+the word motions of each keybinding scheme glide as well. Everything else takes effect at once:
+up and down, Home and End, clicks, paste, undo, Delete, deleting a word or a selection, and any
+move to another row.
+
+```rust
+use std::time::Duration;
+use gpui_kit::component::input::SmoothCaretOptions;
+
+let document = cx.new(|cx| {
+    TextareaState::new(window, cx)
+        .text_editor()
+        .smooth_caret(true)
+        .smooth_caret_options(
+            SmoothCaretOptions::default()
+                .typing_duration(Duration::from_millis(150))
+                .navigation(false),
+        )
+});
+
+document.update(cx, |document, cx| document.set_smooth_caret(false, cx));
+```
+
+A keystroke settles in 200 ms by default. Typing faster than that keeps the caret moving at a
+steady pace, a character or two behind. Only drawing is animated, so the text, undo and the spell
+checker see every keystroke at once. `EditorState` has the same methods. The caret moves at once
+while the system asks for reduced motion, on a line with right-to-left text, and with several
+carets.
