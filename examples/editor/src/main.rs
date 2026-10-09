@@ -48,20 +48,21 @@ impl Lang {
 
     fn from_str(s: &str) -> Self {
         match s {
-            "nv" => Lang::External("navi"),
+            "hs" => Lang::External("haskell"),
             _ => Lang::BuiltIn(Language::from_str(s)),
         }
     }
 }
 
+/// Registers Haskell, a language the kit doesn't build in, from its Mesquite grammar crate.
 fn init() {
     LanguageRegistry::singleton().register(
-        "navi",
+        "haskell",
         &LanguageConfig::new(
-            "navi",
-            tree_sitter_navi::LANGUAGE.into(),
+            "haskell",
+            tree_sitter_haskell::LANGUAGE.into(),
             vec![],
-            tree_sitter_navi::HIGHLIGHTS_QUERY,
+            include_str!("../queries/haskell.scm"),
             "",
             "",
         ),

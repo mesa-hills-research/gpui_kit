@@ -498,9 +498,9 @@ impl gpui_base::input::HighlightStyleResolver for HighlightTheme {
 
 /// A factory that produces a fresh Tree-sitter parser and grammar for a language.
 ///
-/// Dynamic grammars (for example WASM-compiled parsers loaded at runtime) register
-/// a factory here; when the highlighter needs to parse a buffer it prefers the
-/// factory over the statically linked grammar.
+/// Grammars chosen at runtime register a factory here. When the highlighter
+/// needs to parse a buffer, it prefers the factory over the statically linked
+/// grammar.
 pub type LanguageParserFactory =
     Arc<dyn Fn() -> Result<(tree_sitter::Parser, tree_sitter::Language)> + Send + Sync>;
 

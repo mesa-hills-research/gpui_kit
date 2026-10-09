@@ -13,7 +13,7 @@ color-lsp = "0.2.0"
 lsp-types.workspace = true
 serde_json.workspace = true
 smol.workspace = true
-tree-sitter-navi = "0.2.3"
+tree-sitter-haskell = { package = "mesquite_haskell", git = "https://github.com/mesa-hills-research/mesquite", rev = "a94f0d8e9f4ce22a32eef801970a296a9a7080f4" }
 
 [lints]
 workspace = true

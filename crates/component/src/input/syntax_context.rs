@@ -76,8 +76,6 @@ impl TreeSitterSyntaxContext {
 #[cfg(feature = "tree-sitter")]
 impl SyntaxContextProvider for TreeSitterSyntaxContext {
     fn context_at(&self, text: &Rope, offset: usize) -> gpui_base::input::SyntaxContext {
-        use std::ops::ControlFlow;
-
         let offset = offset.min(text.len());
         let mut cached = self.tree.borrow_mut();
         if cached
@@ -85,13 +83,9 @@ impl SyntaxContextProvider for TreeSitterSyntaxContext {
             .is_none_or(|(cached_text, _)| cached_text != text)
         {
             let start = std::time::Instant::now();
-            let mut progress = |_: &tree_sitter::ParseState| -> ControlFlow<()> {
-                if start.elapsed() > Self::PARSE_BUDGET {
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            };
+            // Returning `true` cancels the parse.
+            let mut progress =
+                |_: &tree_sitter::ParseState| -> bool { start.elapsed() > Self::PARSE_BUDGET };
             let options = tree_sitter::ParseOptions::new().progress_callback(&mut progress);
             let mut parser = self.parser.borrow_mut();
             // No InputEdit is available here, so an old tree cannot be reused

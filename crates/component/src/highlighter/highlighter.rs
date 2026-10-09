@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeSet, HashMap},
-    ops::{ControlFlow, Range},
+    ops::Range,
 };
 use sum_tree::Bias;
 use tree_sitter::{
@@ -178,6 +178,34 @@ fn bounding_byte_range(ranges: &[tree_sitter::Range]) -> Option<Range<usize>> {
     let start = ranges.iter().map(|r| r.start_byte).min()?;
     let end = ranges.iter().map(|r| r.end_byte).max()?;
     Some(start..end)
+}
+
+/// Moves `range` to where `edit` puts its text, like tree-sitter's `ts_range_edit`.
+fn edit_range(edit: &InputEdit, range: &mut tree_sitter::Range) {
+    fn edit_position(edit: &InputEdit, byte: &mut usize, point: &mut Point) {
+        if *byte >= edit.old_end_byte {
+            *byte = edit.new_end_byte + (*byte - edit.old_end_byte);
+            // The point's offset from the old end of the edit, moved to the new end.
+            *point = if point.row > edit.old_end_position.row {
+                Point::new(
+                    edit.new_end_position.row + point.row - edit.old_end_position.row,
+                    point.column,
+                )
+            } else {
+                Point::new(
+                    edit.new_end_position.row,
+                    edit.new_end_position.column
+                        + point.column.saturating_sub(edit.old_end_position.column),
+                )
+            };
+        } else if *byte > edit.start_byte {
+            *byte = edit.start_byte;
+            *point = edit.start_position;
+        }
+    }
+
+    edit_position(edit, &mut range.end_byte, &mut range.end_point);
+    edit_position(edit, &mut range.start_byte, &mut range.start_point);
 }
 
 fn injection_ranges_within_limits(ranges: &[tree_sitter::Range]) -> bool {
@@ -568,7 +596,7 @@ impl SyntaxHighlighter {
         for layer in &mut self.injection_layers {
             layer.tree.edit(edit);
             for range in &mut layer.ranges {
-                edit.edit_range(range);
+                edit_range(edit, range);
             }
             if let Some(byte_range) = bounding_byte_range(&layer.ranges) {
                 layer.byte_range = byte_range;
@@ -651,17 +679,18 @@ impl SyntaxHighlighter {
 
         let mut timed_out = false;
         let start = Instant::now();
-        let mut progress = |_: &tree_sitter::ParseState| -> ControlFlow<()> {
+        // Returning `true` cancels the parse.
+        let mut progress = |_: &tree_sitter::ParseState| -> bool {
             let Some(budget) = timeout else {
-                return ControlFlow::Continue(());
+                return false;
             };
 
             if start.elapsed() > budget {
                 timed_out = true;
-                return ControlFlow::Break(()); // Cancel execution
+                return true;
             }
 
-            ControlFlow::Continue(())
+            false
         };
 
         let options = ParseOptions::new().progress_callback(&mut progress);
@@ -818,7 +847,7 @@ impl SyntaxHighlighter {
             HashMap::new();
         let mut new_layers = Vec::new();
         let mut non_combined_parses = 0usize;
-        while let Some(query_match) = matches.next() {
+        while let Some(query_match) = StreamingIterator::next(&mut matches) {
             let mut language_name: Option<SharedString> = None;
             let mut combined = false;
             for prop in data.query.property_settings(query_match.pattern_index) {
@@ -954,12 +983,13 @@ impl SyntaxHighlighter {
         parser.set_included_ranges(&ranges).ok()?;
         let parse_start = Instant::now();
         let mut timed_out = false;
-        let mut progress = |_: &tree_sitter::ParseState| -> ControlFlow<()> {
+        // Returning `true` cancels the parse.
+        let mut progress = |_: &tree_sitter::ParseState| -> bool {
             if parse_start.elapsed() > INJECTION_PARSE_TIMEOUT {
                 timed_out = true;
-                ControlFlow::Break(())
+                true
             } else {
-                ControlFlow::Continue(())
+                false
             }
         };
         let options = ParseOptions::new().progress_callback(&mut progress);
@@ -1054,6 +1084,7 @@ impl SyntaxHighlighter {
             }
 
             let query = &layer.highlight_query;
+            let capture_names = query.capture_names();
 
             let mut query_cursor = QueryCursor::new();
             query_cursor.set_byte_range(range.clone());
@@ -1062,20 +1093,20 @@ impl SyntaxHighlighter {
                 query_cursor.matches(query, layer.tree.root_node(), TextProvider(&self.text));
 
             let mut last_end = 0usize;
-            while let Some(m) = matches.next() {
+            while let Some(m) = StreamingIterator::next(&mut matches) {
                 let allow_overlapping_captures = query
                     .property_settings(m.pattern_index)
                     .iter()
                     .any(|prop| prop.key.as_ref() == "highlight.allow-overlap");
 
-                for cap in m.captures {
+                for cap in m.captures.iter() {
                     let node_range = cap.node.start_byte()..cap.node.end_byte();
 
                     if !allow_overlapping_captures && node_range.start < last_end {
                         continue;
                     }
 
-                    if let Some(highlight_name) = query.capture_names().get(cap.index as usize) {
+                    if let Some(highlight_name) = capture_names.get(cap.index as usize) {
                         if !allow_overlapping_captures {
                             last_end = node_range.end;
                         }
@@ -1088,16 +1119,17 @@ impl SyntaxHighlighter {
             }
         }
 
+        let capture_names = query.capture_names();
         let mut query_cursor = QueryCursor::new();
         query_cursor.set_byte_range(range.clone());
 
         let mut matches = query_cursor.matches(query, root_node, TextProvider(source));
 
-        while let Some(query_match) = matches.next() {
-            for cap in query_match.captures {
+        while let Some(query_match) = StreamingIterator::next(&mut matches) {
+            for cap in query_match.captures.iter() {
                 let node = cap.node;
 
-                let Some(highlight_name) = query.capture_names().get(cap.index as usize) else {
+                let Some(highlight_name) = capture_names.get(cap.index as usize) else {
                     continue;
                 };
 
@@ -1389,6 +1421,57 @@ mod tests {
             captured_injection_language(&rope, "# ".len()..inside + 2),
             Some("你".into())
         );
+    }
+
+    #[test]
+    fn test_edit_range_follows_the_edit() {
+        fn range(start: (usize, usize, usize), end: (usize, usize, usize)) -> tree_sitter::Range {
+            tree_sitter::Range {
+                start_byte: start.0,
+                end_byte: end.0,
+                start_point: Point::new(start.1, start.2),
+                end_point: Point::new(end.1, end.2),
+            }
+        }
+
+        // "ab\ncd\nef": insert "x\n" at byte 1, in the first line.
+        let insert = InputEdit {
+            start_byte: 1,
+            old_end_byte: 1,
+            new_end_byte: 3,
+            start_position: Point::new(0, 1),
+            old_end_position: Point::new(0, 1),
+            new_end_position: Point::new(1, 0),
+        };
+        // A range after the edit moves down a row, and on the edited line it
+        // keeps its distance from the end of the edit.
+        let mut after = range((3, 1, 0), (6, 2, 0));
+        edit_range(&insert, &mut after);
+        assert_eq!(after, range((5, 2, 0), (8, 3, 0)));
+        let mut same_line = range((2, 0, 2), (4, 1, 1));
+        edit_range(&insert, &mut same_line);
+        assert_eq!(same_line, range((4, 1, 1), (6, 2, 1)));
+        // A range that ends where the text goes in grows to hold it.
+        let mut before = range((0, 0, 0), (1, 0, 1));
+        edit_range(&insert, &mut before);
+        assert_eq!(before, range((0, 0, 0), (3, 1, 0)));
+
+        // Delete bytes 1..4 ("b\nc"): a range that ends inside the deletion
+        // now ends where the deletion starts.
+        let delete = InputEdit {
+            start_byte: 1,
+            old_end_byte: 4,
+            new_end_byte: 1,
+            start_position: Point::new(0, 1),
+            old_end_position: Point::new(1, 1),
+            new_end_position: Point::new(0, 1),
+        };
+        let mut overlapping = range((0, 0, 0), (3, 1, 0));
+        edit_range(&delete, &mut overlapping);
+        assert_eq!(overlapping, range((0, 0, 0), (1, 0, 1)));
+        let mut later = range((4, 1, 1), (8, 2, 2));
+        edit_range(&delete, &mut later);
+        assert_eq!(later, range((1, 0, 1), (5, 1, 2)));
     }
 
     #[test]

@@ -85,13 +85,9 @@ impl TreeSitterInputHighlighter {
                     let (mut parser, grammar) =
                         LanguageRegistry::singleton().parser(&language).ok()?;
                     parser.set_language(&grammar).ok()?;
-                    let mut progress = |_: &tree_sitter::ParseState| {
-                        if parse_cancel.load(Ordering::Relaxed) {
-                            std::ops::ControlFlow::Break(())
-                        } else {
-                            std::ops::ControlFlow::Continue(())
-                        }
-                    };
+                    // Returning `true` cancels the parse.
+                    let mut progress =
+                        |_: &tree_sitter::ParseState| parse_cancel.load(Ordering::Relaxed);
                     let options = ParseOptions::new().progress_callback(&mut progress);
                     let tree = parser.parse_with_options(
                         &mut |offset, _| parse_input_bytes(&text, offset),
