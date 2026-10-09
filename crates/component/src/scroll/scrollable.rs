@@ -2,7 +2,7 @@ use std::{panic::Location, rc::Rc};
 
 use crate::{InteractiveElementExt as _, StyledExt};
 
-use super::{Scrollbar, ScrollbarAxis, ScrollbarHandle};
+use super::{NestedScroll, Scrollbar, ScrollbarAxis, ScrollbarHandle, nested_scroll};
 use gpui::{
     App, Div, Element, ElementId, InteractiveElement, IntoElement, Overflow, ParentElement,
     PointRefinement, RenderOnce, ScrollHandle, Stateful, StatefulInteractiveElement,
@@ -131,6 +131,12 @@ where
 {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let scroll_handle = scroll_handle_for(&self.id, window, cx);
+        let nested = window
+            .use_keyed_state((self.id.clone(), "nested"), cx, |_, _| {
+                NestedScroll::default()
+            })
+            .read(cx)
+            .clone();
 
         // Preserve the caller-requested size on the wrapper, while keeping the
         // caller's element as the actual scroll-tracked layout container.
@@ -175,6 +181,9 @@ where
             .size_full()
             .refine_style(&root_style)
             .relative()
+            // Before the scroll area, so it sees each wheel event on both
+            // sides of the area's own handling.
+            .child(nested_scroll(&nested, &scroll_handle))
             .child(scroll_area)
             .child(render_scrollbar(
                 scrollbar_id,
@@ -1005,5 +1014,96 @@ mod tests {
 
         // Second scrollable must keep its own independent scroll state.
         assert_eq!(second_after_scroll.left(), second_initial.left());
+    }
+
+    /// A scroll area 100 px tall, with 200 px of content, inside a page 200 px
+    /// tall that scrolls too.
+    struct NestedScrollablesTest;
+
+    impl Render for NestedScrollablesTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(200.)).h(px(200.)).overflow_y_scrollbar().child(
+                crate::v_flex()
+                    .child(row("page-first-row", 40.))
+                    .child(
+                        div().w(px(200.)).h(px(100.)).overflow_y_scrollbar().child(
+                            crate::v_flex()
+                                .child(row("inner-first-row", 50.))
+                                .child(plain_row(50.))
+                                .child(plain_row(50.))
+                                .child(plain_row(50.)),
+                        ),
+                    )
+                    .child(plain_row(400.)),
+            )
+        }
+    }
+
+    fn top(cx: &mut VisualTestContext, selector: &'static str) -> gpui::Pixels {
+        cx.debug_bounds(selector).unwrap().top()
+    }
+
+    #[gpui::test]
+    fn the_wheel_over_a_nested_scrollable_moves_it_and_not_the_page(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| NestedScrollablesTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+        let page = top(cx, "page-first-row");
+        let inner = top(cx, "inner-first-row");
+
+        scroll(cx, 10., 60., 0., -30.);
+
+        assert_eq!(top(cx, "inner-first-row"), inner - px(30.));
+        assert_eq!(top(cx, "page-first-row"), page);
+    }
+
+    #[gpui::test]
+    fn the_wheel_over_the_page_moves_the_page(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| NestedScrollablesTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+        let page = top(cx, "page-first-row");
+        let inner = top(cx, "inner-first-row");
+
+        scroll(cx, 10., 20., 0., -30.);
+
+        assert_eq!(top(cx, "page-first-row"), page - px(30.));
+        // The nested area moves with the page and keeps its own offset.
+        assert_eq!(top(cx, "inner-first-row"), inner - px(30.));
+    }
+
+    #[gpui::test]
+    fn a_nested_scrollable_at_its_end_hands_the_next_gesture_to_the_page(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| NestedScrollablesTest);
+        let cx: &mut VisualTestContext = cx;
+        draw(cx);
+        let page = top(cx, "page-first-row");
+        let inner = top(cx, "inner-first-row");
+
+        // Past the end of the nested area: it stops there, and the page stays.
+        scroll(cx, 10., 60., 0., -500.);
+        assert_eq!(top(cx, "inner-first-row"), inner - px(100.));
+        assert_eq!(top(cx, "page-first-row"), page);
+
+        // More of the same gesture stays with the nested area.
+        scroll(cx, 10., 60., 0., -30.);
+        assert_eq!(top(cx, "page-first-row"), page);
+
+        // After a pause, the next gesture scrolls the page.
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        scroll(cx, 10., 60., 0., -30.);
+        assert_eq!(top(cx, "page-first-row"), page - px(30.));
+        assert_eq!(top(cx, "inner-first-row"), inner - px(130.));
+
+        // Scrolling back up moves the nested area again, not the page.
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        scroll(cx, 10., 60., 0., 20.);
+        assert_eq!(top(cx, "page-first-row"), page - px(30.));
+        assert_eq!(top(cx, "inner-first-row"), inner - px(110.));
     }
 }

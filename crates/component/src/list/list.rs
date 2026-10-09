@@ -7,7 +7,7 @@ use crate::list::cache::{MeasuredEntrySize, RowEntry, RowsCache};
 use crate::{
     ActiveTheme, IconName, Size,
     input::{Input, InputEvent},
-    scroll::Scrollbar,
+    scroll::{NestedScroll, Scrollbar, nested_scroll},
     v_flex,
 };
 use crate::{Icon, IndexPath, Selectable, Sizable, StyledExt};
@@ -74,6 +74,7 @@ pub struct ListState<D: ListDelegate> {
     delegate: D,
     last_query: Option<String>,
     scroll_handle: VirtualListScrollHandle,
+    nested_scroll: NestedScroll,
     rows_cache: RowsCache,
     selected_index: Option<IndexPath>,
     item_to_measure_index: IndexPath,
@@ -112,6 +113,7 @@ where
             deferred_scroll_to_index: None,
             mouse_right_clicked_index: None,
             scroll_handle: VirtualListScrollHandle::new(),
+            nested_scroll: NestedScroll::default(),
             reset_on_cancel: true,
             _search_task: Task::ready(()),
             _load_more_task: Task::ready(()),
@@ -548,55 +550,58 @@ where
             })
             .when(items_count > 0, {
                 |this| {
-                    this.child(
-                        v_virtual_list(
-                            cx.entity(),
-                            "virtual-list",
-                            rows_cache.entries_sizes.clone(),
-                            move |list, visible_range: Range<usize>, window, cx| {
-                                list.load_more_if_need(
-                                    entities_count,
-                                    visible_range.end,
-                                    window,
-                                    cx,
-                                );
+                    // Wheel scrolling over a list inside a scrolling page
+                    // moves the list, not the page, while the list can move.
+                    this.child(nested_scroll(&self.nested_scroll, &scroll_handle))
+                        .child(
+                            v_virtual_list(
+                                cx.entity(),
+                                "virtual-list",
+                                rows_cache.entries_sizes.clone(),
+                                move |list, visible_range: Range<usize>, window, cx| {
+                                    list.load_more_if_need(
+                                        entities_count,
+                                        visible_range.end,
+                                        window,
+                                        cx,
+                                    );
 
-                                // NOTE: Here the v_virtual_list would not able to have gap_y,
-                                // because the section header, footer is always have rendered as a empty child item,
-                                // even the delegate give a None result.
+                                    // NOTE: Here the v_virtual_list would not able to have gap_y,
+                                    // because the section header, footer is always have rendered as a empty child item,
+                                    // even the delegate give a None result.
 
-                                visible_range
-                                    .map(|ix| {
-                                        let Some(entry) = rows_cache.get(ix) else {
-                                            return div();
-                                        };
+                                    visible_range
+                                        .map(|ix| {
+                                            let Some(entry) = rows_cache.get(ix) else {
+                                                return div();
+                                            };
 
-                                        div().children(match entry {
-                                            RowEntry::Entry(index) => Some(
-                                                list.render_list_item(index, window, cx)
-                                                    .into_any_element(),
-                                            ),
-                                            RowEntry::SectionHeader(section_ix) => list
-                                                .delegate_mut()
-                                                .render_section_header(section_ix, window, cx)
-                                                .map(|r| r.into_any_element()),
-                                            RowEntry::SectionFooter(section_ix) => list
-                                                .delegate_mut()
-                                                .render_section_footer(section_ix, window, cx)
-                                                .map(|r| r.into_any_element()),
+                                            div().children(match entry {
+                                                RowEntry::Entry(index) => Some(
+                                                    list.render_list_item(index, window, cx)
+                                                        .into_any_element(),
+                                                ),
+                                                RowEntry::SectionHeader(section_ix) => list
+                                                    .delegate_mut()
+                                                    .render_section_header(section_ix, window, cx)
+                                                    .map(|r| r.into_any_element()),
+                                                RowEntry::SectionFooter(section_ix) => list
+                                                    .delegate_mut()
+                                                    .render_section_footer(section_ix, window, cx)
+                                                    .map(|r| r.into_any_element()),
+                                            })
                                         })
-                                    })
-                                    .collect::<Vec<_>>()
-                            },
+                                        .collect::<Vec<_>>()
+                                },
+                            )
+                            .with_item_to_measure_index(item_to_measure_index)
+                            .paddings(self.options.paddings.clone())
+                            .when(self.options.max_height.is_some(), |this| {
+                                this.with_sizing_behavior(ListSizingBehavior::Infer)
+                            })
+                            .track_scroll(&scroll_handle)
+                            .into_any_element(),
                         )
-                        .with_item_to_measure_index(item_to_measure_index)
-                        .paddings(self.options.paddings.clone())
-                        .when(self.options.max_height.is_some(), |this| {
-                            this.with_sizing_behavior(ListSizingBehavior::Infer)
-                        })
-                        .track_scroll(&scroll_handle)
-                        .into_any_element(),
-                    )
                 }
             })
             .when(scrollbar_visible, |this| {
@@ -903,5 +908,74 @@ mod measurement_tests {
                 div()
             },
         );
+    }
+
+    /// A list 120 px tall with 30 rows, inside a page that scrolls.
+    struct NestedListTest {
+        list: Entity<ListState<Delegate>>,
+    }
+
+    impl Render for NestedListTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            use crate::scroll::ScrollableElement as _;
+            div().w(px(200.)).h(px(200.)).overflow_y_scrollbar().child(
+                v_flex()
+                    .child(
+                        div()
+                            .h(px(40.))
+                            .flex_shrink_0()
+                            .debug_selector(|| "page-first-row".into()),
+                    )
+                    .child(
+                        div()
+                            .h(px(120.))
+                            .flex_shrink_0()
+                            .child(List::new(&self.list)),
+                    )
+                    .child(div().h(px(400.)).flex_shrink_0()),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn the_wheel_over_a_list_in_a_scrolling_page_moves_only_the_list(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|window, cx| NestedListTest {
+            list: cx.new(|cx| ListState::new(Delegate { counts: vec![30] }, window, cx)),
+        });
+        let cx: &mut gpui::VisualTestContext = cx;
+        let draw = |cx: &mut gpui::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        let wheel = |cx: &mut gpui::VisualTestContext, y: f32, dy: f32| {
+            cx.simulate_event(gpui::ScrollWheelEvent {
+                position: gpui::point(px(10.), px(y)),
+                delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(dy))),
+                ..Default::default()
+            });
+        };
+        draw(cx);
+        let list = cx.update(|_, cx| view.read(cx).list.clone());
+        let list_offset = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|_, cx| list.read(cx).scroll_handle().offset().y)
+        };
+        let page = cx.debug_bounds("page-first-row").unwrap().top();
+
+        wheel(cx, 100., -50.);
+        draw(cx);
+        assert_eq!(list_offset(cx), px(-50.));
+        assert_eq!(cx.debug_bounds("page-first-row").unwrap().top(), page);
+
+        // The page itself, above the list, still scrolls.
+        wheel(cx, 20., -30.);
+        draw(cx);
+        assert_eq!(
+            cx.debug_bounds("page-first-row").unwrap().top(),
+            page - px(30.)
+        );
+        assert_eq!(list_offset(cx), px(-50.));
     }
 }
