@@ -7,15 +7,16 @@
 use std::rc::Rc;
 
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, IntoElement,
-    ParentElement as _, Render, Result, Styled as _, Task, Window,
+    AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, InputEvent as _,
+    IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render,
+    Result, SharedString, Styled as _, Task, Window,
     assets::Assets,
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
         input::{
-            Input, InputState, RopeExt as _, Suggestion, SuggestionProvider, SuggestionRequest,
-            Textarea, TextareaState,
+            Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker,
+            Suggestion, SuggestionProvider, SuggestionRequest, TextEditor, Textarea, TextareaState,
         },
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
@@ -348,6 +349,130 @@ fn suggestion_menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+/// The misspellings [`Corrections`] knows, with their replacements.
+const CORRECTIONS: [(&str, &[&str]); 2] = [
+    ("teh", &["the", "tea", "ten"]),
+    ("recieve", &["receive", "relieve", "deceive"]),
+];
+
+/// Marks the words in [`CORRECTIONS`] and suggests their replacements.
+struct Corrections;
+
+impl SpellChecker for Corrections {
+    fn check(&self, request: &SpellCheckRequest, _: &mut App) -> Task<Result<SpellCheck>> {
+        let mut misspelled = Vec::new();
+        for range in request.ranges() {
+            let text = request.text().slice(range.clone()).to_string();
+            let mut offset = range.start;
+            for word in text.split(|c: char| !c.is_alphabetic()) {
+                if CORRECTIONS.iter().any(|(wrong, _)| *wrong == word) {
+                    misspelled.push(offset..offset + word.len());
+                }
+                offset += word.len() + 1;
+            }
+        }
+        Task::ready(Ok(SpellCheck {
+            misspelled,
+            ..Default::default()
+        }))
+    }
+
+    fn suggestions(&self, word: &str, _: &mut App) -> Vec<SharedString> {
+        CORRECTIONS
+            .iter()
+            .find(|(wrong, _)| *wrong == word)
+            .map(|(_, right)| right.iter().map(|word| SharedString::from(*word)).collect())
+            .unwrap_or_default()
+    }
+
+    fn add_to_dictionary(&self, _: &str, _: &mut App) {}
+}
+
+struct Document {
+    document: Entity<TextareaState>,
+}
+
+impl Render for Document {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(div().h(px(150.)).child(TextEditor::new(&self.document)))
+    }
+}
+
+const DOCUMENT: &str = "The quick brown fox jumps over teh lazy dog.\n\
+    A text editor numbers its lines and wraps the long ones at the edge, so this line takes \
+    two rows.\n\
+    Words it doesn't know, like recieve, get a wavy underline.";
+
+/// A text editor in `mode`: its gutter with line numbers, the caret's line highlighted, a
+/// wrapped line, and two misspellings underlined.
+fn text_editor_window(
+    mode: ThemeMode,
+    size: (f32, f32),
+) -> (ScreenshotApp, AnyWindowHandle, Entity<TextareaState>) {
+    let mut app = app(mode);
+    let opened = Rc::new(std::cell::RefCell::new(None));
+    let window = open(&mut app, size, SCALE, {
+        let opened = opened.clone();
+        move |window, cx| {
+            let document = cx.new(|cx| {
+                TextareaState::new(window, cx)
+                    .text_editor()
+                    .spell_checker(Rc::new(Corrections))
+                    .default_value(DOCUMENT)
+            });
+            document.update(cx, |document, cx| document.focus(window, cx));
+            *opened.borrow_mut() = Some(document.clone());
+            Document { document }
+        }
+    });
+    let document = opened.borrow_mut().take().unwrap();
+    (app, window, document)
+}
+
+fn text_editor(mode: ThemeMode) -> Screenshot {
+    let (mut app, window, _) = text_editor_window(mode, (380., 182.));
+    app.capture(window).unwrap()
+}
+
+/// The text editor's context menu, right-clicked just inside the end of "recieve": the
+/// spelling suggestions, Add to Dictionary and Ignore above the standard items.
+fn text_editor_menu(mode: ThemeMode) -> Screenshot {
+    // Wide enough for the menu to open beside the word rather than over it.
+    let (mut app, window, document) = text_editor_window(mode, (500., 400.));
+    app.capture(window).unwrap();
+    act(&mut app, window, |window, cx| {
+        let last_letter = DOCUMENT.find("recieve").unwrap() + "recieve".len() - 1;
+        let letter = document
+            .read(cx)
+            .range_to_bounds(&(last_letter..last_letter + 1))
+            .unwrap();
+        let position = gpui_kit::point(letter.right() - px(1.), letter.center().y);
+        let modifiers = Modifiers::default();
+        window.dispatch_event(
+            MouseDownEvent {
+                position,
+                button: MouseButton::Right,
+                modifiers,
+                click_count: 1,
+                first_mouse: false,
+            }
+            .to_platform_input(),
+            cx,
+        );
+        window.dispatch_event(
+            MouseUpEvent {
+                position,
+                button: MouseButton::Right,
+                modifiers,
+                click_count: 1,
+            }
+            .to_platform_input(),
+            cx,
+        );
+    });
+    app.capture(window).unwrap()
+}
+
 #[test]
 fn buttons_light() {
     goldens().assert("buttons", &buttons(ThemeMode::Light, SCALE));
@@ -393,6 +518,26 @@ fn textarea_suggestion_menu() {
 #[test]
 fn textarea_suggestion_menu_dark() {
     goldens().assert("suggestions-dark", &suggestion_menu(ThemeMode::Dark));
+}
+
+#[test]
+fn text_editor_gutter_and_underlines() {
+    goldens().assert("text-editor", &text_editor(ThemeMode::Light));
+}
+
+#[test]
+fn text_editor_gutter_and_underlines_dark() {
+    goldens().assert("text-editor-dark", &text_editor(ThemeMode::Dark));
+}
+
+#[test]
+fn text_editor_spelling_menu() {
+    goldens().assert("text-editor-menu", &text_editor_menu(ThemeMode::Light));
+}
+
+#[test]
+fn text_editor_spelling_menu_dark() {
+    goldens().assert("text-editor-menu-dark", &text_editor_menu(ThemeMode::Dark));
 }
 
 /// Renders every scene on three threads at once: each thread must produce the same pixels,
