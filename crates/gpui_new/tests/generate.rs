@@ -168,6 +168,34 @@ fn the_manifest_parses_and_names_the_crate() {
     }
 }
 
+/// New apps patch the gpui crates to the fork at the commit the kit's own
+/// `[patch.crates-io]` names, since Cargo applies only the app's patches.
+#[test]
+fn the_manifest_patches_gpui_to_the_kits_fork() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+    let text = fs::read_to_string(&workspace).unwrap();
+    let workspace = text.parse::<toml::Table>().unwrap();
+    let kit_patch = workspace["patch"]["crates-io"].as_table().unwrap();
+    assert_eq!(
+        kit_patch["gpui-pre"]["rev"].as_str(),
+        Some(gpui_new::GPUI_REV)
+    );
+
+    let dir = scratch("patched");
+    run_ok(&[dir.to_str().unwrap(), "--no-git"]);
+    let manifest = read_manifest(&dir);
+    let patch = manifest["patch"]["crates-io"].as_table().unwrap();
+    assert!(patch.contains_key("gpui-pre"));
+    for (name, entry) in patch {
+        let kit_entry = kit_patch
+            .get(name)
+            .unwrap_or_else(|| panic!("the kit doesn't patch {name}"));
+        assert_eq!(entry["git"].as_str(), Some(gpui_new::GPUI_GIT), "{name}");
+        assert_eq!(entry["git"].as_str(), kit_entry["git"].as_str(), "{name}");
+        assert_eq!(entry["rev"].as_str(), kit_entry["rev"].as_str(), "{name}");
+    }
+}
+
 #[test]
 fn cargo_fetches_the_kit_with_the_git_cli() {
     let dir = scratch("fetch");

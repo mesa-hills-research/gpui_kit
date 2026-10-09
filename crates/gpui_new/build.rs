@@ -1,5 +1,6 @@
 //! Records the kit commit this generator is built from, so new apps depend on
-//! the same kit their template was written against.
+//! the same kit their template was written against, and the gpui fork commit
+//! that kit builds with.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,28 @@ fn main() {
         );
     }
     println!("cargo:rustc-env=GPUI_NEW_KIT_REV={rev}");
+
+    let gpui_rev = gpui_rev(&manifest_dir).unwrap_or_default();
+    if gpui_rev.is_empty() {
+        println!(
+            "cargo:warning=no gpui fork commit found in the kit's Cargo.toml, new apps will follow the fork's main branch"
+        );
+    }
+    println!("cargo:rustc-env=GPUI_NEW_GPUI_REV={gpui_rev}");
+}
+
+/// The rev of the gpui fork in the workspace's `[patch.crates-io]`, read from
+/// its `gpui-pre` entry.
+fn gpui_rev(dir: &Path) -> Option<String> {
+    let manifest = dir.join("../../Cargo.toml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let text = std::fs::read_to_string(manifest).ok()?;
+    let line = text.lines().find(|line| {
+        line.split('=').next().map(str::trim) == Some("gpui-pre")
+            && line.contains("\"https://github.com/mesa-hills-research/gpui\"")
+    })?;
+    let rev = line.split("rev = \"").nth(1)?.split('"').next()?;
+    (rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit())).then(|| rev.to_string())
 }
 
 fn kit_rev(dir: &Path) -> Option<String> {

@@ -66,9 +66,20 @@ from:
 gpui-kit = { git = "https://github.com/mesa-hills-research/gpui_kit", rev = "<commit>" }
 ```
 
-The app gets the `gpui-pre` crates from crates.io, and the gpui fork leaves them unchanged apart
-from test support, so the app needs no patch for them. Fetching this private repository needs
-GitHub access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
+Cargo applies only the app's own patches, so the app also points the `gpui-pre` crates at the
+gpui fork, at the commit this repository's `Cargo.toml` names. Otherwise it builds with their
+crates.io release, without the fork's fixes, such as variable fonts at the requested weight on
+Linux:
+
+```toml
+[patch.crates-io]
+gpui-pre = { git = "https://github.com/mesa-hills-research/gpui", rev = "<commit>" }
+# and each other gpui-pre crate in the app's Cargo.lock
+```
+
+The fork's [docs/using.md](https://github.com/mesa-hills-research/gpui/blob/main/docs/using.md)
+lists every entry, and apps from `gpui_new` come with them. Fetching these private repositories
+needs GitHub access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`).
 
 ## Starting a new app

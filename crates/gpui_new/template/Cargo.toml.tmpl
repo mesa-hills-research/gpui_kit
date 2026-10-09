@@ -15,6 +15,32 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [build-dependencies]
 winresource = "0.1"
 
+# GPUI from Mesa Hills Research's fork, at the commit GPUI Kit builds with. Cargo applies
+# only the app's own patches, so the kit's patch doesn't reach the app.
+[patch.crates-io]
+gpui-pre                   = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-apple             = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-collections       = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-derive-refineable = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-http-client       = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-linux             = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-macos             = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-macros            = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-perf              = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-platform          = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-refineable        = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-scheduler         = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-shared-string     = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-sum-tree          = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-util              = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-util-macros       = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-web               = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-wgpu              = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-windows           = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-zlog              = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-ztracing          = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+gpui-pre-ztracing-macro    = { git = "https://github.com/mesa-hills-research/gpui", {{gpui_ref}} }
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

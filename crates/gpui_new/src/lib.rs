@@ -1,8 +1,8 @@
 //! Creates a GPUI app from the template in `template/`.
 //!
 //! Text files go through placeholder substitution (`{{crate_name}}`,
-//! `{{display_name}}`, `{{app_id}}`, `{{year}}` and `{{kit_ref}}`). Binary
-//! files are copied as they are.
+//! `{{display_name}}`, `{{app_id}}`, `{{year}}`, `{{kit_ref}}` and
+//! `{{gpui_ref}}`). Binary files are copied as they are.
 
 use std::fmt;
 use std::fs;
@@ -16,6 +16,13 @@ pub const KIT_GIT: &str = "https://github.com/mesa-hills-research/gpui_kit";
 /// The kit commit this generator was built from, empty when the build found
 /// none.
 pub const KIT_REV: &str = env!("GPUI_NEW_KIT_REV");
+
+/// The repository of the gpui fork the kit builds with.
+pub const GPUI_GIT: &str = "https://github.com/mesa-hills-research/gpui";
+
+/// The gpui fork commit in the kit's `[patch.crates-io]`, empty when the build
+/// found none.
+pub const GPUI_REV: &str = env!("GPUI_NEW_GPUI_REV");
 
 /// One file of the template.
 pub struct TemplateFile {
@@ -122,6 +129,7 @@ impl Project {
             .replace("{{app_id}}", &self.app_id)
             .replace("{{year}}", &self.year.to_string())
             .replace("{{kit_ref}}", &kit_ref())
+            .replace("{{gpui_ref}}", &gpui_ref())
     }
 }
 
@@ -131,6 +139,15 @@ pub fn kit_ref() -> String {
         r#"branch = "main""#.to_string()
     } else {
         format!(r#"rev = "{KIT_REV}""#)
+    }
+}
+
+/// How the new app's `[patch.crates-io]` pins the gpui fork.
+pub fn gpui_ref() -> String {
+    if GPUI_REV.is_empty() {
+        r#"branch = "main""#.to_string()
+    } else {
+        format!(r#"rev = "{GPUI_REV}""#)
     }
 }
 

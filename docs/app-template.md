@@ -21,7 +21,7 @@ gpui_new <PATH> [--name <NAME>] [--app-id <ID>] [--no-git]
 ## The app
 
 ```
-Cargo.toml          gpui-kit from this repository, logging, the Windows icon tool
+Cargo.toml          gpui-kit from this repository, GPUI from its fork, logging, the Windows icon tool
 build.rs            embeds the icon and app name in Windows executables
 src/main.rs         the app's name and id, logging, startup
 src/chrome.rs       window options and can_close, the one close check
@@ -32,7 +32,7 @@ assets/             the icon as SVG and Windows .ico
 packaging/linux/    <app id>.desktop and a 256 px icon
 README.md
 .gitignore
-.cargo/config.toml  has Cargo fetch the private kit with the git CLI
+.cargo/config.toml  has Cargo fetch the private kit and fork with the git CLI
 ```
 
 | | macOS | Windows | Linux |
@@ -55,6 +55,9 @@ The new app's `Cargo.toml` pins `gpui-kit` to the commit of this repository the 
 built from, so the template and the kit match. A generator built outside a Git checkout of the kit
 follows the `main` branch instead.
 
+Its `[patch.crates-io]` takes the gpui crates from the kit's fork of GPUI, at the commit the kit's
+own `Cargo.toml` names, since Cargo applies only the app's own patches.
+
 To build an app against a local checkout of the kit, add a patch to the app's `Cargo.toml` or to
 its `.cargo/config.toml`:
 
@@ -66,8 +69,8 @@ gpui-kit = { path = "../gpui_kit/crates/kit" }
 ## Changing the template
 
 The template lives in `crates/gpui_new/template` and is compiled into the generator. Text
-files take the placeholders `{{crate_name}}`, `{{display_name}}`, `{{app_id}}`, `{{year}}` and
-`{{kit_ref}}`. A new file also needs an entry in `FILES` in `src/lib.rs`. Test with
+files take the placeholders `{{crate_name}}`, `{{display_name}}`, `{{app_id}}`, `{{year}}`,
+`{{kit_ref}}` and `{{gpui_ref}}`. A new file also needs an entry in `FILES` in `src/lib.rs`. Test with
 
 ```sh
 cargo test -p gpui_new

@@ -178,7 +178,8 @@ rquickjs = { path = "crates/shell/rquickjs-compat" }
 # their names and versions so the =0.3.8 pins above resolve to it. The
 # repository is private, so cargo fetches it with the git CLI and its
 # credentials (.cargo/config.toml). Every entry, and gpui-screenshot in
-# crates/kit/Cargo.toml, names the same rev: move them together. To build
+# crates/kit/Cargo.toml, names the same rev: move them together. New apps from
+# crates/gpui_new take the rev of the gpui-pre entry. To build
 # against a local checkout instead, see "Working on the gpui fork alongside"
 # in crates/kit/TESTING.md.
 gpui-pre                   = { git = "https://github.com/mesa-hills-research/gpui", rev = "5d00ce2d66971d9a4c13c14d5bebac9b1f1bc4dd" }
