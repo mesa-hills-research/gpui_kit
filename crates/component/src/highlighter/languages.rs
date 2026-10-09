@@ -513,7 +513,12 @@ impl Language {
                 "",
             ),
             #[cfg(feature = "tree-sitter-csharp")]
-            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
+            Self::CSharp => (
+                tree_sitter_c_sharp::LANGUAGE,
+                include_str!("languages/csharp/highlights.scm"),
+                "",
+                "",
+            ),
             #[cfg(feature = "tree-sitter-graphql")]
             Self::GraphQL => (
                 tree_sitter_graphql::LANGUAGE,
@@ -745,6 +750,48 @@ type Character implements Node {
                 ("friends", "property"),
                 ("first", "variable.parameter"),
                 ("10", "number"),
+            ],
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-csharp")]
+    fn test_csharp_highlights() {
+        let source = r#"/// <summary>Greets people.</summary>
+[Serializable]
+public class Greeter<T> : IGreeter where T : class
+{
+    private const int MaxCount = 3;
+    public string Name { get; init; } = "world";
+
+    public async Task<string> GreetAsync(T target, int count = 1)
+    {
+        var message = $"Hello, {Name}!\n";
+        await Task.Delay(count);
+        return message ?? null;
+    }
+}
+"#;
+        assert_highlights(
+            "csharp",
+            source,
+            &[
+                ("/// <summary>Greets people.</summary>", "comment.doc"),
+                ("Serializable", "attribute"),
+                ("public", "keyword"),
+                ("Greeter", "type"),
+                ("IGreeter", "type"),
+                ("MaxCount", "constant"),
+                ("3", "number"),
+                ("Name", "property"),
+                ("\"world\"", "string"),
+                ("GreetAsync", "function"),
+                ("target", "variable.parameter"),
+                ("int", "type.builtin"),
+                ("Hello, ", "string"),
+                ("\\n", "string.escape"),
+                ("Delay", "function"),
+                ("null", "constant.builtin"),
             ],
         );
     }
