@@ -41,6 +41,7 @@ impl InputModeKind for TextareaMode {
         window: &mut Window,
         cx: &mut gpui::Context<InputBaseState<Self>>,
     ) {
+        state.keymap_on_render(cx);
         state.spelling_on_render(window, cx);
     }
 

@@ -83,7 +83,7 @@ pub use commands::{
     MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
     SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
 };
-pub use vim::{VimMode, VimState};
+pub use vim::{VimCommand, VimMode, VimQuit, VimState, VimWrite};
 
 /// Which keybinding scheme a textarea follows.
 ///
@@ -344,6 +344,14 @@ impl TextareaState {
         }
     }
 
+    /// Let the scheme catch up, before the textarea renders, with what changed
+    /// around it, such as a selection made with the mouse.
+    pub(crate) fn keymap_on_render(&mut self, cx: &mut Context<Self>) {
+        if self.current_keymap() == Keymap::Vim {
+            vim::on_render(self, cx);
+        }
+    }
+
     /// Registers the editing commands and every scheme's own actions on the
     /// textarea's root element. A scheme's actions are bound only in its own
     /// context, so the others never reach them.
@@ -435,7 +443,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Block);
         test.keys("l");
         test.assert("abˇc");
-        test.type_text("x");
+        // `q` is no command of Vim's here, and normal mode inserts nothing.
+        test.type_text("q");
         test.assert("abˇc");
 
         test.keys("i");
@@ -443,7 +452,8 @@ mod tests {
         assert_eq!(test.cursor_shape(), CursorShape::Bar);
         test.type_text("xy");
         test.assert("abxyˇc");
-        test.keys("escape h");
+        // Escape steps back onto the last character typed.
+        test.keys("escape");
         assert_eq!(test.mode_label().as_deref(), Some("NORMAL"));
         test.assert("abxˇyc");
         assert!(
