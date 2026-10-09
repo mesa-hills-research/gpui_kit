@@ -336,3 +336,23 @@ around it and goes away when an edit replaces all of its text. `splice`
 replaces the marks in a range, for a check that covers part of the text.
 `marks_at` reads back what is under a position, and `ContextMenuTarget::marks`
 what is under the menu.
+
+### Keybindings
+
+A textarea follows one keybinding scheme: `Keymap::Cua`, the platform's usual
+shortcuts and the default, `Keymap::Emacs` or `Keymap::Vim`. Choose one when
+building the state and switch at any time:
+
+```rust
+use gpui_kit::component::input::Keymap;
+
+let document = cx.new(|cx| TextareaState::new(window, cx).text_editor().keymap(Keymap::Vim));
+
+document.update(cx, |document, cx| document.set_keymap(Keymap::Emacs, cx));
+```
+
+Only the active scheme's keys apply. A scheme with modes reports the current
+one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
+the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
+state to show the label in a status bar. CUA binds the platform's shortcuts,
+and Emacs and Vim bind their basic motions so far.
