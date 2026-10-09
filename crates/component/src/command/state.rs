@@ -126,7 +126,7 @@ pub struct CommandState {
     /// The keybinding hint each matched item showed when the rows were last
     /// measured. Hints are looked up on every render, so a keymap change can
     /// resize a row while the model stays the same.
-    measured_bindings: Vec<Option<Keystroke>>,
+    measured_bindings: Vec<Option<Vec<Keystroke>>>,
     matched: Vec<MatchedItem>,
     selected_index: Option<usize>,
     preserve_no_selection: bool,
@@ -663,7 +663,8 @@ impl CommandState {
                     CommandRow::Heading(_) => self.render_row(row_ix, window, cx),
                     CommandRow::Item(matched_ix) => {
                         let binding = self.item_binding(*matched_ix, window, cx);
-                        bindings[*matched_ix] = binding.as_ref().map(|kbd| kbd.keystroke().clone());
+                        bindings[*matched_ix] =
+                            binding.as_ref().map(|kbd| kbd.keystrokes().to_vec());
                         self.render_item_with_binding(*matched_ix, binding, window, cx)
                     }
                 };
@@ -780,8 +781,8 @@ impl CommandState {
         let measured = self
             .measured_bindings
             .get(matched_ix)
-            .and_then(Option::as_ref);
-        if !self.needs_measure && measured != binding.as_ref().map(Kbd::keystroke) {
+            .and_then(Option::as_deref);
+        if !self.needs_measure && measured != binding.as_ref().map(Kbd::keystrokes) {
             self.measure_on_next_frame(window, cx);
         }
 

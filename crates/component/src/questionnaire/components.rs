@@ -955,6 +955,7 @@ impl RenderOnce for QuestionnaireChoice {
                 .size(metrics.shortcut_size)
                 .p_0()
                 .bg(colors.background)
+                .border_1()
                 .border_color(colors.input)
                 .text_color(colors.muted_foreground)
                 .font_family(mono_font.clone())

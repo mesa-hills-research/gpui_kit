@@ -278,6 +278,41 @@ fn menu(mode: ThemeMode) -> Screenshot {
     app.capture(window).unwrap()
 }
 
+gpui_kit::actions!(screenshots, [Undo, Redo, Save, SaveAll, Settings]);
+
+/// A menu of actions with their shortcuts, each drawn as a key cap: a single key, several
+/// modifiers, and a sequence of two keystrokes, the keyboard cursor on the second item.
+fn shortcut_menu(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    app.update(|cx| {
+        cx.bind_keys([
+            gpui_kit::KeyBinding::new("ctrl-z", Undo, None),
+            gpui_kit::KeyBinding::new("ctrl-shift-z", Redo, None),
+            gpui_kit::KeyBinding::new("ctrl-s", Save, None),
+            gpui_kit::KeyBinding::new("ctrl-k s", SaveAll, None),
+            gpui_kit::KeyBinding::new("f2", Settings, None),
+        ])
+    });
+    let window = open(&mut app, (256., 196.), SCALE, |window, cx| {
+        let menu = PopupMenu::build(window, cx, |menu, _, _| {
+            menu.menu("Undo", Box::new(Undo))
+                .menu("Redo", Box::new(Redo))
+                .separator()
+                .menu("Save", Box::new(Save))
+                .menu("Save All", Box::new(SaveAll))
+                .separator()
+                .menu("Settings", Box::new(Settings))
+        });
+        menu.read(cx).focus_handle(cx).focus(window, cx);
+        Menu { menu }
+    });
+    act(&mut app, window, |window, cx| {
+        window.press("down", cx);
+        window.press("down", cx);
+    });
+    app.capture(window).unwrap()
+}
+
 /// The words [`Words`] completes from, each with the detail its menu row shows.
 const WORDS: [(&str, &str); 6] = [
     ("comment", "noun"),
@@ -819,6 +854,16 @@ fn popup_menu() {
 #[test]
 fn popup_menu_dark() {
     goldens().assert("menu-dark", &menu(ThemeMode::Dark));
+}
+
+#[test]
+fn popup_menu_shortcuts() {
+    goldens().assert("menu-shortcuts", &shortcut_menu(ThemeMode::Light));
+}
+
+#[test]
+fn popup_menu_shortcuts_dark() {
+    goldens().assert("menu-shortcuts-dark", &shortcut_menu(ThemeMode::Dark));
 }
 
 #[test]
