@@ -35,6 +35,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   the caret to where it moves. A typed character is uncovered by the caret as it passes, and the
   rest of the line follows it. Off by default. See
   [Textarea: smooth caret](website/component/textarea.md#smooth-caret).
+- **Nested scrolling** (`gpui-component`). A List or an `overflow_*_scrollbar` area inside a
+  scrolling page keeps the wheel while it can scroll, where GPUI scrolled the page along with
+  it. At its end the page takes over with the next gesture. See
+  [Scrollable: inside another scroll area](website/component/scrollable.md#inside-another-scroll-area).
 - **Compact line numbers** (`gpui-base`). The line-number gutter of the code editor and of a
   textarea is as wide as the last line's number needs, from two digits, with the numbers
   right-aligned, and leaves room for folding markers only while folding is on.

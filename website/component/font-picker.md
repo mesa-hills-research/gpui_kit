@@ -7,7 +7,8 @@ description: Choose a font family from the installed fonts or font files, with i
 
 A font picker for settings pages: a searchable list of font families, the
 chosen family's weights, italic, size and line height, the optional OpenType
-features the font offers, and a preview line in the chosen font.
+features the font offers, and a preview line in the chosen font. A compact
+layout puts the families in a dropdown and the features behind a disclosure.
 
 ## Import
 
@@ -42,6 +43,36 @@ The state reads the installed fonts in the background when it is created and
 lists them once they are read. Each change the user makes emits
 `FontPickerEvent::Change` with the new settings. `set_settings` chooses a font
 from code without an event.
+
+## Compact layout
+
+`compact` lays the picker out as a column of rows, each with its label at the
+start and its control at the end, the way a settings page lines up its
+options:
+
+```rust
+FontPicker::new(&picker).compact()
+```
+
+- **Font**: a dropdown of the families with a search field, and the
+  **Monospace only** checkbox.
+- **Weight**: the family's weights, and **Italic**.
+- **Size** and **Line height**.
+- **Font features**: a button that shows and hides the features, grouped into
+  the font's named features, its stylistic sets and its character variants.
+  It says how many the user changed. The features start hidden, and
+  `set_features_open` shows them from code.
+- The preview line.
+
+The full layout can keep its features behind the same button with
+`collapsible_features(true)`.
+
+## Scrolling
+
+The family list and the features scroll with the wheel or trackpad while the
+pointer is over them, and the page around the picker stays put. At the end of
+a list, the page scrolls with the next gesture. The arrow keys move through the
+family list once it has focus, choosing each family in turn.
 
 ## The families
 

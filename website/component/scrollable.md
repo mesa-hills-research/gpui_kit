@@ -57,6 +57,14 @@ v_flex()
     }))
 ```
 
+### Inside Another Scroll Area
+
+A scroll area or a [List](list.md) inside a page that scrolls keeps the wheel
+and trackpad while the pointer is over it, so the page stays put while the
+inner area moves. At the inner area's end, the page scrolls with the next
+gesture, after a short pause. The rest of the gesture that reached the end
+stays with the inner area, the way browsers chain scrolling.
+
 ### Horizontal Scrolling
 
 ```rust
