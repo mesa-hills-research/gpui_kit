@@ -186,6 +186,11 @@ no default keys. Bind them in the `Input` context. With nothing to act on, an
 action passes the key on to its next binding, so a key given to
 `AcceptSuggestionWord` keeps its usual meaning the rest of the time.
 
+`AcceptSuggestionWord` inserts the next word with the space before it and keeps
+offering the rest. An apostrophe between two letters belongs to the word, so
+"doesn't" takes one press. Other punctuation takes a press of its own, which
+splits `self.value` into `self`, `.` and `value`.
+
 `show_suggestions`, `present_suggestions` and `hide_suggestions` open and close
 suggestions from code, and `suggestion_item` renders each row:
 

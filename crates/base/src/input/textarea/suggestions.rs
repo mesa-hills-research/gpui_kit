@@ -479,21 +479,34 @@ impl Suggestions {
 }
 
 /// The part of `remainder` that [`AcceptSuggestionWord`] takes: leading
-/// whitespace, then one word, or one other character.
-fn next_word(remainder: &str) -> &str {
+/// whitespace, then one word, or one other character. `before` is the
+/// character before the caret, the one `remainder` continues from.
+///
+/// A word is letters, digits and `_`, plus an apostrophe (`'` or `’`) between
+/// two letters, so "don't" and "I’m" are one word each, as they are to the
+/// Unicode word boundaries (UAX #29) that Ctrl+Right follows and to most text
+/// fields. UAX #29 also joins two letters across a `.` or a `:`, which would
+/// take `self.value` or `key:value` in one press, and digits across a `.` or
+/// a `,`. Those still split here: contractions come whole, and code comes a
+/// name at a time.
+fn next_word(before: Option<char>, remainder: &str) -> &str {
     let start = remainder.len() - remainder.trim_start().len();
-    let mut chars = remainder[start..].char_indices();
-    let Some((_, first)) = chars.next() else {
-        return remainder;
-    };
     let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    if !is_word(first) {
-        return &remainder[..start + first.len_utf8()];
+    let is_apostrophe = |c: char| matches!(c, '\'' | '\u{2019}');
+    let mut prev = if start == 0 { before } else { None };
+    let mut chars = remainder[start..].char_indices().peekable();
+    while let Some((ix, c)) = chars.next() {
+        let next = chars.peek().map(|&(_, next)| next);
+        let joined = is_apostrophe(c)
+            && prev.is_some_and(char::is_alphabetic)
+            && next.is_some_and(char::is_alphabetic);
+        if !is_word(c) && !joined {
+            let end = if ix == 0 { c.len_utf8() } else { ix };
+            return &remainder[..start + end];
+        }
+        prev = Some(c);
     }
-    let end = chars
-        .find(|&(_, c)| !is_word(c))
-        .map_or(remainder.len(), |(ix, _)| start + ix);
-    &remainder[..end]
+    remainder
 }
 
 /// Methods for the suggestions a textarea offers. See [`SuggestionProvider`].
@@ -914,6 +927,9 @@ impl TextareaState {
             return false;
         };
         let offset = self.cursor();
+        let before = (offset > 0)
+            .then(|| self.text.chars_at(offset).reversed().next())
+            .flatten();
 
         // Taking one word only makes sense of a suggestion that continues the
         // text, and only while more than that word is left.
@@ -921,7 +937,7 @@ impl TextareaState {
             .then(|| self.suggestion_remainder(&suggestion))
             .flatten()
             .and_then(|remainder| {
-                let word = next_word(&remainder);
+                let word = next_word(before, &remainder);
                 (word.len() < remainder.len()).then(|| word.to_string())
             });
         let (range, text) = match &word {
@@ -1339,15 +1355,76 @@ mod tests {
         }
     }
 
+    /// What each press of [`AcceptSuggestionWord`] takes of `remainder`, the
+    /// caret after `before`.
+    fn presses(mut before: Option<char>, mut remainder: &str) -> Vec<&str> {
+        let mut presses = Vec::new();
+        while !remainder.is_empty() {
+            let word = next_word(before, remainder);
+            presses.push(word);
+            before = word.chars().next_back();
+            remainder = &remainder[word.len()..];
+        }
+        presses
+    }
+
     #[test]
     fn next_word_takes_leading_space_and_one_word() {
-        assert_eq!(next_word("lo world"), "lo");
-        assert_eq!(next_word(" world again"), " world");
-        assert_eq!(next_word("  again"), "  again");
-        assert_eq!(next_word(", then"), ",");
-        assert_eq!(next_word("   "), "   ");
-        assert_eq!(next_word("don't"), "don");
-        assert_eq!(next_word("naïve café"), "naïve");
+        assert_eq!(next_word(None, "lo world"), "lo");
+        assert_eq!(next_word(Some('l'), "lo world"), "lo");
+        assert_eq!(next_word(None, " world again"), " world");
+        assert_eq!(next_word(None, "  again"), "  again");
+        assert_eq!(next_word(None, ", then"), ",");
+        assert_eq!(next_word(None, "   "), "   ");
+        assert_eq!(next_word(None, "naïve café"), "naïve");
+        assert_eq!(next_word(None, "snake_case name"), "snake_case");
+    }
+
+    /// An apostrophe between two letters stays in the word, so a contraction
+    /// is one press, typed with a straight or a typographic apostrophe.
+    #[test]
+    fn next_word_keeps_contractions_whole() {
+        assert_eq!(presses(None, "doesn't know"), ["doesn't", " know"]);
+        assert_eq!(presses(None, "I'm here"), ["I'm", " here"]);
+        assert_eq!(
+            presses(None, "don\u{2019}t stop"),
+            ["don\u{2019}t", " stop"]
+        );
+        assert_eq!(presses(None, "rock'n'roll"), ["rock'n'roll"]);
+
+        // The caret inside the word: the letter before it counts.
+        assert_eq!(presses(Some('n'), "'t know"), ["'t", " know"]);
+        assert_eq!(presses(Some('e'), "sn't"), ["sn't"]);
+
+        // A quote with a letter on one side only is a character of its own.
+        assert_eq!(presses(None, "dogs' bowls"), ["dogs", "'", " bowls"]);
+        assert_eq!(presses(None, "'twas"), ["'", "twas"]);
+        assert_eq!(presses(Some(' '), "'t"), ["'", "t"]);
+        assert_eq!(presses(None, "the '90s"), ["the", " '", "90s"]);
+    }
+
+    /// UAX #29 also joins two letters across a `.` or a `:`. Those still
+    /// split, so code is taken a name at a time.
+    #[test]
+    fn next_word_splits_code_at_its_punctuation() {
+        assert_eq!(presses(None, "self.value"), ["self", ".", "value"]);
+        assert_eq!(
+            presses(None, "std::io::Read"),
+            ["std", ":", ":", "io", ":", ":", "Read"]
+        );
+        assert_eq!(presses(None, "a:b"), ["a", ":", "b"]);
+        assert_eq!(presses(None, "3.14"), ["3", ".", "14"]);
+
+        // A lifetime's apostrophe follows punctuation or a space.
+        assert_eq!(presses(Some('&'), "'a str"), ["'", "a", " str"]);
+        assert_eq!(presses(Some('<'), "'a>"), ["'", "a", ">"]);
+        assert_eq!(presses(None, "'static"), ["'", "static"]);
+
+        // A byte literal has a letter on each side of its first quote, the
+        // same shape as "I'm" or "y'all", and the text's language is unknown
+        // here. So it goes as Ctrl+Right takes it: `b'x`, then the closing
+        // quote.
+        assert_eq!(presses(None, "b'x'"), ["b'x", "'"]);
     }
 
     /// Typing asks the provider and opens the menu with its answer, in its
@@ -1647,6 +1724,40 @@ mod tests {
         // With nothing offered the key falls through to its next binding.
         test.cx.simulate_keystrokes("alt-right");
         assert_eq!(test.value(), "hello world again");
+    }
+
+    /// A contraction is one press, from the start of the word or from inside
+    /// it with the apostrophe right after the caret.
+    #[gpui::test]
+    fn accept_word_keeps_contractions_whole(cx: &mut TestAppContext) {
+        let provider = Rc::new(WordProvider::new(&["doesn't know"]));
+        let mut test = Test::new(cx, Some(provider), inline());
+        test.cx.update(|_, cx| {
+            cx.bind_keys([gpui::KeyBinding::new(
+                "alt-right",
+                AcceptSuggestionWord,
+                Some("Input"),
+            )])
+        });
+
+        test.cx.simulate_input("doe");
+        assert_eq!(test.ghost().as_deref(), Some("sn't know"));
+        test.cx.simulate_keystrokes("alt-right");
+        assert_eq!(test.value(), "doesn't");
+        assert_eq!(test.ghost().as_deref(), Some(" know"));
+        test.cx.simulate_keystrokes("alt-right");
+        assert_eq!(test.value(), "doesn't know");
+        assert_eq!(test.ghost(), None);
+
+        test.update(|state, window, cx| {
+            state.set_value("I doesn", window, cx);
+            state.set_selected_range(7..7, cx);
+            state.present_suggestions(vec![Suggestion::new("doesn't know").with_range(2..7)], cx)
+        });
+        assert_eq!(test.ghost().as_deref(), Some("'t know"));
+        test.cx.simulate_keystrokes("alt-right");
+        assert_eq!(test.value(), "I doesn't");
+        assert_eq!(test.ghost().as_deref(), Some(" know"));
     }
 
     /// Bound keys reach the suggestions only while there is something for them
