@@ -298,6 +298,9 @@ pub struct PopupMenu {
     max_width: Option<Pixels>,
     max_height: Option<Pixels>,
     bounds: Bounds<Pixels>,
+    /// The bounds of the first frame that drew the menu.
+    #[cfg(test)]
+    first_bounds: Option<Bounds<Pixels>>,
     size: Size,
     check_side: Side,
 
@@ -345,6 +348,8 @@ impl PopupMenu {
             max_height: None,
             check_side: Side::Left,
             bounds: Bounds::default(),
+            #[cfg(test)]
+            first_bounds: None,
             scrollable: false,
             scroll_handle: ScrollHandle::default(),
             external_link_icon: true,
@@ -1172,6 +1177,13 @@ impl PopupMenu {
         Some(icon.xsmall())
     }
 
+    /// The bounds of the items in the first frame that drew the menu and in
+    /// the last, for tests.
+    #[cfg(test)]
+    pub(crate) fn first_and_last_bounds(&self) -> (Bounds<Pixels>, Bounds<Pixels>) {
+        (self.first_bounds.unwrap_or_default(), self.bounds)
+    }
+
     #[inline]
     fn max_width(&self) -> Pixels {
         self.max_width.unwrap_or(px(500.))
@@ -1502,7 +1514,13 @@ impl Render for PopupMenu {
                             .filter(|(ix, item)| !(*ix + 1 == items_count && item.is_separator()))
                             .map(|(ix, item)| self.render_item(ix, item, options, window, cx)),
                     )
-                    .on_prepaint(move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds)),
+                    .on_prepaint(move |bounds, _, cx| {
+                        view.update(cx, |r, _| {
+                            r.bounds = bounds;
+                            #[cfg(test)]
+                            r.first_bounds.get_or_insert(bounds);
+                        })
+                    }),
             )
             .when(self.scrollable, |this| {
                 this.vertical_scrollbar(&self.scroll_handle)

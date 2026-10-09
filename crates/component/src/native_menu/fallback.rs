@@ -31,6 +31,12 @@ impl FallbackMenuOverlay {
         Self { active: None }
     }
 
+    /// The menu showing, for tests.
+    #[cfg(test)]
+    pub(crate) fn active_menu(&self) -> Option<Entity<PopupMenu>> {
+        self.active.as_ref().map(|active| active.menu.clone())
+    }
+
     /// Build a [`PopupMenu`] from `items` and show it anchored at `position`.
     ///
     /// `action_context` is the focus handle the selected action is dispatched

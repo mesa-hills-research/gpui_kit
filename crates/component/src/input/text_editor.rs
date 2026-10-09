@@ -137,7 +137,9 @@ impl RenderOnce for TextEditor {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext as _, Render, TestAppContext};
+    use gpui::{
+        AppContext as _, Modifiers, MouseButton, ParentElement as _, Render, TestAppContext,
+    };
 
     use super::*;
 
@@ -175,5 +177,64 @@ mod tests {
             assert_eq!(textarea, ContextMenuStyle::Native);
             Probe
         });
+    }
+
+    struct Document {
+        state: Entity<TextareaState>,
+    }
+
+    impl Render for Document {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            gpui::div().size_full().child(
+                gpui::div()
+                    .h(gpui::px(120.))
+                    .child(TextEditor::new(&self.state)),
+            )
+        }
+    }
+
+    /// The menu GPUI draws opens complete: its first frame lays out the
+    /// shortcuts beside the items, at the width it keeps.
+    #[gpui::test]
+    fn the_drawn_menu_opens_with_its_shortcuts(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut state = None;
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |window, cx| {
+                let document = cx.new(|cx| {
+                    TextareaState::new(window, cx)
+                        .text_editor()
+                        .default_value("A short note")
+                });
+                state = Some(document.clone());
+                let view = cx.new(|_| Document { state: document });
+                cx.new(|cx| crate::Root::new(view, window, cx))
+            })
+            .unwrap()
+        });
+        let state = state.unwrap();
+        let cx = &mut gpui::VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let position = state.read_with(cx, |state, _| {
+            state.range_to_bounds(&(2..3)).unwrap().center()
+        });
+        cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let select_all = if cfg!(target_os = "macos") {
+            "kbd:cmd-a"
+        } else {
+            "kbd:ctrl-a"
+        };
+        assert!(cx.debug_bounds(select_all).is_some());
+        let (first, settled) = cx.update(|window, cx| {
+            let overlay = crate::root::WindowState::native_menu_overlay(window, cx).unwrap();
+            let menu = overlay.read(cx).active_menu().expect("the menu is open");
+            menu.read(cx).first_and_last_bounds()
+        });
+        assert_eq!(first.size, settled.size, "the menu must open at its width");
     }
 }
