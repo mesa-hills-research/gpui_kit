@@ -650,14 +650,14 @@ fn smooth_caret_window(
     (app, window, document)
 }
 
-/// The smooth caret 0, 50, 100 and 200 ms after a "W" is typed in the middle of a line. The
-/// caret uncovers the letter as it glides, the rest of the line moves with it, and after 200 ms
+/// The smooth caret 0, 25, 50 and 100 ms after a "W" is typed in the middle of a line. The
+/// caret uncovers the letter as it glides, the rest of the line moves with it, and after 100 ms
 /// the line is drawn as without the smooth caret.
 fn smooth_caret(mode: ThemeMode) -> Vec<(u64, Screenshot)> {
     let (mut app, window, _) = smooth_caret_window(app(mode), "Hello world", 5, true);
     act(&mut app, window, |window, cx| window.input("W", cx));
     let mut elapsed = 0;
-    [0, 50, 100, 200]
+    [0, 25, 50, 100]
         .into_iter()
         .map(|ms| {
             app.advance_clock(Duration::from_millis(ms - elapsed));
@@ -1010,7 +1010,7 @@ fn smooth_caret_settles_to_the_plain_drawing() {
         let (mut app, window, _) =
             smooth_caret_window(app(ThemeMode::Light), "Hello world", 5, smooth);
         act(&mut app, window, |window, cx| window.input("W", cx));
-        app.advance_clock(Duration::from_millis(200));
+        app.advance_clock(Duration::from_millis(100));
         app.capture(window).unwrap().image
     };
     assert!(settled(true) == settled(false));
@@ -1059,7 +1059,7 @@ fn smooth_caret_draws_nothing_right_of_the_caret() {
             }
         }
         uncovered.push(caret_end);
-        app.advance_clock(Duration::from_millis(10));
+        app.advance_clock(Duration::from_millis(5));
     }
     assert!(
         uncovered.windows(2).all(|pair| pair[0] <= pair[1]) && uncovered[0] < uncovered[19],

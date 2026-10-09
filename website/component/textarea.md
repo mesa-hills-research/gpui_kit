@@ -495,8 +495,8 @@ let document = cx.new(|cx| {
 document.update(cx, |document, cx| document.set_smooth_caret(false, cx));
 ```
 
-A keystroke settles in 200 ms by default. Typing faster than that keeps the caret moving at a
-steady pace, a character or two behind. Only drawing is animated, so the text, undo and the spell
-checker see every keystroke at once. `EditorState` has the same methods. The caret moves at once
-while the system asks for reduced motion, on a line with right-to-left text, and with several
-carets.
+A keystroke settles in 100 ms by default, and so does a Backspace: `typing_duration` sets both.
+Typing faster than that keeps the caret moving at a steady pace, a character or two behind. Only
+drawing is animated, so the text, undo and the spell checker see every keystroke at once.
+`EditorState` has the same methods. The caret moves at once while the system asks for reduced
+motion, on a line with right-to-left text, and with several carets.

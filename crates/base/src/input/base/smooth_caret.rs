@@ -43,20 +43,23 @@ const GRAPHEME_DURATION: Duration = Duration::from_millis(80);
 /// The settle time of a move by a word.
 const WORD_DURATION: Duration = Duration::from_millis(120);
 /// The settle time of typing, unless the application sets its own.
-const TYPING_DURATION: Duration = Duration::from_millis(200);
+const TYPING_DURATION: Duration = Duration::from_millis(100);
 /// The most movements kept for the next frame.
 const MAX_STEPS: usize = 64;
-/// How far behind its target the caret may fall, at least: the cap is this or
-/// two of the characters being typed, whichever is wider. A glide further
-/// behind than half the cap is hurried, so it catches up.
+/// How far behind its target the caret falls before its glide is hurried, at
+/// least: the cap is this or two of the characters being typed, whichever is
+/// wider. A glide further behind than the cap is hurried, so it catches up.
+/// Hurrying sooner would stiffen the spring on most keystrokes of a fast
+/// burst, and the caret would lurch with the rhythm of the keys.
 const MIN_LAG_CAP: f32 = 24.;
 
 /// How the caret moves when the smooth caret is on.
 ///
-/// The defaults glide the caret to a typed character in 200 ms, glide it back
-/// over a character Backspace deletes, and glide it along with the arrow keys
-/// and the word motions. Every other movement is instant: up and down, Home and
-/// End, a click, a paste, an undo, and any move to another row.
+/// The defaults glide the caret to a typed character in 100 ms, glide it back
+/// over a character Backspace deletes in the same time, and glide it along
+/// with the arrow keys and the word motions. Every other movement is instant:
+/// up and down, Home and End, a click, a paste, an undo, and any move to
+/// another row.
 ///
 /// ```
 /// use std::time::Duration;
@@ -88,7 +91,7 @@ impl Default for SmoothCaretOptions {
 
 impl SmoothCaretOptions {
     /// How long the caret takes to settle after a keystroke, and after a
-    /// Backspace. 200 ms by default, and zero moves the caret at once.
+    /// Backspace. 100 ms by default, and zero moves the caret at once.
     pub fn typing_duration(mut self, duration: Duration) -> Self {
         self.typing = duration;
         self
@@ -309,11 +312,11 @@ fn spring(offset: f64, velocity: f64, omega: f64, t: f64) -> (f64, f64) {
 }
 
 /// The settle time of a glide over `distance`, shortened when that is further
-/// than the soft cap so the caret catches up.
-fn hurried(duration: Duration, distance: f64, soft_cap: f64) -> f64 {
+/// than `cap` so the caret catches up.
+fn hurried(duration: Duration, distance: f64, cap: f64) -> f64 {
     let duration = duration.as_secs_f64().max(0.001);
-    if distance > soft_cap {
-        duration * soft_cap / distance
+    if distance > cap {
+        duration * cap / distance
     } else {
         duration
     }
@@ -328,14 +331,14 @@ impl Glide {
         from: f32,
         target: f32,
         duration: Duration,
-        soft_cap: f32,
+        cap: f32,
     ) -> Option<Self> {
         let offset = f64::from(from - target);
         let distance = offset.abs();
         if distance <= f64::from(SETTLED) {
             return None;
         }
-        let duration = hurried(duration, distance, f64::from(soft_cap));
+        let duration = hurried(duration, distance, f64::from(cap));
         let omega = (distance / f64::from(SETTLE_AIM)).ln() / duration;
         // Moving at `omega` times the distance cancels the spring's own
         // acceleration from rest, so the distance decays exponentially.
@@ -358,18 +361,12 @@ impl Glide {
     /// The same glide aimed at `target` from `now`, keeping the position and
     /// the velocity it has then. The spring is stiffened as far as it must be
     /// to settle within `duration`, and further when it is behind by more
-    /// than the soft cap.
-    pub(crate) fn retarget(
-        &self,
-        now: Instant,
-        target: f32,
-        duration: Duration,
-        soft_cap: f32,
-    ) -> Self {
+    /// than `cap`.
+    pub(crate) fn retarget(&self, now: Instant, target: f32, duration: Duration, cap: f32) -> Self {
         let t = now.saturating_duration_since(self.start).as_secs_f64();
         let (offset, velocity) = spring(self.offset, self.velocity, self.omega, t);
         let offset = offset + f64::from(self.target - target);
-        let duration = hurried(duration, offset.abs(), f64::from(soft_cap));
+        let duration = hurried(duration, offset.abs(), f64::from(cap));
         Self {
             start: now,
             offset,
@@ -836,9 +833,9 @@ impl<M: InputModeKind> InputBaseState<M> {
             .drawn
             .filter(|drawn| drawn.row == spot.key);
         let target = target_x.as_f32();
-        // How far behind the caret may fall: two of the characters this
-        // movement crossed, or the minimum.
-        let soft_cap = |width: f32| MIN_LAG_CAP.max(2. * width.abs()) / 2.;
+        // How far behind the caret falls before it is hurried: two of the
+        // characters this movement crossed, or the minimum.
+        let lag_cap = |width: f32| MIN_LAG_CAP.max(2. * width.abs());
 
         // A zero duration moves the caret at once.
         let duration = match change {
@@ -863,7 +860,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 if (reveal_from - drawn.x).abs() > px(SETTLED) {
                     return None;
                 }
-                let cap = soft_cap((target_x - reveal_from).as_f32());
+                let cap = lag_cap((target_x - reveal_from).as_f32());
                 // A glide that is right of where the text went in, such as
                 // one still covering deleted text, ends first: a typed
                 // character is always uncovered from its own left edge.
@@ -909,7 +906,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                     left,
                     width: right - left,
                 };
-                let cap = soft_cap((right - left).as_f32());
+                let cap = lag_cap((right - left).as_f32());
                 match running {
                     Some(mut animation) => {
                         animation.glide = animation.glide.retarget(now, target, duration, cap);
@@ -931,7 +928,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                     return None;
                 }
                 let drawn = drawn?;
-                let cap = soft_cap((target_x - drawn.x).as_f32());
+                let cap = lag_cap((target_x - drawn.x).as_f32());
                 match running {
                     // Text still hidden or deleted text still shown settles
                     // at once: only typing and Backspace uncover and cover.

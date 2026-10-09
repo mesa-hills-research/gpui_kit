@@ -23,6 +23,11 @@ const CHAR: f32 = 9.6;
 /// The step between frames.
 const FRAME_MS: u64 = 5;
 
+/// How long a keystroke takes to settle by default, in milliseconds.
+fn typing_ms() -> u64 {
+    SmoothCaretOptions::default().typing().as_millis() as u64
+}
+
 /// A focused textarea with the smooth caret on.
 struct Glider {
     test: KeymapTest,
@@ -187,13 +192,14 @@ fn a_typed_character_is_uncovered_by_the_caret(cx: &mut TestAppContext) {
         "the text after the caret stays",
     );
 
+    let typing = typing_ms();
     let mut previous = first;
     let mut middle = None;
-    for step in 1..=40 {
+    for step in 1..=typing / FRAME_MS {
         glider.advance(FRAME_MS);
         let Some(sample) = glider.sample() else {
             assert!(
-                step * FRAME_MS > 150,
+                step * FRAME_MS > typing * 3 / 4,
                 "settled too early, at {} ms",
                 step * FRAME_MS
             );
@@ -207,21 +213,20 @@ fn a_typed_character_is_uncovered_by_the_caret(cx: &mut TestAppContext) {
         assert!(sample.plan.caret_x >= previous.plan.caret_x);
         // Ease out: fastest at the start, slowing as it arrives.
         assert!(sample.velocity < previous.velocity);
-        if step * FRAME_MS == 100 {
+        if step * FRAME_MS == typing / 2 {
             middle = Some(sample.clone());
         }
         previous = sample;
     }
-    let middle = middle.expect("still gliding at 100 ms");
+    let middle = middle.expect("still gliding halfway");
     assert!(
         middle.plan.caret_x > before + px(0.5) && middle.plan.caret_x < target - px(0.5),
-        "at 100 ms the caret is between where it was and where it goes: {:?}",
+        "halfway the caret is between where it was and where it goes: {:?}",
         middle.plan.caret_x
     );
 
     // After the settle time everything is drawn as without the smooth caret.
-    glider.advance(200);
-    glider.assert_still("after 200 ms");
+    glider.assert_still(&format!("after {typing} ms"));
     assert_eq!(glider.painted_caret().unwrap().origin.x, glider.caret_x());
 }
 
@@ -235,6 +240,28 @@ fn a_zero_typing_duration_types_at_once(cx: &mut TestAppContext) {
     glider.assert_still("Backspace");
     glider.test.keys("left");
     assert!(glider.sample().is_some(), "the arrow keys still glide");
+}
+
+#[gpui::test]
+fn typing_and_backspace_settle_in_100_ms_by_default(cx: &mut TestAppContext) {
+    assert_eq!(
+        SmoothCaretOptions::default().typing(),
+        Duration::from_millis(100)
+    );
+    let mut glider = Glider::new(cx, "abˇcd");
+    glider.test.type_text("W");
+    glider.advance(50);
+    assert!(glider.sample().is_some(), "typing: gliding at 50 ms");
+    glider.advance(50);
+    glider.assert_still("100 ms after typing");
+
+    // Backspace takes the typing duration too.
+    glider.test.keys("backspace");
+    glider.test.assert("abˇcd");
+    glider.advance(50);
+    assert!(glider.sample().is_some(), "Backspace: gliding at 50 ms");
+    glider.advance(50);
+    glider.assert_still("100 ms after Backspace");
 }
 
 #[gpui::test]
@@ -333,8 +360,122 @@ fn rapid_typing_aims_the_glide_anew_without_restarting_it(cx: &mut TestAppContex
 
     // When typing stops, the caret settles within the typing duration of the
     // last keystroke.
-    glider.advance(200 - 30);
-    glider.assert_still("200 ms after the last keystroke");
+    glider.advance(typing_ms() - 30);
+    glider.assert_still("the typing duration after the last keystroke");
+}
+
+/// Keys every 30 ms, drawn the way a 60 Hz display draws them: what was typed
+/// since the last frame reaches the caret at the next frame, so the keys
+/// arrive one or two frames apart. The caret still moves at an even pace, close
+/// to the typing's own on every frame.
+#[gpui::test]
+fn a_burst_drawn_at_60_hz_moves_the_caret_evenly(cx: &mut TestAppContext) {
+    const FRAME_US: u64 = 16_667;
+    const KEY_US: u64 = 30_000;
+    const KEYS: u64 = 30;
+    let mut glider = Glider::new(cx, "ˇ");
+    let mut typed = 0;
+    let mut frames = Vec::new();
+    for frame in 0..60 {
+        let now = frame * FRAME_US;
+        if frame > 0 {
+            glider
+                .test
+                .cx
+                .executor()
+                .advance_clock(Duration::from_micros(FRAME_US));
+        }
+        let keys = (now / KEY_US + 1).min(KEYS);
+        if keys > typed {
+            let text = "a".repeat((keys - typed) as usize);
+            glider.test.update(|state, window, cx| {
+                state.caret_motion(CaretMotion::Typing, |state| {
+                    state.replace_text_in_range(None, &text, window, cx)
+                })
+            });
+            typed = keys;
+        }
+        glider.test.draw();
+        frames.push((now / 1000, glider.gliding()));
+        if typed == KEYS {
+            break;
+        }
+    }
+
+    let per_frame = CHAR * FRAME_US as f32 / KEY_US as f32;
+    for pair in frames.windows(2).filter(|pair| pair[0].0 >= 150) {
+        let ((_, a), (t, b)) = (&pair[0], &pair[1]);
+        let step = b.x - a.x;
+        assert!(
+            step > 0.75 * per_frame && step < 1.4 * per_frame,
+            "{t} ms: the caret moved {step} px in a frame, the typing {per_frame} px"
+        );
+        let lag = b.plan.target_x - px(b.x);
+        assert!(lag <= px(24.), "{t} ms: {lag:?} behind");
+        assert_uncovering(b);
+    }
+}
+
+/// A fast typist's pace, a key every 120 ms, is slower than a keystroke's
+/// glide: the caret comes to rest after each character, and the next
+/// keystroke glides on its own from there.
+#[gpui::test]
+fn typing_slower_than_the_glide_rests_at_each_character(cx: &mut TestAppContext) {
+    const PERIOD_MS: u64 = 120;
+    let typing = typing_ms();
+    assert!(PERIOD_MS > typing);
+    let mut glider = Glider::new(cx, "ˇ");
+    for key in 0..8 {
+        let rest = glider.caret_x();
+        glider.test.type_text("a");
+        // The glide starts where the caret rests, at its fastest, and nothing
+        // of the new character is drawn yet.
+        let first = glider.gliding();
+        assert_close(px(first.x), rest, "the caret at the keystroke");
+        assert_close(first.plan.target_x, rest + px(CHAR), "target");
+        assert_uncovering(&first);
+
+        let mut previous = first;
+        let mut settled_at = None;
+        for step in 1..=PERIOD_MS / FRAME_MS {
+            glider.advance(FRAME_MS);
+            let ms = step * FRAME_MS;
+            let Some(sample) = glider.sample() else {
+                settled_at.get_or_insert(ms);
+                continue;
+            };
+            assert!(settled_at.is_none(), "key {key}: moving again at {ms} ms");
+            assert_uncovering(&sample);
+            // Ease out, without a jump or a sudden stop: right a little each
+            // frame, a little slower each frame.
+            assert!(
+                sample.x > previous.x && sample.x - previous.x < 3.,
+                "key {key}, {ms} ms: the caret moved {} px in one frame",
+                sample.x - previous.x
+            );
+            assert!(
+                sample.velocity < previous.velocity && sample.velocity > 0.8 * previous.velocity,
+                "key {key}, {ms} ms: the velocity went from {} to {}",
+                previous.velocity,
+                sample.velocity
+            );
+            let lag = sample.plan.target_x - px(sample.x);
+            assert!(lag <= px(CHAR), "key {key}, {ms} ms: {lag:?} behind");
+            previous = sample;
+        }
+        let settled_at = settled_at.expect("the caret rests before the next key");
+        assert!(
+            settled_at <= typing,
+            "key {key}: settled at {settled_at} ms"
+        );
+        // It lands on the character's edge without a jump.
+        assert!(
+            (glider.caret_x() - px(previous.x)).abs() < px(1.),
+            "key {key}: landed {:?} from the last frame",
+            glider.caret_x() - px(previous.x)
+        );
+        assert_eq!(glider.painted_caret().unwrap().origin.x, glider.caret_x());
+    }
 }
 
 #[gpui::test]
@@ -457,6 +598,8 @@ fn backspace_can_be_instant(cx: &mut TestAppContext) {
 #[gpui::test]
 fn backspace_while_typing_covers_what_was_typed(cx: &mut TestAppContext) {
     let mut glider = Glider::new(cx, "ˇ");
+    // A glide long enough to turn around in, whatever the default.
+    glider.options(SmoothCaretOptions::default().typing_duration(Duration::from_millis(200)));
     let start = glider.caret_x();
     glider.test.type_text("ab");
     glider.advance(60);
@@ -519,7 +662,7 @@ fn space_and_tab_are_typed_like_any_character(cx: &mut TestAppContext) {
     assert_uncovering(&sample);
     // A tab is wider than a character, and is uncovered progressively too.
     assert!(sample.plan.target_x - before > px(CHAR));
-    glider.advance(50);
+    glider.advance(typing_ms() / 4);
     let sample = glider.gliding();
     assert!(sample.plan.caret_x > before && sample.plan.caret_x < sample.plan.target_x);
     assert_eq!(sample.plan.head_end, sample.plan.caret_x);
