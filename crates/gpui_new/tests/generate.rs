@@ -197,17 +197,6 @@ fn the_manifest_patches_gpui_to_the_kits_fork() {
 }
 
 #[test]
-fn cargo_fetches_the_kit_with_the_git_cli() {
-    let dir = scratch("fetch");
-    run_ok(&[dir.to_str().unwrap(), "--no-git"]);
-    let text = fs::read_to_string(dir.join(".cargo/config.toml")).unwrap();
-    let config = text
-        .parse::<toml::Table>()
-        .unwrap_or_else(|err| panic!(".cargo/config.toml doesn't parse: {err}\n{text}"));
-    assert_eq!(config["net"]["git-fetch-with-cli"].as_bool(), Some(true));
-}
-
-#[test]
 fn name_and_app_id_flow_into_the_app() {
     let dir = scratch("notes");
     run_ok(&[

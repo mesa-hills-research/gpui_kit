@@ -17,9 +17,6 @@ Building needs the platform's tools: Xcode on macOS, the Visual Studio C++ build
 and on Linux a C compiler with the fontconfig, Wayland, xkbcommon and X11 development packages
 (`libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev` on Ubuntu).
 
-GPUI Kit and its fork of GPUI come from private GitHub repositories, which `.cargo/config.toml`
-has Cargo fetch with the git CLI and your GitHub credentials.
-
 ## Where things live
 
 | Path | What it holds |

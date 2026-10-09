@@ -78,9 +78,7 @@ gpui-pre = { git = "https://github.com/mesa-hills-research/gpui", rev = "<commit
 ```
 
 The fork's [docs/using.md](https://github.com/mesa-hills-research/gpui/blob/main/docs/using.md)
-lists every entry, and apps from `gpui_new` come with them. Fetching these private repositories
-needs GitHub access and `net.git-fetch-with-cli = true` in the app's `.cargo/config.toml` (or
-`CARGO_NET_GIT_FETCH_WITH_CLI=true`).
+lists every entry, and apps from `gpui_new` come with them.
 
 ## Starting a new app
 
