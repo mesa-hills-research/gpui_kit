@@ -91,9 +91,6 @@ HIGHLIGHT_NAMES = [
     "variant",
 ]
 
-# Keys listed above that the kit is about to read but whose Rust side has not landed yet.
-PENDING_KEYS = {"editor.gutter.border"}
-
 THEME_KEYS = [
     "is_default", "name", "mode", "font.size", "font.family", "mono_font.family", "mono_font.size",
     "radius", "radius.lg", "shadow", "colors", "highlight",

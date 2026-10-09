@@ -42,7 +42,7 @@ class KitReplay(unittest.TestCase):
         source = kit.keys_from_source()
         self.assertEqual(source["colors"], kit.COLOR_KEYS)
         self.assertEqual(source["syntax"], kit.SYNTAX_KEYS)
-        self.assertEqual(set(source["highlight"]) - kit.PENDING_KEYS, set(kit.HIGHLIGHT_KEYS) - kit.PENDING_KEYS)
+        self.assertEqual(set(source["highlight"]), set(kit.HIGHLIGHT_KEYS))
 
     def test_missing_keys_fall_back_like_the_kit(self):
         theme = {"name": "T", "mode": "light", "colors": {"primary.background": "#0000FF", "background": "#FFFFFF"}}
