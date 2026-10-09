@@ -513,9 +513,10 @@ fn gutters(scale: f32) -> Screenshot {
                     .text_editor()
                     .default_value(long_text)
             });
+            // No language, so the code editor looks the same with and without
+            // tree-sitter.
             let code = cx.new(|cx| {
                 EditorState::new(window, cx)
-                    .language("rust")
                     .default_value("fn main() {\n    println!(\"compact\");\n}")
             });
             long.update(cx, |long, cx| long.focus(window, cx));
