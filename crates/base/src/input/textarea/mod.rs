@@ -7,8 +7,8 @@ use super::{InputBaseState, InputModeKind, TextareaExtras, TextareaMode};
 /// This is the shared editing engine in its multi-line kind. Code-editor
 /// facilities such as languages, diagnostics, folding, and LSP do not exist on
 /// this type — those methods live on [`super::EditorState`]. What a textarea
-/// offers instead are suggestions from an application's provider: see
-/// [`super::SuggestionProvider`].
+/// offers instead are suggestions from an application's provider (see
+/// [`super::SuggestionProvider`]) and a line-number gutter.
 pub type TextareaState = InputBaseState<TextareaMode>;
 
 impl InputModeKind for TextareaMode {
@@ -89,6 +89,10 @@ impl crate::input::InputExtras for TextareaExtras {
     fn ghost_text(&self) -> Option<&str> {
         self.suggestions.ghost_text()
     }
+
+    fn line_number(&self) -> bool {
+        self.line_number
+    }
 }
 
 /// An unstyled ordinary multi-line text input.
@@ -137,5 +141,72 @@ impl RenderOnce for Textarea {
             state.set_token_presentation(self.presentation)
         });
         self.state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{
+        AppContext as _, Context, IntoElement, ParentElement as _, Pixels, Render, Styled as _,
+        TestAppContext, VisualTestContext, div, px, size,
+    };
+
+    use super::*;
+
+    struct Harness {
+        textareas: Vec<Entity<TextareaState>>,
+    }
+
+    impl Render for Harness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().children(
+                self.textareas
+                    .iter()
+                    .map(|textarea| div().h(px(80.)).child(textarea.clone())),
+            )
+        }
+    }
+
+    fn open(
+        cx: &mut TestAppContext,
+        states: Vec<fn(TextareaState) -> TextareaState>,
+    ) -> (VisualTestContext, Vec<Entity<TextareaState>>) {
+        cx.update(crate::init);
+        let window = cx.open_window(size(px(400.), px(400.)), move |window, cx| Harness {
+            textareas: states
+                .into_iter()
+                .map(|configure| {
+                    cx.new(|cx| configure(TextareaState::new(window, cx).default_value("Hello")))
+                })
+                .collect(),
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let textareas = window
+            .read_with(&cx, |harness, _| harness.textareas.clone())
+            .unwrap();
+        cx.update(|window, cx| {
+            textareas[0].update(cx, |state, cx| state.focus(window, cx));
+            window.draw(cx).clear(cx);
+        });
+        (cx, textareas)
+    }
+
+    /// Line numbers take a gutter, which moves the text right.
+    #[gpui::test]
+    fn line_numbers_take_a_gutter(cx: &mut TestAppContext) {
+        let (cx, textareas) = open(cx, vec![|state| state, |state| state.line_number(true)]);
+        let left = |textarea: &Entity<TextareaState>| -> Pixels {
+            textarea.read_with(&cx, |state, _| {
+                state.range_to_bounds(&(0..0)).unwrap().left() - state.input_bounds().left()
+            })
+        };
+        let plain = left(&textareas[0]);
+        let numbered = left(&textareas[1]);
+        assert!(
+            numbered > plain + px(10.),
+            "{numbered:?} leaves room for the line numbers, {plain:?} does not"
+        );
+        assert!(textareas[1].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
+        assert!(!textareas[0].read_with(&cx, |state, _| state.presentation().has_line_numbers()));
     }
 }

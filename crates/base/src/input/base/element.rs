@@ -1114,7 +1114,7 @@ impl<M: InputModeKind> TextElement<M> {
         // line count up to seven digits.
         let line_number_len = line_number_len(total_lines);
 
-        let mut line_number_width = if state.mode.line_number() {
+        let mut line_number_width = if state.shows_line_numbers() {
             let empty_line_number = window.text_system().shape_line(
                 "+".repeat(line_number_len).into(),
                 font_size,
@@ -3061,7 +3061,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         );
 
         let state = self.state.read(cx);
-        let line_numbers = if state.mode.line_number() {
+        let line_numbers = if state.shows_line_numbers() {
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
             let other_line_runs = vec![TextRun {
                 len: line_number_len,

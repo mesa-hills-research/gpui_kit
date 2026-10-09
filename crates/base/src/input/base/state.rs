@@ -504,6 +504,7 @@ pub struct InputPresentation {
     masked: bool,
     multi_line: bool,
     code_editor: bool,
+    line_number: bool,
     text_align: TextAlign,
     placeholder: SharedString,
     mask_placeholder: Option<String>,
@@ -543,6 +544,11 @@ impl InputPresentation {
 
     pub fn is_code_editor(&self) -> bool {
         self.code_editor
+    }
+
+    /// Whether the gutter shows line numbers.
+    pub fn has_line_numbers(&self) -> bool {
+        self.line_number
     }
 
     pub fn text_align(&self) -> TextAlign {
@@ -589,6 +595,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             masked: self.masked,
             multi_line: self.is_multi_line(),
             code_editor: self.is_code_editor(),
+            line_number: self.shows_line_numbers(),
             text_align: self.text_align,
             placeholder: self.placeholder.clone(),
             mask_placeholder: self.mask_pattern.placeholder(),
@@ -625,6 +632,12 @@ impl<M: InputModeKind> InputBaseState<M> {
     #[inline]
     pub fn is_code_editor(&self) -> bool {
         M::CODE_EDITOR
+    }
+
+    /// Whether the gutter shows line numbers: an editor's layout or a
+    /// textarea's own switch.
+    pub(crate) fn shows_line_numbers(&self) -> bool {
+        self.mode.line_number() || self.extras.line_number()
     }
 
     /// Whether the user is allowed to copy the selection out.
@@ -10879,6 +10892,21 @@ impl InputBaseState<crate::input::TextareaMode> {
     pub fn auto_grow(mut self, min_rows: usize, max_rows: usize) -> Self {
         self.mode = LayoutMode::auto_grow(min_rows, max_rows);
         self
+    }
+
+    /// Show line numbers in a gutter left of the text. Off by default.
+    ///
+    /// A wrapped line is numbered once, on its first row, and the caret's line
+    /// number is drawn in the text colour.
+    pub fn line_number(mut self, line_number: bool) -> Self {
+        self.extras.line_number = line_number;
+        self
+    }
+
+    /// Show or hide the line-number gutter.
+    pub fn set_line_number(&mut self, line_number: bool, _: &mut Window, cx: &mut Context<Self>) {
+        self.extras.line_number = line_number;
+        cx.notify();
     }
 }
 

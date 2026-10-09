@@ -131,6 +131,12 @@ pub trait InputExtras: Default + 'static {
     fn context_menu_capabilities(&self) -> (bool, bool) {
         (false, false)
     }
+
+    /// Whether the gutter shows line numbers, for a mode that keeps the
+    /// switch here rather than in its layout.
+    fn line_number(&self) -> bool {
+        false
+    }
 }
 
 /// A mode with nothing extra to render.
@@ -369,13 +375,15 @@ impl InputModeKind for InputMode {
 // and editor code, next to the features they dispatch to.
 
 /// What ordinary multi-line text adds on top of the shared engine:
-/// suggestions from an application's provider.
+/// suggestions from an application's provider and an optional line-number
+/// gutter.
 ///
-/// A textarea that offers suggestions stays a textarea: it keeps its own font
-/// and parses nothing, where [`EditorExtras`] carries a language's machinery.
+/// A textarea that offers these stays a textarea: it keeps its own font and
+/// parses nothing, where [`EditorExtras`] carries a language's machinery.
 #[derive(Default)]
 pub struct TextareaExtras {
     pub(crate) suggestions: super::suggestions::Suggestions,
+    pub(crate) line_number: bool,
 }
 
 /// What a code editor adds on top of multi-line text: language features.
