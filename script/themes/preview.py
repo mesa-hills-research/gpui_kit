@@ -61,7 +61,7 @@ def bg_css(tok: kit.Tok) -> str:
 
 
 def syntax_style(theme: dict, name: str) -> dict:
-    raw = ((theme.get("highlight") or {}).get("syntax")) or {}
+    raw = kit.with_aliases(((theme.get("highlight") or {}).get("syntax")) or {}, kit.SYNTAX_ALIASES)
     while True:
         key = "comment_doc" if name == "comment.doc" else name
         if key in raw and isinstance(raw[key], dict) and raw[key].get("color"):
@@ -132,6 +132,9 @@ def _key_for(ref: str, r: kit.Resolved):
         name = ref[1:]
         table = {
             "editor_bg": ("highlight", "editor.background"),
+            "editor_fg": ("highlight", "editor.foreground"),
+            "line_number": ("highlight", "editor.line_number"),
+            "active_line_number": ("highlight", "editor.active_line_number"),
             "active_line": ("highlight", "editor.active_line.background"),
             "gutter": ("highlight", "editor.gutter.background"),
             "gutter_border": ("highlight", "editor.gutter.border"),
@@ -155,7 +158,10 @@ def _sets(theme: dict, where: tuple) -> bool:
     kind, key = where
     hl = theme.get("highlight")
     if kind == "colors":
-        value = (theme.get("colors") or {}).get(key)
+        colors = theme.get("colors") or {}
+        value = colors.get(key)
+        if value is None:
+            value = next((colors[a] for a, k in kit.COLOR_ALIASES.items() if k == key and a in colors), None)
         if not isinstance(value, str):
             return False
         try:
@@ -190,6 +196,7 @@ def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
     dark = r.mode == "dark"
     look = lambda ref: checks.lookup(r, ref)  # noqa: E731
     fg = t["foreground"].color
+    editor_fg = look("@editor_fg")[0]
     editor_bg = look("@editor_bg")[0]
     syn = {}
     for _, line in enumerate(CODE):
@@ -198,7 +205,7 @@ def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
                 c = kit.syntax_color(hl["syntax"], cap)
                 style = syntax_style(theme, cap) if c else {}
                 syn[cap] = {
-                    "c": css(c or fg),
+                    "c": css(c or editor_fg),
                     "i": style.get("font_style") == "italic",
                     "u": style.get("font_style") == "underline",
                     "b": (style.get("font_weight") or 400) >= 600,
@@ -226,7 +233,9 @@ def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
         "tabBar": bg_css(t["tab_bar.background"]), "tab": bg_css(t["tab.background"]),
         "tabFg": css(t["tab.foreground"].color), "tabActive": bg_css(t["tab.active.background"]),
         "tabActiveFg": css(t["tab.active.foreground"].color),
-        "editor": css(editor_bg), "gutter": css(look("@gutter")[0]), "gutterBorder": css(look("@gutter_border")[0]),
+        "editor": css(editor_bg), "editorFg": css(editor_fg), "gutter": css(look("@gutter")[0]),
+        "gutterBorder": css(look("@gutter_border")[0]), "lineNumber": css(look("@line_number")[0]),
+        "activeLineNumber": css(look("@active_line_number")[0]),
         "activeLine": css(look("@active_line")[0]) if look("@active_line") else "transparent",
         "selection": css(look("@selection")[0]), "search": css(look("@search")[0]),
         "caret": css(t["caret"].color),
@@ -379,13 +388,13 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
 .app .tabs div { padding: 0 12px; display: flex; align-items: center; background: var(--tab); color: var(--tabFg);
   border-right: 1px solid var(--border); white-space: nowrap; }
 .app .tabs div.on { background: var(--tabActive); color: var(--tabActiveFg); }
-.app .ed { position: relative; background: var(--editor); font: 11.5px/17px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+.app .ed { position: relative; background: var(--editor); color: var(--editorFg); font: 11.5px/17px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   padding: 4px 0; overflow: hidden; white-space: pre; }
 .app .ln { display: flex; }
 .app .ln.cur { background: var(--activeLine); }
-.app .gut { width: 30px; flex: none; text-align: right; padding-right: 7px; margin-right: 7px; color: var(--muted);
+.app .gut { width: 30px; flex: none; text-align: right; padding-right: 7px; margin-right: 7px; color: var(--lineNumber);
   background: var(--gutter); border-right: 1px solid var(--gutterBorder); }
-.app .ln.cur .gut { color: var(--fg); }
+.app .ln.cur .gut { color: var(--activeLineNumber); }
 .app .sel { background: var(--selection); }
 .app .m { background: var(--search); }
 .app .m.cur { background: var(--search); box-shadow: inset 0 0 0 100px var(--selection); }

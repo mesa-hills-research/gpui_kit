@@ -9,6 +9,7 @@ is judged by the colors that end up on screen, not only by the keys it sets.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,8 +69,8 @@ HIGHLIGHT_KEYS = [
     "hint", "hint.background", "hint.border", "syntax",
 ]
 
-# Keys of `SyntaxColors`. `comment_doc` has no serde rename, so a file has to spell it with an
-# underscore even though the highlighter looks it up as `comment.doc`.
+# Keys of `SyntaxColors`. A file may also spell `comment_doc` as `comment.doc` (see
+# SYNTAX_ALIASES).
 SYNTAX_KEYS = [
     "attribute", "boolean", "comment", "comment_doc", "constant", "constructor", "embedded",
     "emphasis", "emphasis.strong", "enum", "function", "hint", "keyword", "label", "link_text",
@@ -91,8 +92,24 @@ HIGHLIGHT_NAMES = [
     "variant",
 ]
 
-# Keys listed above that the kit is about to read but whose Rust side has not landed yet.
-PENDING_KEYS = {"editor.gutter.border"}
+# Other names theme files use for color keys, as alias -> key (`COLOR_ALIASES` in schema.rs):
+# the names in Zed themes and in earlier default themes. A key a file sets under its own name
+# wins over its alias.
+COLOR_ALIASES = {
+    "link.foreground": "link",
+    "link.hover.foreground": "link.hover",
+    "link.active.foreground": "link.active",
+    "drag_border": "drag.border",
+    "description_list_label.background": "description_list.label.background",
+    "description_list_label.foreground": "description_list.label.foreground",
+    "progress_bar.background": "progress.bar.background",
+    "slider.bar.background": "slider.background",
+    "window_border": "window.border",
+}
+
+# The same for syntax keys (`SYNTAX_ALIASES` in schema.rs). `comment.doc` is the name the
+# highlighter and Zed themes use.
+SYNTAX_ALIASES = {"comment.doc": "comment_doc"}
 
 THEME_KEYS = [
     "is_default", "name", "mode", "font.size", "font.family", "mono_font.family", "mono_font.size",
@@ -199,6 +216,53 @@ def parse_token(value: str) -> Tok:
 # apply_config
 
 
+def with_aliases(values: dict, aliases: dict) -> dict:
+    """`apply_aliases` in schema.rs: move each value set under an alias to its key, unless the
+    file sets that key too."""
+    out = dict(values)
+    for alias, key in aliases.items():
+        if alias in out:
+            value = out.pop(alias)
+            out.setdefault(key, value)
+    return out
+
+
+# The contrast the kit gives text it derives (`TEXT_CONTRAST` in schema.rs).
+TEXT_CONTRAST = 4.5
+
+
+def oklch(L: float, Ch: float, h: float) -> C.RGBA:
+    """The kit's `oklch()`: out-of-gamut channels are clipped one by one."""
+    hr = math.radians(h)
+    return C.from_oklab(L, Ch * math.cos(hr), Ch * math.sin(hr))
+
+
+def readable_text(color: C.RGBA, backgrounds: list, minimum: float) -> C.RGBA:
+    """`readable_text` in color.rs: `color` as text reaching `minimum` contrast on every one of
+    `backgrounds`, made darker or lighter in steps of 0.01 OKLCH lightness when it falls short."""
+
+    def reads(c):
+        return all(C.wcag(c, b) >= minimum for b in backgrounds)
+
+    def worst(c):
+        return min(C.wcag(c, b) for b in backgrounds)
+
+    color = C.blend(backgrounds[0], color)
+    if reads(color):
+        return color
+    darker = worst(C.BLACK) >= worst(C.WHITE)
+    L, Ch, h = C.to_oklch(color)
+    step = -0.01 if darker else 0.01
+    for i in range(1, 101):
+        l = max(0.0, min(1.0, L + step * i))
+        candidate = oklch(l, Ch, h)
+        if reads(candidate):
+            return candidate
+        if l in (0.0, 1.0):
+            break
+    return C.BLACK if darker else C.WHITE
+
+
 def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     """Resolve a theme's `colors` the way `ThemeColor::apply_config` does.
 
@@ -206,6 +270,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     built-in theme itself, where the fallback is gpui's transparent black).
     """
     dark = mode == "dark"
+    colors = with_aliases(colors, COLOR_ALIASES)
     t: dict[str, Tok] = {}
     zero = Tok.solid(C.TRANSPARENT)
 
@@ -245,6 +310,16 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
 
     def mixt(c: C.RGBA, f: float) -> C.RGBA:  # `c.mix_oklab(transparent, f)`
         return C.opacity(c, f)
+
+    def tinted_button(name: str, c: C.RGBA) -> None:
+        """apply_tinted_button!: the color at 20%, 30% and 40%, with text that reads on all three."""
+        prefix = f"button.{name}."
+        bg(prefix + "background", mixt(c, 0.2))
+        bg(prefix + "hover.background", mixt(c, 0.3))
+        bg(prefix + "active.background", mixt(c, 0.4))
+        states = ("background", "hover.background", "active.background")
+        fills = [C.blend(background, t[prefix + state].color) for state in states]
+        col(prefix + "foreground", readable_text(c, fills, TEXT_CONTRAST))
 
     background = bg("background")
     for name in ("red", "green", "blue", "magenta", "yellow", "cyan"):
@@ -291,10 +366,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
             bg(f"{name}.active.background", C.blend(background, C.hsl_darken(c, active_darken)))
         else:
             bg(f"{name}.active.background", C.hsl_darken(c, active_darken))
-        bg(f"button.{name}.background", mixt(c, 0.2))
-        col(f"button.{name}.foreground", c)
-        bg(f"button.{name}.hover.background", mixt(c, 0.3))
-        bg(f"button.{name}.active.background", mixt(c, 0.4))
+        tinted_button(name, c)
 
     accent = bg("accent.background", t["secondary.background"])
     col("accent.foreground", foreground)
@@ -316,10 +388,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     bg("danger.active.background", C.hsl_darken(danger, active_darken))
     col("danger.foreground", primary_fg)
     bg("danger.hover.background", C.blend(background, C.opacity(danger, 0.9)))
-    bg("button.danger.background", mixt(danger, 0.2))
-    col("button.danger.foreground", danger)
-    bg("button.danger.hover.background", mixt(danger, 0.3))
-    bg("button.danger.active.background", mixt(danger, 0.4))
+    tinted_button("danger", danger)
     bg("description_list.label.background", C.blend(background, C.opacity(border, 0.2)))
     col("description_list.label.foreground", t["muted.foreground"].color)
     col("drag.border", C.opacity(primary, 0.65))
@@ -415,7 +484,7 @@ def parse_highlight(hl: dict | None) -> dict:
                 out[key] = C.parse_hex(v)
             except ValueError:
                 pass
-    for key, style in (hl.get("syntax") or {}).items():
+    for key, style in with_aliases(hl.get("syntax") or {}, SYNTAX_ALIASES).items():
         if key in SYNTAX_KEYS and isinstance(style, dict) and isinstance(style.get("color"), str):
             try:
                 out["syntax"][key] = C.parse_hex(style["color"])
@@ -489,7 +558,7 @@ def _struct_keys(source: str, struct: str) -> list[str]:
     keys, rename = [], None
     for line in m.group(1).splitlines():
         line = line.strip()
-        r = re.match(r'#\[serde\(rename = "([^"]+)"\)\]', line)
+        r = re.match(r'#\[serde\(.*\brename = "([^"]+)"', line)
         if r:
             rename = r.group(1)
             continue
@@ -504,12 +573,20 @@ def _struct_keys(source: str, struct: str) -> list[str]:
     return keys
 
 
-def keys_from_source() -> dict[str, list[str]]:
+def _aliases(source: str, const: str) -> dict[str, str]:
+    m = re.search(r"const " + const + r"\b[^=]*=\s*\[(.*?)\];", source, re.S)
+    return dict(re.findall(r'\(\s*"([^"]+)",\s*"([^"]+)",?\s*\)', m.group(1))) if m else {}
+
+
+def keys_from_source() -> dict:
     schema = (THEME_DIR / "schema.rs").read_text()
     registry = REGISTRY_RS.read_text()
     hl = _struct_keys(registry, "HighlightThemeStyle") + _struct_keys(registry, "StatusColors")
     return {
+        "theme": _struct_keys(schema, "ThemeConfig"),
         "colors": _struct_keys(schema, "ThemeConfigColors"),
+        "color_aliases": _aliases(schema, "COLOR_ALIASES"),
         "highlight": hl,
         "syntax": _struct_keys(registry, "SyntaxColors"),
+        "syntax_aliases": _aliases(schema, "SYNTAX_ALIASES"),
     }

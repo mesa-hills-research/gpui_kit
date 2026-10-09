@@ -79,6 +79,15 @@ def lookup(r: kit.Resolved, ref: str):
         if name == "editor_bg":
             c = hl.get("editor.background")
             return [c] if c else lookup(r, "@input_bg")
+        if name == "editor_fg":  # text in a code editor
+            c = hl.get("editor.foreground")
+            return [c] if c else [t["foreground"].color]
+        if name == "line_number":
+            c = hl.get("editor.line_number")
+            return [c] if c else [t["muted.foreground"].color]
+        if name == "active_line_number":
+            c = hl.get("editor.active_line_number")
+            return [c] if c else lookup(r, "@editor_fg")
         if name == "gutter":
             c = hl.get("editor.gutter.background")
             return [c] if c else [C.TRANSPARENT]
@@ -198,11 +207,14 @@ def build_checks(r: kit.Resolved) -> list[Check]:
 
     # Editor
     ed = ["@editor_bg"]
-    text("editor.text", "Editor text", "fg:foreground", ed)
-    text("editor.active_line.text", "Editor text on the active line", "fg:foreground", ed + ["@active_line"])
-    text("editor.selection.text", "Selected text", "fg:foreground", ed + ["@selection"])
-    text("editor.search.text", "Text on the current search match", "fg:foreground", ed + ["@search", "@selection"])
-    text("editor.line_number", "Line numbers", "fg:muted.foreground", ed + ["@gutter"], "subtle")
+    active_line = ["@active_line"] if r.highlight.get("editor.active_line.background") else []
+    text("editor.text", "Editor text", "@editor_fg", ed)
+    text("editor.active_line.text", "Editor text on the active line", "@editor_fg", ed + ["@active_line"])
+    text("editor.selection.text", "Selected text", "@editor_fg", ed + ["@selection"])
+    text("editor.search.text", "Text on the current search match", "@editor_fg", ed + ["@search", "@selection"])
+    text("editor.line_number", "Line numbers", "@line_number", ed + ["@gutter"], "subtle")
+    text("editor.active_line_number", "The active line's number", "@active_line_number",
+         ed + ["@gutter"] + active_line, "subtle")
     text("editor.gutter.border", "Gutter separator", "@gutter_border", ed + ["@gutter"], "divider")
     text("editor.caret", "Caret", "fg:caret", ed, "ui")
     fill("editor.selection", "Selection", ["@selection"], ed, "highlight")
@@ -213,7 +225,7 @@ def build_checks(r: kit.Resolved) -> list[Check]:
         text(f"diagnostic.{kind}", f"Diagnostic {kind} underline", f"@status:{kind}", ed, "ui")
 
     # Syntax: one set of checks per distinct color, naming every capture that uses it
-    fg = r.tokens["foreground"].color
+    fg = lookup(r, "@editor_fg")[0]
     groups: dict[tuple, list[str]] = {}
     for name in kit.HIGHLIGHT_NAMES:
         c = kit.syntax_color(r.highlight["syntax"], name)

@@ -32,6 +32,11 @@
     "ThemeConfig": {
       "type": "object",
       "properties": {
+        "is_default": {
+          "description": "Whether this theme is the default theme.",
+          "type": "boolean",
+          "default": false
+        },
         "name": {
           "description": "The name of the theme.",
           "type": "string",
@@ -137,16 +142,124 @@
           "description": "Accordion background color.",
           "type": ["string", "null"]
         },
-        "accordion.hover.background": {
-          "description": "Accordion hover background color.",
-          "type": ["string", "null"]
-        },
         "background": {
           "description": "Default background color.",
           "type": ["string", "null"]
         },
         "border": {
           "description": "Default border color",
+          "type": ["string", "null"]
+        },
+        "button.background": {
+          "description": "Default Button background color.",
+          "type": ["string", "null"]
+        },
+        "button.active.background": {
+          "description": "Default Button active background color.",
+          "type": ["string", "null"]
+        },
+        "button.foreground": {
+          "description": "Default Button text color.",
+          "type": ["string", "null"]
+        },
+        "button.hover.background": {
+          "description": "Default Button hover background color.",
+          "type": ["string", "null"]
+        },
+        "button.danger.background": {
+          "description": "Button danger background color, `danger.background` at 20% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.danger.active.background": {
+          "description": "Button danger active background color, `danger.background` at 40% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.danger.foreground": {
+          "description": "Button danger text color. Defaults to `danger.background`, darkened or lightened until it reaches 4.5:1 contrast on the button in every state.",
+          "type": ["string", "null"]
+        },
+        "button.danger.hover.background": {
+          "description": "Button danger hover background color, `danger.background` at 30% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.info.background": {
+          "description": "Button info background color, `info.background` at 20% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.info.active.background": {
+          "description": "Button info active background color, `info.background` at 40% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.info.foreground": {
+          "description": "Button info text color. Defaults to `info.background`, darkened or lightened until it reaches 4.5:1 contrast on the button in every state.",
+          "type": ["string", "null"]
+        },
+        "button.info.hover.background": {
+          "description": "Button info hover background color, `info.background` at 30% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.primary.background": {
+          "description": "Button primary background color, fallback to `primary.background`.",
+          "type": ["string", "null"]
+        },
+        "button.primary.active.background": {
+          "description": "Button primary active background color, fallback to `primary.active.background`.",
+          "type": ["string", "null"]
+        },
+        "button.primary.foreground": {
+          "description": "Button primary text color, fallback to `primary.foreground`.",
+          "type": ["string", "null"]
+        },
+        "button.primary.hover.background": {
+          "description": "Button primary hover background color, fallback to `primary.hover.background`.",
+          "type": ["string", "null"]
+        },
+        "button.secondary.background": {
+          "description": "Button secondary background color, fallback to `secondary.background`.",
+          "type": ["string", "null"]
+        },
+        "button.secondary.active.background": {
+          "description": "Button secondary active background color, fallback to `secondary.active.background`.",
+          "type": ["string", "null"]
+        },
+        "button.secondary.foreground": {
+          "description": "Button secondary text color, fallback to `secondary.foreground`.",
+          "type": ["string", "null"]
+        },
+        "button.secondary.hover.background": {
+          "description": "Button secondary hover background color, fallback to `secondary.hover.background`.",
+          "type": ["string", "null"]
+        },
+        "button.success.background": {
+          "description": "Button success background color, `success.background` at 20% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.success.active.background": {
+          "description": "Button success active background color, `success.background` at 40% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.success.foreground": {
+          "description": "Button success text color. Defaults to `success.background`, darkened or lightened until it reaches 4.5:1 contrast on the button in every state.",
+          "type": ["string", "null"]
+        },
+        "button.success.hover.background": {
+          "description": "Button success hover background color, `success.background` at 30% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.warning.background": {
+          "description": "Button warning background color, `warning.background` at 20% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.warning.active.background": {
+          "description": "Button warning active background color, `warning.background` at 40% opacity by default.",
+          "type": ["string", "null"]
+        },
+        "button.warning.foreground": {
+          "description": "Button warning text color. Defaults to `warning.background`, darkened or lightened until it reaches 4.5:1 contrast on the button in every state.",
+          "type": ["string", "null"]
+        },
+        "button.warning.hover.background": {
+          "description": "Button warning hover background color, `warning.background` at 30% opacity by default.",
           "type": ["string", "null"]
         },
         "caret": {
@@ -205,12 +318,24 @@
           "description": "Description List label background color.",
           "type": ["string", "null"]
         },
+        "description_list_label.background": {
+          "description": "Another name for `description_list.label.background`. A theme that sets both uses `description_list.label.background`.",
+          "type": ["string", "null"]
+        },
         "description_list.label.foreground": {
           "description": "Description List label foreground color.",
           "type": ["string", "null"]
         },
+        "description_list_label.foreground": {
+          "description": "Another name for `description_list.label.foreground`. A theme that sets both uses `description_list.label.foreground`.",
+          "type": ["string", "null"]
+        },
         "drag.border": {
           "description": "Drag border color.",
+          "type": ["string", "null"]
+        },
+        "drag_border": {
+          "description": "Another name for `drag.border`. A theme that sets both uses `drag.border`.",
           "type": ["string", "null"]
         },
         "drop_target.background": {
@@ -257,12 +382,24 @@
           "description": "Link text color.",
           "type": ["string", "null"]
         },
+        "link.foreground": {
+          "description": "Another name for `link`. A theme that sets both uses `link`.",
+          "type": ["string", "null"]
+        },
         "link.active": {
           "description": "Active link text color.",
           "type": ["string", "null"]
         },
+        "link.active.foreground": {
+          "description": "Another name for `link.active`. A theme that sets both uses `link.active`.",
+          "type": ["string", "null"]
+        },
         "link.hover": {
           "description": "Hover link text color.",
+          "type": ["string", "null"]
+        },
+        "link.hover.foreground": {
+          "description": "Another name for `link.hover`. A theme that sets both uses `link.hover`.",
           "type": ["string", "null"]
         },
         "list.background": {
@@ -323,6 +460,10 @@
         },
         "progress.bar.background": {
           "description": "Progress bar background color.",
+          "type": ["string", "null"]
+        },
+        "progress_bar.background": {
+          "description": "Another name for `progress.bar.background`. A theme that sets both uses `progress.bar.background`.",
           "type": ["string", "null"]
         },
         "ring": {
@@ -395,6 +536,10 @@
         },
         "slider.background": {
           "description": "Slider bar background color.",
+          "type": ["string", "null"]
+        },
+        "slider.bar.background": {
+          "description": "Another name for `slider.background`. A theme that sets both uses `slider.background`.",
           "type": ["string", "null"]
         },
         "slider.thumb.background": {
@@ -497,6 +642,14 @@
           "description": "TitleBar border color.",
           "type": ["string", "null"]
         },
+        "status_bar.background": {
+          "description": "StatusBar background color, use for the bottom status bar.",
+          "type": ["string", "null"]
+        },
+        "status_bar.border": {
+          "description": "StatusBar border color.",
+          "type": ["string", "null"]
+        },
         "warning.background": {
           "description": "Warning background color.",
           "type": ["string", "null"]
@@ -519,6 +672,10 @@
         },
         "window.border": {
           "description": "Window border color.\n\n# Platform specific:\n\nThis is only works on Linux, other platforms we can't change the window border color.",
+          "type": ["string", "null"]
+        },
+        "window_border": {
+          "description": "Another name for `window.border`. A theme that sets both uses `window.border`.",
           "type": ["string", "null"]
         },
         "base.blue": {
@@ -550,6 +707,7 @@
           "type": ["string", "null"]
         },
         "base.magenta.light": {
+          "description": "Base light magenta color.",
           "type": ["string", "null"]
         },
         "base.red": {
@@ -591,6 +749,7 @@
       "type": "object",
       "properties": {
         "editor.background": {
+          "description": "Background of a code editor. Defaults to the input background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -601,6 +760,7 @@
           ]
         },
         "editor.foreground": {
+          "description": "Text in a code editor. Defaults to `foreground`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -611,6 +771,7 @@
           ]
         },
         "editor.active_line.background": {
+          "description": "Band behind the caret's line in a code editor.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -621,6 +782,7 @@
           ]
         },
         "editor.line_number": {
+          "description": "Line numbers. Defaults to `muted.foreground`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -631,6 +793,29 @@
           ]
         },
         "editor.active_line_number": {
+          "description": "The number of the caret's line. Defaults to the editor's text color.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rgba"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "editor.invisible": {
+          "description": "Whitespace markers. Defaults to `muted.foreground`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rgba"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "editor.gutter.background": {
+          "description": "Background of the line-number column. Defaults to the editor's background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -652,6 +837,7 @@
           ]
         },
         "error": {
+          "description": "Color of error diagnostics: underlines and markers. Defaults to `base.red`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -662,6 +848,7 @@
           ]
         },
         "error.background": {
+          "description": "Background of error diagnostics. Defaults to `error` at 20% over the background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -672,6 +859,7 @@
           ]
         },
         "error.border": {
+          "description": "Border of error diagnostics. Defaults to `error`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -682,6 +870,7 @@
           ]
         },
         "warning": {
+          "description": "Color of warning diagnostics: underlines and markers. Defaults to `base.yellow`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -692,6 +881,7 @@
           ]
         },
         "warning.background": {
+          "description": "Background of warning diagnostics. Defaults to `warning` at 20% over the background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -702,6 +892,7 @@
           ]
         },
         "warning.border": {
+          "description": "Border of warning diagnostics. Defaults to `warning`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -712,6 +903,7 @@
           ]
         },
         "info": {
+          "description": "Color of info diagnostics: underlines and markers. Defaults to `base.blue`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -722,6 +914,7 @@
           ]
         },
         "info.background": {
+          "description": "Background of info diagnostics. Defaults to `info` at 20% over the background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -732,6 +925,7 @@
           ]
         },
         "info.border": {
+          "description": "Border of info diagnostics. Defaults to `info`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -742,6 +936,7 @@
           ]
         },
         "success": {
+          "description": "Color of success diagnostics: underlines and markers. Defaults to `base.green`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -752,6 +947,7 @@
           ]
         },
         "success.background": {
+          "description": "Background of success diagnostics. Defaults to `success` at 20% over the background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -762,6 +958,7 @@
           ]
         },
         "success.border": {
+          "description": "Border of success diagnostics. Defaults to `success`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -772,6 +969,7 @@
           ]
         },
         "hint": {
+          "description": "Color of hint diagnostics: underlines and markers. Defaults to `base.cyan`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -782,6 +980,7 @@
           ]
         },
         "hint.background": {
+          "description": "Background of hint diagnostics. Defaults to `hint` at 20% over the background.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -792,6 +991,7 @@
           ]
         },
         "hint.border": {
+          "description": "Border of hint diagnostics. Defaults to `hint`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Rgba"
@@ -802,6 +1002,7 @@
           ]
         },
         "syntax": {
+          "description": "Colors and font styles for syntax highlighting, by capture name.",
           "$ref": "#/$defs/SyntaxColors"
         }
       },
@@ -846,6 +1047,17 @@
           ]
         },
         "comment_doc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThemeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comment.doc": {
+          "description": "Another name for `comment_doc`. A theme that sets both uses `comment_doc`.",
           "anyOf": [
             {
               "$ref": "#/$defs/ThemeStyle"
@@ -1146,6 +1358,16 @@
           ]
         },
         "tag.doctype": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThemeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text.code.span": {
           "anyOf": [
             {
               "$ref": "#/$defs/ThemeStyle"

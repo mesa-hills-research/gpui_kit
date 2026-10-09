@@ -403,7 +403,9 @@ def _src_key(ref: str, resolved: kit.Resolved) -> str | None:
     if ref.startswith("@"):
         name = ref[1:]
         fixed = {
-            "editor_bg": "h:editor.background", "active_line": "h:editor.active_line.background",
+            "editor_bg": "h:editor.background", "editor_fg": "h:editor.foreground",
+            "line_number": "h:editor.line_number", "active_line_number": "h:editor.active_line_number",
+            "active_line": "h:editor.active_line.background",
             "gutter": "h:editor.gutter.background", "gutter_border": "h:editor.gutter.border",
             "selection": "c:selection.background",
             "search": "c:selection.background", "invisible": "h:editor.invisible",

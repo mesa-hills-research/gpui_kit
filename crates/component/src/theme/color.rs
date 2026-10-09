@@ -152,6 +152,67 @@ pub fn oklch(lightness: f32, chroma: f32, hue: f32) -> Hsla {
     rgb.into()
 }
 
+/// The OkLCH lightness, chroma and hue (in degrees) of `color`, the inverse of
+/// [`oklch`].
+pub(crate) fn to_oklch(color: Hsla) -> (f32, f32, f32) {
+    let (lightness, a, b) = oklab::rgb_to_oklab(color.to_rgb());
+    (lightness, a.hypot(b), b.atan2(a).to_degrees())
+}
+
+/// The WCAG 2 contrast ratio of two opaque colors, from 1 to 21.
+pub(crate) fn contrast_ratio(a: Hsla, b: Hsla) -> f32 {
+    fn luminance(color: Hsla) -> f32 {
+        let channel = |c: f32| {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let rgb = color.to_rgb();
+        0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b)
+    }
+
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// `color` as text that reaches `min` contrast on each of the opaque
+/// `backgrounds`. A color that falls short gets darker or lighter, whichever
+/// the backgrounds allow, in steps of 0.01 OkLCH lightness that keep its hue,
+/// ending at black or white.
+pub(crate) fn readable_text(color: Hsla, backgrounds: &[Hsla], min: f32) -> Hsla {
+    let Some(&first) = backgrounds.first() else {
+        return color;
+    };
+    let worst = |text: Hsla| {
+        backgrounds
+            .iter()
+            .map(|background| contrast_ratio(text, *background))
+            .fold(f32::INFINITY, f32::min)
+    };
+
+    let color = first.blend(color);
+    if worst(color) >= min {
+        return color;
+    }
+    let (black, white) = (hsla(0., 0., 0., 1.), hsla(0., 0., 1., 1.));
+    let darker = worst(black) >= worst(white);
+    let (lightness, chroma, hue) = to_oklch(color);
+    let step = if darker { -0.01 } else { 0.01 };
+    for i in 1..=100 {
+        let lightness = (lightness + step * i as f32).clamp(0., 1.);
+        let candidate = oklch(lightness, chroma, hue);
+        if worst(candidate) >= min {
+            return candidate;
+        }
+        if lightness == 0. || lightness == 1. {
+            break;
+        }
+    }
+    if darker { black } else { white }
+}
+
 impl Colorize for Hsla {
     fn opacity(&self, factor: f32) -> Self {
         Self {
@@ -1058,6 +1119,27 @@ mod tests {
         assert!((rgb_1.r - rgb_red.r).abs() < 0.01);
         assert!((rgb_1.g - rgb_red.g).abs() < 0.01);
         assert!((rgb_1.b - rgb_red.b).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_readable_text() {
+        let red = try_parse_color("#ef4444").unwrap();
+        for surface in [hsla(0., 0., 1., 1.), hsla(0., 0., 0.04, 1.)] {
+            let tints = [0.2, 0.3, 0.4].map(|f| surface.blend(red.opacity(f)));
+            let text = readable_text(red, &tints, 4.5);
+            for tint in tints {
+                assert!(contrast_ratio(text, tint) >= 4.5);
+            }
+            // Darker on white and lighter on black, in the same hue.
+            let (lightness, _, hue) = to_oklch(text);
+            let (red_lightness, _, red_hue) = to_oklch(red);
+            assert_eq!(lightness < red_lightness, surface.l > 0.5);
+            assert!((hue - red_hue).abs() < 10., "{hue} vs {red_hue}");
+        }
+
+        // A color that already reads comes back as it is.
+        let black = hsla(0., 0., 0., 1.);
+        assert_eq!(readable_text(black, &[hsla(0., 0., 1., 1.)], 4.5), black);
     }
 
     #[test]

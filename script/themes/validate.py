@@ -83,7 +83,10 @@ def validate(data, schema: dict | None = None) -> tuple[list[str], list[str]]:
                 notes.append(f"{where}: {key!r} is not read by the kit")
         colors = theme.get("colors") or {}
         for key, value in colors.items():
-            if key not in kit.COLOR_KEYS:
+            if key in kit.COLOR_ALIASES and kit.COLOR_ALIASES[key] in colors:
+                notes.append(f"{where}: colors.{key} is ignored, the theme sets colors.{kit.COLOR_ALIASES[key]}")
+                continue
+            if key not in kit.COLOR_KEYS and key not in kit.COLOR_ALIASES:
                 notes.append(f"{where}: colors.{key} is not read by the kit")
                 continue
             if not isinstance(value, str):
@@ -105,9 +108,10 @@ def validate(data, schema: dict | None = None) -> tuple[list[str], list[str]]:
                     errors.append(f"{where}: highlight.{key}: {err}")
         syntax = hl.get("syntax") or {}
         for key, style in syntax.items():
-            if key not in kit.SYNTAX_KEYS:
-                hint = " (spell it comment_doc)" if key == "comment.doc" else ""
-                notes.append(f"{where}: syntax.{key} is not read by the kit{hint}")
+            if key in kit.SYNTAX_ALIASES and kit.SYNTAX_ALIASES[key] in syntax:
+                notes.append(f"{where}: syntax.{key} is ignored, the theme sets syntax.{kit.SYNTAX_ALIASES[key]}")
+            elif key not in kit.SYNTAX_KEYS and key not in kit.SYNTAX_ALIASES:
+                notes.append(f"{where}: syntax.{key} is not read by the kit")
             elif isinstance(style, dict) and isinstance(style.get("color"), str):
                 try:
                     kit.C.parse_hex(style["color"])
