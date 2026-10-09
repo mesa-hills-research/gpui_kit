@@ -63,7 +63,7 @@
 
 mod commands;
 mod common;
-mod cua;
+pub mod cua;
 mod emacs;
 #[cfg(test)]
 pub(crate) mod test;

@@ -24,6 +24,7 @@ pub use context_menu::ContextMenuTarget;
 /// The shared editing engine. Internal to the framework: components reach it
 /// through the concrete state of their control, never across the public API.
 pub(crate) use gpui_base::input::InputBaseState;
+pub use gpui_base::input::cua;
 pub use gpui_base::input::{
     AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
     SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionItemContext,

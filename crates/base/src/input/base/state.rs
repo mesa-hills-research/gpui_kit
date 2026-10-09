@@ -1505,7 +1505,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// `collapsed_intent` is the intent to record when every cursor is
     /// collapsed, which is what makes a run of single-character deletes undo
     /// as one gesture. Deleting a real selection is always atomic.
-    fn delete_selections(
+    pub(super) fn delete_selections(
         &mut self,
         silent: bool,
         collapsed_intent: EditIntent,
@@ -3122,7 +3122,7 @@ impl<M: InputModeKind> InputBaseState<M> {
 
     /// Extend selections with caret affinity, preserving their column anchors even
     /// when vertical movement collapses a selection to a cursor.
-    fn select_all_cursors_to_with_affinity(
+    pub(super) fn select_all_cursors_to_with_affinity(
         &mut self,
         f: impl Fn(&Self, &CursorSelection) -> (usize, bool),
         preserve_column: bool,
@@ -4480,6 +4480,8 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
                 this.child(EditorScrollbar::new(entity.clone()))
             });
 
+        // CUA's commands, for the keys every input follows.
+        let element = super::keymap::cua::register_actions(element, &entity, window);
         // Actions only one mode handles are registered by that mode, where
         // `Self` is concrete enough to name its own entity type.
         M::register_actions(element, &entity, window)

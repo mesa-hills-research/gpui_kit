@@ -359,3 +359,31 @@ one through `keymap_mode_label`, such as `NORMAL` or `INSERT` in Vim, and draws
 the caret as `cursor_shape` says: a block in Vim's normal mode. Observe the
 state to show the label in a status bar. CUA binds the platform's shortcuts,
 and Emacs and Vim bind their basic motions so far.
+
+CUA follows each platform's own text fields, in every input and editor:
+
+| Action | macOS | Windows | Linux |
+|---|---|---|---|
+| Move by word | Option-Left, Option-Right | Ctrl-Left, Ctrl-Right | Ctrl-Left, Ctrl-Right |
+| Line start or end | Cmd-Left, Cmd-Right | Home, End | Home, End |
+| Text start or end | Cmd-Up, Cmd-Down | Ctrl-Home, Ctrl-End | Ctrl-Home, Ctrl-End |
+| Paragraph up or down | Option-Up, Option-Down | Ctrl-Up, Ctrl-Down | Ctrl-Up, Ctrl-Down |
+| Page up or down | Option-Page Up, Option-Page Down | Page Up, Page Down | Page Up, Page Down |
+| Scroll, caret stays | Home, End, Page Up, Page Down | | |
+| Select | Shift with a key above | Shift with a key above | Shift with a key above |
+| Delete a word | Option-Backspace, Option-Delete | Ctrl-Backspace, Ctrl-Delete | Ctrl-Backspace, Ctrl-Delete |
+| Delete to line start or end | Cmd-Backspace, Cmd-Delete | | |
+| Undo | Cmd-Z | Ctrl-Z, Alt-Backspace | Ctrl-Z |
+| Redo | Cmd-Shift-Z | Ctrl-Y, Ctrl-Shift-Z | Ctrl-Shift-Z, Ctrl-Y |
+| Cut, copy, paste | Cmd-X, Cmd-C, Cmd-V | Ctrl-X, Ctrl-C, Ctrl-V | Ctrl-X, Ctrl-C, Ctrl-V |
+| Cut, copy, paste (classic) | | Shift-Delete, Ctrl-Insert, Shift-Insert | Shift-Delete, Ctrl-Insert, Shift-Insert |
+| Select all | Cmd-A | Ctrl-A | Ctrl-A |
+| Find, replace | Cmd-F, Cmd-Option-F | Ctrl-F, Ctrl-H | Ctrl-F, Ctrl-H |
+
+Windows moves by word to the start of each word and stops at line ends, and Linux and macOS move
+to the end of a word going right. On macOS, Shift-Home and Shift-End select to the start and end
+of the text, and the Control keys of every Cocoa text field work too: Ctrl-A, E, F, B, N and P
+move (Shift selects), Ctrl-D and Ctrl-H delete, Ctrl-K cuts to the end of the line and Ctrl-Y puts
+it back, Ctrl-T swaps two characters, Ctrl-O opens a line, Ctrl-V moves a page down and Ctrl-L
+centers the caret. The commands these keys use are in `gpui_kit::component::input::cua`, for an
+application that binds them to other keys.
