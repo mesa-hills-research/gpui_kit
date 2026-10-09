@@ -1,12 +1,14 @@
 # Themes
 
 Theme files live in [`themes/`](../themes) and load through `ThemeRegistry`. The tools in
-[`script/themes`](../script/themes) check a theme's contrast, build themes from small palette
-specs and draw a preview of every theme. They need Python 3.11 or later and nothing else.
+[`script/themes`](../script/themes) check a theme's contrast, fix the colors that fail, build
+themes from small palette specs and draw a preview of every theme. They need Python 3.11 or
+later and nothing else.
 
 ```sh
 python3 script/themes check                     # every file in themes/
 python3 script/themes check themes/macos.json   # one file
+python3 script/themes fix themes/ayu.json       # move the colors that fail until they pass
 python3 script/themes generate                  # rebuild themes from script/themes/palettes/
 python3 script/themes preview -o preview.html   # an HTML page showing every theme
 ```
@@ -73,6 +75,17 @@ selection 1.49, so the minimums sit a little under those.
 The report also gives the APCA lightness contrast (Lc) for text, subtle and ui pairs. It is
 there for comparison, and a theme passes or fails on the WCAG ratios. As a guide, body text
 reads well from Lc 60 and quiet text from Lc 45.
+
+## Fixing a theme
+
+`fix` changes a theme file until every check passes. For each failing pair it works out the
+smallest change of OKLCH lightness, keeping hue and chroma, that makes the pair pass, for the
+color in front and for the one behind it, and takes the cheapest. The color in front goes first
+and a fill behind it next. The background, panels and editor move only when nothing else can,
+and a move that would break a pair that passes counts against it. A translucent fill that no
+lightness makes visible, or that would lose most of its color on the way, gets a little more
+opacity instead. A color the file leaves to a fallback is written into the file when it moves.
+`-n` reports what would change without writing, and `-v` lists every color that moves.
 
 ## Generating themes
 

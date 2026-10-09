@@ -2,6 +2,7 @@
 
     python3 script/themes check [FILES...]      validate theme files and check their contrast
     python3 script/themes generate [SPECS...]   build theme files from palette specs
+    python3 script/themes fix [FILES...]        move the colors that fail a check until they pass
     python3 script/themes preview [-o FILE]     write an HTML page previewing every theme
 
 Run `python3 script/themes <command> --help` for the options.
@@ -133,6 +134,12 @@ def main(argv=None) -> int:
     p.add_argument("--check", action="store_true", help="fail if a generated file differs from the one on disk")
     p.add_argument("-v", "--verbose", action="store_true", help="list every lightness adjustment")
     p.set_defaults(func=lambda a: __import__("generate").cmd_generate(a))
+
+    p = sub.add_parser("fix", help="move the colors that fail a check until they pass")
+    p.add_argument("files", nargs="*", help="theme files or directories (default: themes/)")
+    p.add_argument("-n", "--dry-run", action="store_true", help="report what would change, write nothing")
+    p.add_argument("-v", "--verbose", action="store_true", help="list every color that moves")
+    p.set_defaults(func=lambda a: __import__("fix").cmd_fix(a, theme_files(a.files)))
 
     p = sub.add_parser("preview", help="write an HTML preview of every theme")
     p.add_argument("files", nargs="*", help="theme files or directories (default: themes/)")

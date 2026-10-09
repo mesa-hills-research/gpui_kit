@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "themes"))
 
 import checks  # noqa: E402
 import colors as C  # noqa: E402
+import fix  # noqa: E402
 import generate  # noqa: E402
 import kit  # noqa: E402
 import validate  # noqa: E402
@@ -132,6 +133,46 @@ class KitReplay(unittest.TestCase):
         _, notes = validate.validate(data)
         self.assertTrue(any("link.foreground is ignored" in n for n in notes))
         self.assertTrue(any("comment.doc is ignored" in n for n in notes))
+
+
+class FixingThemes(unittest.TestCase):
+    THEME = {
+        "name": "Faded", "mode": "light",
+        "colors": {
+            "background": "#FFFFFF", "foreground": "#222222", "border": "#E5E5E5",
+            "muted.foreground": "#B0B0B0", "link": "#7AA7E8", "list.active.background": "#3B82F608",
+            "primary.background": "#2563EB", "primary.foreground": "#FFFFFF",
+            "button.hover.background": "linear-gradient(180deg, #FFFFFF, #FFFFFF)",
+        },
+        "highlight": {"editor.background": "#FFFFFF", "syntax": {"comment": {"color": "#C8C8C8"}}},
+    }
+
+    def test_a_fixed_theme_passes_and_keeps_what_passed(self):
+        fixed, changed, failures = fix.fix_theme(self.THEME)
+        self.assertEqual(failures, [])
+        self.assertEqual([r for r in checks.evaluate(kit.resolve_theme(fixed)) if not r.ok], [])
+        for key in ("background", "foreground", "border", "primary.background", "primary.foreground"):
+            self.assertEqual(fixed["colors"][key], self.THEME["colors"][key])
+        self.assertEqual(fixed["highlight"]["editor.background"], "#FFFFFF")
+        # Text that was too light got darker in the same hue.
+        old, new = (C.parse_hex(v) for v in changed["c:link"])
+        self.assertLess(C.to_oklch(new)[0], C.to_oklch(old)[0])
+        self.assertAlmostEqual(C.to_oklch(new)[2], C.to_oklch(old)[2], delta=3)
+        self.assertNotEqual(fixed["highlight"]["syntax"]["comment"]["color"], "#C8C8C8")
+        # A gradient moves as a whole.
+        self.assertTrue(fixed["colors"]["button.hover.background"].startswith("linear-gradient(180deg, #"))
+
+    def test_a_tint_too_faint_for_any_lightness_gets_more_opacity(self):
+        fixed, changed, _ = fix.fix_theme(self.THEME)
+        color = C.parse_hex(fixed["colors"]["list.active.background"])
+        self.assertGreater(color[3], 0x08 / 255)
+        self.assertEqual(C.to_hex(C.with_alpha(color, 1)), "#3B82F6")
+
+    def test_a_passing_theme_is_left_alone(self):
+        spec = generate.load_spec(generate.PALETTES / "macos.toml")
+        theme = generate.generate_family(spec)[0]["themes"][0]
+        fixed, changed, failures = fix.fix_theme(theme)
+        self.assertEqual((fixed, changed, failures), (theme, {}, []))
 
 
 class GeneratedThemes(unittest.TestCase):
