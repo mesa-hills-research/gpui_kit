@@ -55,7 +55,7 @@ pub(in crate::input::keymap) fn bindings(platform: KeymapPlatform) -> Vec<KeyBin
     let pending = |pending: Operator| format!("{operator} && vim_operator == {}", pending.name());
 
     // Typing: the keys every scheme shares, then Vim's.
-    let mut bindings = common::bindings(typing);
+    let mut bindings = common::bindings(platform, typing);
     for escape in ["escape", "ctrl-[", "ctrl-c"] {
         for context in [typing, moving, waiting, command] {
             bindings.push(bind(escape, SwitchToNormalMode, context));

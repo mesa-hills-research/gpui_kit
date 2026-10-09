@@ -62,7 +62,7 @@ on Linux check the macOS and Windows tables too:
 ```rust
 pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
     let cx = Keymap::Emacs.context();
-    let mut bindings = common::bindings(cx);
+    let mut bindings = common::bindings(platform, cx);
     bindings.push(bind("alt-f", MoveToNextWord, cx));
     if platform.is_macos() {
         bindings.push(bind("cmd-c", Copy, cx));
@@ -74,7 +74,8 @@ pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
 The conventions:
 
 - CUA uses Cmd on macOS and Ctrl elsewhere for the system's shortcuts. `platform.primary()` gives
-  the modifier.
+  the modifier. GPUI's `secondary-` would give the modifier of the platform the code runs on, so
+  the tables never use it.
 - Emacs's Meta is Alt on Windows and Linux and Option on macOS, written `alt-` everywhere. On
   macOS, Cmd keeps the clipboard, history and Select All.
 - Vim binds the same keys on every platform.

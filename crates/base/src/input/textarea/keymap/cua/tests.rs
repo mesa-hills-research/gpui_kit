@@ -236,7 +236,8 @@ const ELSEWHERE: &[(&[KeymapPlatform], &str)] = &[
 /// panel, with the action each binds.
 const OUTSIDE: &[(&[KeymapPlatform], &str, &str)] = &[
     (ALL, "escape", "Escape"),
-    (ALL, "secondary-enter", "Enter"),
+    (MAC, "cmd-enter", "Enter"),
+    (PC, "ctrl-enter", "Enter"),
     (ALL, "shift-f10", "ShowContextMenu"),
     (ALL, "menu", "ShowContextMenu"),
     (MAC, "cmd-f", "Search"),

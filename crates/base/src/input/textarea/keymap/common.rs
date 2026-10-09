@@ -4,7 +4,7 @@
 
 use gpui::KeyBinding;
 
-use super::bind;
+use super::{KeymapPlatform, bind};
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
 use crate::input::{
     Backspace, Delete, Enter, Escape, IndentInline, MoveDown, MoveEnd, MoveHome, MoveLeft,
@@ -12,11 +12,12 @@ use crate::input::{
     SelectToStartOfLine, ShowContextMenu,
 };
 
-/// The shared keys, bound in `context`. They are the same on every platform.
+/// The shared keys on `platform`, bound in `context`. They differ only in
+/// the modifier of the secondary Enter, Cmd on macOS and Ctrl elsewhere.
 ///
 /// A scheme puts them in its table with its own context, or in a narrower one
 /// such as Vim's insert mode.
-pub(super) fn bindings(context: &str) -> Vec<KeyBinding> {
+pub(super) fn bindings(platform: KeymapPlatform, context: &str) -> Vec<KeyBinding> {
     vec![
         bind("backspace", Backspace, context),
         bind("shift-backspace", Backspace, context),
@@ -39,7 +40,7 @@ pub(super) fn bindings(context: &str) -> Vec<KeyBinding> {
             context,
         ),
         bind(
-            "secondary-enter",
+            &format!("{}-enter", platform.primary()),
             Enter {
                 secondary: true,
                 shift: false,

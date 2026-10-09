@@ -77,12 +77,20 @@ fn the_tables_differ_only_in_macos_cmd_keys() {
     assert_eq!(linux, keys(&bindings(KeymapPlatform::Windows)));
     let mac = keys(&bindings(KeymapPlatform::MacOS));
     let cmd: Vec<String> = mac.into_iter().filter(|key| !linux.contains(key)).collect();
-    let expected = ["cmd-a", "cmd-c", "cmd-x", "cmd-v", "cmd-z", "cmd-shift-z"]
-        .map(|key| gpui::Keystroke::parse(key).unwrap().unparse());
+    let expected = [
+        "cmd-enter",
+        "cmd-a",
+        "cmd-c",
+        "cmd-x",
+        "cmd-v",
+        "cmd-z",
+        "cmd-shift-z",
+    ]
+    .map(|key| gpui::Keystroke::parse(key).unwrap().unparse());
     assert_eq!(cmd, expected);
 
     // Past the shared keys it rebinds, Emacs binds each key once.
-    let shared = common::bindings(Keymap::Emacs.context()).len();
+    let shared = common::bindings(KeymapPlatform::MacOS, Keymap::Emacs.context()).len();
     let mut own = keys(&bindings(KeymapPlatform::MacOS)[shared..]);
     own.sort();
     let count = own.len();

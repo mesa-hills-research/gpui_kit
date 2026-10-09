@@ -159,7 +159,7 @@ fn meta<A: Action + Clone>(bindings: &mut Vec<KeyBinding>, key: &str, action: A,
 /// Emacs's bindings on `platform`.
 pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
     let cx = Keymap::Emacs.context();
-    let mut bindings = common::bindings(cx);
+    let mut bindings = common::bindings(platform, cx);
 
     // Control keys, and the arrows, Home, End and the page keys, which extend
     // the region as Emacs's motions do.

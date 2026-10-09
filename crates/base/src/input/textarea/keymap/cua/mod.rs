@@ -42,7 +42,7 @@ pub use commands::{
 /// CUA's bindings on `platform`.
 pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
     let cx = Keymap::Cua.context();
-    let mut bindings = common::bindings(cx);
+    let mut bindings = common::bindings(platform, cx);
     let primary = platform.primary();
 
     match platform {
