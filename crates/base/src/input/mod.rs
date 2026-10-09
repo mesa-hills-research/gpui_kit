@@ -69,6 +69,8 @@ mod rope_ext;
 mod search;
 #[path = "base/selection.rs"]
 mod selection;
+#[path = "textarea/spelling.rs"]
+mod spelling;
 #[path = "base/state.rs"]
 mod state;
 #[path = "textarea/suggestion_menu.rs"]
@@ -128,6 +130,10 @@ pub use native::{NativeMenu, NativeMenuItem};
 pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use search::{SearchMatcher, SearchSession};
+pub use spelling::{
+    AddToDictionary, IgnoreMisspelling, Misspelling, ReplaceMisspelling, SpellCheck,
+    SpellCheckRequest, SpellChecker, SpellEvent, refresh_spelling,
+};
 pub use state::*;
 pub use suggestion_menu::{SuggestionItemContext, SuggestionItemRenderer, SuggestionMenu};
 pub use suggestions::{

@@ -8,8 +8,8 @@ use super::{InputBaseState, InputModeKind, TextareaExtras, TextareaMode};
 /// facilities such as languages, diagnostics, folding, and LSP do not exist on
 /// this type — those methods live on [`super::EditorState`]. What a textarea
 /// offers instead are suggestions from an application's provider (see
-/// [`super::SuggestionProvider`]), marks (see [`super::Mark`]) and a
-/// line-number gutter.
+/// [`super::SuggestionProvider`]), marks (see [`super::Mark`]), spell checking
+/// (see [`super::SpellChecker`]) and a line-number gutter.
 pub type TextareaState = InputBaseState<TextareaMode>;
 
 impl InputModeKind for TextareaMode {
@@ -32,6 +32,15 @@ impl InputModeKind for TextareaMode {
         cx: &mut gpui::Context<InputBaseState<Self>>,
     ) {
         state.record_suggestion_edit(range, new_len, cx);
+        state.record_spelling_edit(range, new_len, cx);
+    }
+
+    fn on_render(
+        state: &mut InputBaseState<Self>,
+        window: &mut Window,
+        cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+        state.spelling_on_render(window, cx);
     }
 
     fn on_text_typed(
@@ -89,7 +98,8 @@ impl InputModeKind for TextareaMode {
         entity: &Entity<InputBaseState<Self>>,
         window: &mut Window,
     ) -> Stateful<Div> {
-        TextareaState::register_suggestion_actions(element, entity, window)
+        let element = TextareaState::register_suggestion_actions(element, entity, window);
+        TextareaState::register_spelling_actions(element, entity, window)
     }
 }
 

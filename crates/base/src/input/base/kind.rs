@@ -362,6 +362,15 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
     ) {
     }
 
+    /// Runs at the start of every render of the state, before the element
+    /// reads it.
+    fn on_render(
+        _state: &mut InputBaseState<Self>,
+        _window: &mut Window,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+    }
+
     /// Registers the actions that only this mode handles.
     fn register_actions(
         element: Stateful<Div>,
@@ -385,8 +394,8 @@ impl InputModeKind for InputMode {
 // and editor code, next to the features they dispatch to.
 
 /// What ordinary multi-line text adds on top of the shared engine:
-/// suggestions from an application's provider, marks and an optional
-/// line-number gutter.
+/// suggestions from an application's provider, marks, spell checking and an
+/// optional line-number gutter.
 ///
 /// A textarea that offers these stays a textarea: it keeps its own font and
 /// parses nothing, where [`EditorExtras`] carries a language's machinery.
@@ -394,6 +403,7 @@ impl InputModeKind for InputMode {
 pub struct TextareaExtras {
     pub(crate) suggestions: super::suggestions::Suggestions,
     pub(crate) marks: super::marks::Marks,
+    pub(crate) spelling: super::spelling::Spelling,
     pub(crate) line_number: bool,
 }
 
