@@ -14,7 +14,8 @@ use gpui::{
 use super::*;
 use crate::input::{
     CursorShape, Keymap, KeymapPlatform, Redo, SelectAll, SpellCheck, SpellCheckRequest,
-    SpellChecker, Undo, keymap::test::KeymapTest,
+    SpellChecker, Suggestion, SuggestionOptions, SuggestionProvider, SuggestionRequest, Undo,
+    keymap::test::KeymapTest,
 };
 
 /// The width of a character in the test text system.
@@ -704,6 +705,50 @@ fn menus_and_scrolling_follow_the_caret_not_the_glide(cx: &mut TestAppContext) {
     assert_eq!(glider.caret_x(), sample.plan.target_x);
     assert!(sample.plan.target_x < input.right());
     assert!(sample.plan.caret_x < sample.plan.target_x);
+}
+
+/// Completes the word before the caret from a list.
+struct Words(&'static [&'static str]);
+
+impl SuggestionProvider for Words {
+    fn suggestions(
+        &self,
+        request: &SuggestionRequest,
+        _: &mut gpui::Window,
+        _: &mut App,
+    ) -> Task<anyhow::Result<Vec<Suggestion>>> {
+        let before = request.text().slice(..request.offset()).to_string();
+        let word = before.rsplit(' ').next().unwrap_or_default();
+        let start = request.offset() - word.len();
+        Task::ready(Ok(self
+            .0
+            .iter()
+            .filter(|candidate| !word.is_empty() && candidate.starts_with(word))
+            .map(|candidate| Suggestion::new(*candidate).with_range(start..request.offset()))
+            .collect()))
+    }
+}
+
+#[gpui::test]
+fn ghost_text_follows_the_caret(cx: &mut TestAppContext) {
+    let mut glider = Glider::new(cx, "a ˇ end");
+    glider.test.update(|state, _, cx| {
+        state.set_suggestion_provider(Some(Rc::new(Words(&["document"]))), cx);
+        state.set_suggestion_options(SuggestionOptions::default().menu(false).inline(true), cx);
+    });
+    for (typed, ghost) in [("d", "ocument"), ("o", "cument")] {
+        glider.test.type_text(typed);
+        let ghost_text = glider.test.textarea.read_with(&glider.test.cx, |state, _| {
+            state.extras.ghost_text().map(str::to_owned)
+        });
+        assert_eq!(ghost_text.as_deref(), Some(ghost));
+        // The completion offered after the caret is part of the text after
+        // it, and moves with the caret.
+        let sample = glider.gliding();
+        assert_uncovering(&sample);
+        glider.advance(20);
+        assert_uncovering(&glider.gliding());
+    }
 }
 
 #[gpui::test]

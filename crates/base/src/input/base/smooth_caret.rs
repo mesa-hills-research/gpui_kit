@@ -742,7 +742,6 @@ impl<M: InputModeKind> InputBaseState<M> {
             && self.is_multi_line()
             && stamp.simple
             && !self.tokens_visible()
-            && self.extras.ghost_text().is_none()
             && self.extras.caret_offset().is_none())
         .then(|| {
             let point = self.text.offset_to_point(stamp.caret);
