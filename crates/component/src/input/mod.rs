@@ -48,8 +48,8 @@ pub use gpui_base::input::{
     MoveUp, Outdent, OutdentInline, Paste, Point, RangeDecoration, RangeDecorationCollection,
     RangeDecorationStyle, Redo, Replace, Rope, RopeExt, RopeLines, Search, SelectAll, SelectToEnd,
     SelectToEndOfLine, SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart,
-    SelectToStartOfLine, Selection, ShowCharacterPalette, ShowDocumentHandler, TabSize,
-    TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions, Undo,
+    SelectToStartOfLine, Selection, ShowCharacterPalette, ShowDocumentHandler, SmoothCaretOptions,
+    TabSize, TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions, Undo,
     WrappingIndent,
 };
 pub use gpui_base::input::{

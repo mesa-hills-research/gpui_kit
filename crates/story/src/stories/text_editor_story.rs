@@ -147,7 +147,7 @@ impl super::Story for TextEditorStory {
     }
 
     fn description() -> &'static str {
-        "A textarea set up for prose: line numbers, spell checking, completions and CUA, Emacs or Vim keys."
+        "A textarea set up for prose: line numbers, spell checking, completions, a smooth caret and CUA, Emacs or Vim keys."
     }
 
     fn closable() -> bool {
@@ -213,6 +213,7 @@ impl Render for TextEditorStory {
         let position = document.cursor_position();
         let keymap = document.current_keymap();
         let mode = document.keymap_mode_label();
+        let smooth_caret = document.has_smooth_caret();
         v_flex()
             .size_full()
             .gap_3()
@@ -254,6 +255,18 @@ impl Render for TextEditorStory {
                                     document.set_spell_checking(*checked, cx)
                                 });
                                 cx.notify();
+                            })),
+                    )
+                    .child(
+                        Switch::new("smooth-caret")
+                            .small()
+                            .label("Smooth caret")
+                            .checked(smooth_caret)
+                            .on_click(cx.listener(|this, checked: &bool, window, cx| {
+                                this.document.update(cx, |document, cx| {
+                                    document.set_smooth_caret(*checked, cx);
+                                    document.focus(window, cx);
+                                });
                             })),
                     )
                     .child(h_flex().gap_1().children(Keymap::ALL.map(|scheme| {
