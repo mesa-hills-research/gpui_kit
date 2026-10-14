@@ -190,6 +190,12 @@ def from_kit_default(check: checks.Check, theme: dict, r: kit.Resolved) -> bool:
     return False
 
 
+def _radius(theme: dict, key: str, default: float) -> float:
+    """A corner radius the theme sets, or the kit's default when it leaves it out or sets null."""
+    value = theme.get(key)
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else default
+
+
 def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
     r = kit.resolve_theme(theme)
     t, hl = r.tokens, r.highlight
@@ -252,6 +258,7 @@ def theme_data(theme: dict, file_name: str, family: str, new: bool) -> dict:
         "red": css(t["danger.background"].color), "yellow": css(t["warning.background"].color),
         "green": css(t["success.background"].color), "link": css(t["link"].color),
         "thumb": bg_css(t["scrollbar.thumb.background"]), "invisible": css(look("@invisible")[0]),
+        "radius": f"{_radius(theme, 'radius', 6)}px", "radiusLg": f"{_radius(theme, 'radius.lg', 8)}px",
         "shadow": theme.get("shadow", True),
     }
     return {
@@ -379,7 +386,7 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
 .app .body { display: grid; grid-template-columns: clamp(92px, 27%, 150px) 1fr; min-height: 0; }
 .app .side { background: var(--side); color: var(--sideFg); border-right: 1px solid var(--sideBorder); padding: 8px 6px; overflow: hidden; }
 .app .side .label { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 2px 6px 4px; }
-.app .row { padding: 3px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app .row { padding: 3px 6px; border-radius: min(5px, var(--radius)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app .row.active { background: var(--sideActive); color: var(--sideActiveFg); }
 .app .row.hover { background: var(--listHover); }
 .app .row .ic { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
@@ -401,13 +408,13 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
 .app .caret { display: inline-block; width: 2px; height: 14px; background: var(--caret); vertical-align: -3px; margin-left: -1px; }
 .app .thumb { position: absolute; right: 2px; top: 30px; width: 6px; height: 60px; border-radius: 3px; background: var(--thumb); }
 .app .panel { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--bg); }
-.app .btn { padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+.app .btn { padding: 3px 10px; border-radius: var(--radius); border: 1px solid transparent; white-space: nowrap; }
 .app .btn.def { background: var(--btn); color: var(--btnFg); border-color: var(--inputBorder); }
 .app .btn.pri { background: var(--primary); color: var(--primaryFg); border-color: var(--primary); }
 .app .btn.sec { background: var(--secondary); color: var(--secondaryFg); border-color: var(--border); }
 .app .btn.dan { background: var(--danger); color: var(--dangerFg); }
 .app.shadow .btn.def, .app.shadow .inp { box-shadow: 0 1px 2px rgba(0,0,0,.12); }
-.app .inp { flex: 1 1 110px; min-width: 90px; padding: 3px 8px; border-radius: 6px; background: var(--input);
+.app .inp { flex: 1 1 110px; min-width: 90px; padding: 3px 8px; border-radius: var(--radius); background: var(--input);
   border: 1px solid var(--inputBorder); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .app .inp.focus { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 50%, transparent); color: var(--fg); }
 .app .link { color: var(--link); text-decoration: underline; }
@@ -415,8 +422,8 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 
   border-top: 1px solid var(--statusBorder); color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; }
 .app .status .r { margin-left: auto; }
 .app .pop { position: absolute; left: 10px; bottom: 30px; width: 150px; background: var(--pop); color: var(--popFg);
-  border-radius: 8px; padding: 4px; box-shadow: 0 0 0 1px var(--popRing), 0 6px 18px rgba(0,0,0,.18); }
-.app .pop div { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 5px; }
+  border-radius: var(--radiusLg); padding: 4px; box-shadow: 0 0 0 1px var(--popRing), 0 6px 18px rgba(0,0,0,.18); }
+.app .pop div { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: min(5px, var(--radius)); }
 .app .pop div span:last-child { color: var(--muted); }
 .app .pop div.h { background: var(--hover); color: var(--hoverFg); }
 .app .pop hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; }

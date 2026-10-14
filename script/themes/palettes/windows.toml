@@ -1,0 +1,112 @@
+# Windows: Windows 10's flat light and dark modes. Square corners and no control shadows,
+# the system greys from the XAML theme resources (SystemChrome*, SystemBase*, SystemList*),
+# the Windows blue a step darker where white text sits on it, and Visual Studio's classic
+# code colors.
+#
+# The stock accent #0078D7 carries white text at 4.499:1, a hair under 4.5, so fills and
+# blue text use darker or lighter steps of the same blue: #0066CC, the Windows hyperlink
+# color, on fills and on light backgrounds, and SystemAccentColorLight1 #429CE3 for links
+# on the dark background. #0078D7 marks what carries no text: the focus ring, the text
+# selection and selected rows.
+
+family = "Windows"
+file = "windows.json"
+
+[options]
+shadow = false
+radius = 0
+"radius.lg" = 0
+primary_text = "light"
+
+[[themes]]
+name = "Windows Light"
+mode = "light"
+background = "#FFFFFF"        # SystemAltHighColor, the page background
+foreground = "#000000"        # SystemBaseHighColor
+muted = "#666666"             # SystemBaseMediumColor (#99000000) over white
+accent = "#0066CC"            # SystemColorHotlightColor, the hyperlink blue
+ring = "#0078D7"              # SystemAccentColor: the focused text box border
+selection = "#0078D7"
+list_active = "#0078D7"
+link = "#0066CC"
+caret = "#000000"
+sidebar = "#F2F2F2"           # SystemChromeMediumLowColor
+title_bar = "#FFFFFF"
+status_bar = "#F2F2F2"
+tab_bar = "#E6E6E6"           # SystemChromeMediumColor
+popover = "#F2F2F2"           # MenuFlyoutPresenterBackground: SystemChromeMediumLowColor
+control = "#CCCCCC"           # ButtonBackground: SystemBaseLowColor (#33000000) over white
+secondary = "#E6E6E6"
+hover = "#DADADA"             # MenuFlyoutItem pointer-over: SystemListLowColor over the menu
+list_hover = "#E6E6E6"        # ListViewItem pointer-over: SystemListLowColor over white
+sidebar_active = "#C2DAED"    # the accent at 20% over the sidebar
+border = "#CCCCCC"            # SystemChromeHighColor, the menu flyout border
+input_border = "#7A7A7A"      # SystemChromeDisabledLowColor
+scrollbar = "#7A7A7A"         # ScrollBar thumb: SystemChromeDisabledLowColor
+scrollbar_hover = "#666666"
+
+[themes.semantic]             # WinUI's SystemFillColorCritical, Caution and Success
+red = "#C42B1C"
+yellow = "#9D5D00"
+green = "#0F7B0F"
+blue = "#0066CC"
+
+[themes.syntax]               # Visual Studio Light
+keyword = "#0000FF"
+string = "#A31515"
+comment = "#008000"
+type = "#2B91AF"
+number = "#098658"
+constant = "#098658"
+function = "#795E26"
+preproc = "#808080"
+regex = "#811F3F"
+tag = "#800000"
+title = "#800000"
+
+[[themes]]
+name = "Windows Dark"
+mode = "dark"
+background = "#191919"        # SystemListLowColor (#19FFFFFF) over SystemAltHighColor
+foreground = "#FFFFFF"        # SystemBaseHighColor
+muted = "#A3A3A3"             # SystemBaseMediumColor (#99FFFFFF) over the background
+accent = "#0066CC"
+ring = "#0078D7"
+selection = "#0078D7"
+list_active = "#0078D7"
+link = "#429CE3"              # SystemAccentColorLight1
+caret = "#FFFFFF"
+sidebar = "#1F1F1F"           # SystemChromeMediumColor
+title_bar = "#000000"         # SystemAltHighColor, the page background
+status_bar = "#1F1F1F"
+tab_bar = "#2B2B2B"           # SystemChromeMediumLowColor
+popover = "#2B2B2B"           # MenuFlyoutPresenterBackground: SystemChromeMediumLowColor
+control = "#333333"           # ButtonBackground: SystemBaseLowColor (#33FFFFFF) over black
+secondary = "#2B2B2B"
+hover = "#404040"             # MenuFlyoutItem pointer-over: SystemListLowColor over the menu
+list_hover = "#303030"        # ListViewItem pointer-over: SystemListLowColor over the background
+sidebar_active = "#163A56"    # the accent at 30% over the sidebar
+border = "#333333"
+input_border = "#858585"      # SystemChromeDisabledLowColor
+scrollbar = "#858585"         # ScrollBar thumb: SystemChromeDisabledLowColor
+scrollbar_hover = "#A3A3A3"
+
+[themes.semantic]             # WinUI's SystemFillColorCritical, Caution and Success
+red = "#FF99A4"
+yellow = "#FCE100"
+green = "#6CCB5F"
+blue = "#429CE3"
+
+[themes.syntax]               # Visual Studio Dark
+keyword = "#569CD6"
+string = "#D69D85"
+comment = "#57A64A"
+type = "#4EC9B0"
+number = "#B5CEA8"
+constant = "#B5CEA8"
+function = "#DCDCAA"
+preproc = "#9B9B9B"
+regex = "#D16969"
+tag = "#569CD6"
+title = "#569CD6"
+operator = "#B4B4B4"

@@ -156,11 +156,11 @@ foreground moves only when nothing else can, and only the colors that fail move 
 `preview` writes one self-contained HTML page with a small mock app for each theme: title
 bar, sidebar with active and hovered rows, tabs, an editor with line numbers, syntax colors,
 a selection and search matches, buttons, inputs, a menu and a status bar, each drawn from the
-colors the kit resolves. Under each card a line counts the theme's contrast issues and opens
-into a list grouped by part of the interface, with both colors, the ratio and the minimum.
-Each issue is marked as coming from a color the theme sets or from the kit's fallback for a
-key the theme leaves out. Filters at the top switch between generated and other themes and
-between light and dark.
+colors the kit resolves, with the theme's corner radii and shadow setting. Under each card a
+line counts the theme's contrast issues and opens into a list grouped by part of the
+interface, with both colors, the ratio and the minimum. Each issue is marked as coming from a
+color the theme sets or from the kit's fallback for a key the theme leaves out. Filters at the
+top switch between generated and other themes and between light and dark.
 
 ## Generated themes
 
@@ -185,6 +185,7 @@ between light and dark.
 | `ash.json` | Ash | A dim dark grey for people who find dark themes too dark |
 | `reef.json` | Reef Light, Reef Dark | Sunlit aqua shallows or the deep sea |
 | `gazette.json` | Gazette | Newsprint: black ink, headline red, little else |
+| `windows.json` | Windows Light, Windows Dark | Windows 10: flat and square, the system greys, a deeper Windows blue, Visual Studio code colors |
 
 ## Tests
 
