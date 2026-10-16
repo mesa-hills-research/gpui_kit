@@ -110,7 +110,8 @@ impl ThemeRegistry {
     /// Its `*.json` files are read and parsed on a background thread, now
     /// and whenever a file in it changes, and replace the bundled themes of
     /// the same name (ignoring case). `on_load` runs once, after the first
-    /// read. The folder is created if it is missing.
+    /// read. The folder is created if it is missing. In tests, use
+    /// [`ThemeRegistry::load_dir`], which doesn't start a watcher thread.
     #[cfg(not(target_family = "wasm"))]
     pub fn watch_dir<F>(themes_dir: PathBuf, cx: &mut App, on_load: F) -> Result<()>
     where
@@ -136,6 +137,32 @@ impl ThemeRegistry {
         .detach();
 
         Ok(())
+    }
+
+    /// Read a folder of theme files once, without watching it, on a
+    /// background thread, then run `on_load`. The themes replace bundled
+    /// ones as [`ThemeRegistry::watch_dir`]'s do.
+    ///
+    /// Use it where hot reload isn't wanted, and in tests: the watcher
+    /// `watch_dir` starts runs on a thread of its own, which a
+    /// `#[gpui::test]`'s deterministic executor rejects.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn load_dir<F>(themes_dir: PathBuf, cx: &mut App, on_load: F)
+    where
+        F: FnOnce(&mut App) + 'static,
+    {
+        Self::global_mut(cx).themes_dir = themes_dir.clone();
+        cx.spawn(async move |cx| {
+            let themes = cx
+                .background_executor()
+                .spawn(async move { read_themes_dir(&themes_dir) })
+                .await;
+            _ = cx.update(|cx| {
+                Self::global_mut(cx).set_folder_themes(themes);
+                on_load(cx);
+            });
+        })
+        .detach();
     }
 
     /// Add themes the application embeds in its binary.
@@ -522,21 +549,25 @@ mod tests {
     }
 
     #[gpui::test]
-    fn watching_a_folder_loads_it_and_keeps_the_active_theme(cx: &mut TestAppContext) {
-        let dir = ThemesDir::new("watch");
-        dir.write("mine.json", &theme_set(&[("Mine Dark", "dark", "#123456")]));
+    fn loading_a_folder_once_adds_its_themes(cx: &mut TestAppContext) {
+        let dir = ThemesDir::new("load");
+        dir.write("mine.json", &theme_set(&[("Bundled", "light", "#123456")]));
+        let loaded = std::rc::Rc::new(std::cell::Cell::new(false));
         cx.update(|cx| {
             crate::theme::init(cx);
             ThemeRegistry::global_mut(cx)
                 .add_bundled_themes_from_str(&theme_set(&[("Bundled", "light", "#eeeeee")]))
                 .unwrap();
-            ThemeRegistry::watch_dir(dir.0.clone(), cx, |_| {}).unwrap();
+            let loaded = loaded.clone();
+            ThemeRegistry::load_dir(dir.0.clone(), cx, move |_| loaded.set(true));
         });
         cx.run_until_parked();
+        assert!(loaded.get());
         cx.update(|cx| {
-            let registry = ThemeRegistry::global(cx);
-            assert!(registry.theme("Mine Dark").is_some());
-            assert!(registry.theme("Bundled").is_some());
+            assert_eq!(
+                background(ThemeRegistry::global(cx), "Bundled").as_deref(),
+                Some("#123456")
+            );
         });
     }
 }

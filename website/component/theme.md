@@ -107,6 +107,8 @@ ThemeRegistry::watch_dir(user_themes_dir, cx, |cx| { /* apply the saved theme */
 
 Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. The kit's two defaults are never replaced. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case; the folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` last only until the folder next loads.
 
+`ThemeRegistry::load_dir` reads a folder once, the same way, without watching it. Use it where hot reload isn't wanted, and in tests: `watch_dir`'s watcher runs on its own thread, which a `#[gpui::test]`'s deterministic executor rejects.
+
 ## Font overrides
 
 A theme file may name its fonts, and one that names none resets them to the system's. So a font the user picked in the application's settings has to survive every theme switch. Set it as a `FontOverrides` once; `apply_config` puts it back over each theme it applies, in the same update:
