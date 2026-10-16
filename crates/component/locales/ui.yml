@@ -647,6 +647,26 @@ DiffView:
     zh-CN: 没有更改
     zh-HK: 沒有更改
     zh-TW: 沒有變更
+  no_newline:
+    en: No newline at end of file
+    zh-CN: 文件末尾没有换行符
+    zh-HK: 檔案末尾沒有換行符
+    zh-TW: 檔案結尾沒有換行字元
+  more_characters:
+    en: "… %{count} more characters"
+    zh-CN: "… 还有 %{count} 个字符"
+    zh-HK: "… 還有 %{count} 個字元"
+    zh-TW: "… 還有 %{count} 個字元"
+  mode:
+    en: mode %{old} → %{new}
+    zh-CN: 模式 %{old} → %{new}
+    zh-HK: 模式 %{old} → %{new}
+    zh-TW: 模式 %{old} → %{new}
+  binary:
+    en: Binary file
+    zh-CN: 二进制文件
+    zh-HK: 二進位檔案
+    zh-TW: 二進位檔案
 TitleBar:
   minimize:
     en: Minimize

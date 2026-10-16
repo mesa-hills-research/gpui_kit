@@ -1151,6 +1151,34 @@ fn diff_view_dark() {
     goldens().assert("diff-view-dark", &diff_view(ThemeMode::Dark));
 }
 
+fn diff_view_notes(mode: ThemeMode) -> Screenshot {
+    use gpui_kit::component::diff_view::{Diff, DiffViewState};
+    let text = "diff --git a/src/old.rs b/src/new.rs\nsimilarity index 100%\n\
+                rename from src/old.rs\nrename to src/new.rs\n\
+                diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n\
+                diff --git a/logo.png b/logo.png\n\
+                Binary files a/logo.png and b/logo.png differ\n\
+                diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n\
+                @@ -1,2 +1,2 @@\n-first\r\n+first\n-last\n\\ No newline at end of file\n+last\n";
+    let mut app = app(mode);
+    let window = open(&mut app, (480., 220.), SCALE, |_, cx| {
+        Changes(cx.new(|cx| DiffViewState::new(Diff::parse(text), cx)))
+    });
+    app.capture(window).unwrap()
+}
+
+/// A parsed git diff's notes: a rename's two paths, a mode change, a binary file, a line break
+/// changed from CRLF to LF, and a final newline added.
+#[test]
+fn diff_view_notes_light() {
+    goldens().assert("diff-view-notes", &diff_view_notes(ThemeMode::Light));
+}
+
+#[test]
+fn diff_view_notes_dark() {
+    goldens().assert("diff-view-notes-dark", &diff_view_notes(ThemeMode::Dark));
+}
+
 struct Bar;
 
 impl Render for Bar {

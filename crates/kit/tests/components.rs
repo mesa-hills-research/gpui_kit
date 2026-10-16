@@ -229,3 +229,95 @@ fn diff_view_unfolds_unchanged_lines_and_copies_the_diff(cx: &mut TestAppContext
         "{copied:?}"
     );
 }
+
+struct SizedChanges {
+    diff: Entity<gpui_component::diff_view::DiffViewState>,
+    max_rows: usize,
+}
+impl Render for SizedChanges {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(gpui_component::diff_view::DiffView::new(&self.diff).max_rows(self.max_rows))
+    }
+}
+
+/// With `max_rows`, a diff view takes the height of its rows, up to that
+/// many, as a diff inside a list item does. Focused, the arrow keys, Page
+/// Up and Page Down, Home and End scroll it.
+#[gpui::test]
+fn a_diff_view_sizes_to_its_rows_and_scrolls_by_keyboard(cx: &mut TestAppContext) {
+    use gpui_component::diff_view::{Diff, DiffView, DiffViewState};
+    cx.update(gpui_component::init);
+    let small = Diff::between("a.txt", "a\nb\nc\n", "a\nB\nc\n");
+    let old = (1..=60).map(|n| format!("line {n}\n")).collect::<String>();
+    let new = old.replace("line 1\n", "line one\n");
+    let large = Diff::between("b.txt", &old, &new);
+    let (handle, view) = common::open_window(cx, Some(size(px(600.), px(800.))), |_, cx| {
+        let diff = cx.new(|cx| DiffViewState::new(small, cx));
+        cx.new(|_| SizedChanges { diff, max_rows: 10 })
+    });
+    let diff = view.read_with(cx, |view, _| view.diff.clone());
+    let id = ("diff-view", diff.entity_id());
+    let row_height = cx.update(|cx| DiffView::row_height(cx));
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        // The file row, the hunk header, and its four lines.
+        assert_eq!(window.find(id).bounds().size.height, row_height * 6.);
+    })
+    .unwrap();
+
+    diff.update(cx, |diff, cx| {
+        diff.set_diff(large, cx);
+        diff.unfold_all(cx);
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find(id).bounds().size.height, row_height * 10.);
+        window.focus_next(cx);
+        window.render_frame(cx);
+        assert_eq!(window.find(id).focused(), Some(true));
+        let top = window.find(("diff-row", 0usize)).bounds().origin.y;
+
+        window.press("down", cx);
+        window.press("down", cx);
+        let scrolled = window.find(("diff-row", 2usize)).bounds().origin.y;
+        assert_eq!(scrolled, top, "two rows down");
+        window.press("up", cx);
+        assert_eq!(window.find(("diff-row", 1usize)).bounds().origin.y, top);
+        window.press("end", cx);
+        assert!(
+            window.try_find(("diff-row", 0usize)).is_none(),
+            "scrolled to the end"
+        );
+        window.press("home", cx);
+        assert_eq!(window.find(("diff-row", 0usize)).bounds().origin.y, top);
+        window.press("pagedown", cx);
+        assert!(
+            window.try_find(("diff-row", 0usize)).is_none(),
+            "a page down"
+        );
+    })
+    .unwrap();
+}
+
+/// A run of one unchanged line between hunks shows that line, where a
+/// button to show it would take the same row.
+#[gpui::test]
+fn a_one_line_gap_shows_its_line(cx: &mut TestAppContext) {
+    use gpui_component::diff_view::{Diff, DiffViewState};
+    cx.update(gpui_component::init);
+    let old = (1..=9).map(|n| format!("line {n}\n")).collect::<String>();
+    // Changes at lines 1 and 9: their context leaves line 5 between them.
+    let new = old
+        .replace("line 1\n", "line one\n")
+        .replace("line 9\n", "line nine\n");
+    let diff = cx.new(|cx| DiffViewState::new(Diff::between("f.txt", &old, &new), cx));
+    let file = diff.read_with(cx, |diff, _| diff.diff().files()[0].clone());
+    assert_eq!(file.lines().len(), 11);
+    // The file row, the hunks' 1 + 5 and 1 + 5 rows, and line 5 between.
+    assert_eq!(
+        diff.read_with(cx, |diff, _| diff.row_count()),
+        1 + 6 + 1 + 6
+    );
+}

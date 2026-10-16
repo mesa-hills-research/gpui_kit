@@ -91,8 +91,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **A diff view** (`gpui-component`). `DiffView` shows `Diff::between(path, old, new)` or
   `Diff::parse(unified)` with old and new line numbers, added and removed lines on the
   success and danger colors and marked `+`/`-`, hunk headers, syntax colors by extension
-  (computed off the UI thread), unchanged lines that fold and unfold, and a Copy button per
-  file, in a virtualized list. See [Diff View](website/component/diff-view.md).
+  (found off the UI thread, colored at paint), unchanged lines that fold and unfold, line
+  break and final-newline changes, renames, modes and binary files, and a Copy button per
+  file, in a virtualized list that can size to its rows and scrolls by keyboard. See
+  [Diff View](website/component/diff-view.md).
 - **Window chrome per platform** (`gpui-component`). Windows gets Windows 11 caption buttons (46
   px, Segoe Fluent Icons glyphs, the close red, disabled for windows that can't be resized or
   minimized, dimmed while inactive); Linux buttons follow the desktop's button layout, sides and

@@ -19,6 +19,10 @@ impl SyntaxHighlighter {
         Vec::new()
     }
 
+    pub fn highlight_names(&self, _range: &Range<usize>) -> Vec<(Range<usize>, SharedString)> {
+        Vec::new()
+    }
+
     pub fn styles(
         &self,
         range: &Range<usize>,

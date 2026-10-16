@@ -137,6 +137,7 @@ pub fn init(cx: &mut App) {
     gpui_base::init(cx);
     input::init(cx);
     image_viewer::init(cx);
+    diff_view::init(cx);
     date_picker::init(cx);
     dock::init(cx);
     sheet::init(cx);

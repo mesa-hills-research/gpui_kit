@@ -1192,6 +1192,26 @@ impl SyntaxHighlighter {
     /// let range = 0..code.len();
     /// let styles = highlighter.styles(&range, &*theme);
     /// ```
+    /// Returns the highlight names over a range of text, such as `string`
+    /// or `comment`, with their byte ranges relative to the text. Where two
+    /// overlap, the later one is the more specific.
+    ///
+    /// Keep the names and resolve them against the theme as you paint, so
+    /// a theme switch is a repaint rather than another highlight.
+    pub fn highlight_names(&self, range: &Range<usize>) -> Vec<(Range<usize>, SharedString)> {
+        self.match_styles(range.clone())
+            .into_iter()
+            .filter_map(|item| {
+                let start = item.range.start.max(range.start);
+                let end = item.range.end.min(range.end).max(start);
+                // Snapped to char boundaries, as in `styles`.
+                let node_range = self.text.clip_offset(start, Bias::Left)
+                    ..self.text.clip_offset(end, Bias::Right);
+                (!node_range.is_empty() && !item.name.is_empty()).then_some((node_range, item.name))
+            })
+            .collect()
+    }
+
     pub fn styles(
         &self,
         range: &Range<usize>,
