@@ -42,6 +42,8 @@ itertools = "0.13.0"
 lsp-types.workspace = true
 markdown = { version = "1.0.0", features = ["serde"] }
 html5ever = "0.27"
+# Scaling decoded images into thumbnails; the same `image` GPUI decodes with.
+image = { version = "0.25", default-features = false }
 markup5ever_rcdom = "0.3.0"
 num-traits = "0.2"
 ropey.workspace = true
