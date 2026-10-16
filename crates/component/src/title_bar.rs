@@ -6,26 +6,52 @@ use crate::{
 use gpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, WindowOptions, div,
-    prelude::FluentBuilder as _, px,
+    StyleRefinement, Styled, TitlebarOptions, Window, WindowButton, WindowButtonLayout,
+    WindowControlArea, WindowControls as PlatformWindowControls, WindowOptions, div,
+    prelude::FluentBuilder as _, px, rgb,
 };
 use smallvec::SmallVec;
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
-#[cfg(target_os = "macos")]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
-#[cfg(not(target_os = "macos"))]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
+/// Room for macOS's traffic lights at the start of the bar.
+const TRAFFIC_LIGHTS_INSET: Pixels = px(80.);
+/// The bar's leading inset everywhere else.
+const TITLE_BAR_INSET: Pixels = px(12.);
+
+/// The width of a Windows caption button: Windows 11 draws its own 46
+/// pixels wide, the full height of the bar.
+const CAPTION_BUTTON_WIDTH: Pixels = px(46.);
+/// The size of the caption glyphs, as Windows draws them.
+const CAPTION_GLYPH_SIZE: Pixels = px(10.);
+/// The fonts holding Windows' caption glyphs, newest first: Segoe Fluent
+/// Icons on Windows 11, Segoe MDL2 Assets on Windows 10.
+const CAPTION_GLYPH_FONTS: [&str; 2] = ["Segoe Fluent Icons", "Segoe MDL2 Assets"];
+
+/// The bar's leading inset: room for the traffic lights on macOS, except in
+/// full screen, where AppKit hides them.
+fn leading_inset(is_macos: bool, is_fullscreen: bool) -> Pixels {
+    if is_macos && !is_fullscreen {
+        TRAFFIC_LIGHTS_INSET
+    } else {
+        TITLE_BAR_INSET
+    }
+}
 
 /// TitleBar used to customize the appearance of the title bar.
 ///
 /// We can put some elements inside the title bar. It paints the theme's `title_bar` token, one
 /// solid color unless the theme gives it a gradient.
+///
+/// The window buttons follow the platform: macOS keeps its traffic lights;
+/// Windows gets Windows 11 caption buttons; Linux, under client-side
+/// decorations, gets the buttons the compositor supports, on the sides and
+/// in the order the desktop's button layout gives.
 #[derive(IntoElement)]
 pub struct TitleBar {
     style: StyleRefinement,
     children: SmallVec<[AnyElement; 1]>,
     on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+    button_layout: Option<WindowButtonLayout>,
 }
 
 impl TitleBar {
@@ -35,6 +61,7 @@ impl TitleBar {
             style: StyleRefinement::default(),
             children: SmallVec::new(),
             on_close_window: None,
+            button_layout: None,
         }
     }
 
@@ -61,6 +88,13 @@ impl TitleBar {
     ///     ..TitleBar::window_options()
     /// };
     /// ```
+    ///
+    /// On Linux, also set `app_id` to the name of the application's
+    /// `.desktop` file (without `.desktop`), so the compositor groups its
+    /// windows and shows its icon, and ask for client-side decorations with
+    /// `window_decorations: Some(WindowDecorations::Client)` so compositors
+    /// that would draw their own frame (KDE, Sway, X11) leave it to the
+    /// title bar.
     pub fn window_options() -> WindowOptions {
         WindowOptions {
             titlebar: Some(Self::title_bar_options()),
@@ -84,112 +118,216 @@ impl TitleBar {
         }
         self
     }
+
+    /// Place the Linux window buttons as `layout` says, instead of the
+    /// desktop's button layout (GNOME's `button-layout`), for an application
+    /// that lets the user choose. Other platforms ignore it.
+    pub fn button_layout(mut self, layout: WindowButtonLayout) -> Self {
+        self.button_layout = Some(layout);
+        self
+    }
 }
 
-// The Windows control buttons have a fixed width of 35px.
-//
-// We don't need implementation the click event for the control buttons.
-// If user clicked in the bounds, the window event will be triggered.
-#[derive(IntoElement, Clone)]
-enum ControlIcon {
+/// A Windows caption button.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Caption {
     Minimize,
-    Restore,
     Maximize,
-    Close {
-        on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
-    },
+    Restore,
+    Close,
 }
 
-impl ControlIcon {
-    fn minimize() -> Self {
-        Self::Minimize
-    }
-
-    fn restore() -> Self {
-        Self::Restore
-    }
-
-    fn maximize() -> Self {
-        Self::Maximize
-    }
-
-    fn close(on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>) -> Self {
-        Self::Close { on_close_window }
-    }
-
-    fn id(&self) -> &'static str {
+impl Caption {
+    fn id(self) -> &'static str {
         match self {
             Self::Minimize => "minimize",
-            Self::Restore => "restore",
             Self::Maximize => "maximize",
-            Self::Close { .. } => "close",
+            Self::Restore => "restore",
+            Self::Close => "close",
         }
     }
 
-    fn icon(&self) -> IconName {
+    /// The Segoe Fluent Icons / Segoe MDL2 Assets glyph.
+    fn glyph(self) -> &'static str {
+        match self {
+            Self::Minimize => "\u{E921}",
+            Self::Maximize => "\u{E922}",
+            Self::Restore => "\u{E923}",
+            Self::Close => "\u{E8BB}",
+        }
+    }
+
+    /// The icon drawn where neither caption font is installed.
+    fn icon(self) -> IconName {
         match self {
             Self::Minimize => IconName::WindowMinimize,
             Self::Restore => IconName::WindowRestore,
             Self::Maximize => IconName::WindowMaximize,
-            Self::Close { .. } => IconName::WindowClose,
+            Self::Close => IconName::WindowClose,
         }
     }
 
-    fn window_control_area(&self) -> WindowControlArea {
+    fn area(self) -> WindowControlArea {
         match self {
             Self::Minimize => WindowControlArea::Min,
             Self::Restore | Self::Maximize => WindowControlArea::Max,
-            Self::Close { .. } => WindowControlArea::Close,
-        }
-    }
-
-    fn is_close(&self) -> bool {
-        matches!(self, Self::Close { .. })
-    }
-
-    #[inline]
-    fn hover_fg(&self, cx: &App) -> Hsla {
-        if self.is_close() {
-            cx.theme().danger_foreground
-        } else {
-            cx.theme().secondary_foreground
-        }
-    }
-
-    #[inline]
-    fn hover_bg(&self, cx: &App) -> Hsla {
-        if self.is_close() {
-            cx.theme().danger
-        } else {
-            cx.theme().secondary_hover
-        }
-    }
-
-    #[inline]
-    fn active_bg(&self, cx: &mut App) -> Hsla {
-        if self.is_close() {
-            cx.theme().danger_active
-        } else {
-            cx.theme().secondary_active
+            Self::Close => WindowControlArea::Close,
         }
     }
 }
 
-impl RenderOnce for ControlIcon {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let is_linux = cfg!(target_os = "linux");
-        let is_windows = cfg!(target_os = "windows");
-        let hover_fg = self.hover_fg(cx);
-        let hover_bg = self.hover_bg(cx);
-        let active_bg = self.active_bg(cx);
-        let icon = self.clone();
-        let on_close_window = match &self {
-            ControlIcon::Close { on_close_window } => on_close_window.clone(),
-            _ => None,
+/// The colors of a caption button in each state, after Windows 11's caption
+/// buttons: a subtle fill of the foreground on hover and press, the system's
+/// close red behind white on close, dimmed glyphs while the window is
+/// inactive or the button disabled.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CaptionColors {
+    glyph: Hsla,
+    hover_background: Hsla,
+    hover_glyph: Hsla,
+    pressed_background: Hsla,
+    pressed_glyph: Hsla,
+}
+
+impl CaptionColors {
+    fn new(caption: Caption, foreground: Hsla, active: bool, disabled: bool) -> Self {
+        let glyph = if disabled {
+            foreground.opacity(0.3)
+        } else if active {
+            foreground
+        } else {
+            foreground.opacity(0.45)
         };
+        if caption == Caption::Close {
+            // Windows draws the close button's hover in this red whatever the
+            // theme: a platform convention, not the theme's danger color.
+            let red: Hsla = rgb(0xC42B1C).into();
+            let white: Hsla = rgb(0xFFFFFF).into();
+            Self {
+                glyph,
+                hover_background: red,
+                hover_glyph: white,
+                pressed_background: red.opacity(0.9),
+                pressed_glyph: white.opacity(0.7),
+            }
+        } else {
+            Self {
+                glyph,
+                hover_background: foreground.opacity(0.06),
+                hover_glyph: foreground,
+                pressed_background: foreground.opacity(0.04),
+                pressed_glyph: foreground.opacity(0.6),
+            }
+        }
+    }
+}
+
+/// The font that draws Windows' caption glyphs on this machine, if any;
+/// looked up once.
+fn caption_glyph_font(cx: &App) -> Option<&'static str> {
+    static FONT: std::sync::OnceLock<Option<&'static str>> = std::sync::OnceLock::new();
+    *FONT.get_or_init(|| {
+        let installed = cx.text_system().all_font_names();
+        CAPTION_GLYPH_FONTS
+            .into_iter()
+            .find(|font| installed.iter().any(|name| name == font))
+    })
+}
+
+/// A Windows 11 caption button. Windows runs it through the hit-test code
+/// its area answers, so it needs no click handler; a disabled one answers
+/// none and occludes the drag area under it.
+#[derive(IntoElement)]
+struct CaptionButton {
+    caption: Caption,
+    disabled: bool,
+}
+
+impl RenderOnce for CaptionButton {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let caption = self.caption;
+        let colors = CaptionColors::new(
+            caption,
+            cx.theme().foreground,
+            window.is_window_active(),
+            self.disabled,
+        );
+        let glyph_font = caption_glyph_font(cx);
 
         div()
-            .id(self.id())
+            .id(caption.id())
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .w(CAPTION_BUTTON_WIDTH)
+            .h_full()
+            .text_color(colors.glyph)
+            .map(|this| {
+                if self.disabled {
+                    this.occlude()
+                } else {
+                    this.window_control_area(caption.area())
+                        .hover(|style| {
+                            style
+                                .bg(colors.hover_background)
+                                .text_color(colors.hover_glyph)
+                        })
+                        .active(|style| {
+                            style
+                                .bg(colors.pressed_background)
+                                .text_color(colors.pressed_glyph)
+                        })
+                }
+            })
+            .map(|this| match glyph_font {
+                Some(font) => this.child(
+                    div()
+                        .font_family(font)
+                        .text_size(CAPTION_GLYPH_SIZE)
+                        .line_height(CAPTION_GLYPH_SIZE)
+                        .child(caption.glyph()),
+                ),
+                None => this.child(Icon::new(caption.icon()).small()),
+            })
+    }
+}
+
+/// A Linux window button, drawn by the title bar under client-side
+/// decorations.
+#[derive(IntoElement)]
+struct LinuxButton {
+    button: WindowButton,
+    on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+}
+
+impl RenderOnce for LinuxButton {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let is_close = self.button == WindowButton::Close;
+        let (hover_fg, hover_bg, active_bg) = if is_close {
+            (
+                cx.theme().danger_foreground,
+                cx.theme().danger,
+                cx.theme().danger_active,
+            )
+        } else {
+            (
+                cx.theme().secondary_foreground,
+                cx.theme().secondary_hover,
+                cx.theme().secondary_active,
+            )
+        };
+        let (id, icon) = match self.button {
+            WindowButton::Minimize => ("minimize", IconName::WindowMinimize),
+            WindowButton::Maximize if window.is_maximized() => ("restore", IconName::WindowRestore),
+            WindowButton::Maximize => ("maximize", IconName::WindowMaximize),
+            WindowButton::Close => ("close", IconName::WindowClose),
+        };
+        let button = self.button;
+        let on_close_window = self.on_close_window;
+
+        div()
+            .id(id)
             .flex()
             .w(TITLE_BAR_HEIGHT)
             .h_full()
@@ -200,42 +338,95 @@ impl RenderOnce for ControlIcon {
             .text_color(cx.theme().foreground)
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
-            .when(is_windows, |this| {
-                this.window_control_area(self.window_control_area())
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
             })
-            .when(is_linux, |this| {
-                this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    window.prevent_default();
-                    cx.stop_propagation();
-                })
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    match icon {
-                        Self::Minimize => window.minimize_window(),
-                        Self::Restore | Self::Maximize => window.zoom_window(),
-                        Self::Close { .. } => {
-                            if let Some(f) = on_close_window.clone() {
-                                f(&ClickEvent::default(), window, cx);
-                            } else {
-                                window.remove_window();
-                            }
+            .on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                match button {
+                    WindowButton::Minimize => window.minimize_window(),
+                    WindowButton::Maximize => window.zoom_window(),
+                    WindowButton::Close => {
+                        if let Some(f) = on_close_window.clone() {
+                            f(&ClickEvent::default(), window, cx);
+                        } else {
+                            window.remove_window();
                         }
                     }
-                })
+                }
             })
-            .child(Icon::new(self.icon()).small())
+            .child(Icon::new(icon).small())
     }
+}
+
+/// The Linux buttons for each side of the bar: the layout's buttons, in its
+/// order, that the compositor supports. Close is always offered.
+fn linux_buttons(
+    layout: &WindowButtonLayout,
+    supported: PlatformWindowControls,
+) -> [Vec<WindowButton>; 2] {
+    let offered = |button: &WindowButton| match button {
+        WindowButton::Minimize => supported.minimize,
+        WindowButton::Maximize => supported.maximize,
+        WindowButton::Close => true,
+    };
+    [&layout.left, &layout.right].map(|side| {
+        side.iter()
+            .flatten()
+            .filter(|button| offered(button))
+            .copied()
+            .collect()
+    })
+}
+
+/// Which side of the bar a group of window buttons sits on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ControlsSide {
+    Start,
+    End,
 }
 
 #[derive(IntoElement)]
 struct WindowControls {
+    side: ControlsSide,
     on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+    button_layout: Option<WindowButtonLayout>,
 }
 
 impl RenderOnce for WindowControls {
-    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
-        if cfg!(target_os = "macos") || cfg!(target_family = "wasm") {
-            return div().id("window-controls");
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let id = match self.side {
+            ControlsSide::Start => "window-controls-start",
+            ControlsSide::End => "window-controls",
+        };
+        let controls = h_flex().id(id).items_center().flex_shrink_0().h_full();
+
+        if cfg!(target_os = "windows") {
+            if self.side == ControlsSide::Start {
+                return controls;
+            }
+            return controls
+                .child(CaptionButton {
+                    caption: Caption::Minimize,
+                    disabled: !window.is_minimizable(),
+                })
+                .child(CaptionButton {
+                    caption: if window.is_maximized() {
+                        Caption::Restore
+                    } else {
+                        Caption::Maximize
+                    },
+                    disabled: !window.is_resizable(),
+                })
+                .child(CaptionButton {
+                    caption: Caption::Close,
+                    disabled: false,
+                });
+        }
+
+        if !cfg!(target_os = "linux") {
+            return controls;
         }
 
         // Under server-side decorations the window manager already renders
@@ -247,32 +438,26 @@ impl RenderOnce for WindowControls {
         // requested. Skip ours unless this window is actually client-side
         // decorated, mirroring the `is_client_decorated` gating of the
         // title bar's window-menu overlay.
-        #[cfg(target_os = "linux")]
         if !matches!(window.window_decorations(), Decorations::Client { .. }) {
-            return div().id("window-controls");
+            return controls;
         }
 
+        let Some(layout) = self.button_layout.or_else(|| cx.button_layout()) else {
+            return controls;
+        };
         // The window manager declares which controls it can honor; a tiling
         // compositor may support neither minimize nor maximize. Close is
         // always ours to offer.
-        let supported = window.window_controls();
-
-        h_flex()
-            .id("window-controls")
-            .items_center()
-            .flex_shrink_0()
-            .h_full()
-            .when(supported.minimize, |this| {
-                this.child(ControlIcon::minimize())
-            })
-            .when(supported.maximize, |this| {
-                this.child(if window.is_maximized() {
-                    ControlIcon::restore()
-                } else {
-                    ControlIcon::maximize()
-                })
-            })
-            .child(ControlIcon::close(self.on_close_window))
+        let [start, end] = linux_buttons(&layout, window.window_controls());
+        let buttons = match self.side {
+            ControlsSide::Start => start,
+            ControlsSide::End => end,
+        };
+        let on_close_window = self.on_close_window;
+        controls.children(buttons.into_iter().map(|button| LinuxButton {
+            button,
+            on_close_window: on_close_window.clone(),
+        }))
     }
 }
 
@@ -307,6 +492,19 @@ impl RenderOnce for TitleBar {
         let is_macos = cfg!(target_os = "macos");
 
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
+        // Redraw when the desktop's button layout changes.
+        #[cfg(target_os = "linux")]
+        window.use_keyed_state("title-bar-button-layout", cx, |window, _| {
+            window.observe_button_layout_changed(|window, _| window.refresh())
+        });
+        // Buttons at the start sit at the window's edge, as the desktop puts
+        // them.
+        let has_start_buttons = is_linux
+            && is_client_decorated
+            && self
+                .button_layout
+                .or_else(|| cx.button_layout())
+                .is_some_and(|layout| layout.left.iter().any(Option::is_some));
 
         div().flex_shrink_0().child(
             div()
@@ -316,7 +514,9 @@ impl RenderOnce for TitleBar {
                 .items_center()
                 .justify_between()
                 .h(TITLE_BAR_HEIGHT)
-                .pl(TITLE_BAR_LEFT_PADDING)
+                .when(!has_start_buttons, |this| {
+                    this.pl(leading_inset(is_macos, window.is_fullscreen()))
+                })
                 .border_b_1()
                 .border_color(cx.theme().title_bar_border)
                 .bg(cx.theme().tokens.title_bar)
@@ -348,6 +548,13 @@ impl RenderOnce for TitleBar {
                         window.start_window_move();
                     }
                 }))
+                .when(has_start_buttons, |this| {
+                    this.child(WindowControls {
+                        side: ControlsSide::Start,
+                        on_close_window: self.on_close_window.clone(),
+                        button_layout: self.button_layout,
+                    })
+                })
                 .child(
                     h_flex()
                         .id("bar")
@@ -355,10 +562,11 @@ impl RenderOnce for TitleBar {
                         .justify_between()
                         .flex_shrink_0()
                         .flex_1()
+                        .when(has_start_buttons, |this| this.pl_2())
                         .when(!is_web, |this| {
-                            this.window_control_area(WindowControlArea::Drag)
-                                .when(window.is_fullscreen(), |this| this.pl_3())
-                                .when(is_linux && is_client_decorated, |this| {
+                            this.window_control_area(WindowControlArea::Drag).when(
+                                is_linux && is_client_decorated,
+                                |this| {
                                     this.child(
                                         div()
                                             .top_0()
@@ -373,13 +581,79 @@ impl RenderOnce for TitleBar {
                                                 },
                                             ),
                                     )
-                                })
+                                },
+                            )
                         })
                         .children(self.children),
                 )
                 .child(WindowControls {
+                    side: ControlsSide::End,
                     on_close_window: self.on_close_window,
+                    button_layout: self.button_layout,
                 }),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_traffic_lights_inset_drops_in_full_screen() {
+        assert_eq!(leading_inset(true, false), TRAFFIC_LIGHTS_INSET);
+        assert_eq!(leading_inset(true, true), TITLE_BAR_INSET);
+        assert_eq!(leading_inset(false, false), TITLE_BAR_INSET);
+        assert_eq!(leading_inset(false, true), TITLE_BAR_INSET);
+    }
+
+    #[test]
+    fn linux_buttons_follow_the_layout_and_what_the_compositor_supports() {
+        let layout = WindowButtonLayout {
+            left: [
+                Some(WindowButton::Close),
+                Some(WindowButton::Minimize),
+                None,
+            ],
+            right: [Some(WindowButton::Maximize), None, None],
+        };
+        let all = PlatformWindowControls::default();
+        assert_eq!(
+            linux_buttons(&layout, all),
+            [
+                vec![WindowButton::Close, WindowButton::Minimize],
+                vec![WindowButton::Maximize]
+            ]
+        );
+        // A tiling compositor that offers neither keeps only close.
+        let tiling = PlatformWindowControls {
+            minimize: false,
+            maximize: false,
+            ..all
+        };
+        assert_eq!(
+            linux_buttons(&layout, tiling),
+            [vec![WindowButton::Close], vec![]]
+        );
+    }
+
+    #[test]
+    fn caption_buttons_dim_while_inactive_or_disabled_and_close_turns_red() {
+        let foreground: Hsla = rgb(0x1a1a1a).into();
+        let active = CaptionColors::new(Caption::Minimize, foreground, true, false);
+        let inactive = CaptionColors::new(Caption::Minimize, foreground, false, false);
+        let disabled = CaptionColors::new(Caption::Maximize, foreground, true, true);
+        assert_eq!(active.glyph, foreground);
+        assert!(inactive.glyph.a < active.glyph.a);
+        assert!(disabled.glyph.a < inactive.glyph.a);
+        assert!(active.hover_background.a < 0.1, "a subtle fill");
+
+        let close = CaptionColors::new(Caption::Close, foreground, true, false);
+        assert_eq!(close.hover_background, rgb(0xC42B1C).into());
+        assert_eq!(close.hover_glyph, rgb(0xFFFFFF).into());
+        assert!(close.pressed_glyph.a < 1.);
+
+        assert_eq!(Caption::Close.glyph(), "\u{E8BB}");
+        assert_eq!(Caption::Restore.area(), WindowControlArea::Max);
     }
 }

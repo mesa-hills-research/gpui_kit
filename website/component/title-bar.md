@@ -128,24 +128,39 @@ WindowOptions {
 - Uses native traffic light buttons (minimize, maximize, close)
 - Traffic light position is automatically set to `(9px, 9px)`
 - Double-click behavior calls `window.titlebar_double_click()`
-- Left padding accounts for traffic light buttons (80px)
+- Left padding accounts for traffic light buttons (80px), and drops to 12px in full screen, where the traffic lights hide
 - Appears transparent by default
 
 ### Windows
 
-- Custom window control buttons with system integration
-- Uses `WindowControlArea` for proper window management
-- Control buttons have hover and active states
-- Fixed button width of 34px each
+- Windows 11 caption buttons: 46px wide, the full height of the bar, with the Segoe Fluent Icons glyphs (Segoe MDL2 Assets on Windows 10, the kit's icons where neither font is installed)
+- Each answers its system hit-test code through `WindowControlArea`, so Windows runs minimize, maximize and close, and shows the snap layouts flyout on maximize
+- Hover and press fill the button with the foreground at low opacity; close turns Windows' close red with a white glyph
+- Minimize is disabled on windows that can't be minimized, maximize on windows that can't be resized; the glyphs dim while the window is inactive
 - Left padding is 12px
 
 ### Linux
 
-- Custom window control buttons with manual event handling
+- Window buttons only under client-side decorations, and only those the compositor supports
+- Buttons sit on the sides and in the order of the desktop's button layout (GNOME's `button-layout`, which can put close on the left), and follow it when it changes; `button_layout(...)` overrides it
 - Supports custom close window callback via `on_close_window()`
 - Double-click to maximize/restore window
 - Right-click shows window context menu
 - Window dragging supported in title bar area
+
+### Linux: app id and decorations
+
+Set `app_id` in the window options to the name of the application's `.desktop` file, without the extension, so the compositor groups its windows and shows its icon. Ask for client-side decorations everywhere, so compositors that would otherwise draw their own frame above the title bar (KDE, Sway, X11) leave it to the title bar:
+
+```rust
+WindowOptions {
+    app_id: Some("com.example.App".into()),
+    window_decorations: Some(WindowDecorations::Client),
+    ..TitleBar::window_options()
+}
+```
+
+Ship `com.example.App.desktop` (with `StartupWMClass=com.example.App` on X11) and its icon with the application.
 
 ## API Reference
 
@@ -156,6 +171,7 @@ WindowOptions {
 | `new()`               | Create a new title bar                   |
 | `child(element)`      | Add child element to the title bar       |
 | `on_close_window(fn)` | Custom close window handler (Linux only) |
+| `button_layout(layout)` | Place the Linux window buttons by `layout` instead of the desktop's (Linux only) |
 | `title_bar_options()` | Get default titlebar options for window  |
 | `window_options()`    | Get default window options for the title bar |
 
@@ -177,7 +193,7 @@ The `TitleBarElement` provides window dragging functionality on Linux platforms.
 | Constant                 | Value                           | Description               |
 | ------------------------ | ------------------------------- | ------------------------- |
 | `TITLE_BAR_HEIGHT`       | `34px`                          | Standard title bar height |
-| `TITLE_BAR_LEFT_PADDING` | `80px` (macOS), `12px` (others) | Left padding for content  |
+| Left padding             | `80px` (macOS, not in full screen), `12px` (others) | Left padding for content  |
 
 ## Examples
 

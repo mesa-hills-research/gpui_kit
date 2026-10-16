@@ -90,6 +90,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   success and danger colors and marked `+`/`-`, hunk headers, syntax colors by extension
   (computed off the UI thread), unchanged lines that fold and unfold, and a Copy button per
   file, in a virtualized list. See [Diff View](website/component/diff-view.md).
+- **Window chrome per platform** (`gpui-component`). Windows gets Windows 11 caption buttons (46
+  px, Segoe Fluent Icons glyphs, the close red, disabled for windows that can't be resized or
+  minimized, dimmed while inactive); Linux buttons follow the desktop's button layout, sides and
+  order; the macOS inset drops in full screen. See
+  [TitleBar: platform differences](website/component/title-bar.md#platform-differences).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
