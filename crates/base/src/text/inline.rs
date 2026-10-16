@@ -364,8 +364,13 @@ struct RetainedLayout {
 struct RetainedLayouts {
     layouts: HashMap<usize, RetainedLayout>,
     text_bytes: usize,
+    /// The number of entries at which dead entries are swept next.
+    sweep_at_count: usize,
     /// The text bytes at which dead entries are swept next.
     sweep_at_bytes: usize,
+    /// How many sweeps there were.
+    #[cfg(test)]
+    sweeps: usize,
 }
 
 thread_local! {
@@ -373,7 +378,11 @@ thread_local! {
 }
 
 /// Dead entries (states that were dropped without a final paint, e.g. a
-/// replaced document) are swept once the table grows past this many.
+/// replaced document) are swept once the table holds this many entries, or
+/// twice the entries that were live at the last sweep, whichever is more.
+/// Rows a list no longer lays out keep their entries alive, so a long
+/// transcript holds many thousands, and a fixed count swept the whole table
+/// on every insert past it.
 const RETAINED_SWEEP_AT: usize = 4096;
 /// Dead entries are also swept once the table holds this many bytes of
 /// text, or twice the bytes the live entries held at the last sweep,
@@ -391,7 +400,7 @@ impl RetainedLayouts {
     }
 
     fn insert(&mut self, key: usize, retained: RetainedLayout) {
-        if self.layouts.len() >= RETAINED_SWEEP_AT
+        if self.layouts.len() >= self.sweep_at_count.max(RETAINED_SWEEP_AT)
             || self.text_bytes >= self.sweep_at_bytes.max(RETAINED_SWEEP_BYTES)
         {
             self.layouts
@@ -401,7 +410,12 @@ impl RetainedLayouts {
                 .values()
                 .map(|retained| retained.text.len())
                 .sum();
+            self.sweep_at_count = self.layouts.len() * 2;
             self.sweep_at_bytes = self.text_bytes * 2;
+            #[cfg(test)]
+            {
+                self.sweeps += 1;
+            }
         }
         self.text_bytes += retained.text.len();
         if let Some(replaced) = self.layouts.insert(key, retained) {
@@ -2680,5 +2694,53 @@ mod retained_layout_tests {
             dead <= (2 * live).max(super::RETAINED_SWEEP_BYTES),
             "{dead} bytes of dead layouts beside {live} live ones"
         );
+    }
+
+    /// A transcript keeps the states of the rows the reader scrolled past,
+    /// and their layouts with them. Past 4096 live entries the table was
+    /// swept on every insert, so every frame scanned the whole table.
+    #[test]
+    fn many_live_layouts_are_not_swept_on_every_insert() {
+        use super::{InlineState, RetainedLayout, retain_layout};
+        use gpui::{StyledText, TextStyle};
+        use std::sync::{Arc, Mutex};
+
+        fn insert(state: &Arc<Mutex<InlineState>>) {
+            retain_layout(
+                state,
+                RetainedLayout {
+                    state: Arc::downgrade(state),
+                    styled_text: StyledText::new(""),
+                    text: "x".into(),
+                    runs: Vec::new(),
+                    text_style: TextStyle::default(),
+                    code_highlights: None,
+                },
+            );
+        }
+        let reset = || RETAINED_LAYOUTS.with(|layouts| *layouts.borrow_mut() = Default::default());
+        let sweeps = || RETAINED_LAYOUTS.with(|layouts| layouts.borrow().sweeps);
+        let entries = || RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.len());
+
+        reset();
+        let live = (0..12_000)
+            .map(|_| Arc::new(Mutex::new(InlineState::default())))
+            .collect::<Vec<_>>();
+        live.iter().for_each(insert);
+        assert!(
+            sweeps() <= 3,
+            "{} sweeps for 12000 inserts of live layouts",
+            sweeps()
+        );
+        assert_eq!(entries(), 12_000);
+
+        // Dead entries beside them are still swept, once they double the
+        // table.
+        for _ in 0..30_000 {
+            insert(&Arc::new(Mutex::new(InlineState::default())));
+        }
+        assert!(entries() <= 2 * 12_000, "{} entries", entries());
+        drop(live);
+        reset();
     }
 }
