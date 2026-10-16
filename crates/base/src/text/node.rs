@@ -21,8 +21,8 @@ use crate::{
         MarkdownNode, TableActionsFn,
         document::NodeRenderOptions,
         inline::{
-            Inline, InlineHighlight, InlineState, combine_highlights, fade_highlights, text_runs,
-            text_size_ranges,
+            Inline, InlineHighlight, InlineState, InlineStyles, combine_highlights,
+            fade_highlights, text_runs, text_size_ranges,
         },
         inline_flow::{InlineFlow, InlineFlowItem, slice_ranges},
         range_highlight::{RangeHighlightFrame, RevealAt, RevealRequest},
@@ -1793,7 +1793,80 @@ pub struct CodeBlock {
 
 struct CachedCodeBlockHighlights {
     highlighter: Arc<CodeBlockHighlighterFn>,
-    styles: Vec<(Range<usize>, HighlightStyle)>,
+    styles: CodeBlockHighlights,
+}
+
+/// The syntax highlights of a [`CodeBlock`]: byte ranges of
+/// [`CodeBlock::code`] in order, with their styles.
+///
+/// Cloning shares the ranges rather than copying them, so a highlighter can
+/// keep the highlights it hands out and extend them as a block streams in,
+/// and a block renders them every frame without a copy. Each value made by
+/// [`Self::new`] or [`Self::shared`] is told apart from every other, even
+/// one sharing the same ranges, so a highlighter that changes its ranges in
+/// place hands out a new value for them.
+#[derive(Clone, Debug)]
+pub struct CodeBlockHighlights {
+    id: u64,
+    ranges: Arc<Vec<(Range<usize>, HighlightStyle)>>,
+}
+
+impl CodeBlockHighlights {
+    /// Highlights made of `ranges`.
+    pub fn new(ranges: Vec<(Range<usize>, HighlightStyle)>) -> Self {
+        Self::shared(Arc::new(ranges))
+    }
+
+    /// Highlights that share `ranges` with the highlighter that made them.
+    ///
+    /// The highlighter can change them later through [`Arc::make_mut`]: the
+    /// highlights of a code block are dropped with the block, so the ranges
+    /// are usually its alone again by the time the block has grown.
+    pub fn shared(ranges: Arc<Vec<(Range<usize>, HighlightStyle)>>) -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            ranges,
+        }
+    }
+
+    /// Identifies these highlights among all others, for as long as the
+    /// process runs.
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// The highlights without the ranges that do not fit `len` bytes of code.
+    fn within(self, len: usize) -> Self {
+        let fits = |(range, _): &&(Range<usize>, HighlightStyle)| {
+            range.start <= range.end && range.end <= len
+        };
+        if self.ranges.iter().all(|range| fits(&range)) {
+            return self;
+        }
+        Self::new(self.ranges.iter().filter(fits).cloned().collect())
+    }
+}
+
+impl Default for CodeBlockHighlights {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+impl std::ops::Deref for CodeBlockHighlights {
+    type Target = [(Range<usize>, HighlightStyle)];
+
+    fn deref(&self) -> &Self::Target {
+        &self.ranges
+    }
+}
+
+impl From<Vec<(Range<usize>, HighlightStyle)>> for CodeBlockHighlights {
+    fn from(ranges: Vec<(Range<usize>, HighlightStyle)>) -> Self {
+        Self::new(ranges)
+    }
 }
 
 impl std::fmt::Debug for CachedCodeBlockHighlights {
@@ -1879,10 +1952,7 @@ impl CodeBlock {
             .unwrap_or(SourceRangeSelection::Unmapped)
     }
 
-    fn highlighted_styles(
-        &self,
-        highlighter: &Arc<CodeBlockHighlighterFn>,
-    ) -> Vec<(Range<usize>, HighlightStyle)> {
+    fn highlighted_styles(&self, highlighter: &Arc<CodeBlockHighlighterFn>) -> CodeBlockHighlights {
         if let Ok(cache) = self.highlight_cache.lock()
             && let Some(cache) = cache.as_ref()
             && Arc::ptr_eq(&cache.highlighter, highlighter)
@@ -1890,11 +1960,7 @@ impl CodeBlock {
             return cache.styles.clone();
         }
 
-        let code_len = self.code().len();
-        let styles = highlighter(self)
-            .into_iter()
-            .filter(|(range, _)| range.start <= range.end && range.end <= code_len)
-            .collect::<Vec<_>>();
+        let styles = highlighter(self).within(self.code().len());
         if let Ok(mut cache) = self.highlight_cache.lock() {
             *cache = Some(CachedCodeBlockHighlights {
                 highlighter: highlighter.clone(),
@@ -1902,6 +1968,27 @@ impl CodeBlock {
             });
         }
         styles
+    }
+
+    /// The styles the code renders with this frame: the highlights as they
+    /// are kept, unless streamed text is fading in.
+    fn inline_styles(&self, node_cx: &NodeContext, leaf_key: Option<TextLeafKey>) -> InlineStyles {
+        let highlights = node_cx
+            .code_block_highlighter
+            .as_ref()
+            .map(|highlighter| self.highlighted_styles(highlighter))
+            .unwrap_or_default();
+        let fades = node_cx.stream_fades(leaf_key);
+        if fades.is_empty() {
+            return InlineStyles::Code(highlights);
+        }
+        InlineStyles::from(fade_highlights(
+            highlights
+                .iter()
+                .map(|(range, style)| (range.clone(), InlineHighlight::from(*style)))
+                .collect(),
+            fades,
+        ))
     }
 
     pub(super) fn selected_text(&self) -> String {
@@ -1977,17 +2064,7 @@ impl CodeBlock {
                 Inline::new(
                     self.state.clone(),
                     vec![],
-                    fade_highlights(
-                        node_cx
-                            .code_block_highlighter
-                            .as_ref()
-                            .map(|highlighter| self.highlighted_styles(highlighter))
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|(range, style)| (range, InlineHighlight::from(style)))
-                            .collect(),
-                        node_cx.stream_fades(leaf_key),
-                    ),
+                    self.inline_styles(node_cx, leaf_key),
                     node_cx.link_click_handler.clone(),
                 )
                 .range_backgrounds(node_cx.range_backgrounds(leaf_key).to_vec())
@@ -4015,7 +4092,7 @@ mod tests {
         let calls_for_highlighter = calls.clone();
         let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new(move |_| {
             calls_for_highlighter.fetch_add(1, Ordering::Relaxed);
-            Vec::new()
+            CodeBlockHighlights::default()
         });
         let block = CodeBlock::new("fn main() {}".into(), Some("rust".into()), None::<Span>);
 
@@ -4023,7 +4100,7 @@ mod tests {
         block.highlighted_styles(&highlighter);
         assert_eq!(calls.load(Ordering::Relaxed), 1);
 
-        let replacement: Arc<CodeBlockHighlighterFn> = Arc::new(|_| Vec::new());
+        let replacement: Arc<CodeBlockHighlighterFn> = Arc::new(|_| CodeBlockHighlights::default());
         block.highlighted_styles(&replacement);
         assert!(Arc::ptr_eq(
             &block
@@ -4043,22 +4120,22 @@ mod tests {
         // the parsed document is untouched, so the styles must come from the
         // new highlighter rather than from the styles cached for the old one.
         let light: Arc<CodeBlockHighlighterFn> = Arc::new(|_| {
-            vec![(
+            CodeBlockHighlights::new(vec![(
                 0..2,
                 HighlightStyle {
                     color: Some(gpui::rgb(0x0000ff).into()),
                     ..Default::default()
                 },
-            )]
+            )])
         });
         let dark: Arc<CodeBlockHighlighterFn> = Arc::new(|_| {
-            vec![(
+            CodeBlockHighlights::new(vec![(
                 0..2,
                 HighlightStyle {
                     color: Some(gpui::rgb(0xffff00).into()),
                     ..Default::default()
                 },
-            )]
+            )])
         });
         let block = CodeBlock::from_code("42", Some("json"));
 
@@ -4068,6 +4145,30 @@ mod tests {
         assert_eq!(light_styles[0].1.color, Some(gpui::rgb(0x0000ff).into()));
         assert_eq!(dark_styles[0].1.color, Some(gpui::rgb(0xffff00).into()));
         assert_eq!(block.code(), "42", "the document must survive the swap");
+    }
+
+    #[test]
+    fn highlights_that_fit_the_code_are_kept_as_they_are() {
+        let fitting = CodeBlockHighlights::new(vec![(0..2, HighlightStyle::default())]);
+        let id = fitting.id();
+        assert_eq!(
+            fitting.within(2).id(),
+            id,
+            "nothing to drop, nothing copied"
+        );
+
+        let overlong = CodeBlockHighlights::new(vec![
+            (0..2, HighlightStyle::default()),
+            (1..9, HighlightStyle::default()),
+        ]);
+        let kept = overlong.within(4);
+        assert_eq!(
+            kept.iter()
+                .map(|(range, _)| range.clone())
+                .collect::<Vec<_>>(),
+            [0..2]
+        );
+        assert_ne!(kept.id(), id);
     }
 
     #[test]

@@ -72,7 +72,7 @@ pub(crate) fn install_text_view_defaults(theme: &crate::Theme, cx: &mut gpui::Ap
         .with_inherit_text_color(true);
 
     #[cfg(feature = "tree-sitter")]
-    let defaults = defaults.with_code_block_highlighter(component_code_block_highlighter(
+    let defaults = defaults.with_shared_code_block_highlighter(component_code_block_highlighter(
         theme.highlight_theme.clone(),
     ));
 
@@ -82,10 +82,8 @@ pub(crate) fn install_text_view_defaults(theme: &crate::Theme, cx: &mut gpui::Ap
 #[cfg(feature = "tree-sitter")]
 pub(crate) fn component_code_block_highlighter(
     highlight_theme: std::sync::Arc<crate::highlighter::HighlightTheme>,
-) -> impl Fn(&gpui_base::text::CodeBlock) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>
-+ Send
-+ Sync
-+ 'static {
+) -> impl Fn(&gpui_base::text::CodeBlock) -> gpui_base::text::CodeBlockHighlights + Send + Sync + 'static
+{
     move |block| {
         thread_local! {
             static HIGHLIGHTERS: RefCell<HashMap<gpui::SharedString, SyntaxHighlighter>> =
@@ -93,7 +91,7 @@ pub(crate) fn component_code_block_highlighter(
         }
 
         let Some(lang) = block.lang() else {
-            return Vec::new();
+            return Default::default();
         };
         let code = block.code();
         HIGHLIGHTERS.with(|cache| {
@@ -119,16 +117,17 @@ pub(crate) fn component_code_block_highlighter(
                 new_end_position: code_rope.offset_to_point(code.len()),
             };
             highlighter.update_input(Some(edit), &code_rope, None);
-            highlighter.styles(&(0..code.len()), highlight_theme.as_ref())
+            highlighter
+                .styles(&(0..code.len()), highlight_theme.as_ref())
+                .into()
         })
     }
 }
 
 /// The type [`shared_code_block_highlighter`] returns.
 #[cfg(feature = "tree-sitter")]
-pub(crate) type SharedCodeBlockHighlighter = dyn Fn(&gpui_base::text::CodeBlock) -> Vec<(std::ops::Range<usize>, gpui::HighlightStyle)>
-    + Send
-    + Sync;
+pub(crate) type SharedCodeBlockHighlighter =
+    dyn Fn(&gpui_base::text::CodeBlock) -> gpui_base::text::CodeBlockHighlights + Send + Sync;
 
 /// The [`component_code_block_highlighter`] for `highlight_theme`, built once
 /// and handed out again for the same theme.

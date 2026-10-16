@@ -116,6 +116,8 @@ TextView::markdown("highlighted", source).code_block_highlighter(|block| {
 
 范围相对于 `CodeBlock::code()`；无效范围会被丢弃。高亮器实现和语言注册完全由应用管理。
 
+流式输出的代码块每收到一段内容都会成为一个新的 `CodeBlock`，因此每次都重新生成范围列表的高亮器，每段内容都要复制整份列表。会保留结果的高亮器可以改为共享结果：用 `TextViewDefaults::with_shared_code_block_highlighter` 安装它，并返回 `CodeBlockHighlights`，由它自己保留的 `Arc<Vec<_>>` 通过 `CodeBlockHighlights::shared` 构造。代码块变长时，通过 `Arc::make_mut` 修改这个 `Vec`，再为它返回新的 `CodeBlockHighlights`。此时显示旧范围的代码块通常已被释放，所以范围会原地扩展。
+
 ## Markdown 扩展
 
 `MarkdownExtensions` 默认使用兼容 CommonMark/GFM 的解析方式。YAML

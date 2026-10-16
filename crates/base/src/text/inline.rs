@@ -20,6 +20,7 @@ use crate::{
     GlobalState, TextSelection,
     input::Selection,
     text::TextViewMultiClickKind,
+    text::node::CodeBlockHighlights,
     text::node::LinkMark,
     text::range_highlight::RevealAt,
     text::selection::word_range_at,
@@ -141,26 +142,124 @@ pub(super) fn text_runs(
     default_style: &TextStyle,
     highlights: &[(Range<usize>, InlineHighlight)],
 ) -> Vec<TextRun> {
-    let mut runs = Vec::with_capacity(highlights.len() * 2 + 1);
+    runs_from(
+        text_len,
+        default_style,
+        highlights.len(),
+        highlights
+            .iter()
+            .map(|(range, highlight)| (range, &highlight.style, highlight.font_family.as_ref())),
+    )
+}
+
+/// [`text_runs`] for the ranges and styles `highlights` yields, of which
+/// there are `count`.
+fn runs_from<'a>(
+    text_len: usize,
+    default_style: &TextStyle,
+    count: usize,
+    highlights: impl Iterator<
+        Item = (
+            &'a Range<usize>,
+            &'a HighlightStyle,
+            Option<&'a SharedString>,
+        ),
+    >,
+) -> Vec<TextRun> {
+    // Highlights usually leave a few gaps between them, each one more run;
+    // twice their count was a large overestimate for a long code block,
+    // whose highlights cover all of it.
+    let mut runs = Vec::with_capacity(count + count / 8 + 1);
+    let plain = default_style.to_run(0);
+    let plain_run = |len: usize| TextRun {
+        len,
+        ..plain.clone()
+    };
     let mut ix = 0;
-    for (range, highlight) in highlights {
+    for (range, style, font_family) in highlights {
         if ix < range.start {
-            runs.push(default_style.clone().to_run(range.start - ix));
+            runs.push(plain_run(range.start - ix));
         }
-        let mut run = default_style
-            .clone()
-            .highlight(highlight.style)
-            .to_run(range.len());
-        if let Some(family) = &highlight.font_family {
+        let mut run = highlighted_run(&plain, style, range.len());
+        if let Some(family) = font_family {
             run.font.family = family.clone();
         }
         runs.push(run);
         ix = range.end;
     }
     if ix < text_len {
-        runs.push(default_style.to_run(text_len - ix));
+        runs.push(plain_run(text_len - ix));
     }
     runs
+}
+
+/// `plain` with `style` over it, `len` bytes long: the run of
+/// `TextStyle::highlight(style).to_run(len)` for the text style `plain` was
+/// made of, without copying the whole text style for every highlight.
+fn highlighted_run(plain: &TextRun, style: &HighlightStyle, len: usize) -> TextRun {
+    let mut run = TextRun {
+        len,
+        ..plain.clone()
+    };
+    if let Some(weight) = style.font_weight {
+        run.font.weight = weight;
+    }
+    if let Some(font_style) = style.font_style {
+        run.font.style = font_style;
+    }
+    if let Some(color) = style.color {
+        run.color = run.color.blend(color);
+    }
+    if let Some(factor) = style.fade_out {
+        run.color.fade_out(factor);
+    }
+    if let Some(background_color) = style.background_color {
+        run.background_color = Some(background_color);
+    }
+    if let Some(underline) = style.underline {
+        run.underline = Some(underline);
+    }
+    if let Some(strikethrough) = style.strikethrough {
+        run.strikethrough = Some(strikethrough);
+    }
+    run
+}
+
+/// What an [`Inline`] styles its text with.
+pub(super) enum InlineStyles {
+    /// Highlights built for this element.
+    Highlights(Vec<(Range<usize>, InlineHighlight)>),
+    /// A code block's syntax highlights, shared with the block, which keeps
+    /// them between frames.
+    Code(CodeBlockHighlights),
+}
+
+impl InlineStyles {
+    fn runs(&self, text_len: usize, default_style: &TextStyle) -> Vec<TextRun> {
+        match self {
+            Self::Highlights(highlights) => text_runs(text_len, default_style, highlights),
+            Self::Code(highlights) => runs_from(
+                text_len,
+                default_style,
+                highlights.len(),
+                highlights.iter().map(|(range, style)| (range, style, None)),
+            ),
+        }
+    }
+
+    /// The code highlights, when these are the ones of a code block.
+    fn code_highlights_id(&self) -> Option<u64> {
+        match self {
+            Self::Highlights(_) => None,
+            Self::Code(highlights) => Some(highlights.id()),
+        }
+    }
+}
+
+impl From<Vec<(Range<usize>, InlineHighlight)>> for InlineStyles {
+    fn from(highlights: Vec<(Range<usize>, InlineHighlight)>) -> Self {
+        Self::Highlights(highlights)
+    }
 }
 
 /// Splits text into contiguous ranges sharing one font size. GPUI runs can
@@ -199,7 +298,7 @@ pub(super) fn text_size_ranges(
 pub(super) struct Inline {
     text: SharedString,
     links: Rc<Vec<(Range<usize>, LinkMark)>>,
-    highlights: Vec<(Range<usize>, InlineHighlight)>,
+    styles: InlineStyles,
     styled_text: StyledText,
     /// The resolved style from a parent deferred layout, when there is one.
     text_style: Option<TextStyle>,
@@ -213,7 +312,7 @@ pub(super) struct Inline {
     link_click_handler: Option<Arc<LinkClickHandlerFn>>,
     /// What this frame's layout was shaped with, to hand the shaped text to
     /// the next frame (see [`RetainedLayout`]).
-    retained_key: Option<(Vec<TextRun>, TextStyle)>,
+    retained_key: Option<(Vec<TextRun>, TextStyle, Option<u64>)>,
     /// The shaped text is in the table, not in `styled_text`, until paint
     /// takes it back.
     handed_over: bool,
@@ -253,6 +352,10 @@ struct RetainedLayout {
     text: SharedString,
     runs: Vec<TextRun>,
     text_style: TextStyle,
+    /// The [`CodeBlockHighlights::id`] the runs were built from, when they
+    /// were built from a code block's highlights: those are recognized by it
+    /// next frame, without building the runs again to compare them.
+    code_highlights: Option<u64>,
 }
 
 /// The layouts the previous frame left, by the address of their state, with
@@ -356,7 +459,7 @@ impl Inline {
         if self.handed_over || self.retained_key.is_none() || has_retained_layout(&self.state) {
             return;
         }
-        let Some((runs, text_style)) = self.retained_key.take() else {
+        let Some((runs, text_style, code_highlights)) = self.retained_key.take() else {
             return;
         };
         retain_layout(
@@ -367,6 +470,7 @@ impl Inline {
                 text: self.text.clone(),
                 runs,
                 text_style,
+                code_highlights,
             },
         );
         self.handed_over = true;
@@ -382,7 +486,7 @@ impl Inline {
             return false;
         };
         self.styled_text = retained.styled_text;
-        self.retained_key = Some((retained.runs, retained.text_style));
+        self.retained_key = Some((retained.runs, retained.text_style, retained.code_highlights));
         self.handed_over = false;
         true
     }
@@ -390,7 +494,7 @@ impl Inline {
     pub(super) fn new(
         state: Arc<Mutex<InlineState>>,
         links: Vec<(Range<usize>, LinkMark)>,
-        highlights: Vec<(Range<usize>, InlineHighlight)>,
+        styles: impl Into<InlineStyles>,
         link_click_handler: Option<Arc<LinkClickHandlerFn>>,
     ) -> Self {
         let text = state
@@ -400,7 +504,7 @@ impl Inline {
 
         Self {
             links: Rc::new(links),
-            highlights,
+            styles: styles.into(),
             text: text.clone(),
             styled_text: StyledText::new(text),
             text_style: None,
@@ -910,19 +1014,39 @@ impl Element for Inline {
             .text_style
             .clone()
             .unwrap_or_else(|| window.text_style());
-        let runs = text_runs(self.text.len(), &text_style, &self.highlights);
+        let code_highlights = self.styles.code_highlights_id();
+        let retained = take_retained_layout(&self.state);
 
         // Reuse the previous frame's shaped text when it was shaped from the
         // same text, runs and style; `StyledText` consumes its runs on every
-        // layout, so they are handed over again either way.
-        let retained = take_retained_layout(&self.state).filter(|retained| {
-            retained.text == self.text && retained.runs == runs && retained.text_style == text_style
-        });
-        self.styled_text = match retained {
-            Some(retained) => retained.styled_text.with_runs(runs.clone()),
-            None => StyledText::new(self.text.clone()).with_runs(runs.clone()),
+        // layout, so they are handed over again either way. The runs of a
+        // code block's highlights are known by the highlights, so a long
+        // block does not build them again to find them unchanged.
+        let (styled_text, runs) = match retained {
+            Some(retained)
+                if code_highlights.is_some()
+                    && retained.code_highlights == code_highlights
+                    && retained.text_style == text_style
+                    && retained.text == self.text =>
+            {
+                (Some(retained.styled_text), retained.runs)
+            }
+            retained => {
+                let runs = self.styles.runs(self.text.len(), &text_style);
+                let styled_text = retained
+                    .filter(|retained| {
+                        retained.text == self.text
+                            && retained.runs == runs
+                            && retained.text_style == text_style
+                    })
+                    .map(|retained| retained.styled_text);
+                (styled_text, runs)
+            }
         };
-        self.retained_key = Some((runs, text_style));
+        self.styled_text = styled_text
+            .unwrap_or_else(|| StyledText::new(self.text.clone()))
+            .with_runs(runs.clone());
+        self.retained_key = Some((runs, text_style, code_highlights));
         let (layout_id, _) =
             self.styled_text
                 .request_layout(global_element_id, inspector_id, window, cx);
@@ -1997,6 +2121,51 @@ mod tests {
             font_family: Some(SharedString::from("Mono")),
             font_size_scale: None,
         }
+    }
+
+    #[test]
+    fn a_highlighted_run_is_the_run_of_the_highlighted_text_style() {
+        let style = TextStyle {
+            color: gpui::rgb(0x336699).into(),
+            ..Default::default()
+        };
+        let highlight = HighlightStyle {
+            color: Some(gpui::rgba(0xff000080).into()),
+            font_weight: Some(gpui::FontWeight::BOLD),
+            font_style: Some(gpui::FontStyle::Italic),
+            background_color: Some(gpui::rgb(0x00ff00).into()),
+            underline: Some(gpui::UnderlineStyle::default()),
+            strikethrough: Some(gpui::StrikethroughStyle::default()),
+            fade_out: Some(0.25),
+        };
+
+        assert_eq!(
+            super::highlighted_run(&style.to_run(0), &highlight, 7),
+            style.clone().highlight(highlight).to_run(7)
+        );
+        assert_eq!(
+            super::highlighted_run(&style.to_run(0), &HighlightStyle::default(), 3),
+            style.to_run(3)
+        );
+    }
+
+    #[test]
+    fn code_highlights_build_the_runs_their_inline_highlights_build() {
+        let style = TextStyle::default();
+        let bold = HighlightStyle {
+            font_weight: Some(gpui::FontWeight::BOLD),
+            ..Default::default()
+        };
+        let code = vec![(0..2, HighlightStyle::default()), (4..8, bold)];
+        let inline = code
+            .iter()
+            .map(|(range, style)| (range.clone(), InlineHighlight::from(*style)))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            super::InlineStyles::Code(code.into()).runs(12, &style),
+            text_runs(12, &style, &inline)
+        );
     }
 
     #[test]

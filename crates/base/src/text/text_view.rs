@@ -11,7 +11,7 @@ use gpui::{
 use crate::StyledExt;
 use crate::text::TextViewFormat;
 use crate::text::markdown_ext::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
-use crate::text::node::{CodeBlock, TableData};
+use crate::text::node::{CodeBlock, CodeBlockHighlights, TableData};
 use crate::text::range_highlight::{PendingReveal, RevealProgress};
 use crate::text::state::{LineSpan, SelectionFormat, TextViewState};
 use crate::text::stream_fade::TextViewMotion;
@@ -21,8 +21,7 @@ use crate::{GlobalState, TextSelection, text::TextViewStyle};
 pub(crate) type CodeBlockActionsFn =
     dyn Fn(&CodeBlock, &mut Window, &mut App) -> AnyElement + Send + Sync;
 
-pub(crate) type CodeBlockHighlighterFn =
-    dyn Fn(&CodeBlock) -> Vec<(Range<usize>, gpui::HighlightStyle)> + Send + Sync;
+pub(crate) type CodeBlockHighlighterFn = dyn Fn(&CodeBlock) -> CodeBlockHighlights + Send + Sync;
 
 /// Application-wide defaults for TextViews that do not provide explicit
 /// presentation or syntax-highlighting overrides.
@@ -51,6 +50,22 @@ impl TextViewDefaults {
     pub fn with_code_block_highlighter<F>(mut self, highlighter: F) -> Self
     where
         F: Fn(&CodeBlock) -> Vec<(Range<usize>, gpui::HighlightStyle)> + Send + Sync + 'static,
+    {
+        self.code_block_highlighter = Some(Arc::new(move |block: &CodeBlock| {
+            CodeBlockHighlights::new(highlighter(block))
+        }));
+        self
+    }
+
+    /// Sets the syntax highlighter used for fenced code blocks, for one that
+    /// keeps the highlights it hands out (see [`CodeBlockHighlights::shared`]).
+    ///
+    /// A block renders its highlights every frame, and a streamed block is a
+    /// new block for every chunk, so for a long block a highlighter that
+    /// builds a new list of ranges each time copies the whole list per chunk.
+    pub fn with_shared_code_block_highlighter<F>(mut self, highlighter: F) -> Self
+    where
+        F: Fn(&CodeBlock) -> CodeBlockHighlights + Send + Sync + 'static,
     {
         self.code_block_highlighter = Some(Arc::new(highlighter));
         self
@@ -354,7 +369,9 @@ impl TextView {
     where
         F: Fn(&CodeBlock) -> Vec<(Range<usize>, gpui::HighlightStyle)> + Send + Sync + 'static,
     {
-        self.code_block_highlighter = Some(Arc::new(highlighter));
+        self.code_block_highlighter = Some(Arc::new(move |block: &CodeBlock| {
+            CodeBlockHighlights::new(highlighter(block))
+        }));
         self
     }
 
@@ -367,9 +384,7 @@ impl TextView {
     #[doc(hidden)]
     pub fn shared_code_block_highlighter(
         mut self,
-        highlighter: Arc<
-            dyn Fn(&CodeBlock) -> Vec<(Range<usize>, gpui::HighlightStyle)> + Send + Sync,
-        >,
+        highlighter: Arc<dyn Fn(&CodeBlock) -> CodeBlockHighlights + Send + Sync>,
     ) -> Self {
         self.code_block_highlighter = Some(highlighter);
         self
