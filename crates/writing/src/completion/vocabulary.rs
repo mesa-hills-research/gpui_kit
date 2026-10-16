@@ -1105,12 +1105,9 @@ impl Vocabulary {
         }
     }
 
-    /// Loads the vocabulary saved at `path`, to save there from then on.
-    ///
-    /// A file that doesn't parse, such as one cut short, is never written
-    /// over: it is moved aside to a name beside it, and learning starts
-    /// afresh. One that can't be read or moved is left alone, and nothing is
-    /// saved this session.
+    /// Loads the vocabulary saved at `path` on this thread, as
+    /// [`LoadedVocabulary::read`] and [`Self::install`] do.
+    #[cfg(test)]
     pub fn load_from(path: PathBuf, dictionary: Rc<Dictionary>) -> Self {
         let mut vocabulary = Self::with_dictionary(dictionary);
         vocabulary.install(LoadedVocabulary::read(path));

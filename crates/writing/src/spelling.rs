@@ -157,6 +157,7 @@ impl Dictionary {
 
     /// Loads `word_lists` and the user's word list at `user_dictionary`, which
     /// [`Self::add_word`] then appends to, on this thread.
+    #[cfg(test)]
     pub(crate) fn load(word_lists: &[WordList], user_dictionary: Option<PathBuf>) -> Self {
         let words = Words::read(word_lists, user_dictionary.as_deref());
         let dictionary = Self::unloaded(user_dictionary);
