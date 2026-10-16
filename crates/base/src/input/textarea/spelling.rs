@@ -1275,6 +1275,25 @@ mod tests {
         assert_eq!(test.value(), "The methodology is wrdo now.");
     }
 
+    /// A line break from Enter finishes the word before it, which is checked
+    /// at once, as after a space.
+    #[gpui::test]
+    fn a_line_break_checks_the_word_before_it_at_once(cx: &mut TestAppContext) {
+        let checker = Rc::new(WordList::new(WORDS));
+        let mut test = Test::new(cx, checker.clone(), "");
+        for key in "the wrdo".chars() {
+            let end = test.value().len();
+            test.type_at(end, &key.to_string());
+        }
+        assert!(test.marked().is_empty());
+        let checks = checker.requests.borrow().len();
+        test.cx.simulate_keystrokes("enter");
+        test.draw();
+        assert_eq!(test.value(), "the wrdo\n");
+        assert_eq!(test.marked(), ["wrdo"], "marked without a pause");
+        assert_eq!(checker.requests.borrow().len(), checks + 1);
+    }
+
     /// Backspace edits the word at the caret as typing does: after a pause it
     /// is still held back, leaving it checks it at once, and Backspace in an
     /// underlined word takes the underline away.

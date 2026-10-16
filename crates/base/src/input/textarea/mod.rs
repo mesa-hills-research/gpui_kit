@@ -46,6 +46,13 @@ impl InputModeKind for TextareaMode {
         state.spelling_on_render(window, cx);
     }
 
+    fn on_line_break(
+        state: &mut InputBaseState<Self>,
+        cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+        state.spelling_after_typing("\n", cx);
+    }
+
     fn on_text_typed(
         state: &mut InputBaseState<Self>,
         _range: &std::ops::Range<usize>,

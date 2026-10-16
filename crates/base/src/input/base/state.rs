@@ -2021,6 +2021,8 @@ impl<M: InputModeKind> InputBaseState<M> {
                     // Add newline and indent
                     let new_line_text = format!("\n{}", indent);
                     self.replace_text_in_range_silent(None, &new_line_text, window, cx);
+                    // A word finished by the line break is checked at once.
+                    M::on_line_break(self, cx);
                     self.pause_blink_cursor(cx);
                 }
             }

@@ -334,6 +334,14 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
     ) {
     }
 
+    /// Hears that Enter broke a line at the caret, which typing doesn't
+    /// report, as the line break isn't text the input method typed.
+    fn on_line_break(
+        _state: &mut InputBaseState<Self>,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+    }
+
     /// Drops any inline completion after the text or cursor moved.
     fn clear_inline_completion(
         _state: &mut InputBaseState<Self>,
