@@ -1,0 +1,39 @@
+[package]
+name = "gpui-kit-writing"
+description = "Spell checking and learned word suggestions for GPUI Kit text areas."
+keywords = ["gpui", "spellcheck", "autocomplete", "text", "editor"]
+categories = ["gui", "text-processing"]
+license = "Apache-2.0"
+documentation = "https://docs.rs/gpui-kit-writing"
+homepage = "https://gpui-kit.com"
+repository = "https://github.com/longbridge/gpui-kit"
+readme = "README.md"
+# The bundled word list carries its own notice.
+include = ["src/**/*", "assets/**/*", "README.md", "NOTICE"]
+edition.workspace = true
+publish = true
+version = "0.7.1"
+
+[lib]
+doctest = false
+
+[features]
+default = ["english"]
+# The English word list (SCOWL, size 70), as `WordList::English`. About 1.7 MB.
+english = []
+test-support = ["gpui/test-support", "gpui-base/test-support"]
+
+[dependencies]
+anyhow.workspace = true
+gpui.workspace = true
+gpui-base.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+gpui-base = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

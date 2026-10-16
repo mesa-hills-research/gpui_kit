@@ -4045,6 +4045,7 @@ dependencies = [
  "gpui-base",
  "gpui-component",
  "gpui-kit-assets",
+ "gpui-kit-writing",
  "gpui-pre",
  "gpui-pre-platform",
  "gpui-pre-screenshot",
@@ -4072,6 +4073,18 @@ name = "gpui-kit-recipes"
 version = "0.7.1"
 dependencies = [
  "gpui-kit",
+]
+
+[[package]]
+name = "gpui-kit-writing"
+version = "0.7.1"
+dependencies = [
+ "anyhow",
+ "gpui-base",
+ "gpui-pre",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

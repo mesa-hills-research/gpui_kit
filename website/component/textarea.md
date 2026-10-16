@@ -120,6 +120,9 @@ provider decides what to suggest and in which order. The textarea asks it as the
 user types, shows the answer under the word being completed, and handles the
 keys: Up and Down choose, Enter or Tab accept, Escape dismisses.
 
+For word suggestions learned from what the user types, ready to install, see
+[Spell Checking and Word Suggestions](../docs/writing).
+
 ```rust
 use gpui_kit::component::input::{
     RopeExt as _, Suggestion, SuggestionProvider, SuggestionRequest, Textarea, TextareaState,
@@ -235,6 +238,9 @@ Each part also works on its own, on any textarea: `line_number(true)`,
 The application owns the dictionary through a `SpellChecker`: it finds the
 misspelled words, suggests replacements and learns new words. The textarea
 decides when to check, draws the underlines and offers the fixes.
+
+`gpui-kit-writing` has a `SpellChecker` with an English dictionary: see
+[Spell Checking and Word Suggestions](../docs/writing).
 
 ```rust
 use gpui_kit::component::input::{SpellCheck, SpellCheckRequest, SpellChecker};

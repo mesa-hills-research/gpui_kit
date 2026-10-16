@@ -25,6 +25,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   Dictionary and Ignore. Line numbers, marks (underlines that follow the text) and a context menu
   that knows the clicked word work on any textarea. See
   [Textarea: text editor](website/component/textarea.md#text-editor).
+- **Spell checking and learned word suggestions** (`gpui-kit-writing`, feature `writing` on
+  `gpui-kit`). A `Writing` handle loads an English dictionary (SCOWL), the user's own words and
+  a vocabulary learned from what they type, and gives every textarea a spell checker that skips
+  code, paths and URLs, and a suggestion provider that completes the word and predicts the next,
+  paced Off, Quiet or Eager. See [Spell checking and word suggestions](website/docs/writing.md).
 - **Keybinding schemes** (`gpui-base`, `gpui-component`). A textarea follows CUA, Emacs or Vim keys
   and switches between them at run time. CUA binds each platform's own text-field shortcuts in
   every input, Emacs adds the mark, the kill ring and prefix arguments, and Vim its modes,

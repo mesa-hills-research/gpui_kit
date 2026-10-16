@@ -33,28 +33,47 @@ brin = "brin"
 [files]
 extend-exclude = [
     "crates/story/src/fixtures/",
+    # SCOWL's English word list, kept as published.
+    "crates/writing/assets/",
     # tree-sitter-make's query, kept as published.
     "crates/component/src/highlighter/languages/make/highlights.scm",
 ]
 
-# Spell-checking and suggestion tests misspell words on purpose.
+# Spell-checking and suggestion tests misspell words on purpose and type the
+# start of words.
 [type.spelling-tests]
 extend-glob = [
+    "model.rs",
+    "pacing.rs",
     "screenshots.rs",
     "spelling.rs",
     "suggestion_menu.rs",
     "suggestions.rs",
+    "tests.rs",
     "textarea.rs",
 ]
 
 [type.spelling-tests.extend-words]
+accomodate = "accomodate"
+adress = "adress"
+ba = "ba"
+becuase = "becuase"
+definately = "definately"
 hel = "hel"
+hte = "hte"
+occured = "occured"
 recieve = "recieve"
+seperate = "seperate"
 teh = "teh"
+tha = "tha"
+tommorow = "tommorow"
+untill = "untill"
+wierd = "wierd"
 
-# The text editor story's dictionary lists common misspellings.
+# The text editor story's dictionary lists common misspellings, and the
+# writing story's document has some.
 [type.text-editor-story]
-extend-glob = ["text_editor_story.rs"]
+extend-glob = ["text_editor_story.rs", "writing_story.rs"]
 
 [type.text-editor-story.extend-words]
 adress = "adress"

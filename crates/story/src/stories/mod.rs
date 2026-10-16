@@ -84,6 +84,7 @@ mod tooltip_story;
 mod tree_story;
 mod virtual_list_story;
 mod welcome_story;
+mod writing_story;
 
 pub use accordion_story::AccordionStory;
 pub use alert_dialog_story::AlertDialogStory;
@@ -168,6 +169,7 @@ pub use tree_story::TreeStory;
 pub use virtual_list_story::VirtualListStory;
 
 pub use welcome_story::WelcomeStory;
+pub use writing_story::WritingStory;
 
 pub(crate) fn init(cx: &mut App) {
     input_story::init(cx);

@@ -11,13 +11,14 @@ gpui-kit = "0.7"
 never lists GPUI itself. `use gpui_kit::*;` is GPUI, and each layer is
 reachable by name:
 
-| Path                  | Crate             | Feature          |
-| --------------------- | ----------------- | ---------------- |
-| `gpui_kit::*`         | `gpui`            | always           |
-| `gpui_kit::platform`  | `gpui_platform`   | always           |
-| `gpui_kit::base`      | `gpui-base`       | always           |
-| `gpui_kit::component` | `gpui-component`  | `component` (on) |
-| `gpui_kit::assets`    | `gpui-kit-assets` | `assets` (on)    |
+| Path                  | Crate              | Feature          |
+| --------------------- | ------------------ | ---------------- |
+| `gpui_kit::*`         | `gpui`             | always           |
+| `gpui_kit::platform`  | `gpui_platform`    | always           |
+| `gpui_kit::base`      | `gpui-base`        | always           |
+| `gpui_kit::component` | `gpui-component`   | `component` (on) |
+| `gpui_kit::assets`    | `gpui-kit-assets`  | `assets` (on)    |
+| `gpui_kit::writing`   | `gpui-kit-writing` | `writing`        |
 
 `gpui_kit::application()` opens the platform and `gpui_kit::init()`
 initializes the enabled layers:
