@@ -159,7 +159,9 @@ fn stream_answer(as_rows: bool, stream_fade: bool, cx: &mut BenchAppContext) {
             next += 1;
         }
         if next == end {
-            // The answer is all in: start the last 4 KB again.
+            // The answer is all in, and an iteration past it measures nothing.
+            // The stream is set up again for every sample, and a sample's
+            // iterations rarely reach the 256 chunks of the last 4 KB.
             return;
         }
         let chunk = source[end..next].to_string();
