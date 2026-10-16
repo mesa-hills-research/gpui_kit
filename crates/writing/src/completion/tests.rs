@@ -786,3 +786,17 @@ fn the_next_word_key_takes_one_word(cx: &mut TestAppContext) {
         assert_eq!(typist.value(), "hello world. So", "{keymap:?}");
     }
 }
+
+/// "UI/UX design" was typed before, and "UI/UX, " offers nothing after the
+/// comma, where it offered "design". After "UI/UX " it does.
+#[gpui::test]
+fn a_comma_ends_what_a_suggestion_follows(cx: &mut TestAppContext) {
+    let mut typist = Typist::with_vocabulary(cx, SuggestionMode::Eager, Vocabulary::new());
+    typist.type_text(
+        "We want better UI/UX design. Good UI/UX design matters. Their UI/UX design is clean. ",
+    );
+    typist.type_text("Improve the UI/UX, ");
+    assert_eq!(typist.ghost(), None);
+    typist.type_text("and the UI/UX ");
+    assert_eq!(typist.ghost().as_deref(), Some("design"));
+}

@@ -17,13 +17,17 @@
 //! # File
 //!
 //! `vocabulary.json` holds a `version`, `words` (each form with its count),
-//! `bigrams` (each folded word with the forms that followed it) and
-//! `trigrams` (the same for two folded words joined by a tab). `<s>` stands
-//! for the start of a sentence. Files from before keys were folded load with
-//! the keys that differ only in case merged and their counts summed, and the
-//! halves of contractions they split ("doesn" from "doesn't") joined again.
-//! Files without a version keep their word counts and drop their n-grams,
-//! which an older tokenizer produced.
+//! `bigrams` (each folded word with the forms that followed it), `trigrams`
+//! (the same for two folded words joined by a tab) and `clause_ends` (how
+//! often punctuation such as a comma followed a bigram or trigram context,
+//! by the same keys). `<s>` stands for the start of a sentence.
+//!
+//! Versions before 3 have no `clause_ends` and ignore them, so a file from
+//! them loads as it is, and one they save loses its clause ends. Files from
+//! before keys were folded load with the keys that differ only in case
+//! merged and their counts summed, and the halves of contractions they split
+//! ("doesn" from "doesn't") joined again. Files without a version keep their
+//! word counts and drop their n-grams, which an older tokenizer produced.
 //!
 //! # Saving
 //!
@@ -64,8 +68,9 @@
 //! save.
 
 use super::{
-    LOCAL_COUNT_CAP, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ, NON_DICTIONARY_MIN_SHARED_FREQ,
-    VOCAB_MAX_BYTES, canonical_prediction_word, extract_sentences_and_words, sentence_runs,
+    FIRST_NGRAM_VERSION, LOCAL_COUNT_CAP, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ,
+    NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word,
+    extract_sentences_and_words, sentence_runs,
 };
 use crate::spelling::Dictionary;
 use crate::text::hash_str;
@@ -199,29 +204,40 @@ impl Forms {
     }
 }
 
-/// The words that followed one context, by folded form, with counts.
+/// The words that followed one context, by folded form, with counts, and how
+/// often punctuation followed it instead.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Successors {
+    /// The word counts and the clause ends added up.
     total: u32,
     counts: HashMap<Box<str>, u32>,
     /// Forms other than the folded word, with their counts.
     cased: HashMap<Box<str>, u32>,
+    /// How many times punctuation that ends a clause, such as a comma,
+    /// followed the context. It counts as one more kind of successor, which
+    /// is never offered.
+    clause_ends: u32,
 }
 
 impl Successors {
-    /// How many times anything followed this context.
+    /// How many times anything followed this context, clause ends included.
     pub fn total(&self) -> u32 {
         self.total
     }
 
-    /// How many different words followed it.
+    /// How many different words followed it, and one more for clause ends.
     pub fn types(&self) -> usize {
-        self.counts.len()
+        self.counts.len() + usize::from(self.clause_ends > 0)
     }
 
     /// How many times the folded word followed it.
     pub fn count(&self, folded: &str) -> u32 {
         self.counts.get(folded).copied().unwrap_or(0)
+    }
+
+    /// How many times a clause ended after it.
+    pub fn clause_ends(&self) -> u32 {
+        self.clause_ends
     }
 
     pub fn words(&self) -> impl Iterator<Item = &str> {
@@ -238,9 +254,15 @@ impl Successors {
         }
     }
 
+    fn add_clause_ends(&mut self, count: u32) {
+        self.total = self.total.saturating_add(count);
+        self.clause_ends = self.clause_ends.saturating_add(count);
+    }
+
     /// Adds the counts of `other`, the same context's.
     fn add_all(&mut self, other: &Successors) {
         self.total = self.total.saturating_add(other.total);
+        self.clause_ends = self.clause_ends.saturating_add(other.clause_ends);
         for (counts, others) in [
             (&mut self.counts, &other.counts),
             (&mut self.cased, &other.cased),
@@ -363,6 +385,34 @@ impl Counts {
         }
     }
 
+    /// Counts a clause end, such as a comma, after a run counted with
+    /// [`Self::add_run`]: after its last word, and after its last two.
+    pub fn add_clause_end(&mut self, starts_sentence: bool, run: &[&str]) {
+        let mut sequence: Vec<Cow<'_, str>> = Vec::with_capacity(2);
+        if starts_sentence && run.len() == 1 {
+            sequence.push(Cow::Borrowed(SENTENCE_START));
+        }
+        let last_two = &run[run.len().saturating_sub(2)..];
+        sequence.extend(
+            last_two
+                .iter()
+                .map(|word| fold(canonical_prediction_word(word))),
+        );
+        let Some(last) = sequence.last() else {
+            return;
+        };
+        self.bigrams
+            .entry(last.as_ref().into())
+            .or_default()
+            .add_clause_ends(1);
+        if let [first, second] = sequence.as_slice() {
+            self.trigrams
+                .entry(trigram_key(first, second).into())
+                .or_default()
+                .add_clause_ends(1);
+        }
+    }
+
     /// Adds the counts of `other`.
     fn add(&mut self, other: &Counts) {
         for (word, forms) in &other.words {
@@ -423,6 +473,19 @@ impl Counts {
                 entry.add(&form, &fold(&form), count);
             }
         }
+        for (key, count) in saved.clause_ends {
+            let entry = match key.split_once('\t') {
+                Some((first, second)) => {
+                    let key = trigram_key(&fold(&joined(first)), &fold(&joined(second)));
+                    counts.trigrams.entry(key.into()).or_default()
+                }
+                None => {
+                    let key: Box<str> = fold(&joined(&key)).as_ref().into();
+                    counts.bigrams.entry(key).or_default()
+                }
+            };
+            entry.add_clause_ends(count);
+        }
         counts
     }
 }
@@ -440,12 +503,15 @@ enum Level {
 fn prune_successors(map: &mut HashMap<Box<str>, Successors>, floor: u32) {
     map.retain(|_, successors| {
         successors.counts.retain(|_, count| *count > floor);
+        if successors.clause_ends <= floor {
+            successors.clause_ends = 0;
+        }
         let counts = &successors.counts;
         successors
             .cased
             .retain(|form, _| counts.contains_key(fold(form).as_ref()));
-        successors.total = counts.values().sum();
-        !counts.is_empty()
+        successors.total = counts.values().sum::<u32>() + successors.clause_ends;
+        successors.total > 0
     });
 }
 
@@ -585,16 +651,19 @@ struct SavedVocabulary {
     bigrams: HashMap<String, HashMap<String, u32>>,
     #[serde(default)]
     trigrams: HashMap<String, HashMap<String, u32>>,
+    #[serde(default)]
+    clause_ends: HashMap<String, u32>,
 }
 
 impl SavedVocabulary {
     /// Drops the n-grams of a file saved before version 2, which an older
     /// tokenizer made, and keeps its words. Returns whether it did.
     fn migrate(&mut self) -> bool {
-        let migrated = self.version < MODEL_VERSION;
+        let migrated = self.version < FIRST_NGRAM_VERSION;
         if migrated {
             self.bigrams.clear();
             self.trigrams.clear();
+            self.clause_ends.clear();
         }
         migrated
     }
@@ -605,11 +674,27 @@ struct Saving<'a>(&'a Counts);
 
 impl Serialize for Saving<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(4))?;
+        let mut map = serializer.serialize_map(Some(5))?;
         map.serialize_entry("version", &MODEL_VERSION)?;
         map.serialize_entry("words", &SavingWords(&self.0.words))?;
         map.serialize_entry("bigrams", &SavingNgrams(&self.0.bigrams))?;
         map.serialize_entry("trigrams", &SavingNgrams(&self.0.trigrams))?;
+        map.serialize_entry("clause_ends", &SavingClauseEnds(self.0))?;
+        map.end()
+    }
+}
+
+/// The clause ends after each bigram and trigram context, by its key.
+struct SavingClauseEnds<'a>(&'a Counts);
+
+impl Serialize for SavingClauseEnds<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        for (key, successors) in self.0.bigrams.iter().chain(&self.0.trigrams) {
+            if successors.clause_ends > 0 {
+                map.serialize_entry(&**key, &successors.clause_ends)?;
+            }
+        }
         map.end()
     }
 }
@@ -1123,11 +1208,16 @@ impl Vocabulary {
     /// folded words it learned.
     pub(crate) fn learn_sentence(&mut self, sentence: &str) -> Vec<String> {
         let mut learned = Vec::new();
-        for (starts_sentence, run) in sentence_runs(sentence) {
-            self.counts.add_run(starts_sentence, &run);
-            self.unsaved.add_run(starts_sentence, &run);
+        for run in sentence_runs(sentence) {
+            for counts in [&mut self.counts, &mut self.unsaved] {
+                counts.add_run(run.opens, &run.words);
+                if run.clause_end {
+                    counts.add_clause_end(run.opens, &run.words);
+                }
+            }
             learned.extend(
-                run.iter()
+                run.words
+                    .iter()
                     .map(|word| fold(canonical_prediction_word(word)).into_owned()),
             );
             self.dirty = true;
@@ -1331,6 +1421,59 @@ mod tests {
         assert_eq!(fold("ÉCOLE"), "école");
     }
 
+    /// Punctuation between two words keeps the second from counting as
+    /// following the first. It counts as a clause end after the first,
+    /// which is saved and loaded back.
+    #[test]
+    fn punctuation_ends_a_run_and_counts_as_a_clause_end() {
+        let mut vocabulary = Vocabulary::new();
+        vocabulary.learn_sentence("Apples, oranges and pears");
+        vocabulary.learn_sentence("Sadly the apples, again");
+        vocabulary.learn_sentence("We want better UI/UX design");
+        let ends = |vocabulary: &Vocabulary, context: &[&str]| {
+            let context: Vec<String> = context.iter().map(|word| word.to_string()).collect();
+            vocabulary
+                .counts
+                .successors(&context)
+                .map_or(0, Successors::clause_ends)
+        };
+        assert_eq!(bigram(&vocabulary, "apples", "oranges"), 0);
+        assert_eq!(bigram(&vocabulary, "apples", "again"), 0);
+        assert_eq!(bigram(&vocabulary, "oranges", "and"), 1);
+        assert_eq!(bigram(&vocabulary, "ui", "ux"), 0);
+        assert_eq!(bigram(&vocabulary, "ux", "design"), 1);
+        assert_eq!(ends(&vocabulary, &["apples"]), 2);
+        assert_eq!(ends(&vocabulary, &["<s>", "apples"]), 1);
+        assert_eq!(ends(&vocabulary, &["the", "apples"]), 1);
+        assert_eq!(ends(&vocabulary, &["better", "ui"]), 1);
+        // The end of a sentence isn't a clause end.
+        assert_eq!(ends(&vocabulary, &["design"]), 0);
+        assert_eq!(
+            vocabulary
+                .counts
+                .successors(&["apples".into()])
+                .unwrap()
+                .total(),
+            2
+        );
+
+        let saved = String::from_utf8(vocabulary.to_json().unwrap()).unwrap();
+        assert!(saved.contains(r#""version":3"#), "{saved}");
+        let reloaded = load(&saved);
+        assert_eq!(ends(&reloaded, &["apples"]), 2);
+        assert_eq!(ends(&reloaded, &["<s>", "apples"]), 1);
+        assert_eq!(ends(&reloaded, &["the", "apples"]), 1);
+        assert_eq!(bigram(&reloaded, "oranges", "and"), 1);
+        assert_eq!(
+            reloaded
+                .counts
+                .successors(&["apples".into()])
+                .unwrap()
+                .total(),
+            2
+        );
+    }
+
     /// A file saved before keys were folded, with keys that differ only in
     /// case and contractions split in two, loads with its counts merged and
     /// none lost.
@@ -1389,7 +1532,7 @@ mod tests {
     }
 
     /// A file without a version keeps its word counts and drops its n-grams,
-    /// which an earlier tokenizer made, and is saved again as version 2.
+    /// which an earlier tokenizer made, and is saved again in this version.
     #[test]
     fn a_file_without_a_version_keeps_only_its_words() {
         let vocabulary = load(
@@ -1401,9 +1544,10 @@ mod tests {
         assert_eq!(trigram(&vocabulary, "thanks", "for", "the"), 0);
         let saved: serde_json::Value =
             serde_json::from_slice(&vocabulary.to_json().unwrap()).unwrap();
-        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["version"], 3);
         assert_eq!(saved["words"]["Thanks"], 40);
         assert_eq!(saved["bigrams"], serde_json::json!({}));
+        assert_eq!(saved["clause_ends"], serde_json::json!({}));
     }
 
     /// A folder for one test's files, removed afterwards.

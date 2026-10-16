@@ -85,8 +85,13 @@ use std::time::{Duration, Instant};
 use typed::TypedText;
 use vocabulary::{LocalIndex, Vocabulary, WordTally, tally};
 
-/// Current persisted model schema and tokenization version.
-const MODEL_VERSION: u32 = 2;
+/// Current persisted model schema and tokenization version. Version 3 adds
+/// the clause ends; its n-grams are version 2's.
+const MODEL_VERSION: u32 = 3;
+
+/// The first version whose n-grams this one reads. Earlier files keep only
+/// their words.
+const FIRST_NGRAM_VERSION: u32 = 2;
 
 /// Minimum length of an ordinary learnable word.
 const MIN_WORD_LEN: usize = 2;
@@ -282,26 +287,63 @@ fn word_tokens(text: &str) -> Vec<Range<usize>> {
     tokens
 }
 
-/// The learnable words of a sentence, in runs that a token that isn't
-/// learnable, such as a number, ends. Each run says whether it opens the
-/// sentence.
-fn sentence_runs(sentence: &str) -> Vec<(bool, Vec<&str>)> {
+/// Whether the text between two words, or after the last word of a
+/// sentence, ends a clause: anything but whitespace, such as a comma, a
+/// colon, a dash, a bracket, a quote or a slash.
+fn is_clause_break(gap: &str) -> bool {
+    gap.chars().any(|character| !character.is_whitespace())
+}
+
+/// Words written one after another in a sentence, with nothing but spaces
+/// between them.
+struct Run<'a> {
+    /// Whether the run opens the sentence.
+    opens: bool,
+    words: Vec<&'a str>,
+    /// Whether punctuation follows the run's last word, such as a comma.
+    clause_end: bool,
+}
+
+/// The learnable words of a sentence, in runs. A token that isn't
+/// learnable, such as a number, ends a run, and so does punctuation between
+/// two words: "Apples, oranges" never teaches that "oranges" follows
+/// "apples".
+fn sentence_runs(sentence: &str) -> Vec<Run<'_>> {
+    let tokens = word_tokens(sentence);
     let mut runs = Vec::new();
     let mut current = Vec::new();
     let mut current_opens = false;
-    for (index, range) in word_tokens(sentence).into_iter().enumerate() {
-        let word = &sentence[range];
+    for (index, range) in tokens.iter().enumerate() {
+        let word = &sentence[range.clone()];
         if is_learnable_word(word) {
             if current.is_empty() {
                 current_opens = index == 0;
             }
             current.push(word);
         } else if !current.is_empty() {
-            runs.push((current_opens, std::mem::take(&mut current)));
+            runs.push(Run {
+                opens: current_opens,
+                words: std::mem::take(&mut current),
+                clause_end: false,
+            });
+        }
+        let gap_end = tokens
+            .get(index + 1)
+            .map_or(sentence.len(), |next| next.start);
+        if !current.is_empty() && is_clause_break(&sentence[range.end..gap_end]) {
+            runs.push(Run {
+                opens: current_opens,
+                words: std::mem::take(&mut current),
+                clause_end: true,
+            });
         }
     }
     if !current.is_empty() {
-        runs.push((current_opens, current));
+        runs.push(Run {
+            opens: current_opens,
+            words: current,
+            clause_end: false,
+        });
     }
     runs
 }

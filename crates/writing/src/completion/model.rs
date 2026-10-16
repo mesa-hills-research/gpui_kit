@@ -20,7 +20,8 @@ use super::vocabulary::{Counts, Forms, LocalIndex, SENTENCE_START, Successors, V
 use super::{
     CONTEXT_BYTES, EMPTY_PREDICTION_CONTINUATION_LIMIT, PREFIX_CONTINUATION_LIMIT,
     canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
-    has_text_after_cursor_on_line, is_learnable_word, is_sentence_terminator, word_tokens,
+    has_text_after_cursor_on_line, is_clause_break, is_learnable_word, is_sentence_terminator,
+    word_tokens,
 };
 use crate::classify::{TextContext, classify_context, is_prose_shaped};
 use crate::text::floor_char_boundary;
@@ -146,8 +147,33 @@ fn interpolate(
     }
 }
 
+/// The probability that punctuation ends the clause after `levels`, such as
+/// a comma, interpolated as a word's is. Word frequency alone gives it none.
+fn clause_end_probability(levels: &[&Successors]) -> f64 {
+    levels.iter().fold(0.0, |lower, level| {
+        let total = f64::from(level.total());
+        let backoff = DISCOUNT * level.types() as f64 / total;
+        (f64::from(level.clause_ends()) - DISCOUNT).max(0.0) / total + backoff * lower
+    })
+}
+
+/// Whether the clause may still end before the next word.
+#[derive(Clone, Copy, PartialEq)]
+enum Clause {
+    /// Punctuation may still come: the word's probability counts the times
+    /// it did, as for a word added to a suggestion.
+    MayEnd,
+    /// The user typed a space after the last word, so no punctuation comes
+    /// between it and the next: the probability leaves out the times it did.
+    Goes,
+}
+
 /// The likeliest next word after `context`, with its probability.
-fn best_next(evidence: &Evidence, context: &[String]) -> Option<(String, f64, String)> {
+fn best_next(
+    evidence: &Evidence,
+    context: &[String],
+    clause: Clause,
+) -> Option<(String, f64, String)> {
     let levels = evidence.levels(context);
     let (shortest, longer) = levels.split_first()?;
     // What follows a longer context followed the shorter one too, as they
@@ -162,6 +188,14 @@ fn best_next(evidence: &Evidence, context: &[String]) -> Option<(String, f64, St
         .map(|word| evidence.unigram(word) / total)
         .collect();
     interpolate(&levels, &candidates, &mut probabilities, false, 1.0);
+    if clause == Clause::Goes {
+        let goes = 1.0 - clause_end_probability(&levels);
+        if goes > 0.0 {
+            for probability in &mut probabilities {
+                *probability /= goes;
+            }
+        }
+    }
     // The likeliest, the first in alphabetical order of equals.
     let (word, probability) = candidates
         .into_iter()
@@ -180,7 +214,11 @@ fn best_next(evidence: &Evidence, context: &[String]) -> Option<(String, f64, St
 /// one, folded: the last two at most, after the sentence start when the
 /// sentence opens there. A number or another token that isn't learned right
 /// before leaves none, since nothing before it helps.
-fn context_words(text: &str, prefix_start: usize) -> Vec<String> {
+///
+/// In prose, with `clauses`, the words before punctuation, such as a comma,
+/// predict nothing either, as learning never counts a word after them: none
+/// after "UI/UX, ", and "UX" alone after "UI/UX ".
+fn context_words(text: &str, prefix_start: usize, clauses: bool) -> Vec<String> {
     let before = &text[..prefix_start];
     let sentence_start = before
         .rfind(is_sentence_terminator)
@@ -192,14 +230,25 @@ fn context_words(text: &str, prefix_start: usize) -> Vec<String> {
         sentence_start
     };
     let area = &text[area_start..prefix_start];
-    let words: Vec<&str> = word_tokens(area)
-        .into_iter()
-        .map(|range| &area[range])
-        .collect();
-    let run_start = words
+    let tokens = word_tokens(area);
+    if clauses
+        && let Some(last) = tokens.last()
+        && is_clause_break(&area[last.end..])
+    {
+        return Vec::new();
+    }
+    let words: Vec<&str> = tokens.iter().map(|range| &area[range.clone()]).collect();
+    let mut run_start = words
         .iter()
         .rposition(|word| !is_learnable_word(word))
         .map_or(0, |index| index + 1);
+    if clauses
+        && let Some(index) = (1..tokens.len())
+            .rev()
+            .find(|&index| is_clause_break(&area[tokens[index - 1].end..tokens[index].start]))
+    {
+        run_start = run_start.max(index);
+    }
     if run_start == words.len() && !words.is_empty() {
         return Vec::new();
     }
@@ -327,7 +376,7 @@ pub(super) fn generate_suggestion(
         local,
         prose: classify_context(text, offset) == TextContext::Prose,
     };
-    let mut context = context_words(text, prefix_start);
+    let mut context = context_words(text, prefix_start, evidence.prose);
     let at_sentence_start = context.len() == 1 && context[0] == SENTENCE_START;
 
     let (first, first_probability, ghost) = if prefix.is_empty() {
@@ -339,7 +388,7 @@ pub(super) fn generate_suggestion(
         {
             return None;
         }
-        let (word, probability, form) = best_next(&evidence, &context)?;
+        let (word, probability, form) = best_next(&evidence, &context, Clause::Goes)?;
         if probability < SHOW_THRESHOLD || !evidence.offers(&form, &word) {
             return None;
         }
@@ -403,7 +452,8 @@ pub(super) fn generate_suggestion(
             if context.len() > 2 {
                 context.drain(..context.len() - 2);
             }
-            let Some((word, probability, form)) = best_next(&evidence, &context) else {
+            let Some((word, probability, form)) = best_next(&evidence, &context, Clause::MayEnd)
+            else {
                 break;
             };
             cumulative *= probability;
@@ -570,5 +620,47 @@ mod tests {
             Some("nks for the")
         );
         assert_eq!(suggest(&vocabulary, "THA").as_deref(), Some("NKS for the"));
+    }
+
+    /// "UI/UX design" was written before. After "UI/UX, " the comma ended
+    /// the clause, so nothing learned after "UI/UX" is offered; after
+    /// "UI/UX " it is.
+    #[test]
+    fn punctuation_ends_the_words_a_prediction_follows() {
+        let vocabulary = vocabulary(&["We want better UI/UX design"; 4]);
+        assert_eq!(
+            suggest(&vocabulary, "Improve the UI/UX ").as_deref(),
+            Some("design")
+        );
+        for punctuation in [",", ";", ":", " —", "/"] {
+            let text = format!("Improve the UI/UX{punctuation} ");
+            assert_eq!(suggest(&vocabulary, &text), None, "{text:?}");
+        }
+        // A word typed after the comma completes from word frequency alone.
+        assert_eq!(
+            suggest(&vocabulary, "Improve the UI/UX, des").as_deref(),
+            Some("ign")
+        );
+    }
+
+    /// A word often followed by a comma makes a word after it less likely,
+    /// unless the user typed a space instead.
+    #[test]
+    fn a_frequent_comma_keeps_a_suggestion_to_the_word() {
+        let mut sentences = vec!["Check the analytics dashboard"; 4];
+        let before = vocabulary(&sentences);
+        assert_eq!(
+            suggest(&before, "Open the analyt").as_deref(),
+            Some("ics dashboard")
+        );
+
+        sentences.extend(["The analytics, sadly, lag behind"; 4]);
+        let after = vocabulary(&sentences);
+        assert_eq!(suggest(&after, "Open the analyt").as_deref(), Some("ics"));
+        assert_eq!(
+            suggest(&after, "Open the analytics ").as_deref(),
+            Some("dashboard")
+        );
+        assert_eq!(suggest(&after, "Open the analytics, "), None);
     }
 }

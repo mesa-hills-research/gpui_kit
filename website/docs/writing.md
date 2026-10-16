@@ -22,7 +22,9 @@ gets them without writing its own:
   word after a space, from a vocabulary learned on the user's computer from
   what they type. Pasted text, undo and redo and text the program inserts
   teach nothing. A suggestion shows only when it is more likely right than
-  wrong, and words the user keeps typing past are offered less.
+  wrong, and words the user keeps typing past are offered less. Punctuation
+  between words, such as a comma, a colon or a slash, ends what a prediction
+  follows: after "UI/UX, " nothing learned after "UI/UX" is offered.
 
 Enable the `writing` feature of `gpui-kit`:
 
