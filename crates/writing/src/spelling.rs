@@ -8,8 +8,8 @@
 //! answers permissively.
 //!
 //! Words may be added at runtime with [`Dictionary::add_word`], which also
-//! appends them to the user's word list, or ignored until the application
-//! quits with [`Dictionary::ignore_word`]. Both bump a generation counter so
+//! appends them to the user's word list on a background thread, or ignored
+//! until the application quits with [`Dictionary::ignore_word`]. Both bump a generation counter so
 //! scanners know to drop caches computed against the old dictionary.
 //!
 //! # Scanner
@@ -50,9 +50,11 @@ use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::io::{self, Write as _};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 /// Idle time after the last edit before a document is re-checked.
@@ -131,7 +133,67 @@ pub struct Dictionary {
     has_apostrophe_entries: Cell<bool>,
     generation: Cell<u64>,
     /// The user's word list, which [`Self::add_word`] appends to.
-    user_dictionary: Option<PathBuf>,
+    user_dictionary: Option<Arc<UserWordList>>,
+}
+
+/// The user's word list, which [`Dictionary::add_word`] appends to off the
+/// UI thread.
+struct UserWordList {
+    path: PathBuf,
+    /// Words added but not appended yet, in the order they were added.
+    pending: Mutex<Vec<Box<str>>>,
+    /// Held while appending, so words are appended in the order they were
+    /// added.
+    appending: Mutex<()>,
+}
+
+impl UserWordList {
+    /// Appends the pending words, creating the file and its folder. Words it
+    /// couldn't append stay pending, for the next word added or the next
+    /// save.
+    fn append_pending(&self) {
+        let _appending = self
+            .appending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let words = std::mem::take(&mut *self.pending());
+        if words.is_empty() {
+            return;
+        }
+        let mut lines = String::new();
+        for word in &words {
+            lines.push_str(word);
+            lines.push('\n');
+        }
+        if let Err(error) = append(&self.path, &lines) {
+            log::error!(
+                "Couldn't add {} words to the user's word list {}: {error}. They are accepted \
+                 until the application quits, and tried again with the next word added or \
+                 the next save.",
+                words.len(),
+                self.path.display()
+            );
+            let mut pending = self.pending();
+            let later = std::mem::replace(&mut *pending, words);
+            pending.extend(later);
+        }
+    }
+
+    fn pending(&self) -> std::sync::MutexGuard<'_, Vec<Box<str>>> {
+        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// Appends `text` to the file at `path`, creating it and its folder.
+fn append(path: &Path, text: &str) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .write_all(text.as_bytes())
 }
 
 impl Dictionary {
@@ -151,7 +213,13 @@ impl Dictionary {
             loaded: Cell::new(false),
             has_apostrophe_entries: Cell::new(false),
             generation: Cell::new(0),
-            user_dictionary,
+            user_dictionary: user_dictionary.map(|path| {
+                Arc::new(UserWordList {
+                    path,
+                    pending: Mutex::default(),
+                    appending: Mutex::default(),
+                })
+            }),
         }
     }
 
@@ -214,41 +282,54 @@ impl Dictionary {
         self.generation.get()
     }
 
-    /// Adds a word to the in-memory dictionary and appends it to the user's
-    /// word list. Bumps the generation so cached scan results that flagged
-    /// this word are discarded on the next scan.
-    pub fn add_word(&self, word: &str) {
+    /// Accepts `word` from now on, and appends it to the user's word list
+    /// on a background thread. Bumps the generation so cached scan results
+    /// that flagged this word are discarded on the next scan.
+    ///
+    /// A word the background thread hasn't appended by the time the
+    /// application quits is appended by [`crate::Writing::save`].
+    pub fn add_word(&self, word: &str, cx: &App) {
+        let Some(word) = self.insert_word(word) else {
+            return;
+        };
+        if let Some(list) = &self.user_dictionary {
+            list.pending().push(Box::from(word));
+            let list = list.clone();
+            cx.background_executor()
+                .spawn(async move { list.append_pending() })
+                .detach();
+        }
+    }
+
+    /// Accepts `word` from now on, in memory only. Returns the word as
+    /// added, or `None` when it isn't a word or was known already.
+    pub(crate) fn insert_word<'a>(&self, word: &'a str) -> Option<&'a str> {
         let word = word.trim();
         if word.is_empty() || word.len() > MAX_DICTIONARY_WORD_LEN {
-            return;
+            return None;
         }
         if !word
             .chars()
             .all(|c| c.is_alphabetic() || c == '\'' || c == '-')
         {
-            return;
+            return None;
         }
         if !self.words.borrow_mut().insert(Box::from(word)) {
-            return;
+            return None;
         }
         self.candidates.borrow_mut().add(word);
         if word.contains('\'') {
             self.has_apostrophe_entries.set(true);
         }
         self.generation.set(self.generation.get() + 1);
+        Some(word)
+    }
 
-        if let Some(path) = &self.user_dictionary {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-            {
-                use std::io::Write as _;
-                let _ = writeln!(file, "{}", word);
-            }
+    /// Appends the words [`Self::add_word`] added that the background thread
+    /// hasn't yet, on this thread.
+    pub(crate) fn save_added_words(&self) {
+        if let Some(list) = &self.user_dictionary {
+            list.append_pending();
         }
     }
 
@@ -598,8 +679,8 @@ impl SpellChecker for DictionaryChecker {
             .collect()
     }
 
-    fn add_to_dictionary(&self, word: &str, _: &mut App) {
-        self.dictionary.add_word(word);
+    fn add_to_dictionary(&self, word: &str, cx: &mut App) {
+        self.dictionary.add_word(word, cx);
     }
 
     /// Ignored words stay ignored in every textarea until the application
@@ -1431,8 +1512,8 @@ pub(crate) mod tests {
     #[test]
     fn corrections_are_those_of_trying_every_word() {
         let dictionary = english();
-        dictionary.add_word("Wojciech");
-        dictionary.add_word("Ångström");
+        dictionary.insert_word("Wojciech");
+        dictionary.insert_word("Ångström");
         for word in [
             "mispeled",
             "teh",
@@ -1532,8 +1613,8 @@ pub(crate) mod tests {
 
     /// The user's word list is read with the others, and added words are
     /// appended to it.
-    #[test]
-    fn added_words_are_kept_in_the_users_word_list() {
+    #[gpui::test]
+    fn added_words_are_kept_in_the_users_word_list(cx: &mut gpui::TestAppContext) {
         let scratch = Scratch::new("user-dictionary");
         let user = scratch.0.join("user-dictionary.txt");
         std::fs::write(&user, "Wojciech\n").unwrap();
@@ -1541,7 +1622,8 @@ pub(crate) mod tests {
         assert!(dictionary.is_correct("Wojciech"));
         assert!(!dictionary.is_correct("Zbigniewski"));
 
-        dictionary.add_word("Zbigniewski");
+        cx.update(|cx| dictionary.add_word("Zbigniewski", cx));
+        cx.run_until_parked();
         assert!(dictionary.is_correct("Zbigniewski"));
         assert_eq!(
             std::fs::read_to_string(&user).unwrap(),

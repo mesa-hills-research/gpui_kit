@@ -124,7 +124,8 @@ A background save never holds up the UI. `save` runs on the calling thread:
 saving a vocabulary near the default cap takes a few hundred milliseconds, and
 it waits at most a second for a background save under way and half a second
 for another process's save, after which this session's latest learning stays
-unsaved.
+unsaved. **Add to Dictionary** appends its word to the user's word list on a
+background thread too, and `save` appends any it hasn't yet.
 
 Several processes can share one vocabulary file. Each save adds what this
 process learned since its last save to what the file holds now, under a lock,

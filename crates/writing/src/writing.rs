@@ -159,7 +159,8 @@ impl Writing {
 
     /// Adds what the suggestions learned since the last save to the
     /// vocabulary file, on this thread, after waiting for a background save
-    /// under way. For quitting, where nothing can wait for
+    /// under way, and appends the words added to the dictionary that its
+    /// background thread hasn't yet. For quitting, where nothing can wait for
     /// [`Self::save_in_background`].
     ///
     /// It waits at most a second for a background save, and half a second
@@ -168,6 +169,7 @@ impl Writing {
     /// takes a few hundred milliseconds. Where the application can, it closes
     /// its windows, awaits [`Self::save_in_background`] and then quits.
     pub fn save(&self) {
+        self.dictionary.save_added_words();
         self.vocabulary.borrow_mut().save();
     }
 
@@ -190,7 +192,7 @@ mod tests {
     use crate::WordList;
     use crate::spelling::tests::Scratch;
     use gpui::{TestAppContext, VisualTestContext, px, size};
-    use gpui_base::input::TextareaState;
+    use gpui_base::input::{SpellChecker as _, TextareaState};
 
     /// The files go where the options say, under the names they give.
     #[gpui::test]
@@ -204,7 +206,7 @@ mod tests {
         let writing = cx.update(|cx| Writing::load(options.clone(), cx));
         cx.run_until_parked();
         assert!(writing.is_loaded());
-        writing.dictionary().add_word("Wojciech");
+        cx.update(|cx| writing.dictionary().add_word("Wojciech", cx));
         writing
             .vocabulary()
             .borrow_mut()
@@ -223,6 +225,40 @@ mod tests {
         assert_eq!(
             reloaded.vocabulary().borrow().counts().word_count("ferns"),
             1
+        );
+    }
+
+    /// **Add to Dictionary** accepts the word at once and appends it to the
+    /// user's word list on a background thread. A save at quit appends what
+    /// that thread hasn't yet, once.
+    #[gpui::test]
+    fn added_words_are_written_off_the_ui_thread(cx: &mut TestAppContext) {
+        let scratch = Scratch::new("added-words");
+        let options = WritingOptions::new().with_data_dir(scratch.0.join("app"));
+        let writing = Writing::load_blocking(options.clone());
+        let list = options.user_dictionary_path().unwrap();
+        let read = || std::fs::read_to_string(&list).unwrap();
+        let checker = writing.spell_checker();
+        assert!(!writing.dictionary().is_correct("Zbigniewski"));
+
+        cx.update(|cx| checker.add_to_dictionary("Zbigniewski", cx));
+        assert!(writing.dictionary().is_correct("Zbigniewski"));
+        assert!(!list.exists(), "written on the UI thread");
+        cx.run_until_parked();
+        assert_eq!(read(), "Zbigniewski\n");
+
+        cx.update(|cx| {
+            writing.dictionary().add_word("Wojciech", cx);
+            writing.dictionary().add_word("Przybylski", cx);
+        });
+        writing.save();
+        assert_eq!(read(), "Zbigniewski\nWojciech\nPrzybylski\n");
+        cx.run_until_parked();
+        assert_eq!(read(), "Zbigniewski\nWojciech\nPrzybylski\n");
+        assert!(
+            Writing::load_blocking(options)
+                .dictionary()
+                .is_correct("Wojciech")
         );
     }
 
@@ -269,7 +305,7 @@ mod tests {
         let writing = cx.update(|cx| Writing::load(options.clone(), cx));
         assert!(!writing.is_loaded());
         assert!(writing.dictionary().is_correct("mispeled"));
-        writing.dictionary().add_word("Wojciech");
+        cx.update(|cx| writing.dictionary().add_word("Wojciech", cx));
         writing
             .vocabulary()
             .borrow_mut()
