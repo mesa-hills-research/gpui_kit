@@ -862,6 +862,21 @@ impl TextViewState {
     /// step, and html5ever records no source offsets to fall back on (it
     /// reports only line numbers), so there is no original text to copy from
     /// either.
+    /// The copy group of a [`Self::block_range`] view: the views of one
+    /// document copy as one view of it would, their blocks apart as blocks
+    /// are within a view.
+    pub(super) fn copy_group(&self) -> Option<crate::TextSelectionCopyGroup> {
+        let document = self.block_range.as_ref()?.document.entity_id();
+        let separator = match self.effective_format() {
+            SelectionFormat::Plain => "\n",
+            SelectionFormat::Source => "\n\n",
+        };
+        Some(crate::TextSelectionCopyGroup::new(
+            document.as_u64(),
+            separator,
+        ))
+    }
+
     fn effective_format(&self) -> SelectionFormat {
         match self.format {
             TextViewFormat::Markdown => self.selection_format,
@@ -3113,6 +3128,83 @@ mod tests {
             view.update(cx, |view, cx| view.push_str(" grows", cx));
             cx.run_until_parked();
             assert_eq!(rendered(&view, cx), "own text grows\n");
+        }
+
+        struct Column {
+            views: Vec<Entity<TextViewState>>,
+            format: SelectionFormat,
+        }
+
+        impl gpui::Render for Column {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                use gpui::{ParentElement as _, Styled as _};
+                // The layer takes a drag from one view to the next, as `Root` does.
+                gpui::div()
+                    .w(gpui::px(400.))
+                    .flex()
+                    .flex_col()
+                    .children(
+                        self.views.iter().map(|view| {
+                            crate::text::TextView::new(view).selection_format(self.format)
+                        }),
+                    )
+                    .child(crate::TextSelectionLayer)
+            }
+        }
+
+        /// Drags from the start of the first view to the end of the last and
+        /// copies.
+        fn drag_and_copy(
+            views: Vec<Entity<TextViewState>>,
+            format: SelectionFormat,
+            cx: &mut TestAppContext,
+        ) -> String {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            let (_, cx) = cx.add_window_view(|_, _| Column {
+                views: views.clone(),
+                format,
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            let first = views[0].read_with(cx, |view, _| view.bounds());
+            let last = views[views.len() - 1].read_with(cx, |view, _| view.bounds());
+            let start = point(first.left() + px(1.), first.top() + px(4.));
+            let end = point(last.right() - px(1.), last.bottom() - px(4.));
+            cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            let copied = cx.update(|window, cx| crate::TextSelection::selected_text(window, cx));
+            cx.update(|window, _| window.remove_window());
+            cx.run_until_parked();
+            copied
+        }
+
+        #[gpui::test]
+        fn rows_copy_as_one_view_of_their_document_copies(cx: &mut TestAppContext) {
+            let answer =
+                "Para one.\n\nPara two.\n\n- item\n\n```rust\nfn a() {}\n```\n\nPara three.";
+            for format in [SelectionFormat::Source, SelectionFormat::Plain] {
+                let parsed = document(answer, cx);
+                let rows = (0..5)
+                    .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
+                    .collect::<Vec<_>>();
+                let rows_copy = drag_and_copy(rows, format, cx);
+                let whole = document(answer, cx);
+                let one_view = drag_and_copy(vec![whole], format, cx);
+
+                assert_eq!(rows_copy, one_view, "{format:?}");
+                if format == SelectionFormat::Source {
+                    assert_eq!(rows_copy, answer);
+                }
+            }
         }
 
         #[gpui::test]

@@ -60,6 +60,28 @@ impl TextSelectionContentKey {
     }
 }
 
+/// Participants whose copied texts are parts of one text, such as the rows of
+/// one document shown as several views.
+///
+/// The copied texts of participants join with a line break. Two that follow
+/// each other in document order and belong to the same group join with the
+/// group's separator instead, after the trailing line breaks of the first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextSelectionCopyGroup {
+    id: u64,
+    separator: SharedString,
+}
+
+impl TextSelectionCopyGroup {
+    /// The group `id`, whose participants' texts join with `separator`.
+    pub fn new(id: u64, separator: impl Into<SharedString>) -> Self {
+        Self {
+            id,
+            separator: separator.into(),
+        }
+    }
+}
+
 /// A selection endpoint anchored to a participant's content coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextSelectionEndpoint {
@@ -596,6 +618,7 @@ fn point_in_selection_band(
 type FocusCallback = Rc<dyn Fn(&mut Window, &mut App)>;
 type ClearHandler = Rc<dyn Fn(&mut App)>;
 type CopyCallback = Rc<dyn Fn(&mut App) -> String>;
+type CopyGroupCallback = Rc<dyn Fn(&App) -> Option<TextSelectionCopyGroup>>;
 type ContentKeyResolver = Rc<dyn Fn(Point<Pixels>, &App) -> Option<TextSelectionContentKey>>;
 
 /// Notifications emitted by a text-selection participant.
@@ -617,21 +640,36 @@ pub enum TextSelectionEvent {
 struct CopyItem {
     document_order: u64,
     callback: Option<CopyCallback>,
+    group: Option<CopyGroupCallback>,
     fallback: String,
 }
 
 fn resolve_copy_items(mut items: Vec<CopyItem>, cx: &mut App) -> String {
     items.sort_by_key(|item| item.document_order);
-    items
-        .into_iter()
-        .map(|item| {
-            item.callback
-                .map(|callback| callback(cx))
-                .unwrap_or(item.fallback)
-        })
-        .filter(|text| !text.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut copied = String::new();
+    let mut last_group = None;
+    for item in items {
+        let text = item
+            .callback
+            .map(|callback| callback(cx))
+            .unwrap_or(item.fallback);
+        if text.trim().is_empty() {
+            continue;
+        }
+        let group = item.group.and_then(|group| group(cx));
+        if !copied.is_empty() {
+            match &group {
+                Some(group) if last_group == Some(group.id) => {
+                    copied.truncate(copied.trim_end_matches('\n').len());
+                    copied.push_str(&group.separator);
+                }
+                _ => copied.push('\n'),
+            }
+        }
+        copied.push_str(&text);
+        last_group = group.map(|group| group.id);
+    }
+    copied
 }
 
 fn dispatch_clear_handlers(handlers: Vec<ClearHandler>, cx: &mut App) {
@@ -649,6 +687,7 @@ struct SelectableTextState {
     on_focus: Option<FocusCallback>,
     clear: Option<ClearHandler>,
     copy: Option<CopyCallback>,
+    copy_group: Option<CopyGroupCallback>,
     content_key_resolver: Option<ContentKeyResolver>,
 }
 
@@ -665,6 +704,7 @@ impl SelectableTextState {
             on_focus: None,
             clear: None,
             copy: None,
+            copy_group: None,
             content_key_resolver: None,
         }
     }
@@ -730,6 +770,13 @@ impl SelectableTextState {
         self.copy = Some(Rc::new(callback));
     }
 
+    fn copy_group_with(
+        &mut self,
+        callback: impl Fn(&App) -> Option<TextSelectionCopyGroup> + 'static,
+    ) {
+        self.copy_group = Some(Rc::new(callback));
+    }
+
     /// Installs a participant-specific lookup for stable virtualized content keys.
     fn resolve_content_key_with(
         &mut self,
@@ -770,6 +817,7 @@ impl SelectableTextState {
         (self.snapshot.is_some() || self.local_selection).then(|| CopyItem {
             document_order,
             callback: self.copy.clone(),
+            group: self.copy_group.clone(),
             fallback: self
                 .projected_copy_text
                 .clone()
@@ -886,6 +934,17 @@ impl TextSelectionHandle {
     /// Sets a participant-specific copy projection.
     pub fn copy_with(&self, callback: impl Fn(&mut App) -> String + 'static, cx: &mut App) {
         self.0.update(cx, |state, _| state.copy_with(callback));
+    }
+
+    /// Sets the [`TextSelectionCopyGroup`] the participant's copied text
+    /// joins its neighbours' by, asked for at every copy.
+    pub fn copy_group_with(
+        &self,
+        callback: impl Fn(&App) -> Option<TextSelectionCopyGroup> + 'static,
+        cx: &mut App,
+    ) {
+        self.0
+            .update(cx, |state, _| state.copy_group_with(callback));
     }
 
     /// Lays out the touch handles at the ends of this participant's

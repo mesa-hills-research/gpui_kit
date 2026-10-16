@@ -180,7 +180,8 @@ the blocks from `ix` on. The last block stays incomplete until
 `TextViewState::finish` marks the answer finished, and its row is then left
 alone like the others.
 A selection runs across rows as it runs across separate text views, and each
-view selects and copies its own blocks. Show either the document or views of
+view selects its own blocks. Copied, the rows of one document join as the
+blocks of one view of it do, apart by a blank line in Markdown source. Show either the document or views of
 its blocks, as they share the parsed blocks.
 
 The document parses, so Markdown extensions and plugins go on the document,

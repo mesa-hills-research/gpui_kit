@@ -150,6 +150,12 @@ impl TextViewSelectionAdapter {
             cx,
         );
 
+        let view_for_group = view.clone();
+        selection.copy_group_with(
+            move |cx| view_for_group.upgrade()?.read(cx).copy_group(),
+            cx,
+        );
+
         let view_for_content_key = view.clone();
         selection.resolve_content_key_with(
             move |point, cx| {
