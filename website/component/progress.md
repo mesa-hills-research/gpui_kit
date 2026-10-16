@@ -5,12 +5,13 @@ description: Displays an indicator showing the completion progress of a task, ty
 
 # Progress
 
-Progress components visually represent the completion percentage of a task. The library provides two variants:
+Progress components visually represent the completion percentage of a task. The library provides three variants:
 
 - **[Progress](#progress)** - A linear horizontal progress bar
 - **[ProgressCircle](#progresscircle)** - A circular progress indicator
+- **[UsageBar](#usagebar)** - A labelled meter: a bar with its amount in text and a legend for its segments
 
-Both components feature smooth transition animations when the value changes, a loading (indeterminate) animation mode, customizable colors, and automatic styling that adapts to the current theme.
+The bar and the ring feature smooth transition animations when the value changes (one frame under reduced motion), a loading (indeterminate) animation mode, segments, a tick mark at a fixed value, customizable colors, and automatic styling that adapts to the current theme.
 
 ## Progress
 
@@ -112,6 +113,42 @@ impl Render for MyView {
 }
 ```
 
+### Segments
+
+`segments` fills the bar with several parts side by side instead of one value, each a [`ProgressSegment`](#progresssegment) with its own value (in percent of the bar), color and label. A hairline keeps neighbours apart, and each segment's end moves on its own transition.
+
+```rust
+use gpui_kit::component::progress::{Progress, ProgressSegment};
+
+Progress::new("context-split").segments([
+    ProgressSegment::new(2.0, cx.theme().chart_1).with_label("System and tools"),
+    ProgressSegment::new(12.2, cx.theme().chart_2)
+        .with_label("Conversation")
+        .with_value_text("about 122k"),
+])
+```
+
+Color alone can't tell a reader what a segment is. Show each label as text next to the bar; [`UsageBar`](#usagebar) does that with a legend. Without an explicit accessible value, the bar reads out each labelled segment and its amount ("System and tools 2%, Conversation about 122k").
+
+### Tick
+
+`tick` marks a fixed value on the bar, such as a limit the value is heading for. The mark uses the theme's `foreground`; `tick_color` overrides it.
+
+```rust
+Progress::new("context").value(62.0).tick(95.0)
+```
+
+### Accessible Value
+
+Progress reports its percentage to assistive technology. When the amount means more as text, give that text with `accessibility_value`:
+
+```rust
+Progress::new("context")
+    .value(15.0)
+    .accessibility_label("Context")
+    .accessibility_value("142k of 950k tokens")
+```
+
 ### API Reference
 
 | Method | Type | Description |
@@ -120,6 +157,12 @@ impl Render for MyView {
 | `value(v)` | `f32` | Set progress value (0–100), clamped automatically |
 | `loading(v)` | `bool` | Enable indeterminate loading animation; ignores `value` when `true` |
 | `color(c)` | `impl Into<Hsla>` | Override the fill color (defaults to `theme.progress_bar`) |
+| `track_color(c)` | `impl Into<Hsla>` | Override the track color (defaults to the fill color at 20 % opacity) |
+| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Fill with segments side by side; replaces `value` and `color` |
+| `tick(v)` | `f32` | Mark a value (0–100) with a tick |
+| `tick_color(c)` | `impl Into<Hsla>` | Override the tick color (defaults to `theme.foreground`) |
+| `accessibility_label(s)` | `impl Into<SharedString>` | Set the accessible name |
+| `accessibility_value(s)` | `impl Into<SharedString>` | Set the value read out, e.g. "142k of 950k tokens" |
 | `xsmall()` / `small()` / `large()` | — | Set predefined height via `Sizable` |
 | `Styled` trait methods | — | Custom height, border radius, border, etc. |
 
@@ -207,6 +250,43 @@ h_flex()
     .child("Downloading...")
 ```
 
+### Tick, Stroke and Track
+
+A context meter needs to show where a limit sits. `tick` draws a short mark across the ring at a value; `stroke_width` and `track_color` set the ring's thickness and the color it runs over.
+
+```rust
+ProgressCircle::new("context")
+    .value(used_percent)
+    .tick(95.0) // where the session hands over
+    .stroke_width(rems(0.125))
+    .track_color(cx.theme().muted)
+```
+
+The stroke defaults to 15 % of the circle's width, at most 5 px; the track to the arc's color at 20 % opacity; the tick to `theme.foreground`.
+
+### Segments
+
+`segments` stacks [`ProgressSegment`](#progresssegment)s along the ring from the top, in order, with a hairline between them. Name the segments in text near the ring, for example in its tooltip or popover.
+
+```rust
+ProgressCircle::new("split").size_10().segments([
+    ProgressSegment::new(10.0, cx.theme().chart_1).with_label("System"),
+    ProgressSegment::new(35.0, cx.theme().chart_2).with_label("Conversation"),
+])
+```
+
+### Accessible Value
+
+Give the ratio as text with `accessibility_value`, so a screen reader says "142k of 1M tokens" rather than "14 percent":
+
+```rust
+ProgressCircle::new("context")
+    .value(14.2)
+    .tick(95.0)
+    .accessibility_label("Context")
+    .accessibility_value("142k of 1M tokens")
+```
+
 ### API Reference
 
 | Method | Type | Description |
@@ -215,9 +295,68 @@ h_flex()
 | `value(v)` | `f32` | Set progress value (0–100), clamped automatically |
 | `loading(v)` | `bool` | Enable indeterminate loading animation; ignores `value` when `true` |
 | `color(c)` | `impl Into<Hsla>` | Override the arc color (defaults to `theme.progress_bar`) |
+| `track_color(c)` | `impl Into<Hsla>` | Override the track color (defaults to the arc color at 20 % opacity) |
+| `stroke_width(w)` | `impl Into<AbsoluteLength>` | Set the ring's thickness (defaults to 15 % of the width, at most 5 px) |
+| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Stack segments along the ring; replaces `value` and `color` |
+| `tick(v)` | `f32` | Mark a value (0–100) with a tick across the ring |
+| `tick_color(c)` | `impl Into<Hsla>` | Override the tick color (defaults to `theme.foreground`) |
+| `accessibility_label(s)` | `impl Into<SharedString>` | Set the accessible name |
+| `accessibility_value(s)` | `impl Into<SharedString>` | Set the value read out, e.g. "142k of 1M tokens" |
 | `xsmall()` / `small()` / `large()` | — | Set predefined size via `Sizable` |
 | `size(px(n))` | `Pixels` | Set custom size |
 | `ParentElement` | — | Place content inside the circle |
+
+## UsageBar
+
+A labelled meter for a quantity against a whole: the label and the amount as text on one line, the bar, an optional legend naming each segment with its color and amount, and an optional muted description. Use it where the numbers matter, such as a usage breakdown in a popover.
+
+```rust
+use gpui_kit::component::progress::{ProgressSegment, UsageBar};
+
+UsageBar::new("context-split", "Context")
+    .value_text("142k / 1M")
+    .tick(95.0)
+    .segments([
+        ProgressSegment::new(2.0, cx.theme().chart_1)
+            .with_label("System and tools")
+            .with_value_text("about 18k"),
+        ProgressSegment::new(12.2, cx.theme().chart_2)
+            .with_label("Conversation")
+            .with_value_text("about 124k"),
+    ])
+    .description("Hands over at 950k")
+
+UsageBar::new("plan", "5-hour limit")
+    .small()
+    .value(82.0)
+    .color(cx.theme().warning)
+    .value_text("82%")
+    .description("Resets at 14:00")
+```
+
+The bar is a `Progress` named after the label, whose accessible value is the value text. Numbers use tabular figures, so they don't jitter as they change. Use `warning` or `danger` for the color only when the amount means that.
+
+| Method | Type | Description |
+|---|---|---|
+| `new(id, label)` | `ElementId`, `impl Into<SharedString>` | Create a meter for `label` |
+| `value_text(s)` | `impl Into<SharedString>` | The amount as text, opposite the label |
+| `value(v)` | `f32` | The filled percentage (0–100) |
+| `color(c)` | `impl Into<Hsla>` | Override the bar color |
+| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Fill with segments and list them in a legend |
+| `tick(v)` | `f32` | Mark a value (0–100) with a tick |
+| `description(s)` | `impl Into<SharedString>` | A muted line under the bar |
+| `xsmall()` / `small()` / `large()` | — | Set the bar's height via `Sizable` |
+
+## ProgressSegment
+
+One part of a segmented bar or ring.
+
+| Method | Type | Description |
+|---|---|---|
+| `new(value, color)` | `f32`, `impl Into<Hsla>` | A segment of `value` percent in `color` |
+| `with_label(s)` | `impl Into<SharedString>` | What the segment measures |
+| `with_value_text(s)` | `impl Into<SharedString>` | Its amount as text (defaults to the percentage) |
+| `value()` / `color()` / `label()` / `value_text()` | — | Read the segment back |
 
 ## Examples
 

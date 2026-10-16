@@ -12,7 +12,7 @@ use gpui_kit::{
     Result, SharedString, Styled as _, Task, Window,
     assets::Assets,
     component::{
-        ActiveTheme as _, Disableable as _, IconName, IndexPath, Theme, ThemeMode,
+        ActiveTheme as _, Disableable as _, IconName, IndexPath, Sizable as _, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
         font_picker::{FontCatalog, FontPicker, FontPickerState, FontSettings},
         input::{
@@ -22,6 +22,7 @@ use gpui_kit::{
         },
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
+        progress::{ProgressCircle, ProgressSegment, UsageBar},
     },
     div, px, size,
     test::TestWindowExt as _,
@@ -871,6 +872,88 @@ fn buttons_dark() {
 #[test]
 fn buttons_at_a_fractional_scale() {
     goldens().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
+}
+
+struct Meters;
+
+impl Render for Meters {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let ring = |id: &'static str| {
+            ProgressCircle::new(id)
+                .value(62.)
+                .tick(95.)
+                .accessibility_label("Context")
+        };
+        page(cx)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .child(ring("ring"))
+                    .child(ring("ring-large").size_10())
+                    .child(
+                        ProgressCircle::new("ring-segments")
+                            .size_10()
+                            .stroke_width(gpui_kit::rems(0.375))
+                            .tick(95.)
+                            .segments([
+                                ProgressSegment::new(10., theme.chart_1),
+                                ProgressSegment::new(35., theme.chart_2),
+                                ProgressSegment::new(20., theme.chart_3),
+                            ]),
+                    )
+                    .child(
+                        ProgressCircle::new("ring-warning")
+                            .size_10()
+                            .value(91.)
+                            .color(theme.warning)
+                            .tick(95.),
+                    ),
+            )
+            .child(
+                UsageBar::new("split", "Context")
+                    .value_text("650k / 1M")
+                    .tick(95.)
+                    .segments([
+                        ProgressSegment::new(10., theme.chart_1)
+                            .with_label("System and tools")
+                            .with_value_text("about 100k"),
+                        ProgressSegment::new(35., theme.chart_2)
+                            .with_label("Conversation")
+                            .with_value_text("about 350k"),
+                        ProgressSegment::new(20., theme.chart_3)
+                            .with_label("Tool results")
+                            .with_value_text("about 200k"),
+                    ])
+                    .description("Hands over at 950k"),
+            )
+            .child(
+                UsageBar::new("plan", "5-hour limit")
+                    .small()
+                    .value(82.)
+                    .color(theme.warning)
+                    .value_text("82%"),
+            )
+    }
+}
+
+fn meters(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    let window = open(&mut app, (360., 260.), SCALE, |_, _| Meters);
+    app.capture(window).unwrap()
+}
+
+/// A ring with a tick at its limit, a segmented ring, and usage bars that name their segments.
+#[test]
+fn progress_meters() {
+    goldens().assert("progress-meters", &meters(ThemeMode::Light));
+}
+
+#[test]
+fn progress_meters_dark() {
+    goldens().assert("progress-meters-dark", &meters(ThemeMode::Dark));
 }
 
 struct Bar;

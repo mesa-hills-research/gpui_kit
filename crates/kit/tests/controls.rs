@@ -1,7 +1,8 @@
 mod common;
 use gpui_kit::component::{
-    Disableable, IndexPath,
+    ActiveTheme as _, Disableable, IndexPath,
     checkbox::Checkbox,
+    progress::{Progress, ProgressCircle, ProgressSegment, UsageBar},
     radio::{Radio, RadioGroup},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     switch::Switch,
@@ -492,4 +493,64 @@ fn radio_group_keeps_a_disabled_item_disabled(cx: &mut TestAppContext) {
         None,
         "an enabled item inside a disabled group"
     );
+}
+
+struct Meters;
+impl Render for Meters {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(
+                ProgressCircle::new("context-ring")
+                    .value(14.2)
+                    .tick(95.)
+                    .accessibility_label("Context")
+                    .accessibility_value("142k of 1M tokens"),
+            )
+            .child(
+                Progress::new("split").segments([
+                    ProgressSegment::new(2., theme.chart_1).with_label("System"),
+                    ProgressSegment::new(12.2, theme.chart_2)
+                        .with_label("Conversation")
+                        .with_value_text("about 122k"),
+                ]),
+            )
+            .child(
+                UsageBar::new("five-hours", "5-hour limit")
+                    .value(82.)
+                    .value_text("82%")
+                    .description("Resets at 14:00"),
+            )
+    }
+}
+
+#[gpui_kit::test]
+fn meters_read_their_ratio_as_text(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (handle, _) = common::open_window(cx, Some(size(px(400.), px(300.))), |_, cx| {
+        cx.new(|_| Meters)
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let ring = window.find("context-ring");
+        assert_eq!(ring.role(), Some(gpui_kit::Role::ProgressIndicator));
+        assert_eq!(ring.label(), Some("Context"));
+        assert_eq!(ring.value(), Some("142k of 1M tokens"));
+
+        // Without value text, a segmented bar reads each labelled segment.
+        assert_eq!(
+            window.find("split").value(),
+            Some("System 2%, Conversation about 122k")
+        );
+
+        // A usage bar names its bar after the label and reads the value text.
+        let usage = window.find("five-hours");
+        assert_eq!(usage.label(), Some("5-hour limit"));
+        assert_eq!(usage.value(), Some("82%"));
+    })
+    .unwrap();
 }

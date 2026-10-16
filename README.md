@@ -52,6 +52,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   grammars. See [Editor: basic usage](website/component/editor.md#basic-usage).
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
+- **Meters with a limit and segments** (`gpui-component`). `ProgressCircle` and `Progress` mark a
+  value with a tick, stack labelled `ProgressSegment`s along the ring or bar, take a track colour
+  (and the ring a stroke width), and read out a value text such as "142k of 1M tokens" instead of
+  a bare percentage. `UsageBar` shows a bar with its label, its amount and a legend of its
+  segments in text. See [Progress](website/component/progress.md#usagebar).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
