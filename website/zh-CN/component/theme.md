@@ -84,7 +84,46 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-`apply_config` 会替换整个主题。主题文件没有设置的项，例如 `radius`、`shadow`、字体或 `highlight` 部分，都会使用该文件所属模式的默认值，因此之前主题的设置不会保留下来。如果应用自己在主题上设置了字号或圆角，切换主题后需要重新设置。
+`apply_config` 会替换整个主题。主题文件没有设置的项，例如 `radius`、`shadow`、字体或 `highlight` 部分，都会使用该文件所属模式的默认值，因此之前主题的设置不会保留下来。如果应用自己在主题上设置了圆角，切换主题后需要重新设置；字体请使用[字体覆盖](#字体覆盖)。
+
+### 内置主题与用户文件夹
+
+应用可以把主题嵌入二进制文件，同时允许用户添加自己的主题。用 `add_bundled_themes_from_str` 添加嵌入的文件（也可以自己解析主题，例如在后台线程中解析，再交给 `add_bundled_themes`），并用 `watch_dir` 监听用户的文件夹：
+
+```rs
+const THEMES: &[&str] = &[
+    include_str!("../themes/macos-classic.json"),
+    include_str!("../themes/ayu.json"),
+];
+
+let registry = ThemeRegistry::global_mut(cx);
+for theme in THEMES {
+    registry.add_bundled_themes_from_str(theme)?;
+}
+ThemeRegistry::watch_dir(user_themes_dir, cx, |cx| { /* 应用已保存的主题 */ })?;
+```
+
+文件夹每次重新加载时，内置主题都会保留。文件夹中的主题如果与某个内置主题同名（不区分大小写），就会替换它，因此用户可以把内置主题的文件复制到文件夹中再修改。套件自带的两个默认主题不会被替换。用 `ThemeRegistry::theme(name)` 查找主题，它先精确匹配名称，再忽略大小写匹配。文件夹在后台线程中读取和解析，无法解析的文件会被跳过并记录日志。通过 `load_themes_from_str` 添加的主题只保留到文件夹下一次加载。
+
+## 字体覆盖
+
+主题文件可以指定字体，没有指定字体的主题会把字体重置为系统字体。因此，用户在应用设置中选择的字体需要在每次切换主题后保留下来。把它设置为一个 `FontOverrides` 即可；`apply_config` 每次应用主题时，都会在同一次更新中把它重新覆盖到主题之上：
+
+```rs
+use gpui_kit::component::{FontOverrides, Theme};
+
+Theme::update(cx, |theme| {
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_font_family("Work Sans")
+            .with_font_size(px(16.) * zoom)
+            .with_mono_font_family("JetBrains Mono")
+            .with_mono_font_size(px(13.)),
+    )
+});
+```
+
+未设置的字段跟随主题。`font_size` 同时也是应用的缩放比例，因为 `Root` 会用它设置窗口的 rem 大小。切换主题、切换浅色或深色模式、重新加载主题文件夹，都会保留这些覆盖设置，并且主题的观察者每次切换只会收到一次通知。如果在 `Theme` 的观察者中重新设置字体，每次切换都会再更新一次主题。
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html

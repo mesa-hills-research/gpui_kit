@@ -61,6 +61,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   variable fonts, upright and italic, so medium, semibold and bold text use the real weights.
   `gpui_kit::assets::fonts::all()` goes straight to `add_fonts`. See
   [Fonts: bundled Work Sans and JetBrains Mono](website/docs/fonts.md#bundled-work-sans-and-jetbrains-mono).
+- **Bundled themes, a user folder, and fonts that stay** (`gpui-component`). `ThemeRegistry`
+  keeps themes an app embeds (`add_bundled_themes_from_str`) across reloads of the watched
+  folder, whose themes replace bundled ones of the same name ignoring case; the folder is read
+  on a background thread. `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes
+  once, and every theme applied after keeps them, in one update. See
+  [Theme: font overrides](website/component/theme.md#font-overrides).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).

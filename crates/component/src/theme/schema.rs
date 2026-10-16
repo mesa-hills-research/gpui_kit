@@ -1138,7 +1138,8 @@ impl Theme {
     /// mode, so nothing of the theme applied before carries over: its colors,
     /// syntax highlighting, fonts and sizes, radii and shadow. Settings a
     /// theme file has no key for, such as [`Theme::scrollbar_mode`] and
-    /// [`Theme::focus_ring`], stay as they are.
+    /// [`Theme::focus_ring`], stay as they are. The application's
+    /// [`FontOverrides`](super::FontOverrides) win over the file's fonts.
     pub fn apply_config(&mut self, config: &Rc<ThemeConfig>) {
         if config.mode.is_dark() {
             self.dark_theme = config.clone();
@@ -1161,16 +1162,7 @@ impl Theme {
             ThemeColor::light()
         };
 
-        self.font_size = config.font_size.map_or(DEFAULT_FONT_SIZE, px);
-        self.font_family = config
-            .font_family
-            .clone()
-            .unwrap_or_else(super::system_font::default_font_family);
-        self.mono_font_family = config
-            .mono_font_family
-            .clone()
-            .unwrap_or_else(super::mono_font::default_installed_mono_font_family);
-        self.mono_font_size = config.mono_font_size.map_or(DEFAULT_MONO_FONT_SIZE, px);
+        self.apply_fonts(config);
         self.radius = config
             .radius
             .map_or(DEFAULT_RADIUS, |radius| px(radius as f32));
@@ -1181,6 +1173,33 @@ impl Theme {
 
         self.tokens = self.colors.apply_config(&config, &default_colors);
         self.mode = config.mode;
+    }
+
+    /// Set the fonts from `config`, with the application's
+    /// [`FontOverrides`](super::FontOverrides) over it and the defaults where
+    /// neither says.
+    pub(crate) fn apply_fonts(&mut self, config: &ThemeConfig) {
+        let overrides = &self.font_overrides;
+        let font_size = overrides
+            .font_size()
+            .unwrap_or_else(|| config.font_size.map_or(DEFAULT_FONT_SIZE, px));
+        let font_family = overrides
+            .font_family()
+            .or(config.font_family.as_ref())
+            .cloned()
+            .unwrap_or_else(super::system_font::default_font_family);
+        let mono_font_family = overrides
+            .mono_font_family()
+            .or(config.mono_font_family.as_ref())
+            .cloned()
+            .unwrap_or_else(super::mono_font::default_installed_mono_font_family);
+        let mono_font_size = overrides
+            .mono_font_size()
+            .unwrap_or_else(|| config.mono_font_size.map_or(DEFAULT_MONO_FONT_SIZE, px));
+        self.font_size = font_size;
+        self.font_family = font_family;
+        self.mono_font_family = mono_font_family;
+        self.mono_font_size = mono_font_size;
     }
 }
 

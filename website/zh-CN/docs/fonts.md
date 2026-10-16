@@ -70,6 +70,8 @@ Theme::update(cx, |theme| {
 `font_size` 同时是应用缩放控制——`Root` 会调用
 `window.set_rem_size(cx.theme().font_size)`，因此基于 [`rem` 的间距](./geometry)会跟随缩放。详见[编码指南](./coding-guides.md)。
 
+切换主题时，这些字段会按新的主题文件重新设置；主题没有指定字体时会恢复为系统字体。对于用户选择的字体，请改用[字体覆盖](../component/theme.md#字体覆盖)，每次切换主题都会保留它们。
+
 ## 元素级覆盖
 
 实现了 `Styled` 的元素可以在不改动主题的情况下覆盖字体：

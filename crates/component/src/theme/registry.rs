@@ -48,14 +48,10 @@ pub(super) fn init(cx: &mut App) {
         let light_theme = Theme::global(cx).light_theme.name.clone();
         let dark_theme = Theme::global(cx).dark_theme.name.clone();
 
-        if let Some(theme) = ThemeRegistry::global(cx)
-            .themes()
-            .get(&light_theme)
-            .cloned()
-        {
+        if let Some(theme) = ThemeRegistry::global(cx).theme(&light_theme).cloned() {
             Theme::global_mut(cx).light_theme = theme;
         }
-        if let Some(theme) = ThemeRegistry::global(cx).themes().get(&dark_theme).cloned() {
+        if let Some(theme) = ThemeRegistry::global(cx).theme(&dark_theme).cloned() {
             Theme::global_mut(cx).dark_theme = theme;
         }
 
@@ -72,10 +68,28 @@ pub(super) fn init(cx: &mut App) {
     .detach();
 }
 
+/// Every theme an application can switch to, by name.
+///
+/// Themes come from three places, later ones replacing earlier ones of the
+/// same name:
+///
+/// 1. the kit's two defaults;
+/// 2. themes the application embeds in its binary, added with
+///    [`ThemeRegistry::add_bundled_themes`];
+/// 3. the folder [`ThemeRegistry::watch_dir`] watches, the user's own
+///    themes, which replace a bundled theme whose name matches ignoring
+///    case. The kit's defaults are never replaced.
+///
+/// The folder is read again whenever a file in it changes; bundled themes
+/// stay registered across those reloads.
 #[derive(Default, Debug)]
 pub struct ThemeRegistry {
     themes_dir: PathBuf,
     default_themes: HashMap<ThemeMode, Rc<ThemeConfig>>,
+    /// Themes embedded in the application, in the order they were added.
+    bundled_themes: Vec<Rc<ThemeConfig>>,
+    /// The themes read from `themes_dir` at its last load.
+    folder_themes: Vec<Rc<ThemeConfig>>,
     themes: HashMap<SharedString, Rc<ThemeConfig>>,
     has_custom_themes: bool,
 }
@@ -91,9 +105,12 @@ impl ThemeRegistry {
         cx.global_mut::<Self>()
     }
 
-    /// Watch themes directory.
+    /// Watch a folder of theme files, such as the user's own themes.
     ///
-    /// And reload themes to trigger the `on_load` callback.
+    /// Its `*.json` files are read and parsed on a background thread, now
+    /// and whenever a file in it changes, and replace the bundled themes of
+    /// the same name (ignoring case). `on_load` runs once, after the first
+    /// read. The folder is created if it is missing.
     #[cfg(not(target_family = "wasm"))]
     pub fn watch_dir<F>(themes_dir: PathBuf, cx: &mut App, on_load: F) -> Result<()>
     where
@@ -101,20 +118,64 @@ impl ThemeRegistry {
     {
         Self::global_mut(cx).themes_dir = themes_dir.clone();
 
-        // Load theme in the background.
         cx.spawn(async move |cx| {
+            let dir = themes_dir.clone();
+            let themes = cx
+                .background_executor()
+                .spawn(async move { read_themes_dir(&dir) })
+                .await;
             _ = cx.update(|cx| {
                 if let Err(err) = Self::_watch_themes_dir(themes_dir, cx) {
                     tracing::error!("Failed to watch themes directory: {}", err);
                 }
 
-                Self::reload_themes(cx);
+                Self::global_mut(cx).set_folder_themes(themes);
                 on_load(cx);
             });
         })
         .detach();
 
         Ok(())
+    }
+
+    /// Add themes the application embeds in its binary.
+    ///
+    /// They stay registered when the watched folder reloads, and a theme in
+    /// that folder with the same name, ignoring case, replaces one of them.
+    /// A bundled theme replaces an earlier bundled theme of the same name.
+    pub fn add_bundled_themes(&mut self, themes: impl IntoIterator<Item = ThemeConfig>) {
+        for theme in themes {
+            self.bundled_themes
+                .retain(|bundled| !same_name(&bundled.name, &theme.name));
+            self.bundled_themes.push(Rc::new(theme));
+        }
+        self.rebuild();
+    }
+
+    /// Parse a theme file (a `ThemeSet`, as in the kit's `themes` folder)
+    /// embedded in the application, and add its themes as with
+    /// [`ThemeRegistry::add_bundled_themes`].
+    ///
+    /// ```ignore
+    /// ThemeRegistry::global_mut(cx)
+    ///     .add_bundled_themes_from_str(include_str!("../themes/macos-classic.json"))?;
+    /// ```
+    pub fn add_bundled_themes_from_str(&mut self, content: &str) -> anyhow::Result<()> {
+        let theme_set = serde_json::from_str::<ThemeSet>(content)?;
+        self.add_bundled_themes(theme_set.themes);
+        Ok(())
+    }
+
+    /// The theme named `name`: an exact match, else one whose name matches
+    /// ignoring case, so a user's theme that replaced a bundled one under a
+    /// different spelling is still found by the bundled name.
+    pub fn theme(&self, name: &str) -> Option<&Rc<ThemeConfig>> {
+        self.themes.get(name).or_else(|| {
+            self.themes
+                .iter()
+                .find(|(key, _)| same_name(key, name))
+                .map(|(_, theme)| theme)
+        })
     }
 
     /// Returns a reference to the map of themes (including default themes).
@@ -148,6 +209,11 @@ impl ThemeRegistry {
         &self.default_themes[&ThemeMode::Dark]
     }
 
+    /// Parse a theme file and register its themes whose names are not taken.
+    ///
+    /// These themes last until the watched folder next loads; use
+    /// [`ThemeRegistry::add_bundled_themes_from_str`] for themes that must
+    /// stay.
     pub fn load_themes_from_str(&mut self, content: &str) -> anyhow::Result<()> {
         let theme_set = serde_json::from_str::<ThemeSet>(content)?;
         for theme in theme_set.themes {
@@ -223,7 +289,12 @@ impl ThemeRegistry {
 
             while rx.recv().await.is_ok() {
                 tracing::info!("Reloading themes...");
-                _ = cx.update(Self::reload_themes);
+                let dir = themes_dir.clone();
+                let themes = cx
+                    .background_executor()
+                    .spawn(async move { read_themes_dir(&dir) })
+                    .await;
+                _ = cx.update(|cx| Self::global_mut(cx).set_folder_themes(themes));
             }
         })
         .detach();
@@ -231,66 +302,241 @@ impl ThemeRegistry {
         Ok(())
     }
 
+    /// Replace the themes read from the watched folder.
     #[cfg(not(target_family = "wasm"))]
-    fn reload_themes(cx: &mut App) {
-        let registry = Self::global_mut(cx);
-        match registry.reload() {
-            Ok(_) => {
-                tracing::info!("Themes reloaded successfully.");
-            }
-            Err(e) => tracing::error!("Failed to reload themes: {:?}", e),
-        }
+    fn set_folder_themes(&mut self, themes: Vec<ThemeConfig>) {
+        self.folder_themes = themes.into_iter().map(Rc::new).collect();
+        self.rebuild();
     }
 
-    #[cfg(not(target_family = "wasm"))]
-    /// Reload themes from the `themes_dir`.
-    fn reload(&mut self) -> Result<()> {
-        let mut themes = vec![];
-
-        if self.themes_dir.exists() {
-            for entry in std::fs::read_dir(&self.themes_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    let file_content = std::fs::read_to_string(path.clone())?;
-
-                    match serde_json::from_str::<ThemeSet>(&file_content) {
-                        Ok(theme_set) => {
-                            themes.extend(theme_set.themes);
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "ignored invalid theme file: {}, {}",
-                                path.display(),
-                                e
-                            );
-                        }
-                    }
-                }
+    /// Compose the registered themes from the defaults, the bundled themes
+    /// and the folder's themes, in that order of precedence from lowest.
+    fn rebuild(&mut self) {
+        // A folder theme marked default replaces the kit's default for its
+        // mode, and keeps that place while it stays in the folder.
+        for theme in &self.folder_themes {
+            if theme.is_default {
+                self.default_themes.insert(theme.mode, theme.clone());
             }
         }
 
         self.themes.clear();
         for theme in self.default_themes.values() {
-            self.themes
-                .insert(theme.name.clone(), Rc::new((**theme).clone()));
+            self.themes.insert(theme.name.clone(), theme.clone());
         }
+        let defaults = self
+            .default_themes
+            .values()
+            .map(|theme| theme.name.clone())
+            .collect::<Vec<_>>();
+        let is_default =
+            |name: &SharedString| defaults.iter().any(|default| same_name(default, name));
 
-        for theme in themes.iter() {
-            if self.themes.contains_key(&theme.name) {
+        for theme in self.bundled_themes.iter().chain(&self.folder_themes) {
+            if is_default(&theme.name) {
                 continue;
             }
+            self.themes.retain(|name, _| !same_name(name, &theme.name));
+            self.themes.insert(theme.name.clone(), theme.clone());
+        }
+        self.has_custom_themes = self.themes.len() > self.default_themes.len();
+    }
+}
 
-            if theme.is_default {
-                self.default_themes
-                    .insert(theme.mode, Rc::new(theme.clone()));
+/// Whether two theme names are the same, ignoring case.
+fn same_name(a: &str, b: &str) -> bool {
+    a.chars()
+        .flat_map(char::to_lowercase)
+        .eq(b.chars().flat_map(char::to_lowercase))
+}
+
+/// Read and parse every `*.json` theme file in `dir`, in file name order,
+/// skipping (and logging) files that fail to parse. Runs off the UI thread.
+#[cfg(not(target_family = "wasm"))]
+fn read_themes_dir(dir: &std::path::Path) -> Vec<ThemeConfig> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            if dir.exists() {
+                tracing::error!("Failed to read themes directory {}: {err}", dir.display());
             }
+            return Vec::new();
+        }
+    };
+    let mut paths = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    paths.sort();
 
-            self.has_custom_themes = true;
-            self.themes
-                .insert(theme.name.clone(), Rc::new(theme.clone()));
+    let mut themes = Vec::new();
+    for path in paths {
+        let parsed = std::fs::read_to_string(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|content| Ok(serde_json::from_str::<ThemeSet>(&content)?));
+        match parsed {
+            Ok(theme_set) => themes.extend(theme_set.themes),
+            Err(err) => {
+                tracing::error!("ignored invalid theme file: {}, {}", path.display(), err)
+            }
+        }
+    }
+    themes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    fn theme_set(themes: &[(&str, &str, &str)]) -> String {
+        let themes = themes
+            .iter()
+            .map(|(name, mode, background)| {
+                serde_json::json!({
+                    "name": name,
+                    "mode": mode,
+                    "colors": { "background": background }
+                })
+            })
+            .collect::<Vec<_>>();
+        serde_json::json!({ "name": "Set", "author": "Test", "themes": themes }).to_string()
+    }
+
+    fn background(registry: &ThemeRegistry, name: &str) -> Option<String> {
+        registry
+            .theme(name)
+            .and_then(|theme| theme.colors.background.clone())
+            .map(|color| color.to_string())
+    }
+
+    /// A temporary folder of theme files, removed when dropped.
+    struct ThemesDir(PathBuf);
+
+    impl ThemesDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "gpui-component-themes-{}-{name}",
+                std::process::id()
+            ));
+            _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
         }
 
-        Ok(())
+        fn write(&self, file: &str, content: &str) {
+            std::fs::write(self.0.join(file), content).unwrap();
+        }
+    }
+
+    impl Drop for ThemesDir {
+        fn drop(&mut self) {
+            _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn bundled_themes_survive_folder_loads_and_yield_to_the_users() {
+        let mut registry = ThemeRegistry::default();
+        registry.init_default_themes();
+        registry
+            .add_bundled_themes_from_str(&theme_set(&[
+                ("Classic Dark", "dark", "#111111"),
+                ("Classic Light", "light", "#eeeeee"),
+            ]))
+            .unwrap();
+        assert_eq!(
+            background(&registry, "Classic Dark").as_deref(),
+            Some("#111111")
+        );
+
+        // The user's folder replaces a bundled theme whose name matches
+        // ignoring case, and adds its own.
+        registry.set_folder_themes(
+            serde_json::from_str::<ThemeSet>(&theme_set(&[
+                ("classic dark", "dark", "#222222"),
+                ("Mine", "light", "#fafafa"),
+                ("Default Light", "light", "#000000"),
+            ]))
+            .unwrap()
+            .themes,
+        );
+        assert_eq!(
+            background(&registry, "Classic Dark").as_deref(),
+            Some("#222222")
+        );
+        assert_eq!(
+            background(&registry, "classic dark").as_deref(),
+            Some("#222222")
+        );
+        assert_eq!(background(&registry, "Mine").as_deref(), Some("#fafafa"));
+        assert_eq!(
+            background(&registry, "Classic Light").as_deref(),
+            Some("#eeeeee")
+        );
+        assert!(
+            registry.themes().keys().all(|name| name != "Classic Dark"),
+            "one theme per name"
+        );
+        // The kit's defaults are not replaced.
+        assert_ne!(
+            background(&registry, "Default Light").as_deref(),
+            Some("#000000")
+        );
+
+        // The next load of the folder drops the user's themes, not the
+        // bundled ones.
+        registry.set_folder_themes(Vec::new());
+        assert_eq!(
+            background(&registry, "Classic Dark").as_deref(),
+            Some("#111111")
+        );
+        assert_eq!(background(&registry, "Mine"), None);
+        assert_eq!(registry.themes().len(), 4);
+
+        // A bundled theme added later replaces an earlier one of its name.
+        registry
+            .add_bundled_themes_from_str(&theme_set(&[("CLASSIC DARK", "dark", "#333333")]))
+            .unwrap();
+        assert_eq!(
+            background(&registry, "Classic Dark").as_deref(),
+            Some("#333333")
+        );
+        assert_eq!(registry.themes().len(), 4);
+    }
+
+    #[test]
+    fn reads_each_valid_theme_file_in_the_folder() {
+        let dir = ThemesDir::new("read");
+        dir.write("b.json", &theme_set(&[("B", "dark", "#222222")]));
+        dir.write("a.json", &theme_set(&[("A", "light", "#111111")]));
+        dir.write("broken.json", "{ not json");
+        dir.write("notes.txt", "not a theme");
+
+        let names = read_themes_dir(&dir.0)
+            .into_iter()
+            .map(|theme| theme.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec![SharedString::from("A"), "B".into()]);
+        assert!(read_themes_dir(&dir.0.join("missing")).is_empty());
+    }
+
+    #[gpui::test]
+    fn watching_a_folder_loads_it_and_keeps_the_active_theme(cx: &mut TestAppContext) {
+        let dir = ThemesDir::new("watch");
+        dir.write("mine.json", &theme_set(&[("Mine Dark", "dark", "#123456")]));
+        cx.update(|cx| {
+            crate::theme::init(cx);
+            ThemeRegistry::global_mut(cx)
+                .add_bundled_themes_from_str(&theme_set(&[("Bundled", "light", "#eeeeee")]))
+                .unwrap();
+            ThemeRegistry::watch_dir(dir.0.clone(), cx, |_| {}).unwrap();
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let registry = ThemeRegistry::global(cx);
+            assert!(registry.theme("Mine Dark").is_some());
+            assert!(registry.theme("Bundled").is_some());
+        });
     }
 }

@@ -94,6 +94,11 @@ Theme::update(cx, |theme| {
 `window.set_rem_size(cx.theme().font_size)`, so [`rem`-based spacing](./geometry)
 scales with it. See [Coding Guides](./coding-guides.md) for details.
 
+A theme switch sets these fields again from the new theme file, back to the
+system's when it names no fonts. For fonts the user chose, set them as
+[font overrides](../component/theme.md#font-overrides) instead, which every
+theme switch keeps.
+
 ## Per-element override
 
 Elements implementing `Styled` accept a font override without touching the theme:

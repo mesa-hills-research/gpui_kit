@@ -20,6 +20,7 @@ use std::{
 };
 
 mod color;
+mod font_overrides;
 mod mono_font;
 mod motion;
 mod registry;
@@ -28,6 +29,7 @@ mod system_font;
 mod theme_color;
 
 pub use color::*;
+pub use font_overrides::FontOverrides;
 pub use motion::*;
 pub use registry::*;
 pub use schema::*;
@@ -209,6 +211,11 @@ pub struct Theme {
     /// Semantic motion policy for styled components.
     #[serde(skip)]
     pub motion: MotionTokens,
+    /// The application's font choices, applied over every theme by
+    /// [`Theme::apply_config`]. Set them with [`Theme::set_font_overrides`],
+    /// which also applies them now.
+    #[serde(skip)]
+    pub font_overrides: FontOverrides,
 }
 
 impl Default for Theme {
@@ -348,6 +355,28 @@ impl Theme {
         } else {
             &self.light_theme.name
         }
+    }
+
+    /// Set the application's font choices, applied over this and every later
+    /// theme by [`Theme::apply_config`], until they are set again.
+    ///
+    /// A field the overrides leave unset goes back to what the active theme
+    /// says, or the default. Call it inside [`Theme::update`], which resolves
+    /// the families and refreshes the windows:
+    ///
+    /// ```ignore
+    /// Theme::update(cx, |theme| {
+    ///     theme.set_font_overrides(FontOverrides::new().with_font_family("Work Sans"))
+    /// });
+    /// ```
+    pub fn set_font_overrides(&mut self, overrides: FontOverrides) {
+        self.font_overrides = overrides;
+        let config = if self.mode.is_dark() {
+            self.dark_theme.clone()
+        } else {
+            self.light_theme.clone()
+        };
+        self.apply_fonts(&config);
     }
 
     /// Sync the theme with the system appearance
@@ -816,6 +845,7 @@ impl From<&ThemeColor> for Theme {
             highlight_theme: HighlightTheme::default_light(),
             sheet: SheetSettings::default(),
             motion: MotionTokens::default(),
+            font_overrides: FontOverrides::default(),
         }
     }
 }
@@ -1066,6 +1096,108 @@ mod update_tests {
             Theme::change(ThemeMode::Light, None, cx);
             assert_eq!(settings(cx), default_settings);
         });
+    }
+
+    /// The application's fonts survive every way a theme gets applied — a
+    /// theme switch, a mode change, a theme that names its own fonts — and
+    /// a field left unset follows the theme again.
+    #[gpui::test]
+    fn font_overrides_outlast_theme_changes(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            init(cx);
+            let config = |json| Rc::new(serde_json::from_value::<ThemeConfig>(json).unwrap());
+            let styled = config(serde_json::json!({
+                "name": "Styled Dark",
+                "mode": "dark",
+                "font.family": "Theme Sans",
+                "font.size": 14,
+                "mono_font.family": "Theme Mono",
+                "mono_font.size": 12
+            }));
+            let plain = config(serde_json::json!({ "name": "Plain", "mode": "light" }));
+            let fonts = |cx: &App| {
+                let theme = Theme::global(cx);
+                (
+                    theme.font_family.clone(),
+                    theme.font_size,
+                    theme.mono_font_family.clone(),
+                    theme.mono_font_size,
+                )
+            };
+            let chosen = (
+                SharedString::from("Work Sans"),
+                px(20.),
+                SharedString::from("JetBrains Mono"),
+                px(15.),
+            );
+
+            Theme::update(cx, |theme| {
+                theme.set_font_overrides(
+                    FontOverrides::new()
+                        .with_font_family("Work Sans")
+                        .with_font_size(px(20.))
+                        .with_mono_font_family("JetBrains Mono")
+                        .with_mono_font_size(px(15.)),
+                )
+            });
+            assert_eq!(fonts(cx), chosen);
+
+            Theme::update(cx, |theme| theme.apply_config(&styled));
+            assert_eq!(fonts(cx), chosen);
+            Theme::update(cx, |theme| theme.apply_config(&plain));
+            assert_eq!(fonts(cx), chosen);
+            Theme::change(ThemeMode::Dark, None, cx);
+            assert_eq!(fonts(cx), chosen);
+            assert_eq!(
+                gpui_base::Theme::global(cx).tokens.typography.sans,
+                chosen.0,
+                "the Base projection carries the chosen font"
+            );
+
+            // Overriding only the mono family hands the rest back to the
+            // theme, the dark one here.
+            Theme::update(cx, |theme| {
+                theme.set_font_overrides(FontOverrides::new().with_mono_font_family("Code"))
+            });
+            let (family, size, mono, mono_size) = fonts(cx);
+            assert_eq!(
+                (family.as_ref(), size, mono.as_ref(), mono_size),
+                ("Theme Sans", px(14.), "Code", px(12.))
+            );
+            assert!(!Theme::global(cx).font_overrides.is_empty());
+
+            Theme::update(cx, |theme| theme.set_font_overrides(FontOverrides::new()));
+            assert_eq!(fonts(cx).2.as_ref(), "Theme Mono");
+            assert!(Theme::global(cx).font_overrides.is_empty());
+        });
+    }
+
+    /// Applying a theme over font overrides is one update: observers of the
+    /// theme hear about it once, where re-setting fonts from an observer
+    /// made every switch two.
+    #[gpui::test]
+    fn a_theme_switch_with_font_overrides_notifies_once(cx: &mut TestAppContext) {
+        let notified = Rc::new(std::cell::Cell::new(0));
+        let _observer = cx.update(|cx| {
+            init(cx);
+            Theme::update(cx, |theme| {
+                theme.set_font_overrides(FontOverrides::new().with_font_family("Work Sans"))
+            });
+            let notified = notified.clone();
+            cx.observe_global::<Theme>(move |_| notified.set(notified.get() + 1))
+        });
+        cx.update(|cx| {
+            let config = Rc::new(
+                serde_json::from_value::<ThemeConfig>(
+                    serde_json::json!({ "name": "Other", "mode": "dark" }),
+                )
+                .unwrap(),
+            );
+            Theme::update(cx, |theme| theme.apply_config(&config));
+        });
+        cx.run_until_parked();
+        assert_eq!(notified.get(), 1);
+        cx.update(|cx| assert_eq!(Theme::global(cx).font_family.as_ref(), "Work Sans"));
     }
 
     #[gpui::test]

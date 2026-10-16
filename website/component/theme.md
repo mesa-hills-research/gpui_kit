@@ -86,7 +86,46 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-`apply_config` replaces the whole theme. A setting the file leaves out, such as `radius`, `shadow`, a font or the `highlight` section, gets its default for the file's mode, so nothing of the theme before carries over. An application that sets its own font size or radius on the theme applies it again after switching themes.
+`apply_config` replaces the whole theme. A setting the file leaves out, such as `radius`, `shadow`, a font or the `highlight` section, gets its default for the file's mode, so nothing of the theme before carries over. An application that sets its own radius on the theme applies it again after switching themes; for fonts, use [font overrides](#font-overrides).
+
+### Bundled themes and a user folder
+
+An application can embed its themes in the binary and still let users add their own. Add the embedded files with `add_bundled_themes_from_str` (or `add_bundled_themes` with themes you parsed yourself, for example on a background thread), and watch the user's folder with `watch_dir`:
+
+```rs
+const THEMES: &[&str] = &[
+    include_str!("../themes/macos-classic.json"),
+    include_str!("../themes/ayu.json"),
+];
+
+let registry = ThemeRegistry::global_mut(cx);
+for theme in THEMES {
+    registry.add_bundled_themes_from_str(theme)?;
+}
+ThemeRegistry::watch_dir(user_themes_dir, cx, |cx| { /* apply the saved theme */ })?;
+```
+
+Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. The kit's two defaults are never replaced. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case; the folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` last only until the folder next loads.
+
+## Font overrides
+
+A theme file may name its fonts, and one that names none resets them to the system's. So a font the user picked in the application's settings has to survive every theme switch. Set it as a `FontOverrides` once; `apply_config` puts it back over each theme it applies, in the same update:
+
+```rs
+use gpui_kit::component::{FontOverrides, Theme};
+
+Theme::update(cx, |theme| {
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_font_family("Work Sans")
+            .with_font_size(px(16.) * zoom)
+            .with_mono_font_family("JetBrains Mono")
+            .with_mono_font_size(px(13.)),
+    )
+});
+```
+
+Each field left unset follows the theme. `font_size` is also the application's zoom, since `Root` sets the window's rem size from it. A theme switch, a light or dark change and a reload of the themes folder all keep the overrides, and observers of the theme hear about each switch once. Re-applying fonts from an observer of `Theme` would update the theme a second time on every switch.
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
