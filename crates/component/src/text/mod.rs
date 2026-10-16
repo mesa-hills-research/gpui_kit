@@ -28,6 +28,8 @@ use ropey::Rope;
 #[cfg(feature = "tree-sitter")]
 use crate::highlighter::{LanguageRegistry, SyntaxHighlighter};
 
+#[cfg(all(test, feature = "tree-sitter"))]
+mod code_block_perf;
 #[cfg(test)]
 mod window_selection;
 

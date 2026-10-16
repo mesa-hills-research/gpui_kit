@@ -257,8 +257,15 @@ windows = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-gpui = { workspace = true, features = ["test-support"] }
+criterion = "0.8"
+gpui = { workspace = true, features = ["test-support", "bench-support"] }
+gpui_platform = { workspace = true, features = ["bench-support"] }
 indoc = "2"
+
+[[bench]]
+name = "code_block_stream"
+harness = false
+required-features = ["tree-sitter-rust"]
 
 [lints]
 workspace = true
