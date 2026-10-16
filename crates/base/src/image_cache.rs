@@ -458,7 +458,7 @@ fn too_large(width: u32, height: u32, bytes: u64, limit: usize) -> ImageCacheErr
     const MB: f64 = 1024. * 1024.;
     ImageCacheError::Asset(
         format!(
-            "a {width}×{height} image takes {:.1} MB decoded, more than the {:.1} MB image budget",
+            "A {width}×{height} image takes {:.1} MB decoded, more than the {:.1} MB image budget.",
             bytes as f64 / MB,
             limit as f64 / MB,
         )

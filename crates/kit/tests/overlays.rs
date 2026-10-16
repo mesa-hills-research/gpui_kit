@@ -501,3 +501,179 @@ fn image_viewer_browses_by_keyboard_and_returns_focus(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+fn open_gallery(cx: &mut TestAppContext) -> (gpui_kit::WindowHandle<Root>, Entity<Gallery>) {
+    cx.update(gpui_kit::init);
+    common::open_window(cx, Some(size(px(800.), px(600.))), |_, cx| {
+        cx.new(|_| Gallery { viewer: None })
+    })
+}
+
+/// Clicking Next twice quickly browses twice; the second click doesn't also
+/// reach the stage as a double click that switches to actual size.
+#[gpui_kit::test]
+fn quick_clicks_on_next_only_browse(cx: &mut TestAppContext) {
+    let (handle, _) = open_gallery(cx);
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let items = (0..5).map(|ix| ImageViewerItem::new(format!("missing-{ix}.png")));
+        let viewer = window.open_image_viewer(items, 0, cx);
+        window.click("image-viewer-next", cx);
+        window.double_click("image-viewer-next", cx);
+        window.render_frame(cx);
+        assert_eq!(viewer.read(cx).selected_index(), 3);
+        assert!(!viewer.read(cx).is_actual_size());
+    })
+    .unwrap();
+}
+
+/// A dialog that opens while the viewer is up shows over it and takes the
+/// keys, and Escape closes it with focus back on the viewer. A viewer opened
+/// from a dialog covers that dialog, and Escape closes the viewer first.
+#[gpui_kit::test]
+async fn the_viewer_and_dialogs_stack_in_the_order_they_open(cx: &mut TestAppContext) {
+    let (handle, _) = open_gallery(cx);
+    let allowed = std::rc::Rc::new(std::cell::Cell::new(0));
+    let question = {
+        let allowed = allowed.clone();
+        move |dialog: gpui_kit::component::dialog::Dialog, _: &mut Window, _: &mut gpui_kit::App| {
+            let allowed = allowed.clone();
+            dialog.title("A question").child(
+                Button::new("allow")
+                    .label("Allow")
+                    .on_click(move |_, _, _| allowed.set(allowed.get() + 1)),
+            )
+        }
+    };
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click("thumbnail", cx);
+        window.render_frame(cx);
+        window.open_dialog(cx, question.clone());
+    })
+    .unwrap();
+    cx.wait_for(handle.into(), Duration::from_secs(1), |window, _| {
+        window.try_find("allow").is_some()
+    })
+    .await;
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("image-viewer").focused(), Some(false));
+        // The pointer reaches the dialog's button, not the viewer under it.
+        window.click("allow", cx);
+        window.press("escape", cx);
+        window.render_frame(cx);
+        assert!(!window.has_active_dialog(cx));
+        assert!(window.has_active_image_viewer(cx));
+    })
+    .unwrap();
+    assert_eq!(allowed.get(), 1, "the click landed on the dialog");
+    cx.background_executor.advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("image-viewer").focused(), Some(true));
+        window.close_image_viewer(cx);
+        window.open_dialog(cx, question);
+    })
+    .unwrap();
+
+    // Now the other way around.
+    cx.wait_for(handle.into(), Duration::from_secs(1), |window, _| {
+        window.try_find("allow").is_some()
+    })
+    .await;
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.open_image_viewer([ImageViewerItem::new("missing.png")], 0, cx);
+        window.render_frame(cx);
+        assert_eq!(window.find("image-viewer").focused(), Some(true));
+        // The dialog's button lies under the viewer.
+        window.click("allow", cx);
+        window.press("escape", cx);
+        assert!(!window.has_active_image_viewer(cx));
+        assert!(window.has_active_dialog(cx));
+    })
+    .unwrap();
+    assert_eq!(allowed.get(), 1, "the viewer covered the dialog");
+}
+
+/// At actual size, the arrows pan an image larger than the window, and
+/// Page Up and Page Down browse. Fitted, the arrows browse.
+#[gpui_kit::test]
+fn the_arrows_pan_a_large_image_at_actual_size(cx: &mut TestAppContext) {
+    let (handle, _) = open_gallery(cx);
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let items =
+            [(4000, 3000), (100, 100)]
+                .into_iter()
+                .enumerate()
+                .map(|(ix, (width, height))| {
+                    ImageViewerItem::new(format!("missing-{ix}.png"))
+                        .with_caption(format!("shot-{ix}.png"))
+                        .with_dimensions(width, height)
+                });
+        window.open_image_viewer(items, 0, cx);
+        window.press("z", cx);
+        let start = window.find("image-viewer-content").bounds().origin;
+
+        window.press("right", cx);
+        window.press("right", cx);
+        window.press("down", cx);
+        let panned = window.find("image-viewer-content").bounds().origin;
+        assert_eq!(panned.x, start.x - px(96.));
+        assert_eq!(panned.y, start.y - px(48.));
+        window.press("left", cx);
+        window.press("up", cx);
+        window.press("up", cx);
+        let back = window.find("image-viewer-content").bounds().origin;
+        assert_eq!(
+            (back.x, back.y),
+            (start.x - px(48.), start.y),
+            "stops at the top"
+        );
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-0.png")
+        );
+
+        window.press("pagedown", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-1.png")
+        );
+        // A small image at actual size has nothing to pan: the arrows browse.
+        window.press("z", cx);
+        window.press("left", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-0.png")
+        );
+        window.press("pagedown", cx);
+        window.press("pageup", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-0.png")
+        );
+    })
+    .unwrap();
+}
+
+/// A viewer of no images says so, with no counter, and its keys do nothing.
+#[gpui_kit::test]
+fn an_empty_viewer_says_it_has_no_images(cx: &mut TestAppContext) {
+    let (handle, _) = open_gallery(cx);
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        let state = window.open_image_viewer(Vec::<ImageViewerItem>::new(), 0, cx);
+        window.render_frame(cx);
+        assert_eq!(window.find("image-viewer-stage").label(), Some("No images"));
+        for key in ["right", "end", "pagedown", "z"] {
+            window.press(key, cx);
+        }
+        assert!(!state.read(cx).is_actual_size());
+        assert_eq!(state.read(cx).selected_index(), 0);
+    })
+    .unwrap();
+}

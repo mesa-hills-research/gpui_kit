@@ -37,13 +37,21 @@ The viewer takes focus when it opens. Escape or the close button closes it, and 
 
 | Key or gesture | Action |
 | --- | --- |
-| `←` / `→` | Previous or next image; the first and last stay |
+| `←` / `→` | Previous or next image, stopping at the first and last. At actual size, pan an image wider than the window |
+| `↑` / `↓` | At actual size, pan an image taller than the window |
+| `Page Up` / `Page Down` | Previous or next image, at any size |
 | `Home` / `End` | First or last image |
 | `Z`, or a double-click on the image | Actual size, or fitted to the window again |
 | `Escape` | Close |
 | `Tab` | Moves between the viewer's buttons, inside the viewer |
 
-Fitted is the default and each image starts fitted. Fitting shrinks an image to the window and never enlarges it. At actual size an image larger than the window scrolls. Give the item its pixel size with `with_dimensions` for actual size to mean one image pixel per screen pixel; without it, one image pixel takes one logical pixel.
+Fitted is the default and each image starts fitted. Fitting shrinks an image to the window and never enlarges it. At actual size an image larger than the window scrolls with the wheel, and the arrow keys pan it 48 px a press while Page Up and Page Down go on browsing. Give the item its pixel size with `with_dimensions` for actual size to mean one image pixel per screen pixel. Without it, one image pixel takes one logical pixel.
+
+## Loading, errors and dialogs
+
+While an image decodes, the viewer shows a spinner. An image that fails to load shows "Couldn’t load this image.", with the reason when its source gives one, such as an `LruImageCache` refusing an image larger than its budget. A viewer with no images says "No images".
+
+A dialog opened while the viewer is up, such as a question the app asks, shows over the viewer and takes focus. Closing it gives focus back to the viewer. A viewer opened from a dialog covers that dialog, and Escape closes the viewer first.
 
 ## Thumbnails
 

@@ -2,31 +2,40 @@
 //!
 //! Open one with [`WindowExt::open_image_viewer`](crate::WindowExt::open_image_viewer):
 //! it covers the window below the title bar, shows one image fitted to the
-//! window, and browses the others with the arrow keys. Escape closes it and
-//! gives focus back to whatever had it before, usually the thumbnail that
-//! opened it.
+//! window, and browses the others with the arrow keys or Page Up and Page
+//! Down. At actual size, the arrows pan an image larger than the window
+//! instead. Escape closes it and gives focus back to whatever had it before,
+//! usually the thumbnail that opened it.
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
-    AnimationExt as _, App, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
-    InteractiveElement as _, IntoElement, KeyBinding, ObjectFit, ParentElement as _, Render,
-    RenderOnce, Role, SharedString, Size, StatefulInteractiveElement as _, Styled,
-    StyledImage as _, Window, actions, div, img, prelude::FluentBuilder as _, px, size,
+    AnimationExt as _, App, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageCacheError,
+    ImageSource, InteractiveElement as _, IntoElement, KeyBinding, ObjectFit, ParentElement as _,
+    Pixels, Point, Render, RenderOnce, Role, ScrollHandle, SharedString, Size,
+    StatefulInteractiveElement as _, Styled, StyledImage as _, Window, actions, div, img, point,
+    prelude::FluentBuilder as _, px, size,
 };
 use gpui_base::{FocusTrapElement as _, InteractiveElementExt as _, TestSupportExt as _};
 use rust_i18n::t;
 
 use crate::{
     ActiveTheme as _, Disableable as _, IconName, Sizable as _,
-    actions::{Cancel, SelectFirst, SelectLast, SelectLeft, SelectRight},
+    actions::{
+        Cancel, SelectDown, SelectFirst, SelectLast, SelectLeft, SelectPageDown, SelectPageUp,
+        SelectRight, SelectUp,
+    },
     button::{Button, ButtonVariants as _},
     h_flex,
+    spinner::Spinner,
     time::time_field::tabular_figures,
     v_flex,
 };
 
 pub(crate) const CONTEXT: &str = "ImageViewer";
+
+/// How far an arrow key pans an image at actual size.
+const PAN_STEP: Pixels = px(48.);
 
 actions!(
     image_viewer,
@@ -40,6 +49,10 @@ pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
         KeyBinding::new("right", SelectRight, Some(CONTEXT)),
+        KeyBinding::new("up", SelectUp, Some(CONTEXT)),
+        KeyBinding::new("down", SelectDown, Some(CONTEXT)),
+        KeyBinding::new("pageup", SelectPageUp, Some(CONTEXT)),
+        KeyBinding::new("pagedown", SelectPageDown, Some(CONTEXT)),
         KeyBinding::new("home", SelectFirst, Some(CONTEXT)),
         KeyBinding::new("end", SelectLast, Some(CONTEXT)),
         KeyBinding::new("z", ToggleActualSize, Some(CONTEXT)),
@@ -123,6 +136,8 @@ pub struct ImageViewerState {
     selected_index: usize,
     actual_size: bool,
     focus_handle: FocusHandle,
+    /// The scroll position of an image at actual size.
+    scroll_handle: ScrollHandle,
 }
 
 impl EventEmitter<ImageViewerEvent> for ImageViewerState {}
@@ -147,6 +162,7 @@ impl ImageViewerState {
             items,
             actual_size: false,
             focus_handle: cx.focus_handle().tab_stop(true),
+            scroll_handle: ScrollHandle::new(),
         }
     }
 
@@ -184,6 +200,7 @@ impl ImageViewerState {
         }
         self.selected_index = ix;
         self.actual_size = false;
+        self.scroll_handle.set_offset(Point::default());
         cx.emit(ImageViewerEvent::Select(ix));
         cx.notify();
     }
@@ -216,10 +233,12 @@ impl ImageViewerState {
         self.actual_size
     }
 
-    /// Show the image at its actual size, or fitted to the window.
+    /// Show the image at its actual size, or fitted to the window. A viewer
+    /// without images stays fitted.
     pub fn set_actual_size(&mut self, actual_size: bool, cx: &mut Context<Self>) {
-        if self.actual_size != actual_size {
+        if self.actual_size != actual_size && !self.items.is_empty() {
             self.actual_size = actual_size;
+            self.scroll_handle.set_offset(Point::default());
             cx.notify();
         }
     }
@@ -229,13 +248,39 @@ impl ImageViewerState {
         self.set_actual_size(!self.actual_size, cx);
     }
 
-    /// The counter text, "2 / 5".
+    /// Whether the arrows of one axis pan the image: it is shown at actual
+    /// size and is wider (or, for `horizontal: false`, taller) than the
+    /// window.
+    fn arrows_pan(&self, horizontal: bool) -> bool {
+        let max = self.scroll_handle.max_offset();
+        let overflow = if horizontal { max.x } else { max.y };
+        self.actual_size && overflow > px(0.)
+    }
+
+    /// Move the view over the image by `delta`, within the image.
+    fn pan(&mut self, delta: Point<Pixels>, cx: &mut Context<Self>) {
+        let max = self.scroll_handle.max_offset();
+        let offset = self.scroll_handle.offset();
+        self.scroll_handle.set_offset(point(
+            (offset.x - delta.x).clamp(-max.x, px(0.)),
+            (offset.y - delta.y).clamp(-max.y, px(0.)),
+        ));
+        cx.notify();
+    }
+
+    /// The counter text, "2 / 5", empty without images.
     fn counter(&self) -> SharedString {
+        if self.items.is_empty() {
+            return SharedString::default();
+        }
         format!("{} / {}", self.selected_index + 1, self.items.len()).into()
     }
 
     /// The accessible name of the image shown.
     fn image_label(&self) -> SharedString {
+        if self.items.is_empty() {
+            return t!("ImageViewer.empty").into();
+        }
         let item = self.selected_item();
         item.and_then(|item| item.accessibility_label.clone())
             .or_else(|| item.and_then(|item| item.caption.clone()))
@@ -253,6 +298,40 @@ impl ImageViewerState {
 impl Render for ImageViewerState {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
+    }
+}
+
+/// A box filling its parent with its children centred, for the viewer's
+/// loading, failure and empty states.
+fn centered() -> gpui::Div {
+    v_flex().size_full().items_center().justify_center()
+}
+
+/// `source`, noting why it failed to load when the reason is known: from an
+/// image cache's [`ImageSource::Custom`], such as an image refused for its
+/// size.
+fn noting_failure(source: ImageSource) -> (ImageSource, Rc<RefCell<Option<SharedString>>>) {
+    let failure = Rc::new(RefCell::new(None));
+    let source = match source {
+        ImageSource::Custom(load) => {
+            let failure = failure.clone();
+            ImageSource::Custom(Arc::new(move |window, cx| {
+                let result = load(window, cx);
+                if let Some(Err(error)) = &result {
+                    *failure.borrow_mut() = Some(failure_reason(error));
+                }
+                result
+            }))
+        }
+        source => source,
+    };
+    (source, failure)
+}
+
+fn failure_reason(error: &ImageCacheError) -> SharedString {
+    match error {
+        ImageCacheError::Asset(reason) => reason.clone(),
+        error => error.to_string().into(),
     }
 }
 
@@ -307,6 +386,15 @@ impl RenderOnce for ImageViewer {
         let top = theme.sheet.margin_top;
         let insets = crate::window_border::window_content_insets(window);
         let scale_factor = window.scale_factor();
+        let scroll_handle = state.scroll_handle.clone();
+        // Where the arrows pan rather than browse, the buttons' tooltips
+        // name the keys that still browse.
+        let (previous_key, next_key): (&dyn gpui::Action, &dyn gpui::Action) =
+            if state.arrows_pan(true) {
+                (&SelectPageUp, &SelectPageDown)
+            } else {
+                (&SelectLeft, &SelectRight)
+            };
         let close = self.on_close.clone();
         let close_button = self.on_close.clone();
         let entity = self.state.clone();
@@ -316,13 +404,23 @@ impl RenderOnce for ImageViewer {
                 .dimensions
                 .filter(|_| is_actual_size)
                 .map(|dimensions| actual_size(dimensions, scale_factor));
-            img(item.source.clone())
+            let (source, failure) = noting_failure(item.source.clone());
+            img(source)
                 .id(("image-viewer-image", ix))
+                .with_loading(move || {
+                    centered()
+                        .child(Spinner::new().large().color(muted))
+                        .into_any_element()
+                })
                 .with_fallback(move || {
-                    div()
+                    centered()
+                        .gap_1()
                         .text_sm()
                         .text_color(error_color)
                         .child(SharedString::from(t!("ImageViewer.error")))
+                        .when_some(failure.borrow().clone(), |this, reason| {
+                            this.child(div().text_xs().child(reason))
+                        })
                         .into_any_element()
                 })
                 .map(|this| {
@@ -349,11 +447,45 @@ impl RenderOnce for ImageViewer {
             .text_color(theme.foreground)
             .on_action(
                 window.listener_for(&entity, |state, _: &SelectLeft, _, cx| {
-                    state.select_previous(cx)
+                    if state.arrows_pan(true) {
+                        state.pan(point(-PAN_STEP, px(0.)), cx)
+                    } else {
+                        state.select_previous(cx)
+                    }
                 }),
             )
             .on_action(
                 window.listener_for(&entity, |state, _: &SelectRight, _, cx| {
+                    if state.arrows_pan(true) {
+                        state.pan(point(PAN_STEP, px(0.)), cx)
+                    } else {
+                        state.select_next(cx)
+                    }
+                }),
+            )
+            .on_action(window.listener_for(&entity, |state, _: &SelectUp, _, cx| {
+                if state.arrows_pan(false) {
+                    state.pan(point(px(0.), -PAN_STEP), cx)
+                } else {
+                    cx.propagate()
+                }
+            }))
+            .on_action(
+                window.listener_for(&entity, |state, _: &SelectDown, _, cx| {
+                    if state.arrows_pan(false) {
+                        state.pan(point(px(0.), PAN_STEP), cx)
+                    } else {
+                        cx.propagate()
+                    }
+                }),
+            )
+            .on_action(
+                window.listener_for(&entity, |state, _: &SelectPageUp, _, cx| {
+                    state.select_previous(cx)
+                }),
+            )
+            .on_action(
+                window.listener_for(&entity, |state, _: &SelectPageDown, _, cx| {
                     state.select_next(cx)
                 }),
             )
@@ -414,6 +546,7 @@ impl RenderOnce for ImageViewer {
                                 Button::new("image-viewer-actual-size")
                                     .ghost()
                                     .small()
+                                    .disabled(count == 0)
                                     .icon(if is_actual_size {
                                         IconName::Minimize
                                     } else {
@@ -478,8 +611,17 @@ impl RenderOnce for ImageViewer {
                                             .id("image-viewer-scroll")
                                             .size_full()
                                             .overflow_scroll()
+                                            .track_scroll(&scroll_handle)
+                                            // The content takes the image's
+                                            // size, at least the stage's, so
+                                            // the area scrolls over it.
+                                            .flex()
+                                            .items_start()
                                             .child(
                                                 h_flex()
+                                                    .id("image-viewer-content")
+                                                    .test_support()
+                                                    .flex_none()
                                                     .min_w_full()
                                                     .min_h_full()
                                                     .justify_center()
@@ -497,6 +639,14 @@ impl RenderOnce for ImageViewer {
                                     )
                                 }
                             })
+                            .when(count == 0, |this| {
+                                this.child(
+                                    centered()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child(SharedString::from(t!("ImageViewer.empty"))),
+                                )
+                            })
                             .when(count > 1, |this| {
                                 this.child(
                                     h_flex().absolute().left_2().top_0().bottom_0().child(
@@ -509,14 +659,19 @@ impl RenderOnce for ImageViewer {
                                             )))
                                             .tooltip_with_action(
                                                 SharedString::from(t!("ImageViewer.previous")),
-                                                &SelectLeft,
+                                                previous_key,
                                                 Some(CONTEXT),
                                             )
-                                            .on_click(
-                                                window.listener_for(&entity, |state, _, _, cx| {
+                                            // Clicked twice quickly, it browses
+                                            // twice: the stage around it takes no
+                                            // double click.
+                                            .on_click(window.listener_for(
+                                                &entity,
+                                                |state, _, _, cx| {
+                                                    cx.stop_propagation();
                                                     state.select_previous(cx)
-                                                }),
-                                            ),
+                                                },
+                                            )),
                                     ),
                                 )
                                 .child(
@@ -530,14 +685,16 @@ impl RenderOnce for ImageViewer {
                                             )))
                                             .tooltip_with_action(
                                                 SharedString::from(t!("ImageViewer.next")),
-                                                &SelectRight,
+                                                next_key,
                                                 Some(CONTEXT),
                                             )
-                                            .on_click(
-                                                window.listener_for(&entity, |state, _, _, cx| {
+                                            .on_click(window.listener_for(
+                                                &entity,
+                                                |state, _, _, cx| {
+                                                    cx.stop_propagation();
                                                     state.select_next(cx)
-                                                }),
-                                            ),
+                                                },
+                                            )),
                                     ),
                                 )
                             }),

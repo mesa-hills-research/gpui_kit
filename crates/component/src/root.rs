@@ -12,9 +12,9 @@ use crate::{
     window_border,
 };
 use gpui::{
-    App, AppContext, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable as _,
-    InteractiveElement, IntoElement, ParentElement as _, Render, RenderOnce, Styled, WeakEntity,
-    WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
+    AnyElement, App, AppContext, Context, DefiniteLength, ElementId, Entity, FocusHandle,
+    Focusable as _, InteractiveElement, IntoElement, ParentElement as _, Render, RenderOnce,
+    Styled, WeakEntity, WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
 };
 use gpui_base::{TextSelection, TextSelectionScopeId};
 use std::{any::TypeId, rc::Rc};
@@ -49,6 +49,9 @@ pub(crate) struct ActiveImageViewer {
     pub(crate) state: Entity<ImageViewerState>,
     /// The handle focused before the viewer opened, usually its thumbnail.
     previous_focused_handle: Option<WeakFocusHandle>,
+    /// How many dialogs were open when the viewer opened. It covers those,
+    /// and the dialogs opened since show over it.
+    pub(crate) dialogs_below: usize,
 }
 
 #[derive(Clone)]
@@ -291,10 +294,19 @@ impl WindowState {
 
     fn close_dialog_internal(&mut self) -> Option<FocusHandle> {
         self.focused_input = None;
-        self.active_dialogs
-            .pop()
+        let closed = self.active_dialogs.pop();
+        self.keep_viewer_over_closed_dialogs();
+        closed
             .and_then(|d| d.previous_focused_handle)
             .and_then(|h| h.upgrade())
+    }
+
+    /// A dialog the image viewer covered may close while it is open: the
+    /// next dialog to open shows over the viewer all the same.
+    fn keep_viewer_over_closed_dialogs(&mut self) {
+        if let Some(viewer) = self.active_image_viewer.as_mut() {
+            viewer.dialogs_below = viewer.dialogs_below.min(self.active_dialogs.len());
+        }
     }
 
     pub fn close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, WindowState>) {
@@ -340,6 +352,7 @@ impl WindowState {
             .first()
             .and_then(|d| d.previous_focused_handle.clone());
         self.active_dialogs.clear();
+        self.keep_viewer_over_closed_dialogs();
         if let Some(handle) = previous_focused_handle.and_then(|h| h.upgrade()) {
             window.focus(&handle, cx);
         }
@@ -443,6 +456,7 @@ impl WindowState {
         self.active_image_viewer = Some(ActiveImageViewer {
             state: state.clone(),
             previous_focused_handle,
+            dialogs_below: self.active_dialogs.len(),
         });
         gpui_base::TextSelection::clear(window, cx);
         cx.notify();
@@ -462,12 +476,20 @@ impl WindowState {
         cx.notify();
     }
 
-    fn image_viewer_layer(
-        root: &Entity<WindowState>,
-        cx: &App,
-    ) -> Option<impl IntoElement + use<>> {
+    fn image_viewer_layer(root: &Entity<WindowState>, cx: &App) -> Option<AnyElement> {
         let viewer = root.read(cx).active_image_viewer.clone()?;
-        Some(ImageViewer::new(&viewer.state).on_close(|window, cx| window.close_image_viewer(cx)))
+        let element =
+            ImageViewer::new(&viewer.state).on_close(|window, cx| window.close_image_viewer(cx));
+        // Dialogs paint deferred, one priority step per layer. A viewer
+        // opened from a dialog paints in that order too, over the dialogs
+        // open then and under those opened since, which come after it.
+        Some(if viewer.dialogs_below > 0 {
+            gpui::deferred(element)
+                .with_priority(10 + viewer.dialogs_below)
+                .into_any_element()
+        } else {
+            element.into_any_element()
+        })
     }
 
     pub fn push_notification(
@@ -672,8 +694,8 @@ impl RenderOnce for WindowStateLayers {
                 )
             })
             .children(WindowState::sheet_layer(root.clone(), window, cx))
-            .children(WindowState::dialog_layer(&root, window, cx))
             .children(WindowState::image_viewer_layer(&root, cx))
+            .children(WindowState::dialog_layer(&root, window, cx))
             .children(WindowState::notification_layer(&root, cx))
     }
 }

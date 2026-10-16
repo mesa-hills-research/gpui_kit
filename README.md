@@ -80,8 +80,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   [Image Cache](website/base/image-cache.md).
 - **An image viewer** (`gpui-component`). `window.open_image_viewer(items, ix, cx)` shows a set of
   images over the window, fitted or at actual size (Z or a double-click), with a "2 / 5"
-  counter and captions; ←/→ and Home/End browse, Escape closes and gives focus back to the
-  thumbnail. It only fades in, and not at all under reduced motion. See
+  counter and captions. ←/→, Page Up/Page Down and Home/End browse, the arrows pan an image
+  at actual size, and Escape closes it and gives focus back to the thumbnail. Dialogs stack
+  with it in the order they open. It only fades in, and not at all under reduced motion. See
   [Image Viewer](website/component/image-viewer.md).
 - **Font pickers with only the rows a setting keeps** (`gpui-component`).
   `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
