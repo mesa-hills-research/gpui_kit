@@ -12,7 +12,7 @@
 
 use gpui::{
     AppContext as _, BenchAppContext, Context, Entity, IntoElement, ParentElement as _, Render,
-    Styled as _, Window, div, px,
+    Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::text::{TextView, TextViewState};
 
@@ -30,19 +30,23 @@ const CHUNK: usize = 40;
 
 struct Answer {
     state: Entity<TextViewState>,
+    /// Shows the first lines of the code block only, as a transcript does
+    /// until the reader expands it.
+    max_lines: Option<usize>,
 }
 
 impl Render for Answer {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .px(px(20.))
-            .child(TextView::new(&self.state))
+        div().size_full().px(px(20.)).child(
+            TextView::new(&self.state).when_some(self.max_lines, |view, lines| {
+                view.code_block_max_lines(lines)
+            }),
+        )
     }
 }
 
 /// Streams a fenced Rust block that starts at `size_kb` KB.
-fn stream_rust_block(size_kb: usize, cx: &mut BenchAppContext) {
+fn stream_rust_block(size_kb: usize, max_lines: Option<usize>, cx: &mut BenchAppContext) {
     cx.update(gpui_component::init);
     let source = rust_source();
     let mut end = size_kb * 1024;
@@ -54,6 +58,7 @@ fn stream_rust_block(size_kb: usize, cx: &mut BenchAppContext) {
     let answer = window.update(|window, cx| {
         window.replace_root(cx, |_, cx| Answer {
             state: cx.new(|cx| TextViewState::markdown(&markdown, cx)),
+            max_lines,
         })
     });
     let state = cx.read(|cx| answer.read(cx).state.clone());
@@ -86,6 +91,7 @@ fn redraw_rust_block_200kb(cx: &mut BenchAppContext) {
     let answer = window.update(|window, cx| {
         window.replace_root(cx, |_, cx| Answer {
             state: cx.new(|cx| TextViewState::markdown(&markdown, cx)),
+            max_lines: None,
         })
     });
     cx.run_until_idle();
@@ -95,18 +101,25 @@ fn redraw_rust_block_200kb(cx: &mut BenchAppContext) {
 
 #[gpui::bench]
 fn stream_rust_block_50kb(cx: &mut BenchAppContext) {
-    stream_rust_block(50, cx);
+    stream_rust_block(50, None, cx);
 }
 
 #[gpui::bench]
 fn stream_rust_block_200kb(cx: &mut BenchAppContext) {
-    stream_rust_block(200, cx);
+    stream_rust_block(200, None, cx);
+}
+
+/// The 200 KB block showing its first 40 lines.
+#[gpui::bench]
+fn stream_rust_block_200kb_capped(cx: &mut BenchAppContext) {
+    stream_rust_block(200, Some(40), cx);
 }
 
 gpui::bench_group!(
     benches,
     redraw_rust_block_200kb,
     stream_rust_block_50kb,
-    stream_rust_block_200kb
+    stream_rust_block_200kb,
+    stream_rust_block_200kb_capped
 );
 gpui::bench_main!(benches);

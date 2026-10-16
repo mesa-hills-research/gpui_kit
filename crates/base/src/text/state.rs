@@ -106,6 +106,8 @@ pub struct TextViewState {
     pub(super) selection_format: SelectionFormat,
     pub(super) scrollable: bool,
     pub(super) max_lines: Option<usize>,
+    /// See [`crate::text::TextView::code_block_max_lines`].
+    pub(super) code_block_max_lines: Option<usize>,
     /// Line spans reported by `Inline` during prepaint (collected only while
     /// [`Self::max_lines`] is set); cleared by `TextView` at each frame start.
     pub(super) line_spans: Arc<Mutex<Vec<LineSpan>>>,
@@ -306,6 +308,7 @@ impl TextViewState {
             selection_format: SelectionFormat::default(),
             scrollable: false,
             max_lines: None,
+            code_block_max_lines: None,
             line_spans: Arc::default(),
             clamped: false,
             // Measure all blocks (not just visible ones) so the scrollbar
@@ -1387,6 +1390,7 @@ impl Render for TextViewState {
             style: self.text_view_style.clone(),
             code_block_actions: self.code_block_actions.clone(),
             code_block_highlighter: self.code_block_highlighter.clone(),
+            code_block_max_lines: self.code_block_max_lines,
             table_actions: self.table_actions.clone(),
             link_click_handler: self.link_click_handler.clone(),
             image_source: self.image_source.clone(),

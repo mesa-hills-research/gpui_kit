@@ -1785,10 +1785,31 @@ pub struct CodeBlock {
     lang: Option<SharedString>,
     state: Arc<Mutex<InlineState>>,
     highlight_cache: Arc<Mutex<Option<CachedCodeBlockHighlights>>>,
+    /// The first lines of the code, when a view shows only those.
+    capped: Arc<Mutex<Option<CappedCode>>>,
     /// Rendered UTF-8 byte spans of the code paired with their exact Markdown
     /// source spans.
     pub(crate) source_segments: Vec<SourceSegment>,
     pub span: Option<Span>,
+}
+
+/// The first lines of a code block, shown in its place.
+struct CappedCode {
+    lines: usize,
+    /// The code the lines were taken from.
+    code: SharedString,
+    state: Arc<Mutex<InlineState>>,
+    /// The [`CodeBlockHighlights::id`] of the highlights of the whole code,
+    /// and those highlights cut to the lines.
+    highlights: Option<(u64, CodeBlockHighlights)>,
+}
+
+impl std::fmt::Debug for CappedCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CappedCode")
+            .field("lines", &self.lines)
+            .finish_non_exhaustive()
+    }
 }
 
 struct CachedCodeBlockHighlights {
@@ -1920,6 +1941,7 @@ impl CodeBlock {
             lang,
             state,
             highlight_cache: Arc::new(Mutex::new(None)),
+            capped: Arc::new(Mutex::new(None)),
             source_segments: vec![],
             span: span.map(|s| s.into()),
         }
@@ -1970,15 +1992,84 @@ impl CodeBlock {
         styles
     }
 
+    /// The state and length of the first `lines` lines of the code, when the
+    /// code is longer, kept for the next frame.
+    fn capped_state(&self, lines: usize) -> Option<(Arc<Mutex<InlineState>>, usize)> {
+        let code = self.code();
+        let end = code
+            .match_indices('\n')
+            .nth(lines.saturating_sub(1))
+            .map(|(ix, _)| ix)
+            .filter(|ix| ix + 1 < code.len())?;
+        let mut capped = self.capped.lock().ok()?;
+        if let Some(capped) = capped.as_ref()
+            && capped.lines == lines
+            && capped.code == code
+        {
+            return Some((capped.state.clone(), end));
+        }
+        let state = Arc::new(Mutex::new(InlineState::default()));
+        if let Ok(mut state) = state.lock() {
+            state.set_text(code[..end].to_string().into());
+        }
+        *capped = Some(CappedCode {
+            lines,
+            code,
+            state: state.clone(),
+            highlights: None,
+        });
+        Some((state, end))
+    }
+
+    /// `highlights` of the whole code cut to its first `len` bytes, kept
+    /// for the next frame.
+    fn capped_highlights(
+        &self,
+        highlights: CodeBlockHighlights,
+        len: usize,
+    ) -> CodeBlockHighlights {
+        let Ok(mut capped) = self.capped.lock() else {
+            return highlights;
+        };
+        let Some(capped) = capped.as_mut() else {
+            return highlights;
+        };
+        if let Some((id, cut)) = &capped.highlights
+            && *id == highlights.id()
+        {
+            return cut.clone();
+        }
+        let cut = CodeBlockHighlights::new(
+            highlights
+                .iter()
+                .filter(|(range, _)| range.start < len)
+                .map(|(range, style)| (range.start..range.end.min(len), *style))
+                .collect(),
+        );
+        capped.highlights = Some((highlights.id(), cut.clone()));
+        cut
+    }
+
     /// The styles the code renders with this frame: the highlights as they
     /// are kept, unless streamed text is fading in.
-    fn inline_styles(&self, node_cx: &NodeContext, leaf_key: Option<TextLeafKey>) -> InlineStyles {
-        let highlights = node_cx
+    fn inline_styles(
+        &self,
+        node_cx: &NodeContext,
+        leaf_key: Option<TextLeafKey>,
+        capped_len: Option<usize>,
+    ) -> InlineStyles {
+        let mut highlights = node_cx
             .code_block_highlighter
             .as_ref()
             .map(|highlighter| self.highlighted_styles(highlighter))
             .unwrap_or_default();
-        let fades = node_cx.stream_fades(leaf_key);
+        let mut fades = node_cx.stream_fades(leaf_key);
+        let cut_fades;
+        if let Some(len) = capped_len {
+            highlights = self.capped_highlights(highlights, len);
+            cut_fades = slice_fades(fades, 0, len);
+            fades = &cut_fades;
+        }
         if fades.is_empty() {
             return InlineStyles::Code(highlights);
         }
@@ -2060,16 +2151,33 @@ impl CodeBlock {
             .text_size(cx.theme().tokens.typography.mono_md.size)
             .relative()
             .refine_style(&style.code_block())
-            .child(
-                Inline::new(
-                    self.state.clone(),
+            .child({
+                // A view may show only the first lines of the code: those lay
+                // out from their own state, whose selection is the code's.
+                let capped = node_cx
+                    .code_block_max_lines
+                    .and_then(|lines| self.capped_state(lines));
+                let (state, len) = match &capped {
+                    Some((state, len)) => (state.clone(), *len),
+                    None => (self.state.clone(), self.code().len()),
+                };
+                let inline = Inline::new(
+                    state,
                     vec![],
-                    self.inline_styles(node_cx, leaf_key),
+                    self.inline_styles(node_cx, leaf_key, capped.as_ref().map(|(_, len)| *len)),
                     node_cx.link_click_handler.clone(),
                 )
-                .range_backgrounds(node_cx.range_backgrounds(leaf_key).to_vec())
-                .reveal(node_cx.reveal_at(leaf_key, 0, self.code().len())),
-            );
+                .range_backgrounds(slice_backgrounds(
+                    node_cx.range_backgrounds(leaf_key),
+                    0,
+                    len,
+                ))
+                .reveal(node_cx.reveal_at(leaf_key, 0, len));
+                match capped {
+                    Some(_) => inline.selection_source(self.state.clone(), 0..len),
+                    None => inline,
+                }
+            });
         let actions = node_cx.code_block_actions.clone().map(|actions| {
             div()
                 .id("actions")
@@ -2142,6 +2250,8 @@ pub(crate) struct NodeContext {
     pub(crate) style: Arc<TextViewStyle>,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     pub(crate) code_block_highlighter: Option<Arc<CodeBlockHighlighterFn>>,
+    /// See [`crate::text::TextView::code_block_max_lines`].
+    pub(crate) code_block_max_lines: Option<usize>,
     pub(crate) table_actions: Option<Arc<TableActionsFn>>,
     pub(crate) image_source: Option<Arc<super::text_view::ImageSourceFn>>,
     pub(crate) link_click_handler: Option<Arc<LinkClickHandlerFn>>,
@@ -4145,6 +4255,30 @@ mod tests {
         assert_eq!(light_styles[0].1.color, Some(gpui::rgb(0x0000ff).into()));
         assert_eq!(dark_styles[0].1.color, Some(gpui::rgb(0xffff00).into()));
         assert_eq!(block.code(), "42", "the document must survive the swap");
+    }
+
+    #[test]
+    fn a_code_block_is_cut_to_its_first_lines() {
+        let block = CodeBlock::from_code("one\ntwo\nthree\nfour\n", None::<SharedString>);
+        let (state, len) = block.capped_state(2).expect("longer than two lines");
+        assert_eq!(len, 7);
+        assert_eq!(state.lock().unwrap().text.as_ref(), "one\ntwo");
+        let (again, _) = block.capped_state(2).unwrap();
+        assert!(Arc::ptr_eq(&state, &again), "kept for the next frame");
+        assert!(block.capped_state(4).is_none(), "four lines show whole");
+        assert!(block.capped_state(10).is_none());
+
+        let style = HighlightStyle::default();
+        let highlights =
+            CodeBlockHighlights::new(vec![(0..3, style), (4..9, style), (10..15, style)]);
+        let cut = block.capped_highlights(highlights.clone(), 7);
+        assert_eq!(
+            cut.iter()
+                .map(|(range, _)| range.clone())
+                .collect::<Vec<_>>(),
+            [0..3, 4..7]
+        );
+        assert_eq!(block.capped_highlights(highlights, 7).id(), cut.id());
     }
 
     #[test]

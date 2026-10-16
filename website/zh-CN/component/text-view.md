@@ -103,6 +103,12 @@ TextView::new(&row)
 
 在一篇两万 token 的回复末尾流式输出时，一块一行每帧需要 0.9 ms，而整篇作为一行需要 12.5 ms（`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`）。
 
+`code_block_max_lines` 只显示每个代码块的前几行，适合需要读者手动展开的代码块。超出的行既不布局，也不在屏幕上高亮，所以长代码块的开销只取决于显示的行数。`CodeBlock::code` 和块在源文本中的范围仍然包含全部内容，可用于复制按钮或统计行数：
+
+```rust
+TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
+```
+
 ### 高亮文本范围
 
 应用在文档里搜索，或者指向文档里的某处引用时，用 `set_range_highlights` 把这些范围标出来。搜索由应用负责：在视图显示的文本 `rendered_text()` 里找到范围，连同绘制用的颜色一起交回，当前结果用更醒目的颜色：

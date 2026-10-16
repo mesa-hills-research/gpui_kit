@@ -166,6 +166,7 @@ pub struct TextView {
     selection_format: SelectionFormat,
     scrollable: bool,
     max_lines: Option<usize>,
+    code_block_max_lines: Option<usize>,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     code_block_highlighter: Option<Arc<CodeBlockHighlighterFn>>,
     table_actions: Option<Arc<TableActionsFn>>,
@@ -213,6 +214,7 @@ impl TextView {
             selection_format: SelectionFormat::default(),
             scrollable: false,
             max_lines: None,
+            code_block_max_lines: None,
             code_block_actions: None,
             code_block_highlighter: None,
             table_actions: None,
@@ -237,6 +239,7 @@ impl TextView {
             selection_format: SelectionFormat::default(),
             scrollable: false,
             max_lines: None,
+            code_block_max_lines: None,
             code_block_actions: None,
             code_block_highlighter: None,
             table_actions: None,
@@ -261,6 +264,7 @@ impl TextView {
             selection_format: SelectionFormat::default(),
             scrollable: false,
             max_lines: None,
+            code_block_max_lines: None,
             code_block_actions: None,
             code_block_highlighter: None,
             table_actions: None,
@@ -343,6 +347,18 @@ impl TextView {
     /// Ignored when [`Self::scrollable`] is set.
     pub fn max_lines(mut self, max_lines: usize) -> Self {
         self.max_lines = Some(max_lines);
+        self
+    }
+
+    /// Show at most `lines` lines of each code block.
+    ///
+    /// For long code blocks shown in part until the reader asks for all of
+    /// them, such as in a chat transcript: the lines past the cap are neither
+    /// laid out nor highlighted on screen, so a long block costs what its
+    /// shown lines cost. Selecting and copying cover the lines shown, and
+    /// [`CodeBlock::code`] stays the whole code, for a copy button.
+    pub fn code_block_max_lines(mut self, lines: usize) -> Self {
+        self.code_block_max_lines = Some(lines);
         self
     }
 
@@ -700,6 +716,7 @@ impl Element for TextView {
             state.selection_format = self.selection_format;
             state.scrollable = self.scrollable;
             state.max_lines = max_lines;
+            state.code_block_max_lines = self.code_block_max_lines;
             if let Some(text_view_style) = text_view_style {
                 state.selection_revision = state.selection_revision.wrapping_add(1);
                 state.text_view_style = text_view_style;
@@ -2503,6 +2520,57 @@ mod tests {
         assert_eq!(
             shaped_markers(Format::Markdown, nested_starts_at_zero),
             ["1. ", "0. "]
+        );
+    }
+
+    /// A capped code block lays out its first lines only.
+    #[test]
+    fn a_code_block_shows_at_most_its_max_lines() {
+        use gpui::TestApp;
+
+        struct CodeRoot {
+            capped: Entity<TextViewState>,
+            whole: Entity<TextViewState>,
+        }
+
+        impl Render for CodeRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .w(px(600.))
+                    .child(TextView::new(&self.capped).code_block_max_lines(3))
+                    .child(TextView::new(&self.whole).code_block_max_lines(30))
+            }
+        }
+
+        let code = format!(
+            "```\n{}```\n",
+            (0..20).map(|n| format!("line {n}\n")).collect::<String>()
+        );
+        let short = "```\nline 0\nline 1\nline 2\n```\n";
+        let mut app = TestApp::new();
+        app.update(crate::init);
+        let height = |markdown: &str, app: &mut TestApp| {
+            let mut window = app.open_window(|_, cx| CodeRoot {
+                capped: cx.new(|cx| TextViewState::markdown(markdown, cx)),
+                whole: cx.new(|cx| TextViewState::markdown(markdown, cx)),
+            });
+            window.draw();
+            app.run_until_parked();
+            window.draw();
+            window.read(|root, cx| {
+                (
+                    root.capped.read(cx).bounds().size.height,
+                    root.whole.read(cx).bounds().size.height,
+                )
+            })
+        };
+
+        let (capped, whole) = height(&code, &mut app);
+        let (three_lines, _) = height(short, &mut app);
+        assert!(capped < whole, "{capped:?} < {whole:?}");
+        assert_eq!(
+            capped, three_lines,
+            "a capped block is as tall as its shown lines"
         );
     }
 

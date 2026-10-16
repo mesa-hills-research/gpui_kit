@@ -272,7 +272,8 @@ blocks: `TextViewState::block_range(&document, blocks, cx)` makes a view of
 the blocks `blocks` (by index) of `document`, which keeps the parse.
 `TextViewState::blocks` lists a document's top-level blocks with an id, what
 each one is, its source range and whether appended text can still change it,
-and `set_block_range` moves a view to other blocks. See
+and `set_block_range` moves a view to other blocks. `TextView::code_block_max_lines`
+lays out the first lines of each code block only. See
 [A long document as rows](../component/text-view.md#a-long-document-as-rows).
 
 `TextViewState::set_range_highlights` paints backgrounds behind ranges of

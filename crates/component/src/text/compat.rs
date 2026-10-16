@@ -127,6 +127,11 @@ impl TextView {
         self.inner = self.inner.max_lines(value);
         self
     }
+    /// Shows at most `lines` lines of each code block.
+    pub fn code_block_max_lines(mut self, lines: usize) -> Self {
+        self.inner = self.inner.code_block_max_lines(lines);
+        self
+    }
     /// Renders an element in the corner of every fenced code block.
     pub fn code_block_actions<F, E>(mut self, f: F) -> Self
     where
