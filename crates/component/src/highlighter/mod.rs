@@ -22,6 +22,8 @@ pub(crate) fn input_highlighter_factory() -> gpui_base::input::InputHighlighterF
 
 // Native implementation with full tree-sitter support
 #[cfg(feature = "tree-sitter")]
+mod compiled;
+#[cfg(feature = "tree-sitter")]
 mod highlighter;
 #[cfg(feature = "tree-sitter")]
 mod languages;
