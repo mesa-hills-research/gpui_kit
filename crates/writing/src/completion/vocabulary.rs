@@ -871,13 +871,17 @@ impl Serialize for SavingWords<'_> {
     }
 }
 
+/// The n-grams by context. A context only clause ends followed is left
+/// out: [`SavingClauseEnds`] holds it.
 struct SavingNgrams<'a>(&'a HashMap<Box<str>, Successors>);
 
 impl Serialize for SavingNgrams<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        let mut map = serializer.serialize_map(None)?;
         for (key, successors) in self.0 {
-            map.serialize_entry(&**key, &SavingSuccessors(successors))?;
+            if !successors.counts.is_empty() {
+                map.serialize_entry(&**key, &SavingSuccessors(successors))?;
+            }
         }
         map.end()
     }
@@ -1630,6 +1634,24 @@ mod tests {
                 .total(),
             2
         );
+    }
+
+    /// A context only a clause end followed is saved among the clause ends
+    /// alone, not with an empty map of successors too, and loads back.
+    #[test]
+    fn a_context_only_clause_ends_followed_saves_no_successors() {
+        let mut vocabulary = Vocabulary::new();
+        vocabulary.learn_sentence("Thanks, team");
+        let json = String::from_utf8(vocabulary.to_json().unwrap()).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(saved["bigrams"].get("thanks"), None, "{json}");
+        assert_eq!(saved["trigrams"].get("<s>\tthanks"), None, "{json}");
+        assert_eq!(saved["clause_ends"]["thanks"], 1, "{json}");
+        assert_eq!(saved["clause_ends"]["<s>\tthanks"], 1, "{json}");
+        let reloaded = load(&json);
+        let thanks = reloaded.counts.successors(&["thanks".into()]).unwrap();
+        assert_eq!((thanks.clause_ends(), thanks.total()), (1, 1));
+        assert_eq!(bigram(&reloaded, "<s>", "thanks"), 1);
     }
 
     /// A file saved before keys were folded, with keys that differ only in
