@@ -260,6 +260,10 @@ mode when no explicit highlight color is provided. A custom theme therefore
 changes the default shimmer without requiring per-label overrides. Explicit
 colors remain the caller's responsibility for contrast.
 
+The sweep draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), so a
+"Thinking…" label that stays up for a whole reply does not keep the window
+drawing at the display's full rate.
+
 When `cx.reduce_motion()` is true, `ShimmerText` renders `StyledText` without
 requesting animation frames. Marker follows the same rule for typed text and
 keeps arbitrary content static. This is a rendering behavior, not a separate

@@ -6,7 +6,7 @@ use gpui::{
 };
 use instant::Duration;
 
-use crate::{ActiveTheme as _, Colorize as _, StyledExt as _};
+use crate::{ActiveTheme as _, Colorize as _, LOADING_ANIMATION_MAX_FPS, StyledExt as _};
 
 const SHIMMER_LAYER_COUNT: usize = 12;
 const DEFAULT_SHIMMER_SPREAD: f32 = 0.3;
@@ -425,10 +425,11 @@ impl Element for ShimmerGlyphs {
 }
 
 pub(crate) fn loading_animation(duration: Duration, once: bool) -> Animation {
+    let animation = Animation::new(duration).with_max_fps(LOADING_ANIMATION_MAX_FPS);
     if once {
-        Animation::new(duration)
+        animation
     } else {
-        Animation::new(duration).repeat_synced()
+        animation.repeat_synced()
     }
 }
 
@@ -647,7 +648,7 @@ mod tests {
         assert_eq!(animation.duration, Duration::from_secs(3));
         assert!(animation.synced);
         assert!(!animation.oneshot);
-        assert_eq!(animation.max_fps, None);
+        assert_eq!(animation.max_fps, Some(LOADING_ANIMATION_MAX_FPS));
 
         let animation = loading_animation(Duration::from_secs(3), true);
         assert_eq!(animation.duration, Duration::from_secs(3));

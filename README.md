@@ -89,6 +89,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   Selection runs across the rows. `TextView::code_block_max_lines` shows the first lines of each
   code block. See
   [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
+- **Loading indicators at 30 frames a second** (`gpui-component`). Spinner, Skeleton, the loading
+  Progress and ProgressCircle, ShimmerText and loading Markers draw at most
+  `LOADING_ANIMATION_MAX_FPS` (30) frames a second, so an indicator left up through a long request
+  does not keep the window drawing at the display's full rate.
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.

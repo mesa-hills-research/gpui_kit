@@ -1,4 +1,4 @@
-use crate::{Icon, IconName, Sizable, Size};
+use crate::{Icon, IconName, LOADING_ANIMATION_MAX_FPS, Sizable, Size};
 use gpui::{
     Animation, AnimationExt as _, App, Hsla, IntoElement, ParentElement, RenderOnce, Styled as _,
     Transformation, Window, div, ease_in_out, percentage, prelude::FluentBuilder as _,
@@ -6,11 +6,6 @@ use gpui::{
 use instant::Duration;
 
 /// A cycling loading spinner.
-/// How often a spinner redraws: a loading indicator needs no more than 30
-/// frames a second, and drawing at the display's rate costs the frames the
-/// work it waits for may need.
-const MAX_FPS: f32 = 30.;
-
 #[derive(IntoElement)]
 pub struct Spinner {
     size: Size,
@@ -74,7 +69,7 @@ impl RenderOnce for Spinner {
                         Animation::new(self.speed)
                             .repeat()
                             .with_easing(self.easing)
-                            .with_max_fps(MAX_FPS),
+                            .with_max_fps(LOADING_ANIMATION_MAX_FPS),
                         |this, delta| this.transform(Transformation::rotate(percentage(delta))),
                     ),
             )

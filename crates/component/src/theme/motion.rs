@@ -3,6 +3,15 @@ use std::time::Duration;
 use gpui::{Rems, rems};
 use gpui_base::{Easing, Spring};
 
+/// The most frames a second a repeating loading indicator draws: a spinner,
+/// a skeleton, an indeterminate progress bar or ring, shimmering text.
+///
+/// A loading indicator can show for as long as a request runs, and one that
+/// draws every frame keeps the window drawing at the display's full refresh
+/// rate all that time. At 30 frames a second the motion stays smooth while
+/// the window draws a quarter as often on a 120 Hz display.
+pub const LOADING_ANIMATION_MAX_FPS: f32 = 30.;
+
 /// Semantic motion policy shared by styled components.
 #[derive(Clone, Debug)]
 pub struct MotionTokens {
@@ -45,6 +54,61 @@ impl Default for MotionTokens {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod loading_frame_rate {
+        use gpui::{
+            AnyElement, Context, IntoElement as _, ParentElement as _, Render, Styled as _,
+            TestAppContext, Window, div, px, size,
+        };
+
+        use crate::{
+            marker::Marker,
+            progress::{Progress, ProgressCircle},
+            shimmer::ShimmerText,
+            skeleton::Skeleton,
+            spinner::Spinner,
+        };
+
+        struct Loading(fn() -> AnyElement);
+
+        impl Render for Loading {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
+                div().size_full().child((self.0)())
+            }
+        }
+
+        /// A loading indicator that asked for every frame of the display kept
+        /// a window drawing at its full refresh rate for as long as it showed.
+        #[gpui::test]
+        fn loading_indicators_draw_at_a_capped_frame_rate(cx: &mut TestAppContext) {
+            cx.update(crate::init);
+            let indicators: [(&str, fn() -> AnyElement); 6] = [
+                ("Spinner", || Spinner::new().into_any_element()),
+                ("Skeleton", || Skeleton::new().into_any_element()),
+                ("Progress", || {
+                    Progress::new("progress").loading(true).into_any_element()
+                }),
+                ("ProgressCircle", || {
+                    ProgressCircle::new("circle")
+                        .loading(true)
+                        .into_any_element()
+                }),
+                ("ShimmerText", || {
+                    ShimmerText::new("Thinking…").into_any_element()
+                }),
+                ("Marker", || Marker::new().loading(true).into_any_element()),
+            ];
+            for (name, indicator) in indicators {
+                let window =
+                    cx.open_window(size(px(200.), px(200.)), move |_, _| Loading(indicator));
+                cx.run_until_parked();
+                let per_frame = window
+                    .update(cx, |_, window, cx| window.simulate_next_frame(cx))
+                    .unwrap();
+                assert_eq!(per_frame, 0, "{name} redraws on every display frame");
+            }
+        }
+    }
 
     #[test]
     fn normalized_and_pixel_springs_use_unit_appropriate_tolerances() {

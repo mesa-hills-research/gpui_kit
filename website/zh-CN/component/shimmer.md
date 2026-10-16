@@ -238,6 +238,8 @@ ShimmerText::new("正在生成…")
 
 动画文本保持 `StyledText` 的布局，因此会继承换行和截断规则。高光的背景与 foreground 由当前主题计算；应用应避免在父级同时设置难以读取的背景和文字颜色。
 
+高光扫过时每秒最多绘制 30 帧（`LOADING_ANIMATION_MAX_FPS`），整段回复期间一直显示的“Thinking…”标签不会让窗口按显示器的满刷新率重绘。
+
 系统启用 reduced motion 时，`ShimmerText` 会直接渲染静态 `StyledText`，不会请求动画帧。应用无需额外写一个重复的动画分支，但仍应让文字本身完整表达状态。
 
 ## 可访问性指引

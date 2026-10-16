@@ -104,6 +104,7 @@ The Skeleton component includes a built-in pulse animation that:
 - Uses a bounce easing function with ease-in-out
 - Animates opacity from 100% to 50% and back
 - Automatically repeats to indicate loading state
+- Draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`)
 
 The animation cannot be disabled as it's essential for indicating loading state.
 

@@ -37,7 +37,7 @@ Progress::new("progress-100").value(100.0)
 
 ### Loading State
 
-Use `.loading(true)` to show an indeterminate animation when the actual progress is unknown. The `value` is ignored while loading is active.
+Use `.loading(true)` to show an indeterminate animation when the actual progress is unknown. The `value` is ignored while loading is active. The animation draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), as every loading indicator of the kit does.
 
 ```rust
 // Indeterminate loading animation

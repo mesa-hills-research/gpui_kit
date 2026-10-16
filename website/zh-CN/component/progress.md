@@ -37,7 +37,7 @@ Progress::new("progress-100").value(100.0)
 
 ### 加载状态
 
-当实际进度未知时，可通过 `.loading(true)` 显示不确定进度动画。启用后会忽略 `value`。
+当实际进度未知时，可通过 `.loading(true)` 显示不确定进度动画。启用后会忽略 `value`。与组件库中所有加载指示器一样，该动画每秒最多绘制 30 帧（`LOADING_ANIMATION_MAX_FPS`）。
 
 ```rust
 Progress::new("loading").loading(true)

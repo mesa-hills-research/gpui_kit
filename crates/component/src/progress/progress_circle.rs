@@ -1,4 +1,4 @@
-use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use crate::{ActiveTheme, LOADING_ANIMATION_MAX_FPS, Sizable, Size, StyledExt};
 use gpui::Bounds;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -357,7 +357,9 @@ impl RenderOnce for ProgressCircle {
                 if loading {
                     this.with_animation(
                         "progress-circle-loading",
-                        Animation::new(Duration::from_secs(1)).repeat(),
+                        Animation::new(Duration::from_secs(1))
+                            .repeat()
+                            .with_max_fps(LOADING_ANIMATION_MAX_FPS),
                         move |this, delta| {
                             let end = ease_in_out(delta) * 100.;
                             let start = ease_in_out(((delta - 0.5) / 0.5).clamp(0., 1.)) * 100.;

@@ -1,4 +1,4 @@
-use crate::{ActiveTheme, StyledExt};
+use crate::{ActiveTheme, LOADING_ANIMATION_MAX_FPS, StyledExt};
 use gpui::{
     Animation, AnimationExt, IntoElement, RenderOnce, StyleRefinement, Styled, bounce, div,
     ease_in_out,
@@ -49,7 +49,8 @@ impl RenderOnce for Skeleton {
                 "skeleton",
                 Animation::new(Duration::from_secs(2))
                     .repeat()
-                    .with_easing(bounce(ease_in_out)),
+                    .with_easing(bounce(ease_in_out))
+                    .with_max_fps(LOADING_ANIMATION_MAX_FPS),
                 move |this, delta| {
                     let v = 1.0 - delta * 0.5;
                     this.opacity(v)
