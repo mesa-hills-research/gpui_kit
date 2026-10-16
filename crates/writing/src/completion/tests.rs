@@ -928,6 +928,50 @@ fn a_large_document_is_counted_on_another_thread(cx: &mut TestAppContext) {
     assert_eq!(counted(&small, "wojciech"), 1);
 }
 
+/// On a line too long to copy at each keystroke, such as minified code
+/// pasted in, the excerpt holds only the part around the caret, cut on
+/// character boundaries, and the suggestion and the sentence to learn come
+/// out as from all of the text.
+#[test]
+fn a_very_long_line_is_cut_around_the_caret() {
+    use super::model::generate_suggestion;
+    use super::{EXCERPT_MAX_AFTER_BYTES, EXCERPT_MAX_BEFORE_BYTES, Excerpt, preceding_sentence};
+
+    let text = "Größe für die Straße. Thanks for the update. ".repeat(20_000);
+    let vocabulary = vocabulary();
+    let rope = Rope::from(text.as_str());
+    let mut local = super::LocalIndex::new();
+    local.build(&rope, None, &|_| 0);
+    let mut offset = 0;
+    while offset <= text.len() {
+        let excerpt = Excerpt::around(&rope, offset);
+        let inside = excerpt.offset_in(offset);
+        assert_eq!(excerpt.start + inside, offset);
+        assert!(
+            excerpt.text.len() <= EXCERPT_MAX_BEFORE_BYTES + EXCERPT_MAX_AFTER_BYTES + 3,
+            "{} bytes at {offset}",
+            excerpt.text.len()
+        );
+        let part = excerpt.text.as_str();
+        assert_eq!(
+            generate_suggestion(&vocabulary, &local, part, inside),
+            generate_suggestion(&vocabulary, &local, &text, offset),
+            "at {offset}"
+        );
+        let sentence = preceding_sentence(part, inside).map(|(range, end)| {
+            (
+                excerpt.start + range.start..excerpt.start + range.end,
+                excerpt.start + end,
+            )
+        });
+        assert_eq!(sentence, preceding_sentence(&text, offset), "at {offset}");
+        offset += 30_011;
+        while offset < text.len() && !text.is_char_boundary(offset) {
+            offset += 1;
+        }
+    }
+}
+
 /// What a suggestion reads of the text, the excerpt around the caret holds:
 /// the suggestion, the sentence to learn and whether it is prose come out
 /// the same from it as from all of the text, wherever the caret is.

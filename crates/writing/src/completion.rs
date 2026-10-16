@@ -751,11 +751,23 @@ const EXCERPT_BEFORE_BYTES: usize = 16 * 1024;
 /// the lines below that classifying reads.
 const EXCERPT_AFTER_BYTES: usize = 2 * 1024;
 
+/// The most an [`Excerpt`] holds before the caret, however long its lines.
+const EXCERPT_MAX_BEFORE_BYTES: usize = 2 * EXCERPT_BEFORE_BYTES;
+
+/// The most an [`Excerpt`] holds after the caret, however long its lines.
+const EXCERPT_MAX_AFTER_BYTES: usize = 4 * EXCERPT_AFTER_BYTES;
+
 /// The text around the caret, copied out of the textarea's rope: whole
 /// lines from [`EXCERPT_BEFORE_BYTES`] before the caret's line to
 /// [`EXCERPT_AFTER_BYTES`] after it. A suggestion reads no further, and
 /// starting at a line keeps the start of the excerpt the start of a
 /// sentence, as the line break before it ends one.
+///
+/// A line too long for that, such as minified code pasted in, is cut
+/// [`EXCERPT_MAX_BEFORE_BYTES`] before the caret and
+/// [`EXCERPT_MAX_AFTER_BYTES`] after it, so a keystroke never copies it
+/// whole. A suggestion and the sentence to learn read less than that back
+/// from the caret; telling prose from code then reads only the part kept.
 struct Excerpt {
     text: String,
     /// Where `text` starts in the whole text.
@@ -776,6 +788,10 @@ impl Excerpt {
             text.offset_to_point((line_end + EXCERPT_AFTER_BYTES).min(text.len()))
                 .row,
         );
+        let start =
+            start.max(text.floor_char_boundary(offset.saturating_sub(EXCERPT_MAX_BEFORE_BYTES)));
+        let end =
+            end.min(text.ceil_char_boundary((offset + EXCERPT_MAX_AFTER_BYTES).min(text.len())));
         Self {
             text: text.slice(start..end).to_string(),
             start,
