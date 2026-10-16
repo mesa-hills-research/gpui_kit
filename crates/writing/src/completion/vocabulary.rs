@@ -264,6 +264,11 @@ impl Successors {
         self.counts.keys().map(|word| &**word)
     }
 
+    /// Each folded word that followed the context, with its count.
+    pub fn counts(&self) -> impl Iterator<Item = (&str, u32)> {
+        self.counts.iter().map(|(word, &count)| (&**word, count))
+    }
+
     fn add(&mut self, form: &str, folded: &str, count: u32) {
         self.total = self.total.saturating_add(count);
         let entry = self.counts.entry(folded.into()).or_default();

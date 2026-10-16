@@ -134,10 +134,27 @@ fn interpolate(
         let total = f64::from(level.total());
         let backoff = DISCOUNT * level.types() as f64 / total;
         let mut kept_sum = 0.0;
-        for (word, probability) in candidates.iter().zip(probabilities.iter_mut()) {
-            let kept = (f64::from(level.count(word)) - DISCOUNT).max(0.0);
-            kept_sum += kept;
-            *probability = kept / total + backoff * *probability;
+        if restricted && level.types() < candidates.len() {
+            // Many words fit a short prefix, and few of them followed the
+            // context: look those up among the candidates, which are in
+            // order. Kept counts are multiples of a quarter, so they add up
+            // to the same sum in any order.
+            for probability in probabilities.iter_mut() {
+                *probability *= backoff;
+            }
+            for (word, count) in level.counts() {
+                if let Ok(index) = candidates.binary_search(&word) {
+                    let kept = (f64::from(count) - DISCOUNT).max(0.0);
+                    kept_sum += kept;
+                    probabilities[index] += kept / total;
+                }
+            }
+        } else {
+            for (word, probability) in candidates.iter().zip(probabilities.iter_mut()) {
+                let kept = (f64::from(level.count(word)) - DISCOUNT).max(0.0);
+                kept_sum += kept;
+                *probability = kept / total + backoff * *probability;
+            }
         }
         mass = kept_sum / total + backoff * mass;
     }
@@ -319,34 +336,39 @@ fn completions<'a>(evidence: &Evidence<'a>, folded_prefix: &'a str) -> Vec<Compl
         .counts()
         .words_with_prefix(folded_prefix)
         .peekable();
+    // The document's words the vocabulary doesn't hold all of, with the
+    // occurrences it doesn't hold.
     let mut local = evidence
         .local
         .counts()
         .words_with_prefix(folded_prefix)
-        .filter(|(folded, _)| evidence.local.extra(folded) > 0)
+        .filter_map(|(folded, forms)| {
+            let extra = evidence.local.extra(folded);
+            (extra > 0).then_some((folded, forms, extra))
+        })
         .peekable();
     loop {
         let take_shared = match (shared.peek(), local.peek()) {
             (None, None) => break,
             (Some(_), None) => true,
             (None, Some(_)) => false,
-            (Some((a, _)), Some((b, _))) => a <= b,
+            (Some((a, _)), Some((b, _, _))) => a <= b,
         };
         if take_shared {
             let (folded, forms) = shared.next().unwrap();
-            if local.peek().is_some_and(|(next, _)| *next == folded) {
-                local.next();
-            }
+            let extra = local
+                .next_if(|(next, _, _)| *next == folded)
+                .map_or(0, |(_, _, extra)| extra);
             completions.push(Completion {
                 folded,
-                count: f64::from(forms.count()) + f64::from(evidence.local.extra(folded)),
+                count: f64::from(forms.count()) + f64::from(extra),
                 forms,
             });
         } else {
-            let (folded, forms) = local.next().unwrap();
+            let (folded, forms, extra) = local.next().unwrap();
             completions.push(Completion {
                 folded,
-                count: f64::from(evidence.local.extra(folded)),
+                count: f64::from(extra),
                 forms,
             });
         }
@@ -617,6 +639,76 @@ mod tests {
             Some("nks for the")
         );
         assert_eq!(suggest(&vocabulary, "THA").as_deref(), Some("NKS for the"));
+    }
+
+    /// Folding the context's few successors into many candidates gives the
+    /// probabilities that weighing every candidate gives, to the bit.
+    #[test]
+    fn interpolating_sparsely_changes_nothing() {
+        let mut sentences = vec!["Thanks for the work".to_string(); 3];
+        sentences.extend(["Thanks for today".to_string(), "We then went".to_string()]);
+        let words = [
+            "tall", "trees", "tower", "toward", "twilight", "then", "there", "these", "theme",
+            "this", "that", "to", "tomorrow", "team", "test", "tell", "time", "tree", "thanks",
+        ];
+        for (index, word) in words.iter().enumerate() {
+            for other in words.iter().skip(index) {
+                sentences.push(format!("Some {word} or {other}"));
+            }
+        }
+        let sentences: Vec<&str> = sentences.iter().map(String::as_str).collect();
+        let vocabulary = vocabulary(&sentences);
+        let local = LocalIndex::new();
+        let evidence = Evidence {
+            shared: &vocabulary,
+            local: &local,
+            prose: true,
+        };
+        let mut sparse_cases = 0;
+        for context in [
+            vec!["for"],
+            vec!["the"],
+            vec!["thanks", "for"],
+            vec!["we", "then"],
+        ] {
+            let context: Vec<String> = context.iter().map(|word| word.to_string()).collect();
+            let levels = evidence.levels(&context);
+            assert!(!levels.is_empty());
+            for prefix in ["t", "th", "the", "to"] {
+                let completions = completions(&evidence, prefix);
+                let candidates: Vec<&str> = completions.iter().map(|c| c.folded).collect();
+                let total = evidence.unigram_total();
+                let start: Vec<f64> = completions.iter().map(|c| c.count / total).collect();
+                let mass: f64 = start.iter().sum();
+
+                let mut sparse = start.clone();
+                interpolate(&levels, &candidates, &mut sparse, true, mass);
+
+                // Every candidate looked up in every level.
+                let mut dense = start;
+                let mut dense_mass = mass;
+                for level in &levels {
+                    let total = f64::from(level.total());
+                    let backoff = DISCOUNT * level.types() as f64 / total;
+                    let mut kept_sum = 0.0;
+                    for (word, probability) in candidates.iter().zip(dense.iter_mut()) {
+                        let kept = (f64::from(level.count(word)) - DISCOUNT).max(0.0);
+                        kept_sum += kept;
+                        *probability = kept / total + backoff * *probability;
+                    }
+                    dense_mass = kept_sum / total + backoff * dense_mass;
+                }
+                for probability in &mut dense {
+                    *probability /= dense_mass;
+                }
+                if levels.iter().any(|level| level.types() < candidates.len()) {
+                    sparse_cases += 1;
+                }
+                let bits = |values: &[f64]| values.iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+                assert_eq!(bits(&sparse), bits(&dense), "{context:?} {prefix}");
+            }
+        }
+        assert!(sparse_cases >= 8, "{sparse_cases}");
     }
 
     /// "UI/UX design" was written before. After "UI/UX, " the comma ended
