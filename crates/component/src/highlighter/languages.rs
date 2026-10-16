@@ -76,6 +76,34 @@ pub enum Language {
     TypeScript,
     #[cfg(feature = "tree-sitter-yaml")]
     Yaml,
+    #[cfg(feature = "tree-sitter-dart")]
+    Dart,
+    #[cfg(feature = "tree-sitter-elm")]
+    Elm,
+    #[cfg(feature = "tree-sitter-erlang")]
+    Erlang,
+    #[cfg(feature = "tree-sitter-fsharp")]
+    FSharp,
+    #[cfg(feature = "tree-sitter-glsl")]
+    Glsl,
+    #[cfg(feature = "tree-sitter-haskell")]
+    Haskell,
+    #[cfg(feature = "tree-sitter-hcl")]
+    Hcl,
+    #[cfg(feature = "tree-sitter-julia")]
+    Julia,
+    #[cfg(feature = "tree-sitter-objc")]
+    ObjC,
+    #[cfg(feature = "tree-sitter-ocaml")]
+    OCaml,
+    #[cfg(feature = "tree-sitter-perl")]
+    Perl,
+    #[cfg(feature = "tree-sitter-powershell")]
+    PowerShell,
+    #[cfg(feature = "tree-sitter-r")]
+    R,
+    #[cfg(feature = "tree-sitter-xml")]
+    Xml,
     #[cfg(feature = "tree-sitter-zig")]
     Zig,
 }
@@ -165,6 +193,34 @@ impl Language {
             Self::TypeScript => "typescript",
             #[cfg(feature = "tree-sitter-yaml")]
             Self::Yaml => "yaml",
+            #[cfg(feature = "tree-sitter-dart")]
+            Self::Dart => "dart",
+            #[cfg(feature = "tree-sitter-elm")]
+            Self::Elm => "elm",
+            #[cfg(feature = "tree-sitter-erlang")]
+            Self::Erlang => "erlang",
+            #[cfg(feature = "tree-sitter-fsharp")]
+            Self::FSharp => "fsharp",
+            #[cfg(feature = "tree-sitter-glsl")]
+            Self::Glsl => "glsl",
+            #[cfg(feature = "tree-sitter-haskell")]
+            Self::Haskell => "haskell",
+            #[cfg(feature = "tree-sitter-hcl")]
+            Self::Hcl => "hcl",
+            #[cfg(feature = "tree-sitter-julia")]
+            Self::Julia => "julia",
+            #[cfg(feature = "tree-sitter-objc")]
+            Self::ObjC => "objc",
+            #[cfg(feature = "tree-sitter-ocaml")]
+            Self::OCaml => "ocaml",
+            #[cfg(feature = "tree-sitter-perl")]
+            Self::Perl => "perl",
+            #[cfg(feature = "tree-sitter-powershell")]
+            Self::PowerShell => "powershell",
+            #[cfg(feature = "tree-sitter-r")]
+            Self::R => "r",
+            #[cfg(feature = "tree-sitter-xml")]
+            Self::Xml => "xml",
             #[cfg(feature = "tree-sitter-zig")]
             Self::Zig => "zig",
         }
@@ -178,39 +234,40 @@ impl Language {
     pub(crate) fn from_name(s: &str) -> Option<Self> {
         match s {
             "text" | "plain" | "plaintext" => Some(Self::Plain),
-            "json" | "jsonc" => Some(Self::Json),
+            "json" | "jsonc" | "json5" | "jsonl" => Some(Self::Json),
             #[cfg(feature = "tree-sitter-astro")]
             "astro" => Some(Self::Astro),
             #[cfg(feature = "tree-sitter-bash")]
-            "bash" | "sh" => Some(Self::Bash),
+            "bash" | "sh" | "shell" | "zsh" | "ksh" | "console" | "shellsession"
+            | "shell-session" => Some(Self::Bash),
             #[cfg(feature = "tree-sitter-c")]
-            "c" => Some(Self::C),
+            "c" | "h" => Some(Self::C),
             #[cfg(feature = "tree-sitter-cmake")]
             "cmake" => Some(Self::CMake),
             #[cfg(feature = "tree-sitter-cpp")]
-            "cpp" | "c++" => Some(Self::Cpp),
+            "cpp" | "c++" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
             #[cfg(feature = "tree-sitter-csharp")]
-            "csharp" | "cs" => Some(Self::CSharp),
+            "csharp" | "cs" | "c#" => Some(Self::CSharp),
             #[cfg(feature = "tree-sitter-css")]
             "css" | "scss" => Some(Self::Css),
             #[cfg(feature = "tree-sitter-diff")]
-            "diff" => Some(Self::Diff),
+            "diff" | "patch" | "udiff" => Some(Self::Diff),
             #[cfg(feature = "tree-sitter-ejs")]
             "ejs" => Some(Self::Ejs),
             #[cfg(feature = "tree-sitter-elixir")]
-            "elixir" | "ex" => Some(Self::Elixir),
+            "elixir" | "ex" | "exs" => Some(Self::Elixir),
             #[cfg(feature = "tree-sitter-erb")]
             "erb" => Some(Self::Erb),
             #[cfg(feature = "tree-sitter-go")]
-            "go" => Some(Self::Go),
+            "go" | "golang" => Some(Self::Go),
             #[cfg(feature = "tree-sitter-graphql")]
-            "graphql" => Some(Self::GraphQL),
+            "graphql" | "gql" => Some(Self::GraphQL),
             #[cfg(feature = "tree-sitter-html")]
-            "html" => Some(Self::Html),
+            "html" | "htm" | "xhtml" => Some(Self::Html),
             #[cfg(feature = "tree-sitter-java")]
             "java" => Some(Self::Java),
             #[cfg(feature = "tree-sitter-javascript")]
-            "javascript" | "js" => Some(Self::JavaScript),
+            "javascript" | "js" | "jsx" | "mjs" | "cjs" => Some(Self::JavaScript),
             #[cfg(feature = "tree-sitter-jsdoc")]
             "jsdoc" => Some(Self::JsDoc),
             #[cfg(feature = "tree-sitter-kotlin")]
@@ -218,7 +275,7 @@ impl Language {
             #[cfg(feature = "tree-sitter-lua")]
             "lua" => Some(Self::Lua),
             #[cfg(feature = "tree-sitter-make")]
-            "make" | "makefile" => Some(Self::Make),
+            "make" | "makefile" | "mk" => Some(Self::Make),
             #[cfg(feature = "tree-sitter-markdown")]
             "markdown" | "md" | "mdx" => Some(Self::Markdown),
             #[cfg(feature = "tree-sitter-markdown")]
@@ -228,7 +285,7 @@ impl Language {
             #[cfg(feature = "tree-sitter-proto")]
             "proto" | "protobuf" => Some(Self::Proto),
             #[cfg(feature = "tree-sitter-python")]
-            "python" | "py" => Some(Self::Python),
+            "python" | "py" | "python3" | "py3" => Some(Self::Python),
             #[cfg(feature = "tree-sitter-ruby")]
             "ruby" | "rb" => Some(Self::Ruby),
             #[cfg(feature = "tree-sitter-rust")]
@@ -236,7 +293,7 @@ impl Language {
             #[cfg(feature = "tree-sitter-scala")]
             "scala" => Some(Self::Scala),
             #[cfg(feature = "tree-sitter-sql")]
-            "sql" => Some(Self::Sql),
+            "sql" | "postgresql" | "postgres" | "pgsql" | "mysql" | "sqlite" => Some(Self::Sql),
             #[cfg(feature = "tree-sitter-svelte")]
             "svelte" => Some(Self::Svelte),
             #[cfg(feature = "tree-sitter-swift")]
@@ -246,9 +303,38 @@ impl Language {
             #[cfg(feature = "tree-sitter-tsx")]
             "tsx" => Some(Self::Tsx),
             #[cfg(feature = "tree-sitter-typescript")]
-            "typescript" | "ts" => Some(Self::TypeScript),
+            "typescript" | "ts" | "mts" | "cts" => Some(Self::TypeScript),
             #[cfg(feature = "tree-sitter-yaml")]
             "yaml" | "yml" => Some(Self::Yaml),
+            #[cfg(feature = "tree-sitter-dart")]
+            "dart" => Some(Self::Dart),
+            #[cfg(feature = "tree-sitter-elm")]
+            "elm" => Some(Self::Elm),
+            #[cfg(feature = "tree-sitter-erlang")]
+            "erlang" | "erl" | "hrl" => Some(Self::Erlang),
+            #[cfg(feature = "tree-sitter-fsharp")]
+            "fsharp" | "f#" | "fs" | "fsx" | "fsi" => Some(Self::FSharp),
+            #[cfg(feature = "tree-sitter-glsl")]
+            "glsl" | "vert" | "frag" | "geom" | "comp" => Some(Self::Glsl),
+            #[cfg(feature = "tree-sitter-haskell")]
+            "haskell" | "hs" => Some(Self::Haskell),
+            #[cfg(feature = "tree-sitter-hcl")]
+            "hcl" | "terraform" | "tf" | "tfvars" => Some(Self::Hcl),
+            #[cfg(feature = "tree-sitter-julia")]
+            "julia" | "jl" => Some(Self::Julia),
+            #[cfg(feature = "tree-sitter-objc")]
+            "objc" | "objective-c" | "objectivec" | "obj-c" | "objective_c" => Some(Self::ObjC),
+            #[cfg(feature = "tree-sitter-ocaml")]
+            "ocaml" | "ml" => Some(Self::OCaml),
+            #[cfg(feature = "tree-sitter-perl")]
+            "perl" | "pl" | "pm" => Some(Self::Perl),
+            #[cfg(feature = "tree-sitter-powershell")]
+            "powershell" | "ps1" | "pwsh" | "psm1" | "psd1" | "ps" => Some(Self::PowerShell),
+            #[cfg(feature = "tree-sitter-r")]
+            "r" | "R" => Some(Self::R),
+            #[cfg(feature = "tree-sitter-xml")]
+            "xml" | "svg" | "xsd" | "xsl" | "xslt" | "plist" | "rss" | "atom" | "xaml"
+            | "csproj" => Some(Self::Xml),
             #[cfg(feature = "tree-sitter-zig")]
             "zig" => Some(Self::Zig),
             _ => None,
@@ -629,6 +715,110 @@ impl Language {
                 include_str!("languages/svelte/injections.scm"),
                 "",
             ),
+            #[cfg(feature = "tree-sitter-dart")]
+            Self::Dart => (
+                tree_sitter_dart::LANGUAGE,
+                include_str!("languages/dart/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-elm")]
+            Self::Elm => (
+                tree_sitter_elm::LANGUAGE,
+                include_str!("languages/elm/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-erlang")]
+            Self::Erlang => (
+                tree_sitter_erlang::LANGUAGE,
+                include_str!("languages/erlang/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-fsharp")]
+            Self::FSharp => (
+                tree_sitter_fsharp::LANGUAGE_FSHARP,
+                include_str!("languages/fsharp/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-glsl")]
+            Self::Glsl => (
+                tree_sitter_glsl::LANGUAGE_GLSL,
+                concat!(
+                    include_str!("languages/c/highlights.scm"),
+                    include_str!("languages/glsl/highlights.scm")
+                ),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-haskell")]
+            Self::Haskell => (
+                tree_sitter_haskell::LANGUAGE,
+                include_str!("languages/haskell/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-hcl")]
+            Self::Hcl => (
+                tree_sitter_hcl::LANGUAGE,
+                include_str!("languages/hcl/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-julia")]
+            Self::Julia => (
+                tree_sitter_julia::LANGUAGE,
+                include_str!("languages/julia/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-objc")]
+            Self::ObjC => (
+                tree_sitter_objc::LANGUAGE,
+                concat!(
+                    include_str!("languages/c/highlights.scm"),
+                    include_str!("languages/objc/highlights.scm")
+                ),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-ocaml")]
+            Self::OCaml => (
+                tree_sitter_ocaml::LANGUAGE_OCAML,
+                include_str!("languages/ocaml/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-perl")]
+            Self::Perl => (
+                tree_sitter_perl::LANGUAGE,
+                include_str!("languages/perl/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-powershell")]
+            Self::PowerShell => (
+                tree_sitter_powershell::LANGUAGE,
+                include_str!("languages/powershell/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-r")]
+            Self::R => (
+                tree_sitter_r::LANGUAGE,
+                include_str!("languages/r/highlights.scm"),
+                "",
+                "",
+            ),
+            #[cfg(feature = "tree-sitter-xml")]
+            Self::Xml => (
+                tree_sitter_xml::LANGUAGE_XML,
+                include_str!("languages/xml/highlights.scm"),
+                "",
+                "",
+            ),
         };
 
         let language = tree_sitter::Language::new(language);
@@ -941,6 +1131,170 @@ endfunction()
         feature = "tree-sitter-swift",
     ))]
     #[track_caller]
+    /// Asserts that each of `tokens`, at its first place in `source`, takes a
+    /// color from the default theme.
+    #[allow(unused)]
+    fn assert_colored(language: &str, source: &str, tokens: &[&str]) {
+        use crate::highlighter::{HighlightTheme, SyntaxHighlighter};
+
+        let rope = ropey::Rope::from_str(source);
+        let mut highlighter = SyntaxHighlighter::new(language);
+        highlighter.update(None, &rope, None);
+        let styles =
+            highlighter.styles(&(0..source.len()), HighlightTheme::default_dark().as_ref());
+        for token in tokens {
+            let start = source
+                .find(token)
+                .unwrap_or_else(|| panic!("{token:?} is not in the {language} source"));
+            let colored = styles
+                .iter()
+                .any(|(range, style)| range.contains(&start) && style.color.is_some());
+            assert!(colored, "{language}: {token:?} is not highlighted");
+        }
+    }
+
+    #[test]
+    fn languages_go_by_the_names_models_give_their_fences() {
+        let cases: &[(&str, &str)] = &[
+            #[cfg(feature = "tree-sitter-bash")]
+            ("shell", "bash"),
+            #[cfg(feature = "tree-sitter-bash")]
+            ("zsh", "bash"),
+            #[cfg(feature = "tree-sitter-bash")]
+            ("console", "bash"),
+            #[cfg(feature = "tree-sitter-javascript")]
+            ("jsx", "javascript"),
+            #[cfg(feature = "tree-sitter-tsx")]
+            ("tsx", "tsx"),
+            #[cfg(feature = "tree-sitter-diff")]
+            ("patch", "diff"),
+            #[cfg(feature = "tree-sitter-powershell")]
+            ("ps1", "powershell"),
+            #[cfg(feature = "tree-sitter-yaml")]
+            ("yml", "yaml"),
+            #[cfg(feature = "tree-sitter-cpp")]
+            ("hpp", "cpp"),
+            #[cfg(feature = "tree-sitter-csharp")]
+            ("c#", "csharp"),
+            #[cfg(feature = "tree-sitter-go")]
+            ("golang", "go"),
+            #[cfg(feature = "tree-sitter-hcl")]
+            ("terraform", "hcl"),
+            #[cfg(feature = "tree-sitter-xml")]
+            ("svg", "xml"),
+            #[cfg(feature = "tree-sitter-objc")]
+            ("objective-c", "objc"),
+            #[cfg(feature = "tree-sitter-fsharp")]
+            ("f#", "fsharp"),
+            #[cfg(feature = "tree-sitter-r")]
+            ("R", "r"),
+            #[cfg(feature = "tree-sitter-python")]
+            ("python3", "python"),
+        ];
+        for (alias, name) in cases {
+            assert_eq!(
+                Language::from_name(alias).map(|language| language.name()),
+                Some(*name),
+                "{alias}"
+            );
+            assert_eq!(
+                crate::highlighter::language_name(alias).as_ref(),
+                name.to_lowercase(),
+                "editing name of {alias}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "tree-sitter-languages")]
+    fn the_added_languages_highlight_their_code() {
+        let cases: &[(&str, &str, &[&str])] = &[
+            (
+                "xml",
+                "<?xml version=\"1.0\"?>\n<!-- note -->\n<a href=\"x\">text</a>\n",
+                &["a", "href", "\"x\"", "<!-- note -->"],
+            ),
+            (
+                "powershell",
+                "# comment\n$greeting = \"hi\"\nfunction Get-Thing {\n    Write-Host $greeting\n}\n",
+                &["# comment", "\"hi\"", "function"],
+            ),
+            (
+                "hcl",
+                "# comment\nresource \"aws_instance\" \"web\" {\n  count = 2\n  ami = \"abc\"\n}\n",
+                &["# comment", "resource", "\"aws_instance\"", "2"],
+            ),
+            (
+                "dart",
+                "// comment\nclass Point {\n  final int x = 1;\n  String greet() => 'hi';\n}\n",
+                &["// comment", "class", "int", "'hi'"],
+            ),
+            (
+                "haskell",
+                "-- comment\nmodule Main where\nmain :: IO ()\nmain = putStrLn \"hi\"\n",
+                &["-- comment", "module", "IO", "\"hi\""],
+            ),
+            (
+                "ocaml",
+                "(* comment *)\nlet rec fact n = if n = 0 then 1 else n * fact (n - 1)\n",
+                &["(* comment *)", "let", "if", "0"],
+            ),
+            (
+                "r",
+                "# comment\nsquare <- function(x) { x^2 }\nprint(\"hi\")\n",
+                &["# comment", "function", "\"hi\""],
+            ),
+            (
+                "julia",
+                "# comment\nfunction add(x::Int, y)\n    return x + y\nend\nprintln(\"hi\")\n",
+                &["# comment", "function", "return", "\"hi\""],
+            ),
+            (
+                "perl",
+                "# comment\nuse strict;\nmy $name = \"world\";\nsub greet { return \"hi\"; }\n",
+                &["# comment", "my", "\"world\"", "sub"],
+            ),
+            (
+                "objc",
+                "// comment\n#import <Foundation/Foundation.h>\n@interface Greeter : NSObject\n- (void)greet;\n@end\n",
+                &["// comment", "@interface", "void", "@end"],
+            ),
+            (
+                "glsl",
+                "// comment\nuniform vec4 color;\nvoid main() {\n  gl_FragColor = color * 2.0;\n}\n",
+                &["// comment", "uniform", "void", "2.0"],
+            ),
+            (
+                "erlang",
+                "% comment\n-module(hello).\n-export([greet/0]).\ngreet() -> io:format(\"hi~n\").\n",
+                &["% comment", "module", "\"hi~n\""],
+            ),
+            (
+                "elm",
+                "-- comment\nmodule Main exposing (main)\nmain = text \"hi\"\n",
+                &["-- comment", "module", "\"hi\""],
+            ),
+            (
+                "fsharp",
+                "// comment\nlet square x = x * x\nprintfn \"%d\" (square 3)\n",
+                &["// comment", "let", "\"%d\"", "3"],
+            ),
+        ];
+        let failures: Vec<String> = cases
+            .iter()
+            .filter_map(|(language, source, tokens)| {
+                std::panic::catch_unwind(|| assert_colored(language, source, tokens))
+                    .err()
+                    .map(|err| {
+                        err.downcast_ref::<String>()
+                            .cloned()
+                            .unwrap_or_else(|| language.to_string())
+                    })
+            })
+            .collect();
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
     fn assert_highlights(language: &str, source: &str, expected: &[(&str, &str)]) {
         use crate::highlighter::{SyntaxHighlighter, registry::HIGHLIGHT_NAMES};
         use std::sync::Mutex;

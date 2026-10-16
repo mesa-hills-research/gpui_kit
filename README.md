@@ -72,6 +72,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   about 60 ms. Highlights are shared with the block rather than copied every frame, and a theme
   change recolors them without parsing. See
   [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
+- **More code languages** (`gpui-component`). Dart, Elm, Erlang, F#, GLSL, Haskell, HCL, Julia,
+  Objective-C, OCaml, Perl, PowerShell, R and XML highlight with Mesquite's grammars and their
+  projects' queries, and fences find their grammar by the names they usually carry (`shell`,
+  `zsh`, `console`, `jsx`, `patch`, `ps1`, `tf`, `golang` and more).
 - **Languages prepared off the UI thread** (`gpui-component`). A grammar is decoded only when
   something highlights its language, where enabling `tree-sitter-languages` decoded all 35 at the
   first highlight: about a second and 75 MB. A code block whose language is not ready shows plain

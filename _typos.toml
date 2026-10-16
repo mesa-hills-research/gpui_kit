@@ -38,6 +38,8 @@ extend-exclude = [
     "crates/writing/assets/",
     # tree-sitter-make's query, kept as published.
     "crates/component/src/highlighter/languages/make/highlights.scm",
+    # tree-sitter-powershell's query: the grammar names nodes `invokation`.
+    "crates/component/src/highlighter/languages/powershell/highlights.scm",
 ]
 
 # Spell-checking and suggestion tests misspell words on purpose and type the

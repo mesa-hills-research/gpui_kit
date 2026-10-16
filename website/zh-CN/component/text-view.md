@@ -68,7 +68,7 @@ TextView::new(&self.reply).stream_fade(true)
 
 ### 流式输出时的代码高亮
 
-启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。高亮器会保留每个代码块的解析结果和高亮，并能认出带着更多代码重新出现的同一个代码块。流式输出的代码块只在变化处重新解析，只从第一行可能变化的位置重新高亮，所以 200 KB 的 Rust 代码块每收到一段内容只需要远不到一毫秒。高亮以高亮名称保存，绘制时才换成主题颜色，因此切换主题只会重新着色，不会重新解析。
+启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。每种语言都有对应的 Cargo feature，例如 `tree-sitter-rust`，`tree-sitter-languages` 会启用全部语言：Astro、Bash、C、C#、C++、CMake、CSS、Dart、Diff、EJS、Elixir、Elm、ERB、Erlang、F#、GLSL、Go、GraphQL、Haskell、HCL、HTML、Java、JavaScript、JSON、Julia、Kotlin、Lua、Make、Markdown、Objective-C、OCaml、Perl、PHP、PowerShell、Protocol Buffers、Python、R、Ruby、Rust、Scala、SQL、Svelte、Swift、TOML、TSX、TypeScript、XML、YAML 和 Zig。围栏可以用常见的写法标注语言，例如用 `shell`、`zsh` 或 `console` 表示 Bash，`jsx`，用 `patch` 表示 diff，用 `ps1` 表示 PowerShell，用 `tf` 表示 HCL，或者 `yml`。高亮器会保留每个代码块的解析结果和高亮，并能认出带着更多代码重新出现的同一个代码块。流式输出的代码块只在变化处重新解析，只从第一行可能变化的位置重新高亮，所以 200 KB 的 Rust 代码块每收到一段内容只需要远不到一毫秒。高亮以高亮名称保存，绘制时才换成主题颜色，因此切换主题只会重新着色，不会重新解析。
 
 某种语言在第一次被代码块用到时才会准备：在后台线程解码语法表并编译查询，视语法不同大约需要 20 毫秒到半秒以上，在此之前它的代码块显示为纯文本。如果应用知道会显示哪些语言，可以在启动时提前准备：
 

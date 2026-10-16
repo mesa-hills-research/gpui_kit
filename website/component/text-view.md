@@ -110,7 +110,15 @@ easing yourself, or to reveal each chunk word by word; see
 ### Code highlighting while streaming
 
 With the `tree-sitter` feature, fenced code blocks are highlighted with the
-grammar their fence names. The highlighter keeps each block's parse and
+grammar their fence names. Each language has a Cargo feature, such as
+`tree-sitter-rust`, and `tree-sitter-languages` enables all of them: Astro,
+Bash, C, C#, C++, CMake, CSS, Dart, Diff, EJS, Elixir, Elm, ERB, Erlang, F#,
+GLSL, Go, GraphQL, Haskell, HCL, HTML, Java, JavaScript, JSON, Julia, Kotlin,
+Lua, Make, Markdown, Objective-C, OCaml, Perl, PHP, PowerShell, Protocol
+Buffers, Python, R, Ruby, Rust, Scala, SQL, Svelte, Swift, TOML, TSX,
+TypeScript, XML, YAML and Zig. A fence can name its language the usual
+ways, such as `shell`, `zsh` or `console` for Bash, `jsx`, `patch` for a
+diff, `ps1` for PowerShell, `tf` for HCL or `yml`. The highlighter keeps each block's parse and
 highlights, and recognizes a block that comes back with more code. A streamed
 block is parsed again only where it changed and highlighted again from the
 first line that can differ, so a chunk of a 200 KB Rust block takes well
