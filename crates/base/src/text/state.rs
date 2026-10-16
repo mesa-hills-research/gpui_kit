@@ -137,9 +137,10 @@ pub struct TextViewState {
     /// of small full-replace updates.
     format: TextViewFormat,
     text: String,
-    /// The text a `TextView` element last handed over, to recognize the same
-    /// string next frame without comparing its bytes.
-    element_text: Option<SharedString>,
+    /// The text a `TextView` element last handed over, and the length of
+    /// `text` then, to recognize the same string next frame without
+    /// comparing its bytes.
+    element_text: Option<(SharedString, usize)>,
     revision: usize,
     /// The revision of the update `parsed_content` was committed from.
     committed_revision: usize,
@@ -600,13 +601,19 @@ impl TextViewState {
     /// With a streamed fade-in enabled, extended text fades in; a replacement
     /// shows at once.
     ///
+    /// Text that differs from the current text only in whitespace before its
+    /// first line or after its last, such as the current text trimmed, shows
+    /// the same and leaves the view as it is: the blocks keep their
+    /// [`TextBlockId`]s, views of them aren't touched, and the selection
+    /// stays. The view keeps the current text.
+    ///
     /// A [`Self::block_range`] view stops following its document and shows
     /// the text from then on.
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
         if self.block_range.take().is_some() {
             self.text.clear();
         }
-        if self.text.as_str() == text {
+        if self.text.as_str() == text || differs_only_around(&self.text, text) {
             return;
         }
         // HTML blocks carry no spans, so an append would parse the delta as a
@@ -633,14 +640,19 @@ impl TextViewState {
     /// merely equal bytes) is recognized without a comparison, as long as the
     /// state still holds a text of its length.
     pub(super) fn set_element_text(&mut self, text: &SharedString, cx: &mut Context<Self>) {
-        let same_string = self.element_text.as_ref().is_some_and(|current| {
-            current.as_ptr() == text.as_ptr() && current.len() == text.len()
-        });
-        if same_string && self.text.len() == text.len() {
+        let unchanged = self
+            .element_text
+            .as_ref()
+            .is_some_and(|(current, text_len)| {
+                current.as_ptr() == text.as_ptr()
+                    && current.len() == text.len()
+                    && self.text.len() == *text_len
+            });
+        if unchanged {
             return;
         }
-        self.element_text = Some(text.clone());
         self.set_text(text, cx);
+        self.element_text = Some((text.clone(), self.text.len()));
     }
 
     /// Append partial text content to the existing text.
@@ -1562,6 +1574,21 @@ enum ParseMode {
     BaselineAck,
     Replace,
     Compatible,
+}
+
+/// Whether `new` is `old` with other whitespace before its first line or
+/// after its last, which shows the same. The first line's indentation counts:
+/// four spaces make it code.
+fn differs_only_around(old: &str, new: &str) -> bool {
+    let content = old.trim();
+    if content.is_empty() || content != new.trim() {
+        return false;
+    }
+    fn indentation(text: &str) -> &str {
+        let leading = &text[..text.len() - text.trim_start().len()];
+        leading.rsplit(['\n', '\r']).next().unwrap_or(leading)
+    }
+    indentation(old) == indentation(new)
 }
 
 fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOptions>) -> bool {
@@ -2655,7 +2682,7 @@ mod tests {
 
         use gpui::{AppContext as _, Entity, TestAppContext};
 
-        use crate::text::{SelectionFormat, TextBlockContent, TextViewState};
+        use crate::text::{SelectionFormat, TextBlock, TextBlockContent, TextViewState};
 
         fn document(markdown: &str, cx: &mut TestAppContext) -> Entity<TextViewState> {
             cx.update(crate::init);
@@ -2753,6 +2780,63 @@ mod tests {
                 document.read_with(cx, |document, _| document.blocks()[0].id()),
                 first_id
             );
+        }
+
+        /// A chat feed ends a streamed reply with the reply's text trimmed.
+        #[gpui::test]
+        fn the_text_trimmed_keeps_the_blocks_and_the_selection(cx: &mut TestAppContext) {
+            for streamed in [
+                "Here is the plan.\n\n- one\n- two\n\n```rust\nfn a() {}\n```\n\nDone.\n",
+                "\n\nHere is the plan.\n\n- one\n- two\n\n```rust\nfn a() {}\n```\n\nDone.",
+            ] {
+                let document = document("", cx);
+                for chunk in streamed.as_bytes().chunks(7) {
+                    let chunk = std::str::from_utf8(chunk).unwrap();
+                    document.update(cx, |document, cx| document.push_str(chunk, cx));
+                    cx.run_until_parked();
+                }
+                let blocks = document.read_with(cx, |document, _| document.blocks());
+                assert_eq!(blocks.len(), 4);
+                let rows = (0..blocks.len())
+                    .map(|ix| cx.new(|cx| TextViewState::block_range(&document, ix..=ix, cx)))
+                    .collect::<Vec<_>>();
+                rows[0].update(cx, |row, cx| row.select_all(cx));
+                let notified = Rc::new(Cell::new(0));
+                let _subscriptions = rows
+                    .iter()
+                    .map(|row| {
+                        let notified = notified.clone();
+                        cx.update(|cx| {
+                            cx.observe(row, move |_, _| notified.set(notified.get() + 1))
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                document.update(cx, |document, cx| document.set_text(streamed.trim(), cx));
+                cx.run_until_parked();
+
+                let ids =
+                    |blocks: Vec<TextBlock>| blocks.iter().map(TextBlock::id).collect::<Vec<_>>();
+                assert_eq!(
+                    ids(document.read_with(cx, |document, _| document.blocks())),
+                    ids(blocks),
+                    "{streamed:?}"
+                );
+                assert_eq!(notified.get(), 0, "{streamed:?}");
+                assert_eq!(
+                    rows[0].read_with(cx, |row, _| row.selected_text()),
+                    "Here is the plan.\n"
+                );
+            }
+
+            // Four spaces before the first line make it code.
+            let document = document("    code", cx);
+            let id = document.read_with(cx, |document, _| document.blocks()[0].id());
+            document.update(cx, |document, cx| document.set_text("code", cx));
+            cx.run_until_parked();
+            let block = document.read_with(cx, |document, _| document.blocks()[0].clone());
+            assert_ne!(block.id(), id);
+            assert_eq!(block.content(), &TextBlockContent::Paragraph);
         }
 
         #[gpui::test]
