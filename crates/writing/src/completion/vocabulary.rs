@@ -73,6 +73,7 @@ use super::{
     FIRST_NGRAM_VERSION, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ,
     NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word, sentence_runs,
 };
+use crate::options::private_file;
 use crate::spelling::Dictionary;
 use crate::text::hash_str;
 use gpui::{App, BackgroundExecutor, Task};
@@ -682,7 +683,11 @@ fn write_whole(path: &Path, data: &[u8]) -> io::Result<()> {
     temporary.push(format!(".{}.tmp", std::process::id()));
     let temporary = PathBuf::from(temporary);
     let written = (|| {
-        let mut file = std::fs::File::create(&temporary)?;
+        let mut file = private_file()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&temporary)?;
         file.write_all(data)?;
         file.sync_all()?;
         drop(file);

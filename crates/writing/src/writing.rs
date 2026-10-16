@@ -262,6 +262,30 @@ mod tests {
         );
     }
 
+    /// The vocabulary and the user's word list hold what the user wrote, so
+    /// only the user can read them.
+    #[cfg(unix)]
+    #[gpui::test]
+    fn the_files_are_the_users_alone(cx: &mut TestAppContext) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let scratch = Scratch::new("private-files");
+        let options = WritingOptions::new().with_data_dir(scratch.0.clone());
+        let writing = Writing::load_blocking(options.clone());
+        cx.update(|cx| writing.dictionary().add_word("Zbigniewski", cx));
+        writing
+            .vocabulary()
+            .borrow_mut()
+            .learn_sentence("Ferns grow slowly");
+        writing.save();
+        for path in [
+            options.vocabulary_path().unwrap(),
+            options.user_dictionary_path().unwrap(),
+        ] {
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "{}", path.display());
+        }
+    }
+
     /// The vocabulary file stays within the cap the options give.
     #[test]
     fn the_vocabulary_keeps_within_its_cap() {

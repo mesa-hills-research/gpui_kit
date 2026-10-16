@@ -86,7 +86,9 @@ clears the text: the last sentence is learned under the same rules, once.
 ## Files
 
 `WritingOptions` says where the files live. Without a data folder nothing is
-read or saved, and what the suggestions learn lasts the session.
+read or saved, and what the suggestions learn lasts the session. The files
+hold what the user wrote, so on Unix they are created readable by the user
+alone.
 
 | Option | Default | Holds |
 | --- | --- | --- |

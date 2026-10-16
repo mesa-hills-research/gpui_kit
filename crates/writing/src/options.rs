@@ -128,6 +128,23 @@ impl WritingOptions {
     }
 }
 
+/// Options that create a file only its owner can read and write, on Unix:
+/// the vocabulary and the user's word list hold what the user wrote.
+pub(crate) fn private_file() -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
+    owner_only(&mut options);
+    options
+}
+
+#[cfg(unix)]
+fn owner_only(options: &mut std::fs::OpenOptions) {
+    std::os::unix::fs::OpenOptionsExt::mode(options, 0o600);
+}
+
+/// Elsewhere a new file takes the folder's permissions.
+#[cfg(not(unix))]
+fn owner_only(_: &mut std::fs::OpenOptions) {}
+
 /// Words a dictionary accepts: one per line, with blank lines and lines
 /// starting with `#` skipped. Hunspell affix flags (`word/MS`) are stripped
 /// but not expanded, so a Hunspell `.dic` gives only its stems.

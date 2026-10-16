@@ -43,6 +43,7 @@
 
 use crate::WordList;
 use crate::classify::line_code_score;
+use crate::options::private_file;
 use gpui::{App, SharedString, Task};
 use gpui_base::input::{Rope, RopeExt as _, SpellCheck, SpellCheckRequest, SpellChecker};
 use std::borrow::Cow;
@@ -189,7 +190,7 @@ fn append(path: &Path, text: &str) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::OpenOptions::new()
+    private_file()
         .create(true)
         .append(true)
         .open(path)?
