@@ -6,7 +6,8 @@
 //! `whole_answer` shows the answer as one `TextView` row, so every frame lays
 //! out every block of it. `block_rows` shows each top-level block as a row of
 //! its own, a `TextViewState::block_range` view of the answer, so a frame lays
-//! out the rows on screen.
+//! out the rows on screen. `block_rows_fading` does the same with the streamed
+//! text fading in, which draws frames until the fade ends.
 //!
 //! Run with
 //! `cargo bench -p gpui-component --features tree-sitter-languages --bench transcript_stream`.
@@ -72,11 +73,12 @@ struct Transcript {
     answer: Entity<TextViewState>,
     /// One view per block of the answer, when the answer is shown as rows.
     rows: Option<Rc<RefCell<Vec<Entity<TextViewState>>>>>,
+    stream_fade: bool,
     _sync_rows: Subscription,
 }
 
 impl Transcript {
-    fn new(markdown: &str, as_rows: bool, cx: &mut Context<Self>) -> Self {
+    fn new(markdown: &str, as_rows: bool, stream_fade: bool, cx: &mut Context<Self>) -> Self {
         let answer = cx.new(|cx| TextViewState::markdown(markdown, cx));
         let scroller = cx.new(|cx| MessageScrollerState::new(usize::from(!as_rows), cx));
         let rows = as_rows.then(|| Rc::new(RefCell::new(Vec::new())));
@@ -85,6 +87,7 @@ impl Transcript {
             scroller,
             answer,
             rows,
+            stream_fade,
             _sync_rows: sync_rows,
         }
     }
@@ -114,13 +117,17 @@ impl Render for Transcript {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let answer = self.answer.clone();
         let rows = self.rows.clone();
+        let stream_fade = self.stream_fade;
         div().w(px(760.)).h(px(800.)).child(
             MessageScroller::new("transcript", self.scroller.clone(), move |ix, _, _| {
                 let view = match &rows {
                     Some(rows) => rows.borrow()[ix].clone(),
                     None => answer.clone(),
                 };
-                div().w_full().px(px(16.)).child(TextView::new(&view))
+                div()
+                    .w_full()
+                    .px(px(16.))
+                    .child(TextView::new(&view).stream_fade(stream_fade))
             })
             .size_full(),
         )
@@ -129,7 +136,7 @@ impl Render for Transcript {
 
 /// Streams the end of the answer into a transcript showing it whole or as
 /// rows.
-fn stream_answer(as_rows: bool, cx: &mut BenchAppContext) {
+fn stream_answer(as_rows: bool, stream_fade: bool, cx: &mut BenchAppContext) {
     cx.update(gpui_component::init);
     let source = answer();
     let mut end = source.len() - 4 * 1024;
@@ -138,8 +145,11 @@ fn stream_answer(as_rows: bool, cx: &mut BenchAppContext) {
     }
     let shown = source[..end].to_string();
     let mut window = cx.add_empty_window();
-    let transcript = window
-        .update(|window, cx| window.replace_root(cx, |_, cx| Transcript::new(&shown, as_rows, cx)));
+    let transcript = window.update(|window, cx| {
+        window.replace_root(cx, |_, cx| {
+            Transcript::new(&shown, as_rows, stream_fade, cx)
+        })
+    });
     let answer = cx.read(|cx| transcript.read(cx).answer.clone());
     cx.run_until_idle();
 
@@ -161,13 +171,18 @@ fn stream_answer(as_rows: bool, cx: &mut BenchAppContext) {
 
 #[gpui::bench]
 fn whole_answer(cx: &mut BenchAppContext) {
-    stream_answer(false, cx);
+    stream_answer(false, false, cx);
 }
 
 #[gpui::bench]
 fn block_rows(cx: &mut BenchAppContext) {
-    stream_answer(true, cx);
+    stream_answer(true, false, cx);
 }
 
-gpui::bench_group!(benches, whole_answer, block_rows);
+#[gpui::bench]
+fn block_rows_fading(cx: &mut BenchAppContext) {
+    stream_answer(true, true, cx);
+}
+
+gpui::bench_group!(benches, whole_answer, block_rows, block_rows_fading);
 gpui::bench_main!(benches);

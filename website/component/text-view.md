@@ -190,6 +190,11 @@ copy button or a line count:
 TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
 ```
 
+The streamed fade repaints for 350 ms after each chunk, about 30 times a
+second. With an answer as rows, those frames lay out the rows on screen,
+about a millisecond each for the answer above, and only the rows whose text
+changed fade.
+
 ### Highlight ranges
 
 An application that searches a document, or points at a citation inside it,

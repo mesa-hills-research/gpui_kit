@@ -109,6 +109,8 @@ TextView::new(&row)
 TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
 ```
 
+流式淡入会在每块文字到达后的 350 ms 内以每秒约 30 次重绘。回复拆成多行后，这些帧只布局屏幕上的行，上面这篇回复每帧大约一毫秒，而且只有文字变化的行会淡入。
+
 ### 高亮文本范围
 
 应用在文档里搜索，或者指向文档里的某处引用时，用 `set_range_highlights` 把这些范围标出来。搜索由应用负责：在视图显示的文本 `rendered_text()` 里找到范围，连同绘制用的颜色一起交回，当前结果用更醒目的颜色：
