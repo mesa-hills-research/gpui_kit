@@ -4,14 +4,14 @@ use super::pacing::{
     ESCAPE_WEIGHT, IGNORED_EXTRA_PAUSE, MAX_QUIET_PAUSE, QUIET_PAUSE, SUPPRESSION,
 };
 use super::vocabulary::Vocabulary;
-use super::{SuggestionMode, accept_word_bindings};
+use super::{LOCAL_COUNT_ON_UI_BYTES, SuggestionMode, WordSuggestions, accept_word_bindings};
 use crate::Writing;
 use crate::spelling::Dictionary;
 use gpui::{
     AppContext as _, ClipboardItem, Context, Entity, IntoElement, ParentElement as _, Render,
     Styled as _, Subscription, TestAppContext, VisualTestContext, Window, div, px, size,
 };
-use gpui_base::input::{Keymap, SuggestionOptions, TextareaState};
+use gpui_base::input::{Keymap, Rope, SuggestionOptions, TextareaState};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -799,4 +799,39 @@ fn a_comma_ends_what_a_suggestion_follows(cx: &mut TestAppContext) {
     assert_eq!(typist.ghost(), None);
     typist.type_text("and the UI/UX ");
     assert_eq!(typist.ghost().as_deref(), Some("design"));
+}
+
+/// How often the document's words, as counted, hold `word`.
+fn counted(suggestions: &WordSuggestions, word: &str) -> u32 {
+    suggestions.local_index.borrow().counts().word_count(word)
+}
+
+/// A large document's words are counted on another thread, and join the
+/// suggestions once that is done, with the edits made meanwhile. A small
+/// one's are counted at once.
+#[gpui::test]
+fn a_large_document_is_counted_on_another_thread(cx: &mut TestAppContext) {
+    let mut content = "Ferns grow slowly in the shade.\n".repeat(2500);
+    content.push_str(&"Ask Wojciech about the ferns.\n".repeat(3));
+    assert!(content.len() > LOCAL_COUNT_ON_UI_BYTES);
+    let suggestions = writing(Vocabulary::new()).word_suggestions();
+    let text = Rope::from(content.as_str());
+    cx.update(|cx| suggestions.count_words(&text, text.len(), cx));
+    assert_eq!(counted(&suggestions, "wojciech"), 0);
+
+    // Typed while it counts.
+    let end = text.len();
+    suggestions.count_edits([(end..end, "Wojciech"), (0..5, "")], end + 8 - 5);
+    content.push_str("Wojciech");
+    content.replace_range(0..5, "");
+    let text = Rope::from(content.as_str());
+    cx.run_until_parked();
+    cx.update(|cx| suggestions.count_words(&text, 0, cx));
+    assert_eq!(counted(&suggestions, "wojciech"), 4);
+    assert_eq!(counted(&suggestions, "ferns"), 2500 - 1 + 3);
+
+    let small = writing(Vocabulary::new()).word_suggestions();
+    let text = Rope::from("Ask Wojciech about the ferns.");
+    cx.update(|cx| small.count_words(&text, 0, cx));
+    assert_eq!(counted(&small, "wojciech"), 1);
 }

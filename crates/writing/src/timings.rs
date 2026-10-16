@@ -10,7 +10,8 @@
 //! that follow Zipf's law, a misspelling now and then, and a fenced code
 //! block every forty paragraphs.
 
-use crate::completion::vocabulary::{LocalIndex, Vocabulary, WordTally};
+use crate::completion::local::LocalIndex;
+use crate::completion::vocabulary::Vocabulary;
 use crate::spelling::tests::{Scratch, english};
 use crate::spelling::{Dictionary, MAX_SUGGESTIONS};
 use crate::{WordList, Writing};
@@ -246,22 +247,22 @@ fn timings_word_suggestions() {
             || suggestions.learn_before(&rope, rope.len()),
         );
 
-        let shared = writing.vocabulary().borrow();
         let mut index = LocalIndex::new();
         time(
-            &format!("rebuild the document's index, {} KB document", bytes / 1000),
+            &format!("count the document's words, {} KB document", bytes / 1000),
             5,
             1,
+            || index.build(&rope, Some(rope.len()), &|_| 0),
+        );
+        let mut caret = rope.len() - 1;
+        time(
+            &format!("follow a typed key, {} KB document", bytes / 1000),
+            20,
+            1,
             || {
-                index.mark_stale();
-                index.rebuild_if_stale(
-                    &text,
-                    text.len(),
-                    now,
-                    shared.counts(),
-                    &WordTally::new(),
-                    &WordTally::new(),
-                );
+                index.edit(caret..caret, "e", &|_| 0);
+                caret += 1;
+                index.move_caret(Some(caret), &|_| 0);
             },
         );
     }

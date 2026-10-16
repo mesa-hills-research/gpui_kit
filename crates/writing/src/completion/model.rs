@@ -16,7 +16,8 @@
 //! the one that saves the most keystrokes on average. A suggestion of one
 //! character never shows, since Tab is a keystroke too.
 
-use super::vocabulary::{Counts, Forms, LocalIndex, SENTENCE_START, Successors, Vocabulary, fold};
+use super::local::LocalIndex;
+use super::vocabulary::{Counts, Forms, SENTENCE_START, Successors, Vocabulary, fold};
 use super::{
     CONTEXT_BYTES, EMPTY_PREDICTION_CONTINUATION_LIMIT, PREFIX_CONTINUATION_LIMIT,
     canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
@@ -592,14 +593,10 @@ mod tests {
         let vocabulary = vocabulary(&["The compass points north"; 5]);
         let text = "let total = compute_total(items);\nreturn comp";
         let mut local = LocalIndex::new();
-        let none = Default::default();
-        local.rebuild_if_stale(
-            text,
-            text.len(),
-            std::time::Instant::now(),
-            vocabulary.counts(),
-            &none,
-            &none,
+        local.build(
+            &gpui_base::input::Rope::from(text),
+            Some(text.len()),
+            &|_| 0,
         );
         assert_eq!(
             generate_suggestion(&vocabulary, &local, text, text.len()).as_deref(),

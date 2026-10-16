@@ -68,12 +68,10 @@
 //! save.
 
 use super::{
-    FIRST_NGRAM_VERSION, LOCAL_COUNT_CAP, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ,
-    NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word,
-    extract_sentences_and_words, sentence_runs,
+    FIRST_NGRAM_VERSION, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ,
+    NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word, sentence_runs,
 };
 use crate::spelling::Dictionary;
-use crate::text::hash_str;
 use gpui::{App, BackgroundExecutor, Task};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
@@ -90,9 +88,6 @@ use std::time::{Duration, Instant};
 /// The context that stands for the start of a sentence. No word is written
 /// this way.
 pub(crate) const SENTENCE_START: &str = "<s>";
-
-/// Minimum interval between full rebuilds of the local document index.
-const LOCAL_REBUILD_INTERVAL: Duration = Duration::from_secs(2);
 
 /// How long a save waits for another process to finish saving. Saving a
 /// vocabulary at its size cap takes a second or two.
@@ -163,6 +158,21 @@ impl Forms {
         match self.cased.iter_mut().find(|(cased, _)| &**cased == form) {
             Some((_, cased_count)) => *cased_count = cased_count.saturating_add(count),
             None => self.cased.push((form.into(), count)),
+        }
+    }
+
+    /// Takes back `count` sightings of `form`.
+    fn remove(&mut self, form: &str, folded: &str, count: u32) {
+        self.count = self.count.saturating_sub(count);
+        if form == folded {
+            return;
+        }
+        if let Some(index) = self.cased.iter().position(|(cased, _)| &**cased == form) {
+            let cased_count = &mut self.cased[index].1;
+            *cased_count = cased_count.saturating_sub(count);
+            if *cased_count == 0 {
+                self.cased.swap_remove(index);
+            }
         }
     }
 
@@ -251,6 +261,22 @@ impl Successors {
         if form != folded {
             let entry = self.cased.entry(form.into()).or_default();
             *entry = entry.saturating_add(count);
+        }
+    }
+
+    /// Takes back `count` times `form` followed the context.
+    fn remove(&mut self, form: &str, folded: &str, count: u32) {
+        self.total = self.total.saturating_sub(count);
+        for (counts, key) in [(&mut self.counts, folded), (&mut self.cased, form)] {
+            if let Some(entry) = counts.get_mut(key) {
+                *entry = entry.saturating_sub(count);
+                if *entry == 0 {
+                    counts.remove(key);
+                }
+            }
+            if form == folded {
+                break;
+            }
         }
     }
 
@@ -381,6 +407,40 @@ impl Counts {
                     .entry(trigram_key(sequence[position - 2], sequence[position - 1]).into())
                     .or_default()
                     .add(form, &folded[index], 1);
+            }
+        }
+    }
+
+    /// Takes back a run counted with [`Self::add_run`] in the middle of a
+    /// sentence. Words and contexts left with no count go.
+    pub fn remove_run(&mut self, run: &[&str]) {
+        let forms: Vec<&str> = run
+            .iter()
+            .map(|word| canonical_prediction_word(word))
+            .collect();
+        let folded: Vec<Cow<'_, str>> = forms.iter().map(|form| fold(form)).collect();
+        for (form, folded) in forms.iter().zip(&folded) {
+            if let Some(entry) = self.words.get_mut(folded.as_ref()) {
+                entry.remove(form, folded, 1);
+                if entry.count == 0 {
+                    self.words.remove(folded.as_ref());
+                }
+            }
+            self.total = self.total.saturating_sub(1);
+        }
+        let remove = |ngrams: &mut HashMap<Box<str>, Successors>, key: &str, index: usize| {
+            if let Some(successors) = ngrams.get_mut(key) {
+                successors.remove(forms[index], &folded[index], 1);
+                if successors.total == 0 {
+                    ngrams.remove(key);
+                }
+            }
+        };
+        for index in 1..forms.len() {
+            remove(&mut self.bigrams, &folded[index - 1], index);
+            if index >= 2 {
+                let key = trigram_key(&folded[index - 2], &folded[index - 1]);
+                remove(&mut self.trigrams, &key, index);
             }
         }
     }
@@ -1268,123 +1328,6 @@ impl Vocabulary {
         }
         self.dirty = true;
     }
-}
-
-/// The words of the open document, rebuilt from its text now and then.
-///
-/// In code they are all the suggestions draw on. In prose they add the
-/// document's own words to the shared vocabulary, such as names in a pasted
-/// email. A word's count there is its occurrences in the document that the
-/// vocabulary can't already hold: occurrences this document taught it don't
-/// count, and neither do occurrences the document opened with, up to the
-/// vocabulary's own count of the word, since an earlier session may have
-/// learned them. That way no text counts twice.
-pub(crate) struct LocalIndex {
-    counts: Counts,
-    /// Per folded word, occurrences the shared vocabulary doesn't hold.
-    extra: HashMap<Box<str>, u32>,
-    extra_total: u64,
-    last_hash: u64,
-    last_rebuild: Option<Instant>,
-    stale: bool,
-}
-
-/// What a document added to the shared vocabulary, or opened with: folded
-/// words with counts.
-pub(crate) type WordTally = HashMap<Box<str>, u32>;
-
-impl LocalIndex {
-    pub fn new() -> Self {
-        Self {
-            counts: Counts::default(),
-            extra: HashMap::new(),
-            extra_total: 0,
-            last_hash: 0,
-            last_rebuild: None,
-            stale: true,
-        }
-    }
-
-    /// The document's own counts, every occurrence included.
-    pub fn counts(&self) -> &Counts {
-        &self.counts
-    }
-
-    /// Occurrences of a folded word that the shared vocabulary doesn't hold.
-    pub fn extra(&self, folded: &str) -> u32 {
-        self.extra.get(folded).copied().unwrap_or(0)
-    }
-
-    pub fn extra_total(&self) -> u64 {
-        self.extra_total
-    }
-
-    /// Rebuilds at the next chance, however recent the last rebuild.
-    pub fn mark_stale(&mut self) {
-        self.stale = true;
-    }
-
-    /// Rebuilds the index from `text` when its throttle interval has passed
-    /// or it was marked stale. The word at `cursor` is being typed and isn't
-    /// counted.
-    pub fn rebuild_if_stale(
-        &mut self,
-        text: &str,
-        cursor: usize,
-        now: Instant,
-        shared: &Counts,
-        taught: &WordTally,
-        opened: &WordTally,
-    ) {
-        if !self.stale
-            && let Some(last_rebuild) = self.last_rebuild
-            && now.saturating_duration_since(last_rebuild) < LOCAL_REBUILD_INTERVAL
-        {
-            return;
-        }
-        self.last_rebuild = Some(now);
-
-        let hash = hash_str(text);
-        if hash == self.last_hash && !self.stale {
-            return;
-        }
-        self.last_hash = hash;
-        self.stale = false;
-
-        self.counts = Counts::default();
-        for run in extract_sentences_and_words(text, Some(cursor)) {
-            self.counts.add_run(false, &run);
-        }
-
-        self.extra.clear();
-        self.extra_total = 0;
-        for (folded, forms) in &self.counts.words {
-            let held = taught.get(folded).copied().unwrap_or(0)
-                + opened
-                    .get(folded)
-                    .copied()
-                    .unwrap_or(0)
-                    .min(shared.word_count(folded));
-            let extra = forms.count().saturating_sub(held).min(LOCAL_COUNT_CAP);
-            if extra > 0 {
-                self.extra.insert(folded.clone(), extra);
-                self.extra_total += u64::from(extra);
-            }
-        }
-    }
-}
-
-/// Folded learnable words of `text`, counted.
-pub(crate) fn tally(text: &str) -> WordTally {
-    let mut tally = WordTally::new();
-    for run in extract_sentences_and_words(text, None) {
-        for word in run {
-            *tally
-                .entry(fold(canonical_prediction_word(word)).as_ref().into())
-                .or_default() += 1;
-        }
-    }
-    tally
 }
 
 #[cfg(test)]

@@ -27,10 +27,9 @@
 //!    never extended. See [`crate::classify`].
 //!
 //! The local per-document index adds the document's own words, such as
-//! pasted names and code identifiers, and rebuilds on a time throttle rather
-//! than on every keystroke. It counts only what the shared vocabulary
-//! doesn't already hold, so no text counts twice (see
-//! [`vocabulary::LocalIndex`]).
+//! pasted names and code identifiers. It follows each edit by counting the
+//! lines the edit touched again, and counts only what the shared vocabulary
+//! doesn't already hold, so no text counts twice (see [`local`]).
 //!
 //! # Learning
 //!
@@ -60,6 +59,7 @@
 //! less often for words the user types past. See [`pacing`].
 
 mod learned;
+pub(crate) mod local;
 mod model;
 mod pacing;
 mod typed;
@@ -76,14 +76,16 @@ use gpui_base::input::{
     TextChange, TextareaState,
 };
 use learned::LearnedSentences;
+use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
 use std::cell::RefCell;
 use std::ops::Range;
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use typed::TypedText;
-use vocabulary::{LocalIndex, Vocabulary, WordTally, tally};
+use vocabulary::{Counts, Vocabulary};
 
 /// Current persisted model schema and tokenization version. Version 3 adds
 /// the clause ends; its n-grams are version 2's.
@@ -126,6 +128,11 @@ const TERMINATOR_SEARCH_BYTES: usize = 4096;
 
 /// Backward scan bound when extracting previous-word context.
 const CONTEXT_BYTES: usize = 512;
+
+/// The largest text whose words are counted on the UI thread, in about
+/// seven milliseconds. A larger one is counted on another thread, and its
+/// words join the suggestions when that is done.
+const LOCAL_COUNT_ON_UI_BYTES: usize = 64 * 1024;
 
 /// The key that takes the next word of a suggestion, as in VS Code:
 /// Cmd+Right on macOS and Ctrl+Right elsewhere, in every text input.
@@ -470,6 +477,8 @@ fn has_closing_punctuation_before(text: &str, prefix_start: usize) -> bool {
 pub struct WordSuggestions {
     vocabulary: Rc<RefCell<Vocabulary>>,
     local_index: RefCell<LocalIndex>,
+    /// The document's words being counted on another thread.
+    counting: RefCell<Option<Counting>>,
     learned: RefCell<LearnedSentences>,
     /// The words this document taught the shared vocabulary.
     taught: RefCell<WordTally>,
@@ -484,6 +493,7 @@ impl WordSuggestions {
         Self {
             vocabulary,
             local_index: RefCell::new(LocalIndex::new()),
+            counting: RefCell::new(None),
             learned: RefCell::new(LearnedSentences::default()),
             taught: RefCell::new(WordTally::new()),
             opened: RefCell::new(WordTally::new()),
@@ -498,6 +508,52 @@ impl WordSuggestions {
     pub fn opened_with(&self, text: &str) {
         self.learned.borrow_mut().opened_with(text);
         *self.opened.borrow_mut() = tally(text);
+        self.with_held(|held| self.local_index.borrow_mut().update_all_extra(held));
+    }
+
+    /// Calls `f` with how many occurrences of a folded word the shared
+    /// vocabulary may hold already: those this document taught it, and those
+    /// the document opened with, up to the vocabulary's count of the word.
+    fn with_held<R>(&self, f: impl FnOnce(Held) -> R) -> R {
+        let vocabulary = self.vocabulary.borrow();
+        let taught = self.taught.borrow();
+        let opened = self.opened.borrow();
+        f(&|folded: &str| {
+            let opened = opened.get(folded).copied().unwrap_or(0);
+            taught.get(folded).copied().unwrap_or(0)
+                + opened.min(vocabulary.counts().word_count(folded))
+        })
+    }
+
+    /// Brings the count of the document's words to `text`, with the word at
+    /// `caret` left out. The first count of a large text runs on another
+    /// thread, and the words join once it is done.
+    pub(crate) fn count_words(&self, text: &Rope, caret: usize, cx: &App) {
+        let mut counting = self.counting.borrow_mut();
+        let counted = counting
+            .as_ref()
+            .and_then(|counting| counting.result.try_recv().ok());
+        if let Some(counts) = counted
+            && let Some(finished) = counting.take()
+        {
+            finished.install(counts, &mut self.local_index.borrow_mut(), self);
+        }
+        if counting.is_some() {
+            return;
+        }
+        let mut index = self.local_index.borrow_mut();
+        let caret = Some(caret);
+        if index
+            .text()
+            .is_some_and(|counted| counted.len() == text.len())
+        {
+            self.with_held(|held| index.move_caret(caret, held));
+        } else if text.len() <= LOCAL_COUNT_ON_UI_BYTES {
+            self.with_held(|held| index.build(text, caret, held));
+        } else {
+            index.clear();
+            *counting = Some(Counting::start(text.clone(), caret, cx));
+        }
     }
 
     /// Hears that the user took a suggestion with Tab or closed it with
@@ -522,6 +578,37 @@ impl WordSuggestions {
         self.suggest(&text, offset, now)
     }
 
+    /// Follows `edits`, ranges and the text that replaced them, in the
+    /// count of the document's words. The text is `len` bytes long after
+    /// them.
+    pub(crate) fn count_edits<'a>(
+        &self,
+        edits: impl IntoIterator<Item = (Range<usize>, &'a str)>,
+        len: usize,
+    ) {
+        if let Some(counting) = self.counting.borrow_mut().as_mut() {
+            counting.edits.extend(
+                edits
+                    .into_iter()
+                    .map(|(range, text)| (range, text.to_string())),
+            );
+            return;
+        }
+        let mut index = self.local_index.borrow_mut();
+        if index.text().is_none() {
+            return;
+        }
+        self.with_held(|held| {
+            for (range, text) in edits {
+                index.edit(range, text, held);
+            }
+        });
+        // An edit it didn't hear of: count again at the next request.
+        if index.text().map(Rope::len) != Some(len) {
+            index.clear();
+        }
+    }
+
     /// Learns the sentence before `caret` in `text`, after a typed key.
     pub(crate) fn learn_before(&self, text: &Rope, caret: usize) {
         let text = text.to_string();
@@ -534,7 +621,6 @@ impl WordSuggestions {
     /// asks the model, and lets pacing decide whether it shows now.
     fn suggest(&self, text: &str, offset: usize, now: Instant) -> Option<String> {
         self.learn_preceding_sentence(text, offset);
-        self.refresh_local_index(text, offset, now);
 
         let suggestion = {
             let vocabulary = self.vocabulary.borrow();
@@ -580,27 +666,57 @@ impl WordSuggestions {
             return;
         }
 
-        let mut taught = self.taught.borrow_mut();
-        for word in words {
-            *taught.entry(word.into()).or_default() += 1;
+        {
+            let mut taught = self.taught.borrow_mut();
+            for word in &words {
+                *taught.entry(word.as_str().into()).or_default() += 1;
+            }
         }
         self.learned.borrow_mut().learned(text, range);
         // The index counted the sentence as the document's own.
-        self.local_index.borrow_mut().mark_stale();
+        self.with_held(|held| {
+            self.local_index
+                .borrow_mut()
+                .update_extra(words.iter().map(String::as_str), held)
+        });
+    }
+}
+
+/// A count of the document's words on another thread, and the edits made
+/// since it began.
+struct Counting {
+    text: Rope,
+    caret: Option<usize>,
+    result: mpsc::Receiver<Counts>,
+    /// The edits since, as ranges and the text that replaced them.
+    edits: Vec<(Range<usize>, String)>,
+    _task: Task<()>,
+}
+
+impl Counting {
+    fn start(text: Rope, caret: Option<usize>, cx: &App) -> Self {
+        let (sender, result) = mpsc::channel();
+        let counted = text.clone();
+        let task = cx.background_executor().spawn(async move {
+            let _ = sender.send(local::count(&counted, caret));
+        });
+        Self {
+            text,
+            caret,
+            result,
+            edits: Vec::new(),
+            _task: task,
+        }
     }
 
-    /// Brings the index of the document's words up to date, at most every
-    /// couple of seconds.
-    fn refresh_local_index(&self, text: &str, cursor: usize, now: Instant) {
-        let vocabulary = self.vocabulary.borrow();
-        self.local_index.borrow_mut().rebuild_if_stale(
-            text,
-            cursor,
-            now,
-            vocabulary.counts(),
-            &self.taught.borrow(),
-            &self.opened.borrow(),
-        );
+    /// Takes `counts`, its result, into `index`, and the edits made since.
+    fn install(self, counts: Counts, index: &mut LocalIndex, suggestions: &WordSuggestions) {
+        suggestions.with_held(|held| {
+            index.install(counts, self.text, self.caret, held);
+            for (range, text) in self.edits {
+                index.edit(range, &text, held);
+            }
+        });
     }
 }
 
@@ -642,6 +758,7 @@ impl SuggestionProvider for WordSuggestions {
             return Task::ready(Ok(Vec::new()));
         }
 
+        self.count_words(request.text(), request.offset(), cx);
         let suggestion = self.suggest_in(
             request.text(),
             request.offset(),
@@ -681,6 +798,13 @@ impl SuggestionProvider for WordSuggestions {
     /// at a paste, an undo or another edit the user didn't type.
     fn did_change(&self, change: &TextChange, cx: &mut App) {
         self.typed.borrow_mut().changed(change);
+        self.count_edits(
+            change
+                .edits()
+                .iter()
+                .map(|edit| (edit.range(), edit.text())),
+            change.text().len(),
+        );
         let now = cx.background_executor().now();
         if let Some(caret) = self.pacer.changed(change, now) {
             self.learn_before(change.text(), caret);
