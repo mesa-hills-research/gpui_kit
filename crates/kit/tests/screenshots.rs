@@ -22,7 +22,7 @@ use gpui_kit::{
         },
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
-        progress::{ProgressCircle, ProgressSegment, UsageBar},
+        progress::{Progress, ProgressCircle, ProgressSegment, UsageBar},
     },
     div,
     prelude::FluentBuilder as _,
@@ -938,12 +938,14 @@ impl Render for Meters {
                     .color(theme.warning)
                     .value_text("82%"),
             )
+            // Past its limit: the tick stays visible over the fill.
+            .child(Progress::new("past-limit").value(97.).tick(90.))
     }
 }
 
 fn meters(mode: ThemeMode) -> Screenshot {
     let mut app = app(mode);
-    let window = open(&mut app, (360., 260.), SCALE, |_, _| Meters);
+    let window = open(&mut app, (360., 284.), SCALE, |_, _| Meters);
     app.capture(window).unwrap()
 }
 

@@ -138,6 +138,8 @@ Color alone can't tell a reader what a segment is. Show each label as text next 
 Progress::new("context").value(62.0).tick(95.0)
 ```
 
+The mark is a 2 px core edged with a pixel of the theme's background on each side, so the core or its edges stand out on both the fill and the track in every bundled theme, before and after the value passes it. Assistive technology doesn't see the tick: say the limit in the accessible value, e.g. "142k of 1M tokens, hands over at 950k".
+
 ### Accessible Value
 
 Progress reports its percentage to assistive technology. When the amount means more as text, give that text with `accessibility_value`:

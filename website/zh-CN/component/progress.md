@@ -136,6 +136,8 @@ Progress::new("context-split").segments([
 Progress::new("context").value(62.0).tick(95.0)
 ```
 
+刻度是一条 2 px 的芯线，两侧各有一像素主题背景色的边，因此无论数值是否超过刻度，在所有内置主题中，芯线或其边缘都能在填充部分和轨道上清楚显示。辅助技术看不到刻度：请把上限写进无障碍数值，例如 “142k of 1M tokens, hands over at 950k”。
+
 ### 无障碍数值
 
 Progress 默认向辅助技术报告百分比。当数量用文字表达更有意义时，用 `accessibility_value` 提供这段文字：

@@ -172,6 +172,7 @@ impl RenderOnce for Progress {
         let tick = self
             .tick
             .map(|tick| (tick, self.tick_color.unwrap_or(cx.theme().foreground)));
+        let tick_edge = cx.theme().background;
 
         let radius = self.style.corner_radii.clone();
         let mut inner_style = StyleRefinement::default();
@@ -301,7 +302,10 @@ impl RenderOnce for Progress {
                 }
             })
             .when_some(tick.filter(|_| !loading), |this, (tick, color)| {
-                // A zero-width anchor at the value centres the mark on it.
+                // A zero-width anchor at the value centres the mark on it: a
+                // core of the tick color edged with a pixel of the background
+                // on each side, so either the core or its edges stand out on
+                // the fill and on the track in every theme.
                 this.child(
                     h_flex()
                         .absolute()
@@ -310,7 +314,15 @@ impl RenderOnce for Progress {
                         .w_0()
                         .left(relative(tick / 100.))
                         .justify_center()
-                        .child(div().flex_shrink_0().h_full().w_0p5().bg(color)),
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .h_full()
+                                .w_1()
+                                .border_x_1()
+                                .border_color(tick_edge)
+                                .bg(color),
+                        ),
                 )
             })
     }
@@ -344,6 +356,57 @@ mod tests {
         assert_eq!(bar.accessibility_label.as_deref(), Some("Context"));
         assert_eq!(bar.spoken_value().as_deref(), Some("142k of 950k tokens"));
         assert_eq!(Progress::new("plain").value(40.).spoken_value(), None);
+    }
+
+    /// The tick's core (the foreground) or its edges (the background) stand
+    /// out at 3:1 on the bar's fill and on its track, in every variant of
+    /// every bundled theme, so a limit stays visible once the value passes
+    /// it.
+    #[test]
+    fn the_tick_stands_out_on_fill_and_track_in_every_bundled_theme() {
+        use crate::{Theme, ThemeSet, theme::contrast_ratio};
+        use std::rc::Rc;
+
+        fn over(color: Hsla, alpha: f32, background: Hsla) -> Hsla {
+            let (top, bottom) = (color.to_rgb(), background.to_rgb());
+            gpui::Rgba {
+                r: top.r * alpha + bottom.r * (1. - alpha),
+                g: top.g * alpha + bottom.g * (1. - alpha),
+                b: top.b * alpha + bottom.b * (1. - alpha),
+                a: 1.,
+            }
+            .into()
+        }
+
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes");
+        let mut variants = 0;
+        let mut failures = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let set: ThemeSet =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            for config in set.themes {
+                let name = config.name.clone();
+                let mut theme = Theme::default();
+                theme.apply_config(&Rc::new(config));
+                let (background, foreground) = (theme.background, theme.foreground);
+                let fill = over(theme.progress_bar, theme.progress_bar.a, background);
+                let track = over(fill, 0.2, background);
+                for (region, color) in [("fill", fill), ("track", track)] {
+                    let best =
+                        contrast_ratio(foreground, color).max(contrast_ratio(background, color));
+                    if best < 3. {
+                        failures.push(format!("{name}: {region} {best:.2}"));
+                    }
+                }
+                variants += 1;
+            }
+        }
+        assert!(variants >= 71, "{variants} variants read");
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     #[test]
