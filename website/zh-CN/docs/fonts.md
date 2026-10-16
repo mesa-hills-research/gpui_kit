@@ -120,13 +120,18 @@ gpui-kit = { version = "…", features = ["fonts"] }
 
 ```rust
 use gpui_kit::assets::fonts;
+use gpui_kit::component::{FontOverrides, Theme};
 
 cx.text_system()
     .add_fonts(fonts::all())
     .expect("the bundled fonts are valid");
+// 作为字体覆盖设置，之后每次切换主题都会保留。
 Theme::update(cx, |theme| {
-    theme.font_family = fonts::WORK_SANS_FAMILY.into();
-    theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_font_family(fonts::WORK_SANS_FAMILY)
+            .with_mono_font_family(fonts::JETBRAINS_MONO_FAMILY),
+    )
 });
 ```
 

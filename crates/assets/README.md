@@ -117,11 +117,16 @@ a window and name their families in the theme:
 
 ```rust
 use gpui_kit::assets::fonts;
+use gpui_kit::component::{FontOverrides, Theme};
 
 cx.text_system().add_fonts(fonts::all())?;
+// As font overrides, which every later theme switch keeps.
 Theme::update(cx, |theme| {
-    theme.font_family = fonts::WORK_SANS_FAMILY.into();
-    theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_font_family(fonts::WORK_SANS_FAMILY)
+            .with_mono_font_family(fonts::JETBRAINS_MONO_FAMILY),
+    )
 });
 ```
 

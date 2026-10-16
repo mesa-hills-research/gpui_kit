@@ -4,7 +4,7 @@
 //! covering every weight from 100 to 900 (JetBrains Mono: 100 to 800), so
 //! medium, semibold and bold text use the real weights instead of a
 //! synthesized or substituted face. Register them before the first window
-//! opens, then name the families in the theme:
+//! opens, then name the families in the theme's font overrides:
 //!
 //! ```rust,no_run
 //! use gpui_kit_assets::fonts;
@@ -13,9 +13,14 @@
 //!     cx.text_system()
 //!         .add_fonts(fonts::all())
 //!         .expect("the bundled fonts are valid");
+//!     // With GPUI Kit's components, as font overrides, which every later
+//!     // theme switch keeps:
 //!     // Theme::update(cx, |theme| {
-//!     //     theme.font_family = fonts::WORK_SANS_FAMILY.into();
-//!     //     theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+//!     //     theme.set_font_overrides(
+//!     //         FontOverrides::new()
+//!     //             .with_font_family(fonts::WORK_SANS_FAMILY)
+//!     //             .with_mono_font_family(fonts::JETBRAINS_MONO_FAMILY),
+//!     //     )
 //!     // });
 //! });
 //! ```
