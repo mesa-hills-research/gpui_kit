@@ -86,8 +86,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   blocks of a document that another `TextViewState` parses, and `TextViewState::blocks` lists them
   with stable ids, so a chat transcript can show a long answer as rows of a list and lay out only
   the rows on screen: 0.9 ms a frame instead of 12.5 ms while a 20,000-token answer streams.
-  Selection runs across the rows. `TextView::code_block_max_lines` shows the first lines of each
-  code block. See
+  Selection runs across the rows. `TextViewState::markdown_extensions` gives the document its
+  Markdown extensions and plugins, which its rows render with, and a `TextView` given none leaves
+  its state's as they are. `TextView::code_block_max_lines` shows the first lines of each code
+  block. See
   [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
 - **Loading indicators at 30 frames a second** (`gpui-component`). Spinner, Skeleton, the loading
   Progress and ProgressCircle, ShimmerText and loading Markers draw at most

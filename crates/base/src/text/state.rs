@@ -467,11 +467,17 @@ impl TextViewState {
         let replacement = document.full_update_revision;
         let revision = document.committed_revision;
         let synced = block_range.synced;
+        let extensions = (!Arc::ptr_eq(&self.markdown_extensions, &document.markdown_extensions))
+            .then(|| document.markdown_extensions.clone());
         // A view of complete blocks has nothing to take while text is only
         // appended.
         if synced.is_some_and(|(synced_replacement, synced_revision, complete)| {
             synced_replacement == replacement && (synced_revision == revision || complete)
         }) {
+            if let Some(extensions) = extensions {
+                self.markdown_extensions = extensions;
+                cx.notify();
+            }
             return;
         }
 
@@ -512,6 +518,12 @@ impl TextViewState {
         if let Some(block_range) = &mut self.block_range {
             block_range.synced = Some((replacement, revision, complete));
             block_range.synced_len = source_len;
+        }
+        if let Some(extensions) = extensions {
+            self.markdown_extensions = extensions;
+            if unchanged {
+                cx.notify();
+            }
         }
         if unchanged {
             return;
@@ -684,27 +696,75 @@ impl TextViewState {
         self.stream_fade.set_motion(motion);
     }
 
-    pub(crate) fn set_markdown_extensions(
+    /// Set the Markdown extensions the text parses and renders with,
+    /// [`MarkdownPlugin`](crate::text::MarkdownPlugin)s included.
+    ///
+    /// A [`TextView`](crate::text::TextView) given extensions or plugins sets
+    /// its state's every frame. For a document shown as
+    /// [`Self::block_range`] views, set them on the document: the views parse
+    /// nothing and render with their document's.
+    pub fn markdown_extensions(mut self, extensions: impl Into<Arc<MarkdownExtensions>>) -> Self {
+        let extensions = extensions.into();
+        if self.block_range.is_some()
+            || self.markdown_extensions.revision() == extensions.revision()
+        {
+            return self;
+        }
+        let reparse = !self
+            .markdown_extensions
+            .has_same_parser_configuration(&extensions);
+        self.markdown_extensions = extensions;
+        if reparse && self.format == TextViewFormat::Markdown && !self.text.is_empty() {
+            self.revision += 1;
+            self.full_update_revision = self.revision;
+            self.selection_revision = self.selection_revision.wrapping_add(1);
+            _ = self.tx.try_send(UpdateOptions {
+                revision: self.revision,
+                append: false,
+                mode: ParseMode::Replace,
+                pending_text: self.text.clone(),
+                markdown_extensions: self.markdown_extensions.clone(),
+            });
+        }
+        self
+    }
+
+    /// Set the Markdown extensions; see [`Self::markdown_extensions`]. Does
+    /// nothing to a [`Self::block_range`] view.
+    pub fn set_markdown_extensions(
+        &mut self,
+        extensions: impl Into<Arc<MarkdownExtensions>>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.apply_markdown_extensions(extensions.into(), cx) {
+            cx.notify();
+        }
+    }
+
+    /// Takes the extensions a `TextView` element hands over, and tells
+    /// whether they differ from the current ones.
+    pub(crate) fn apply_markdown_extensions(
         &mut self,
         markdown_extensions: Arc<MarkdownExtensions>,
         cx: &mut Context<Self>,
-    ) {
-        if self.markdown_extensions.revision() == markdown_extensions.revision() {
-            return;
+    ) -> bool {
+        // A block range view shows what its document parsed, with the
+        // document's extensions.
+        if self.block_range.is_some()
+            || self.markdown_extensions.revision() == markdown_extensions.revision()
+        {
+            return false;
         }
 
         let parser_configuration_changed = !self
             .markdown_extensions
             .has_same_parser_configuration(&markdown_extensions);
         self.markdown_extensions = markdown_extensions;
-        // A block range view shows what its document parsed.
-        if parser_configuration_changed
-            && self.format == TextViewFormat::Markdown
-            && self.block_range.is_none()
-        {
+        if parser_configuration_changed && self.format == TextViewFormat::Markdown {
             let text = self.text.clone();
             self.increment_update(&text, false, cx);
         }
+        true
     }
 
     /// Return the selected text, in the view's [`SelectionFormat`].
@@ -1552,6 +1612,9 @@ impl UpdateOptions {
         if next.append {
             self.pending_text.push_str(&next.pending_text);
             self.revision = next.revision;
+            // The text was parsed with these when it was set, unless the
+            // extensions were given before any text was.
+            self.markdown_extensions = next.markdown_extensions;
             if self.mode != ParseMode::Replace {
                 self.mode = ParseMode::Compatible;
             }
@@ -2837,6 +2900,81 @@ mod tests {
             let block = document.read_with(cx, |document, _| document.blocks()[0].clone());
             assert_ne!(block.id(), id);
             assert_eq!(block.content(), &TextBlockContent::Paragraph);
+        }
+
+        /// `$SYMBOL` paragraphs parse as a `ticker` block and render as a
+        /// "ticker" element.
+        fn tickers() -> crate::text::MarkdownExtensions {
+            crate::text::MarkdownExtensions::default()
+                .block_parser(|node, cx| {
+                    let markdown::mdast::Node::Paragraph(paragraph) = node else {
+                        return None;
+                    };
+                    let [markdown::mdast::Node::Text(text)] = paragraph.children.as_slice() else {
+                        return None;
+                    };
+                    let symbol = text.value.strip_prefix('$')?.to_string();
+                    Some(
+                        crate::text::MarkdownNode::new("ticker", symbol.clone())
+                            .text(symbol)
+                            .markdown(cx.node_source(node).unwrap_or_default()),
+                    )
+                })
+                .block_renderer("ticker", |_, _, _| gpui::div())
+        }
+
+        struct Shown(Entity<TextViewState>);
+
+        impl gpui::Render for Shown {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                crate::text::TextView::new(&self.0)
+            }
+        }
+
+        #[gpui::test]
+        fn rows_use_the_markdown_extensions_of_their_document(cx: &mut TestAppContext) {
+            cx.update(crate::init);
+            let document =
+                cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(tickers()));
+            document.update(cx, |document, cx| {
+                document.push_str("Prices:\n\n$TSLA.US\n\n$AAPL.US", cx)
+            });
+            cx.run_until_parked();
+            let row = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
+            let contents = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
+                state.read_with(cx, |state, _| {
+                    state
+                        .blocks()
+                        .iter()
+                        .map(|block| block.content().clone())
+                        .collect::<Vec<_>>()
+                })
+            };
+            let ticker = TextBlockContent::Custom("ticker".into());
+            assert_eq!(contents(&row, cx), [ticker.clone(), ticker.clone()]);
+
+            // The row renders with the document's renderers, whatever its
+            // element has: here none.
+            let (_, window) = cx.add_window_view(|_, _| Shown(row.clone()));
+            window.run_until_parked();
+            window.update(|window, cx| {
+                window.draw(cx).clear(cx);
+                assert!(std::sync::Arc::ptr_eq(
+                    &row.read(cx).markdown_extensions,
+                    &document.read(cx).markdown_extensions
+                ));
+            });
+
+            // An element without extensions leaves the document's alone.
+            let (_, window) = cx.add_window_view(|_, _| Shown(document.clone()));
+            window.update(|window, cx| window.draw(cx).clear(cx));
+            document.update(cx, |document, cx| document.set_text("$MSFT.US", cx));
+            cx.run_until_parked();
+            assert_eq!(contents(&document, cx), [ticker]);
         }
 
         #[gpui::test]

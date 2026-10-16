@@ -179,6 +179,14 @@ A selection runs across rows as it runs across separate text views, and each
 view selects and copies its own blocks. Show either the document or views of
 its blocks, as they share the parsed blocks.
 
+The document parses, so Markdown extensions and plugins go on the document,
+not on the rows' `TextView`s, and the rows render with the document's:
+
+```rust
+let extensions = MarkdownExtensions::default().plugin(FrontmatterPlugin);
+let answer = cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(extensions));
+```
+
 Streaming a 20,000-token answer at its end, a frame takes 0.9 ms with a row
 per block where the answer as one row took 12.5 ms
 (`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`).

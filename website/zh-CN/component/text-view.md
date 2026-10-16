@@ -101,6 +101,13 @@ TextView::new(&row)
 
 文档每完成一次解析，视图就从文档取回自己的块；块全部完成的视图此后不再变化。末端开放的范围（例如 `ix..`）会包含之后追加的块。`blocks()` 列出文档的顶层块：每个块是什么（段落、标题、列表、代码块及其语言、表格……）、在源文本中的范围、追加文字后是否还会变化，以及在只追加文字期间保持不变的 id。按块的类型把块分组成行，文本被替换时用 id 判断哪些行可以保留。如果设置的文字只是首尾空白不同（例如回复结束后改为修剪过的文字），就不算替换：id、各行和其中的选区都保持不变。选区可以跨行，就像跨多个独立的 TextView 一样，每个视图选择和复制自己的块。文档本身和它的块视图只显示其一，因为它们共用解析出的块。
 
+解析由文档完成，所以 Markdown 扩展和插件要设在文档上，而不是各行的 `TextView` 上，各行按文档的扩展渲染：
+
+```rust
+let extensions = MarkdownExtensions::default().plugin(FrontmatterPlugin);
+let answer = cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(extensions));
+```
+
 在一篇两万 token 的回复末尾流式输出时，一块一行每帧需要 0.9 ms，而整篇作为一行需要 12.5 ms（`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`）。
 
 `code_block_max_lines` 只显示每个代码块的前几行，适合需要读者手动展开的代码块。超出的行既不布局，也不在屏幕上高亮，所以长代码块的开销只取决于显示的行数。`CodeBlock::code` 和块在源文本中的范围仍然包含全部内容，可用于复制按钮或统计行数：

@@ -173,7 +173,7 @@ pub struct TextView {
     link_click_handler: Option<Arc<LinkClickHandlerFn>>,
     image_source: Option<Arc<ImageSourceFn>>,
     reveal_handler: Option<Rc<RevealHandlerFn>>,
-    markdown_extensions: Arc<MarkdownExtensions>,
+    markdown_extensions: Option<Arc<MarkdownExtensions>>,
     motion: Option<TextViewMotion>,
 }
 
@@ -187,7 +187,7 @@ where
     P: MarkdownPlugin,
 {
     fn setup(self, mut text_view: TextView) -> TextView {
-        let extensions = Arc::make_mut(&mut text_view.markdown_extensions);
+        let extensions = Arc::make_mut(text_view.markdown_extensions.get_or_insert_default());
         let current = std::mem::take(extensions);
         *extensions = current.plugin(self);
         text_view
@@ -221,7 +221,7 @@ impl TextView {
             link_click_handler: None,
             image_source: None,
             reveal_handler: None,
-            markdown_extensions: Arc::default(),
+            markdown_extensions: None,
             motion: None,
         }
     }
@@ -246,7 +246,7 @@ impl TextView {
             link_click_handler: None,
             image_source: None,
             reveal_handler: None,
-            markdown_extensions: Arc::default(),
+            markdown_extensions: None,
             motion: None,
         }
     }
@@ -271,7 +271,7 @@ impl TextView {
             link_click_handler: None,
             image_source: None,
             reveal_handler: None,
-            markdown_extensions: Arc::default(),
+            markdown_extensions: None,
             motion: None,
         }
     }
@@ -450,8 +450,12 @@ impl TextView {
     }
 
     /// Replace the Markdown extension registry.
+    ///
+    /// A view without extensions or plugins leaves the state's own as they
+    /// are (see [`TextViewState::set_markdown_extensions`]). A
+    /// [`TextViewState::block_range`] view always uses its document's.
     pub fn markdown_extensions(mut self, extensions: MarkdownExtensions) -> Self {
-        self.markdown_extensions = Arc::new(extensions);
+        self.markdown_extensions = Some(Arc::new(extensions));
         self
     }
 
@@ -467,7 +471,7 @@ impl TextView {
     /// This disables raw HTML parsing because `markdown-rs` gives HTML
     /// priority over MDX when both are enabled.
     pub fn markdown_mdx(mut self) -> Self {
-        let extensions = Arc::make_mut(&mut self.markdown_extensions);
+        let extensions = Arc::make_mut(self.markdown_extensions.get_or_insert_default());
         *extensions = extensions.clone().mdx();
         self
     }
@@ -487,7 +491,7 @@ impl TextView {
             + Sync
             + 'static,
     {
-        Arc::make_mut(&mut self.markdown_extensions).push_block_parser(parser);
+        Arc::make_mut(self.markdown_extensions.get_or_insert_default()).push_block_parser(parser);
         self
     }
 
@@ -501,7 +505,8 @@ impl TextView {
         F: Fn(&MarkdownNode, &mut Window, &mut App) -> E + Send + Sync + 'static,
         E: IntoElement,
     {
-        Arc::make_mut(&mut self.markdown_extensions).push_block_renderer(name, renderer);
+        Arc::make_mut(self.markdown_extensions.get_or_insert_default())
+            .push_block_renderer(name, renderer);
         self
     }
 
@@ -708,7 +713,9 @@ impl Element for TextView {
             state.table_actions = self.table_actions.clone();
             state.link_click_handler = self.link_click_handler.clone();
             state.image_source = self.image_source.clone();
-            state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
+            if let Some(markdown_extensions) = &self.markdown_extensions {
+                state.apply_markdown_extensions(markdown_extensions.clone(), cx);
+            }
             if let Some(motion) = &self.motion {
                 state.set_motion(motion.clone());
             }
