@@ -1953,6 +1953,100 @@ impl<M: InputModeKind> InputBaseState<M> {
         );
     }
 
+    /// Break the line at every caret, indented for code, as Enter does in a
+    /// multi-line input when it doesn't submit.
+    pub(crate) fn insert_line_break(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.selections.is_single() {
+            // Insert a newline (with per-line indent) at every cursor.
+            self.selections.merge_overlapping();
+            let selections: Vec<CursorSelection> = self.selections.iter().copied().collect();
+            let mut edits: Vec<(Range<usize>, String)> = Vec::with_capacity(selections.len());
+            for sel in &selections {
+                let indent = if self.is_code_editor() {
+                    self.indent_of_next_line_at(sel.cursor_offset())
+                } else {
+                    String::new()
+                };
+                edits.push((sel.start..sel.end, format!("\n{}", indent)));
+            }
+            edits.sort_by_key(|(range, _)| range.start);
+            self.replace_text_in_ranges(&edits, window, cx);
+            self.pause_blink_cursor(cx);
+        } else {
+            // Bracket split: Enter between `{|}` produces `{\n  \n}`
+            // with the cursor on the middle line. Controlled by smart_indent,
+            // independently of automatic closing.
+            // Skipped inside strings and comments: splitting there would
+            // restructure literal text.
+            let mut split = false;
+            if self.is_code_editor() && self.active_selection().is_empty() {
+                if let Some(rules) = self.mode.language_config() {
+                    if self.mode.is_smart_indent()
+                        && M::editing_syntax_context(self, self.cursor())
+                            == crate::input::SyntaxContext::Code
+                    {
+                        let off = self.cursor();
+                        let is_pair = rules.brackets.iter().any(|p| {
+                            !p.open.is_empty()
+                                && !p.close.is_empty()
+                                && p.open != p.close
+                                && self.text_before_matches(off, p.open.as_ref())
+                                && self.text_after_matches(off, p.close.as_ref())
+                        });
+                        if is_pair {
+                            // Base indent: leading whitespace only.
+                            let line_end_affinity = self.line_end_affinity_at(off);
+                            let line_start = self.start_of_line_at(off, line_end_affinity);
+                            let mut indent = String::new();
+                            for c in self.text.slice(line_start..).chars() {
+                                if !c.is_whitespace() || c == '\n' || c == '\r' {
+                                    break;
+                                }
+                                indent.push(c);
+                            }
+                            // Extra level only with smart indent enabled.
+                            let mut inner = indent.clone();
+                            if self.mode.is_smart_indent() {
+                                let tab = self.mode.tab_size();
+                                if tab.hard_tabs {
+                                    inner.push('\t');
+                                } else {
+                                    for _ in 0..tab.tab_size {
+                                        inner.push(' ');
+                                    }
+                                }
+                            }
+                            let new_line_text = format!("\n{inner}\n{indent}");
+                            self.replace_text_in_range_silent(None, &new_line_text, window, cx);
+                            self.set_cursor_to(off + 1 + inner.len());
+                            self.update_preferred_column();
+                            let cursors = self.selections.iter().copied().collect::<Vec<_>>();
+                            self.undo_manager
+                                .record_selections(cursors.clone(), cursors);
+                            self.pause_blink_cursor(cx);
+                            split = true;
+                        }
+                    }
+                }
+            }
+            if !split {
+                // Get current line indent
+                let indent = if self.is_code_editor() {
+                    self.indent_of_next_line()
+                } else {
+                    "".to_string()
+                };
+
+                // Add newline and indent
+                let new_line_text = format!("\n{}", indent);
+                self.replace_text_in_range_silent(None, &new_line_text, window, cx);
+                // A word finished by the line break is checked at once.
+                M::on_line_break(self, cx);
+                self.pause_blink_cursor(cx);
+            }
+        }
+    }
+
     pub(super) fn enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         if M::handle_context_menu_action(self, Box::new(action.clone()), window, cx) {
             return;
@@ -1970,95 +2064,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         let insert_newline = self.is_multi_line() && !submits;
 
         if insert_newline {
-            if !self.selections.is_single() {
-                // Insert a newline (with per-line indent) at every cursor.
-                self.selections.merge_overlapping();
-                let selections: Vec<CursorSelection> = self.selections.iter().copied().collect();
-                let mut edits: Vec<(Range<usize>, String)> = Vec::with_capacity(selections.len());
-                for sel in &selections {
-                    let indent = if self.is_code_editor() {
-                        self.indent_of_next_line_at(sel.cursor_offset())
-                    } else {
-                        String::new()
-                    };
-                    edits.push((sel.start..sel.end, format!("\n{}", indent)));
-                }
-                edits.sort_by_key(|(range, _)| range.start);
-                self.replace_text_in_ranges(&edits, window, cx);
-                self.pause_blink_cursor(cx);
-            } else {
-                // Bracket split: Enter between `{|}` produces `{\n  \n}`
-                // with the cursor on the middle line. Controlled by smart_indent,
-                // independently of automatic closing.
-                // Skipped inside strings and comments: splitting there would
-                // restructure literal text.
-                let mut split = false;
-                if self.is_code_editor() && self.active_selection().is_empty() {
-                    if let Some(rules) = self.mode.language_config() {
-                        if self.mode.is_smart_indent()
-                            && M::editing_syntax_context(self, self.cursor())
-                                == crate::input::SyntaxContext::Code
-                        {
-                            let off = self.cursor();
-                            let is_pair = rules.brackets.iter().any(|p| {
-                                !p.open.is_empty()
-                                    && !p.close.is_empty()
-                                    && p.open != p.close
-                                    && self.text_before_matches(off, p.open.as_ref())
-                                    && self.text_after_matches(off, p.close.as_ref())
-                            });
-                            if is_pair {
-                                // Base indent: leading whitespace only.
-                                let line_end_affinity = self.line_end_affinity_at(off);
-                                let line_start = self.start_of_line_at(off, line_end_affinity);
-                                let mut indent = String::new();
-                                for c in self.text.slice(line_start..).chars() {
-                                    if !c.is_whitespace() || c == '\n' || c == '\r' {
-                                        break;
-                                    }
-                                    indent.push(c);
-                                }
-                                // Extra level only with smart indent enabled.
-                                let mut inner = indent.clone();
-                                if self.mode.is_smart_indent() {
-                                    let tab = self.mode.tab_size();
-                                    if tab.hard_tabs {
-                                        inner.push('\t');
-                                    } else {
-                                        for _ in 0..tab.tab_size {
-                                            inner.push(' ');
-                                        }
-                                    }
-                                }
-                                let new_line_text = format!("\n{inner}\n{indent}");
-                                self.replace_text_in_range_silent(None, &new_line_text, window, cx);
-                                self.set_cursor_to(off + 1 + inner.len());
-                                self.update_preferred_column();
-                                let cursors = self.selections.iter().copied().collect::<Vec<_>>();
-                                self.undo_manager
-                                    .record_selections(cursors.clone(), cursors);
-                                self.pause_blink_cursor(cx);
-                                split = true;
-                            }
-                        }
-                    }
-                }
-                if !split {
-                    // Get current line indent
-                    let indent = if self.is_code_editor() {
-                        self.indent_of_next_line()
-                    } else {
-                        "".to_string()
-                    };
-
-                    // Add newline and indent
-                    let new_line_text = format!("\n{}", indent);
-                    self.replace_text_in_range_silent(None, &new_line_text, window, cx);
-                    // A word finished by the line break is checked at once.
-                    M::on_line_break(self, cx);
-                    self.pause_blink_cursor(cx);
-                }
-            }
+            self.insert_line_break(window, cx);
         } else {
             // Single line input or the submit key: just emit the event
             // (e.g.: in a dialog to confirm, or a chat textarea to send).

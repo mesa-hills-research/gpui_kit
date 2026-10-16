@@ -7,8 +7,8 @@ use std::ops::Range;
 use gpui::{Context, Div, Entity, InteractiveElement as _, Stateful, Window, actions};
 
 use crate::input::{
-    RopeExt as _, TextareaState, cursor::CursorSelection, movement::MoveDirection,
-    smooth_caret::CaretMotion, undo_manager::EditIntent,
+    InputModeKind as _, RopeExt as _, TextareaMode, TextareaState, cursor::CursorSelection,
+    movement::MoveDirection, smooth_caret::CaretMotion, undo_manager::EditIntent,
 };
 
 actions!(
@@ -40,6 +40,10 @@ actions!(
         /// Insert a line below the caret's line, indented like it, and move
         /// there.
         NewlineBelow,
+        /// Break the line at the caret, as Enter does where it doesn't
+        /// submit. It never submits, whatever the textarea's submit keys:
+        /// Emacs binds it to Ctrl+J.
+        Newline,
         /// Swap the characters on either side of the caret and move past
         /// them. At the end of a line, swap the two before the caret.
         TransposeCharacters,
@@ -372,6 +376,13 @@ impl TextareaState {
         self.apply_edits(edits, window, cx);
     }
 
+    fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+        if TextareaMode::has_inline_completion(self) {
+            TextareaMode::clear_inline_completion(self, cx);
+        }
+        self.insert_line_break(window, cx);
+    }
+
     fn newline_below(&mut self, _: &NewlineBelow, window: &mut Window, cx: &mut Context<Self>) {
         let edits = self
             .selections
@@ -533,6 +544,7 @@ pub(super) fn register_actions(
         .on_action(window.listener_for(entity, TextareaState::join_lines))
         .on_action(window.listener_for(entity, TextareaState::newline_above))
         .on_action(window.listener_for(entity, TextareaState::newline_below))
+        .on_action(window.listener_for(entity, TextareaState::newline))
         .on_action(window.listener_for(entity, TextareaState::transpose_characters))
         .on_action(window.listener_for(entity, TextareaState::convert_to_upper_case))
         .on_action(window.listener_for(entity, TextareaState::convert_to_lower_case))

@@ -55,8 +55,8 @@ pub use gpui_base::input::{
 pub use gpui_base::input::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,
     Keymap, KeymapPlatform, KeymapState, MoveToNextWordStart, MoveToParagraphEnd,
-    MoveToParagraphStart, NewlineAbove, NewlineBelow, SelectToNextWordStart, SelectToParagraphEnd,
-    SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
+    MoveToParagraphStart, Newline, NewlineAbove, NewlineBelow, SelectToNextWordStart,
+    SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
 };
 pub use gpui_base::input::{EditorMode, InputMode, InputModeKind, TextareaMode};
 pub use gpui_base::input::{EmacsState, SaveBuffer, VimCommand, VimQuit, VimWrite, WriteFile};

@@ -114,8 +114,8 @@ pub use keymap::cua;
 pub use keymap::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,
     Keymap, KeymapPlatform, KeymapState, MoveToNextWordStart, MoveToParagraphEnd,
-    MoveToParagraphStart, NewlineAbove, NewlineBelow, SelectToNextWordStart, SelectToParagraphEnd,
-    SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
+    MoveToParagraphStart, Newline, NewlineAbove, NewlineBelow, SelectToNextWordStart,
+    SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters, VimMode, VimState,
 };
 pub use keymap::{EmacsState, SaveBuffer, VimCommand, VimQuit, VimWrite, WriteFile};
 pub use kind::{

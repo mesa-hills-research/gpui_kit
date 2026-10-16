@@ -49,7 +49,7 @@
 //! - Deleting: `Backspace`, `Delete`, `DeleteToBeginningOfLine`,
 //!   `DeleteToEndOfLine`, `DeleteToPreviousWordStart`, `DeleteToNextWordEnd`,
 //!   [`DeleteLine`].
-//! - Lines: `Enter`, [`NewlineAbove`], [`NewlineBelow`], [`JoinLines`],
+//! - Lines: `Enter`, [`Newline`], [`NewlineAbove`], [`NewlineBelow`], [`JoinLines`],
 //!   `Indent`, `Outdent`, `IndentInline`, `OutdentInline`.
 //! - Changing text: [`TransposeCharacters`], [`ConvertToUpperCase`],
 //!   [`ConvertToLowerCase`], [`ConvertToTitleCase`].
@@ -82,8 +82,9 @@ use super::TextareaState;
 
 pub use commands::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, DeleteLine, JoinLines,
-    MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, NewlineAbove, NewlineBelow,
-    SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart, TransposeCharacters,
+    MoveToNextWordStart, MoveToParagraphEnd, MoveToParagraphStart, Newline, NewlineAbove,
+    NewlineBelow, SelectToNextWordStart, SelectToParagraphEnd, SelectToParagraphStart,
+    TransposeCharacters,
 };
 pub use emacs::{EmacsState, SaveBuffer, WriteFile};
 pub use vim::{VimCommand, VimMode, VimQuit, VimState, VimWrite};

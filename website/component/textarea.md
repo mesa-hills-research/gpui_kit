@@ -484,7 +484,9 @@ Motions extend the region while the mark is active. Kills go to the kill ring
 and the clipboard, kills in a row join into one, and `C-y` pastes text copied
 in another application. The prefix argument shows as the mode label while it
 is typed. `C-x C-s` and `C-x C-w` dispatch `SaveBuffer` and `WriteFile`, which
-the application handles to save. `EmacsState` holds the mark and the kill ring.
+the application handles to save. `C-j` dispatches `Newline`, which breaks the
+line whatever the textarea's submit keys. `EmacsState` holds the mark and the
+kill ring.
 
 #### Vim
 

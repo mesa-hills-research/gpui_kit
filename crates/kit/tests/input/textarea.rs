@@ -3,7 +3,7 @@ use gpui_kit::{
     App, AppContext, ClipboardItem, Context, ElementId, Entity, InputEvent as _, Modifiers,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta,
     Subscription, TestAppContext, Window, WindowHandle,
-    component::input::{InputEvent, KeymapPlatform, SubmitKey, Textarea, TextareaState},
+    component::input::{InputEvent, Keymap, KeymapPlatform, SubmitKey, Textarea, TextareaState},
     div, point,
     prelude::*,
     px, size,
@@ -241,6 +241,54 @@ fn submit_keys_submit_and_the_other_enters_break_lines(cx: &mut TestAppContext) 
                     assert!(value.starts_with("send"));
                 });
             }
+        }
+    });
+}
+
+/// Emacs's Ctrl+J breaks a line whatever the submit keys, Shift+Enter
+/// among them, and is no Enter chord to the application.
+#[gpui_kit::test]
+fn emacs_ctrl_j_breaks_a_line_whatever_submits(cx: &mut TestAppContext) {
+    use SubmitKey::{Enter, SecondaryEnter, ShiftEnter};
+    platform::each(cx, |keys, cx| {
+        let sets: [&[SubmitKey]; 4] = [
+            &[Enter],
+            &[ShiftEnter],
+            &[ShiftEnter, SecondaryEnter],
+            &[Enter, ShiftEnter, SecondaryEnter],
+        ];
+        for set in sets {
+            let (handle, owner, text) = composer_on(keys.platform(), cx, |state| {
+                state.keymap(Keymap::Emacs).submit_keys(set.iter().copied())
+            });
+            cx.update_window(handle.into(), |_, window, cx| {
+                window.click(target(&text), cx);
+                window.input("hi", cx);
+                window.press("ctrl-j", cx);
+                assert_eq!(text.read(cx).value(), "hi\n", "Ctrl+J with {set:?}");
+                window.press("shift-enter", cx);
+                let shift_enter = if set.contains(&ShiftEnter) {
+                    "hi\n"
+                } else {
+                    "hi\n\n"
+                };
+                assert_eq!(
+                    text.read(cx).value(),
+                    shift_enter,
+                    "Shift+Enter with {set:?}"
+                );
+            })
+            .unwrap();
+            cx.run_until_parked();
+            cx.update(|cx| {
+                let chords: Vec<(bool, bool)> = owner
+                    .read(cx)
+                    .enters
+                    .iter()
+                    .map(|(secondary, shift, _)| (*secondary, *shift))
+                    .collect();
+                assert_eq!(chords, [(false, true)], "only Shift+Enter is an Enter");
+            });
         }
     });
 }

@@ -37,7 +37,7 @@ use gpui::{
 use serde::Deserialize;
 
 use super::{Keymap, KeymapPlatform, KeymapState, bind, common};
-use crate::input::{Copy, Cut, Enter, Paste, Redo, Search, SelectAll, TextareaState, Undo};
+use crate::input::{Copy, Cut, Newline, Paste, Redo, Search, SelectAll, TextareaState, Undo};
 use kill::KillRing;
 use motion::Motion;
 
@@ -201,14 +201,8 @@ pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
         bind("backspace", DeleteBackwardChar, cx),
         bind("ctrl-t", TransposeChars, cx),
         bind("ctrl-o", OpenLine, cx),
-        bind(
-            "ctrl-j",
-            Enter {
-                secondary: false,
-                shift: true,
-            },
-            cx,
-        ),
+        // A line break that never submits, whatever the submit keys.
+        bind("ctrl-j", Newline, cx),
         bind("ctrl-/", Undo, cx),
         bind("ctrl-_", Undo, cx),
         bind("ctrl-x u", Undo, cx),
