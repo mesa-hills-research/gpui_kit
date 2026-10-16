@@ -575,15 +575,12 @@ impl DictionaryChecker {
         }
     }
 
-    /// Checks the whole text whatever lines were edited: whether a line is
-    /// code depends on its neighbours and on fences above it, and the
-    /// scanner's cache keeps unchanged lines cheap.
-    pub(crate) fn check_text(&self, text: &Rope, _ranges: &[Range<usize>]) -> SpellCheck {
-        let misspelled = self.scanner.borrow_mut().scan(&self.dictionary, text);
-        SpellCheck {
-            checked: std::iter::once(0..text.len()).collect(),
-            misspelled,
-        }
+    /// Checks the lines `ranges` cover, and the lines whose code score the
+    /// edits there may have changed. See [`SpellScanner::check`].
+    pub(crate) fn check_text(&self, text: &Rope, ranges: &[Range<usize>]) -> SpellCheck {
+        self.scanner
+            .borrow_mut()
+            .check(&self.dictionary, text, ranges)
     }
 }
 
@@ -636,14 +633,159 @@ struct LineRecord {
 pub(crate) struct SpellScanner {
     cache: HashMap<u64, CachedLine>,
     dictionary_generation: u64,
+    /// How many fence lines the text had at the last check, once it was
+    /// checked whole.
+    fences: Option<usize>,
 }
+
+/// How many lines on each side of a line its smoothed code score reads.
+const SMOOTHING_MARGIN: usize = 2;
 
 impl SpellScanner {
     pub(crate) fn new() -> Self {
         Self {
             cache: HashMap::new(),
             dictionary_generation: 0,
+            fences: None,
         }
+    }
+
+    /// Checks the lines `ranges` cover, and the [`SMOOTHING_MARGIN`] lines
+    /// on each side, whose smoothed code score an edit in them changes.
+    ///
+    /// The textarea asks for the lines edited since the last check, so the
+    /// others are as they were. Whether a line is inside a fenced code block
+    /// depends on every fence above it, so the whole text is checked when
+    /// the number of fences changed, when a requested line is a fence, when
+    /// the dictionary changed, and at the first check. It is also checked
+    /// whole when the request covers a quarter of it, and when the lines
+    /// edited away fill the cache.
+    pub(crate) fn check(
+        &mut self,
+        dictionary: &Dictionary,
+        text: &Rope,
+        ranges: &[Range<usize>],
+    ) -> SpellCheck {
+        let whole = |this: &mut Self| SpellCheck {
+            checked: vec![0..text.len()],
+            misspelled: this.scan(dictionary, text),
+        };
+        if !dictionary.is_loaded()
+            || text.len() == 0
+            || text.len() > MAX_SPELL_DOCUMENT_BYTES
+            || dictionary.generation() != self.dictionary_generation
+        {
+            return whole(self);
+        }
+        let Some(fences) = self.fences else {
+            return whole(self);
+        };
+        let lines = text.lines_len();
+        // A check of the whole text also drops the lines edited away from
+        // the cache.
+        if fence_lines(text, 0..text.len()) != fences || self.cache.len() > 2 * lines + 1024 {
+            return whole(self);
+        }
+
+        // The requested rows, and those around them, merged.
+        let mut spans: Vec<Range<usize>> = Vec::new();
+        for range in ranges {
+            let first = text.offset_to_point(range.start).row;
+            let last = text
+                .offset_to_point(range.end.saturating_sub(1).max(range.start))
+                .row;
+            if (first..=last).any(|row| is_fence(text, row)) {
+                return whole(self);
+            }
+            let span =
+                first.saturating_sub(SMOOTHING_MARGIN)..(last + 1 + SMOOTHING_MARGIN).min(lines);
+            match spans.last_mut() {
+                Some(previous) if span.start <= previous.end => {
+                    previous.end = previous.end.max(span.end);
+                }
+                _ => spans.push(span),
+            }
+        }
+        let checked_rows: usize = spans.iter().map(|span| span.len()).sum();
+        if checked_rows * 4 > lines {
+            return whole(self);
+        }
+
+        let mut misspelled = Vec::new();
+        let mut counted_to = 0;
+        let mut fences_above = 0;
+        for span in &spans {
+            // Rows whose code scores the span's smoothing reads.
+            let scored = span.start.saturating_sub(SMOOTHING_MARGIN)
+                ..(span.end + SMOOTHING_MARGIN).min(lines);
+            let scored_start = text.line_start_offset(scored.start);
+            fences_above += fence_lines(text, counted_to..scored_start);
+            counted_to = scored_start;
+            let records: Vec<LineRecord> = scored
+                .clone()
+                .map(|row| self.record(text.slice_line(row).to_string()))
+                .collect();
+            let mut in_fence = fences_above % 2 == 1;
+            for (index, record) in records.iter().enumerate() {
+                let row = scored.start + index;
+                if record.is_fence {
+                    in_fence = !in_fence;
+                    continue;
+                }
+                if !span.contains(&row)
+                    || in_fence
+                    || record.code_score > LINE_CODE_SKIP_SCORE
+                    || smoothed_code_score(&records, index) > SMOOTHED_CODE_SKIP_SCORE
+                {
+                    continue;
+                }
+                let line_start = text.line_start_offset(row);
+                misspelled.extend(
+                    self.misspellings(dictionary, record)
+                        .iter()
+                        .map(|word| line_start + word.start..line_start + word.end),
+                );
+            }
+        }
+        SpellCheck {
+            checked: spans
+                .iter()
+                .map(|span| text.line_start_offset(span.start)..text.line_start_offset(span.end))
+                .collect(),
+            misspelled,
+        }
+    }
+
+    /// A line's record, from the cache when its content was seen before.
+    fn record(&mut self, content: String) -> LineRecord {
+        let hash = hash_line(&content);
+        let entry = self.cache.entry(hash).or_insert_with(|| CachedLine {
+            code_score: line_code_score(&content),
+            is_fence: content.trim_start().starts_with("```"),
+            misspellings: None,
+        });
+        LineRecord {
+            hash,
+            code_score: entry.code_score,
+            is_fence: entry.is_fence,
+            content,
+        }
+    }
+
+    /// The misspellings of a line, from the cache when it was checked before.
+    fn misspellings(
+        &mut self,
+        dictionary: &Dictionary,
+        record: &LineRecord,
+    ) -> Rc<Vec<Range<usize>>> {
+        let entry = self
+            .cache
+            .get_mut(&record.hash)
+            .expect("the line's record is cached");
+        entry
+            .misspellings
+            .get_or_insert_with(|| Rc::new(check_line(dictionary, &record.content)))
+            .clone()
     }
 
     /// Scans the document and returns the byte ranges of all misspellings
@@ -651,6 +793,7 @@ impl SpellScanner {
     pub(crate) fn scan(&mut self, dictionary: &Dictionary, text: &Rope) -> Vec<Range<usize>> {
         if !dictionary.is_loaded() || text.len() == 0 || text.len() > MAX_SPELL_DOCUMENT_BYTES {
             self.cache.clear();
+            self.fences = None;
             return Vec::new();
         }
 
@@ -718,8 +861,38 @@ impl SpellScanner {
         }
 
         self.cache = new_cache;
+        self.fences = Some(rows.iter().filter(|record| record.is_fence).count());
         issues
     }
+}
+
+/// Whether the line of `text` at `row` opens or closes a fenced code block.
+fn is_fence(text: &Rope, row: usize) -> bool {
+    let mut chars = text
+        .slice_line(row)
+        .chars()
+        .skip_while(|c| c.is_whitespace());
+    (0..3).all(|_| chars.next() == Some('`'))
+}
+
+/// How many fence lines start in `range` of `text`, which starts a line:
+/// a search for backticks, which most lines lack, and a look at the start
+/// of each line that has one.
+fn fence_lines(text: &Rope, range: Range<usize>) -> usize {
+    let mut count = 0;
+    let mut offset = range.start;
+    let mut last_row = None;
+    for chunk in text.slice(range).chunks() {
+        for (index, _) in chunk.match_indices('`') {
+            let row = text.offset_to_point(offset + index).row;
+            // The first backtick of a fence line starts it.
+            if last_row.replace(row) != Some(row) && is_fence(text, row) {
+                count += 1;
+            }
+        }
+        offset += chunk.len();
+    }
+    count
 }
 
 /// Weighted average of code scores over a five-line neighborhood, so lines
@@ -1101,6 +1274,154 @@ pub(crate) mod tests {
             }
         }
         suggestions
+    }
+
+    /// A prose line among lines of code reads as code, until an edit two
+    /// lines away turns one of them into prose: checking that line checks
+    /// the prose line again.
+    #[test]
+    fn checking_a_line_checks_its_neighbours() {
+        let dictionary = english();
+        let prose = "A line of plain prose.\n".repeat(20);
+        let mut text = prose.clone();
+        text.push_str("a = b(c);\nd = e(f);\nThis line has a mispeled word.\n");
+        text.push_str("g = h(i);\nj = k(l);\n");
+        text.push_str(&prose);
+        let mut scanner = SpellScanner::new();
+        let rope = Rope::from(text.as_str());
+        let check = scanner.check(&dictionary, &rope, &[0..rope.len()]);
+        assert_eq!(check.misspelled, Vec::<Range<usize>>::new());
+
+        let code = text.find("j = k(l);").unwrap();
+        text.replace_range(code..code + "j = k(l);".len(), "Just some plain prose.");
+        let rope = Rope::from(text.as_str());
+        let line = code..code + "Just some plain prose.\n".len();
+        let check = scanner.check(&dictionary, &rope, std::slice::from_ref(&line));
+        let misspelled = text.find("mispeled").unwrap();
+        assert!(check.checked.iter().all(|checked| checked.end < rope.len()));
+        assert!(
+            check
+                .checked
+                .iter()
+                .any(|checked| checked.contains(&misspelled))
+        );
+        assert_eq!(
+            check.misspelled,
+            [misspelled..misspelled + "mispeled".len()]
+        );
+        assert_eq!(
+            SpellScanner::new().scan(&dictionary, &rope),
+            check.misspelled
+        );
+    }
+
+    /// After any edits, checking the edited lines as the textarea asks for
+    /// them, and keeping the underlines elsewhere, underlines what checking
+    /// the whole text does.
+    #[test]
+    fn checking_the_edited_lines_finds_what_checking_everything_does() {
+        let dictionary = english();
+        let mut text = String::new();
+        for paragraph in 0..40 {
+            text.push_str("This paragraph has a mispeled word and recieve too.\n");
+            text.push_str("It goes on for a while, as paragraphs do.\n\n");
+            if paragraph % 10 == 5 {
+                text.push_str("```\nlet mispeled = recieve(teh);\n```\n\n");
+            }
+        }
+        let mut scanner = SpellScanner::new();
+        let rope = Rope::from(text.as_str());
+        let mut marks = scanner
+            .check(&dictionary, &rope, &[0..rope.len()])
+            .misspelled;
+
+        // Each edit, at a place found in the text as it is then.
+        fn paragraph(text: &str) -> usize {
+            let middle = text.len() / 2;
+            middle + text[middle..].find("This paragraph").unwrap()
+        }
+        type Edit = Box<dyn Fn(&str) -> (Range<usize>, &'static str)>;
+        let edits: Vec<Edit> = vec![
+            // A misspelling typed into prose.
+            Box::new(|text| (paragraph(text)..paragraph(text), "Wierd ")),
+            // A line of code above prose, which then reads as code too, and
+            // taken away again.
+            Box::new(|text| {
+                let at = paragraph(text);
+                (at..at, "fn main() { let x = foo(bar); }\n")
+            }),
+            Box::new(|text| {
+                let at = text.find("fn main").unwrap();
+                (at..at + "fn main() { let x = foo(bar); }\n".len(), "")
+            }),
+            // Code typed below prose.
+            Box::new(|text| {
+                let at = paragraph(text) + text[paragraph(text)..].find("\n\n").unwrap() + 1;
+                (at..at, "x = y(z);")
+            }),
+            // A fence added and taken away.
+            Box::new(|text| (paragraph(text)..paragraph(text), "```\n")),
+            Box::new(|text| {
+                let at = paragraph(text) - 4;
+                (at..at + 4, "")
+            }),
+            // Inside a fenced block.
+            Box::new(|text| {
+                let at = text.find("let mispeled").unwrap();
+                (at..at, "teh ")
+            }),
+            // The first and the last line.
+            Box::new(|_| (0..4, "Thsi")),
+            Box::new(|text| (text.len()..text.len(), "Last lien")),
+            // A line split in two.
+            Box::new(|text| {
+                let at = paragraph(text) + 20;
+                (at..at, "\n")
+            }),
+        ];
+        let mut partial = 0;
+        for edit in edits {
+            let (range, new_text) = edit(&text);
+            text.replace_range(range.clone(), new_text);
+            let rope = Rope::from(text.as_str());
+            // The marks move with the edit, as the textarea's do.
+            let grown = new_text.len() as isize - range.len() as isize;
+            marks.retain(|mark| mark.end <= range.start || mark.start >= range.end);
+            for mark in &mut marks {
+                if mark.start >= range.end {
+                    mark.start = (mark.start as isize + grown) as usize;
+                    mark.end = (mark.end as isize + grown) as usize;
+                }
+            }
+            let first = rope.line_start_offset(rope.offset_to_point(range.start).row);
+            let edited_end = range.start + new_text.len();
+            let last = rope.offset_to_point(edited_end).row;
+            let lines = first..rope.line_start_offset(last + 1);
+
+            let check = scanner.check(&dictionary, &rope, std::slice::from_ref(&lines));
+            if check.checked != [0..rope.len()] {
+                partial += 1;
+            }
+            assert!(
+                check
+                    .checked
+                    .iter()
+                    .any(|checked| { checked.start <= lines.start && lines.end <= checked.end })
+            );
+            marks.retain(|mark| {
+                !check
+                    .checked
+                    .iter()
+                    .any(|checked| checked.contains(&mark.start))
+            });
+            marks.extend(check.misspelled);
+            marks.sort_by_key(|mark| mark.start);
+
+            let everything = SpellScanner::new().scan(&dictionary, &rope);
+            assert_eq!(marks, everything, "after {new_text:?} at {range:?}");
+        }
+        // All but the fences' edits checked only some lines.
+        assert_eq!(partial, 8);
     }
 
     /// Looking only at words of about the right length that share the first
