@@ -12,8 +12,12 @@
 //! [`SpellChecker::debounce`] only those lines are checked again. The
 //! underlines are marks, so between checks they move with the text.
 //!
-//! A misspelling that ends at the caret right after typing is held back until
-//! the caret leaves the word: a word still being typed is not marked.
+//! The word being typed is never marked: a misspelling at the caret right
+//! after typing is held back, and typing in a marked word takes its
+//! underline away. A word is checked at once when it is finished, when the
+//! user types a space, punctuation or a line break after it or moves the
+//! caret away, so its underline appears or goes without waiting for typing
+//! to pause.
 //!
 //! # Fixes
 //!
@@ -301,6 +305,9 @@ pub(crate) struct Spelling {
     held: Option<Range<usize>>,
     /// Where the last edit ended, while the caret has not moved from there.
     typed_to: Option<usize>,
+    /// Whether the user typed the last edit, rather than pasting, undoing
+    /// or the program changing the text, while the caret has not moved.
+    typing: bool,
     observing: Option<Subscription>,
 }
 
@@ -320,6 +327,7 @@ impl Default for Spelling {
             ignored: HashSet::new(),
             held: None,
             typed_to: None,
+            typing: false,
             observing: None,
         }
     }
@@ -349,7 +357,14 @@ impl Spelling {
         self.rerun = false;
         self.held = None;
         self.typed_to = None;
+        self.typing = false;
     }
+}
+
+/// Whether `c` belongs to a word, for telling when one is finished: a
+/// letter, a digit, an apostrophe, a hyphen or an underscore.
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '\'' | '\u{2019}' | '-' | '_')
 }
 
 /// The whole lines `ranges` touch, merged into runs of consecutive lines.
@@ -495,16 +510,85 @@ impl TextareaState {
             *dirty = adjust_range_for_edit(dirty, range, new_len);
         }
         spelling.dirty.push(range.start..range.start + new_len);
-        if let Some(held) = spelling.held.take() {
-            let replaced = !range.is_empty() && range.start <= held.start && held.end <= range.end;
-            let held = adjust_range_for_edit(&held, range, new_len);
-            spelling.held = (!replaced && !held.is_empty()).then_some(held);
-        }
+        // An edit of the held word makes it another word, which the next
+        // check looks at.
+        spelling.held = spelling
+            .held
+            .take()
+            .filter(|held| !touches(range, held))
+            .map(|held| adjust_range_for_edit(&held, range, new_len));
         if let Some(edits) = &mut spelling.in_flight {
             edits.push((range.clone(), new_len));
         }
         spelling.typed_to = (new_len > 0).then_some(range.start + new_len);
+        spelling.typing = false;
         self.schedule_spell_check(checker.debounce(), cx);
+    }
+
+    /// After the user typed `text`, which ends at the caret: a word that
+    /// `text` finished is checked at once, and the word still being typed
+    /// loses its underline. See [`crate::input::InputModeKind::on_text_typed`].
+    pub(crate) fn spelling_after_typing(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.extras.spelling.active_checker().is_none() || text.is_empty() {
+            return;
+        }
+        let caret = self.cursor();
+        let spelling = &mut self.extras.spelling;
+        if spelling.typed_to != Some(caret) {
+            return;
+        }
+        spelling.typing = true;
+        if text.chars().next_back().is_some_and(is_word_char) {
+            let word = self.word_around(caret);
+            self.unmark(|mark| touches(&word, mark), cx);
+        }
+        if text.chars().any(|c| !is_word_char(c)) {
+            self.check_spelling_now(cx);
+        }
+    }
+
+    /// The run of word characters around `offset`.
+    fn word_around(&self, offset: usize) -> Range<usize> {
+        let before: usize = self
+            .text
+            .chars_at(offset)
+            .reversed()
+            .take_while(|c| is_word_char(*c))
+            .map(char::len_utf8)
+            .sum();
+        let after: usize = self
+            .text
+            .chars_at(offset)
+            .take_while(|c| is_word_char(*c))
+            .map(char::len_utf8)
+            .sum();
+        offset - before..offset + after
+    }
+
+    /// Remove the underlines `unmark` picks.
+    fn unmark(&mut self, unmark: impl Fn(&Range<usize>) -> bool, cx: &mut Context<Self>) {
+        let Some(layer) = self.extras.spelling.layer else {
+            return;
+        };
+        let marks = self.extras.marks.get(layer);
+        let kept: Vec<Mark> = marks
+            .iter()
+            .filter(|mark| !unmark(&mark.range()))
+            .cloned()
+            .collect();
+        if kept.len() != marks.len() {
+            self.extras.marks.set(layer, kept);
+            cx.notify();
+        }
+    }
+
+    /// Check the edited lines now, in place of the check waiting for typing
+    /// to pause.
+    fn check_spelling_now(&mut self, cx: &mut Context<Self>) {
+        let spelling = &mut self.extras.spelling;
+        spelling.timer = Task::ready(());
+        spelling.scheduled = false;
+        self.run_spell_check(cx);
     }
 
     /// Start checking, hold back or release a misspelling at the caret, and
@@ -528,14 +612,18 @@ impl TextareaState {
             .then(|| self.cursor())
             .filter(|_| self.selections.is_single() && self.focus_handle.is_focused(window));
         let spelling = &mut self.extras.spelling;
-        if spelling.typed_to != caret {
-            spelling.typed_to = None;
+        if spelling.typed_to == caret {
+            return;
         }
-        if let Some(held) = spelling.held.clone()
-            && caret != Some(held.end)
-        {
-            spelling.held = None;
-            self.mark_misspelled(vec![held], cx);
+        // The caret left what was typed: the word there is finished.
+        let left_a_word = spelling.typed_to.is_some() && spelling.typing;
+        spelling.typed_to = None;
+        spelling.typing = false;
+        if let Some(held) = spelling.held.take() {
+            spelling.dirty.push(held);
+            self.check_spelling_now(cx);
+        } else if left_a_word && !spelling.dirty.is_empty() {
+            self.check_spelling_now(cx);
         }
     }
 
@@ -672,9 +760,10 @@ impl TextareaState {
             .collect();
         let spelling = &mut self.extras.spelling;
         let typed_to = spelling.typed_to;
-        let (held, marks): (Vec<_>, Vec<_>) = misspelled
-            .into_iter()
-            .partition(|word| Some(word.end) == typed_to);
+        // The word the caret is in or at the end of, right after typing.
+        let (held, marks): (Vec<_>, Vec<_>) = misspelled.into_iter().partition(|word| {
+            typed_to.is_some_and(|caret| word.start < caret && caret <= word.end)
+        });
         let within_checked = |word: &Range<usize>| {
             checked
                 .iter()
@@ -692,22 +781,6 @@ impl TextareaState {
             .collect();
         let layer = spelling.layer(&mut self.extras.marks);
         if self.extras.marks.splice(layer, checked, marks) {
-            cx.notify();
-        }
-    }
-
-    /// Underline `words`, keeping the underlines already there.
-    fn mark_misspelled(&mut self, words: Vec<Range<usize>>, cx: &mut Context<Self>) {
-        let marks: Vec<Mark> = words
-            .into_iter()
-            .filter(|word| self.is_markable(word))
-            .map(|word| Mark::new(word, MarkStyle::Spelling))
-            .collect();
-        if marks.is_empty() {
-            return;
-        }
-        let layer = self.extras.spelling.layer(&mut self.extras.marks);
-        if self.extras.marks.splice(layer, &[], marks) {
             cx.notify();
         }
     }
@@ -1072,10 +1145,12 @@ mod tests {
         assert_eq!(checker.requested(), [["Teh cat sat\non teh mat"]]);
         assert_eq!(test.misspellings(), [0..3, 15..18]);
 
+        // The space finishes a word, so the typed line is checked at once;
+        // the other line's underline moved with the edit.
         test.type_at(0, "A ");
         assert_eq!(test.misspellings(), [2..5, 17..20]);
         assert_eq!(test.marked(), ["Teh", "teh"]);
-        assert_eq!(checker.requests.borrow().len(), 1, "typing has not paused");
+        assert_eq!(checker.requested()[1..], [["A Teh cat sat"]]);
 
         // Deleting the line break joins the lines, and the second underline
         // comes along.
@@ -1097,17 +1172,17 @@ mod tests {
         assert_eq!(checker.requested().len(), 1);
 
         test.type_at(13, "s");
-        test.type_at(14, " one");
+        test.type_at(14, "y");
         assert_eq!(checker.requested().len(), 1, "typing has not paused");
         test.pause();
-        assert_eq!(checker.requested()[1], ["threes one"]);
+        assert_eq!(checker.requested()[1], ["threesy"]);
 
         // Lines apart are separate ranges, lines next to each other one.
-        test.type_at(0, "a ");
-        test.type_at(test.value().len(), " a");
-        test.type_at(6, "a ");
+        test.type_at(0, "a");
+        test.type_at(test.value().len(), "a");
+        test.type_at(5, "a");
         test.pause();
-        assert_eq!(checker.requested()[2], ["a one\na two", "four a"]);
+        assert_eq!(checker.requested()[2], ["aone\natwo", "foura"]);
         assert_eq!(checker.requested().len(), 3);
     }
 
@@ -1138,6 +1213,72 @@ mod tests {
         test.update(|state, _, cx| state.set_selected_range(0..0, cx));
         test.draw();
         assert_eq!(test.marked(), ["teh", "cta"]);
+    }
+
+    /// Pausing in the middle of a word marks nothing at the caret, and the
+    /// rest of the word typed after the pause doesn't mark its start. A
+    /// space after the word checks it at once: a correct word stays
+    /// unmarked, a misspelled one is marked without waiting for a pause.
+    #[gpui::test]
+    fn a_word_is_checked_once_it_is_finished(cx: &mut TestAppContext) {
+        let mut words = WORDS.to_vec();
+        words.extend(["methodology", "is"]);
+        let checker = Rc::new(WordList::new(&words));
+        let mut test = Test::new(cx, checker.clone(), "");
+        let mut type_keys = |test: &mut Test, keys: &str| {
+            for key in keys.chars() {
+                let end = test.value().len();
+                test.type_at(end, &key.to_string());
+            }
+        };
+
+        type_keys(&mut test, "The methodol");
+        test.pause();
+        assert!(test.marked().is_empty(), "the word at the caret");
+        let checks = checker.requests.borrow().len();
+        for key in ["o", "g", "y"] {
+            type_keys(&mut test, key);
+            assert!(test.marked().is_empty(), "after {key:?}");
+        }
+        type_keys(&mut test, " ");
+        assert!(test.marked().is_empty());
+        assert_eq!(
+            checker.requests.borrow().len(),
+            checks + 1,
+            "checked at once"
+        );
+
+        type_keys(&mut test, "is wrdo");
+        assert!(test.marked().is_empty(), "still being typed");
+        type_keys(&mut test, " ");
+        assert_eq!(test.marked(), ["wrdo"], "marked without a pause");
+        type_keys(&mut test, "now.");
+        assert_eq!(test.marked(), ["wrdo"]);
+        assert_eq!(test.value(), "The methodology is wrdo now.");
+    }
+
+    /// Typing in a marked word takes its underline away while it is typed,
+    /// and moving the caret off it checks it at once.
+    #[gpui::test]
+    fn typing_in_a_marked_word_unmarks_it_until_the_caret_leaves(cx: &mut TestAppContext) {
+        let checker = Rc::new(WordList::new(WORDS));
+        let mut test = Test::new(cx, checker, "I saw teh cat");
+        assert_eq!(test.marked(), ["teh"]);
+
+        test.type_at(9, "e");
+        assert!(test.marked().is_empty(), "the word is being typed");
+        test.update(|state, _, cx| state.set_selected_range(0..0, cx));
+        test.draw();
+        assert_eq!(test.marked(), ["tehe"], "checked without a pause");
+
+        // Typing that finishes a correct word clears its underline at once.
+        test.update(|state, window, cx| {
+            state.set_selected_range(6..11, cx);
+            state.replace_text_in_range(None, "the ", window, cx);
+        });
+        test.draw();
+        assert_eq!(test.value(), "I saw the cat");
+        assert!(test.marked().is_empty());
     }
 
     /// The misspelling under a position, with the checker's suggestions and

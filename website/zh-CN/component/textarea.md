@@ -97,4 +97,4 @@ Textarea::new(&state)
 
 ## 拼写检查与单词建议
 
-Textarea 可以使用应用提供的 `SpellChecker` 标记拼写错误，并使用 `SuggestionProvider` 在光标后显示补全。`gpui-kit-writing` 提供了带英语词典的拼写检查器，以及从用户输入中学习的单词建议，见 [拼写检查与单词建议](../docs/writing)。
+Textarea 可以使用应用提供的 `SpellChecker` 标记拼写错误，并使用 `SuggestionProvider` 在光标后显示补全。正在输入的单词不会被标记：光标处的拼写错误会暂缓标记，在已标记的单词中输入会先去掉它的下划线。单词一结束（在其后输入空格、标点或换行，或光标移开）就会立即检查，下划线随即出现或消失，无需等到停止输入。`gpui-kit-writing` 提供了带英语词典的拼写检查器，以及从用户输入中学习的单词建议，见 [拼写检查与单词建议](../docs/writing)。

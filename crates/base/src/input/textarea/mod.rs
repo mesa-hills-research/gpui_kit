@@ -53,6 +53,7 @@ impl InputModeKind for TextareaMode {
         window: &mut Window,
         cx: &mut gpui::Context<InputBaseState<Self>>,
     ) {
+        state.spelling_after_typing(text, cx);
         state.suggest_after_typing(text, window, cx);
     }
 

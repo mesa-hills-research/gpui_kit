@@ -284,9 +284,12 @@ impl SpellChecker for Dictionary {
 The first render checks all of the text. After that, an edit marks its lines,
 and once typing pauses for `SpellChecker::debounce` (300 ms by default) only
 those lines are checked again. Between checks the underlines move with the
-text. A misspelling that ends at the caret right after typing is marked once
-the caret leaves the word. A slow checker can return a pending task and work in
-the background, and its answer moves along with the edits made meanwhile.
+text. The word being typed is never underlined: a misspelling at the caret is
+held back, and typing in an underlined word takes its underline away. A word is
+checked at once when it is finished, when a space, punctuation or a line break
+is typed after it or the caret moves away, so its underline appears or goes
+without waiting for a pause. A slow checker can return a pending task and work
+in the background, and its answer moves along with the edits made meanwhile.
 
 `set_spell_checking(false)` turns checking off and clears the underlines,
 `set_spell_checker` swaps the checker, and `refresh_spelling(cx)` has every

@@ -281,4 +281,44 @@ mod tests {
         assert_eq!(word.0, "mispeled");
         assert_eq!(word.1.first().map(|word| word.as_ref()), Some("misspelled"));
     }
+
+    /// In a text editor, a word paused in isn't underlined while the caret
+    /// is in it, and a finished word is checked at once, as the textarea
+    /// does for any checker.
+    #[gpui::test]
+    fn a_word_is_underlined_once_it_is_finished(cx: &mut TestAppContext) {
+        cx.update(gpui_base::init);
+        let writing = Writing::load_blocking(WritingOptions::new());
+        let window = cx.open_window(size(px(600.), px(200.)), |window, cx| {
+            TextareaState::new(window, cx)
+                .text_editor()
+                .spell_checker(writing.spell_checker())
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let textarea = window.root(&mut cx).unwrap();
+        cx.update(|window, cx| {
+            textarea.update(cx, |state, cx| state.focus(window, cx));
+            window.draw(cx).clear(cx);
+        });
+        cx.run_until_parked();
+        let marked = |cx: &mut VisualTestContext| {
+            textarea.read_with(cx, |state, _| {
+                state
+                    .misspellings()
+                    .into_iter()
+                    .map(|range| state.text().slice(range).to_string())
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        cx.simulate_input("The methodol");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(1));
+        cx.run_until_parked();
+        assert_eq!(marked(&mut cx), Vec::<String>::new(), "paused in the word");
+        cx.simulate_input("ogy ");
+        assert_eq!(marked(&mut cx), Vec::<String>::new());
+        cx.simulate_input("is mispeled ");
+        assert_eq!(marked(&mut cx), ["mispeled"], "without a pause");
+    }
 }
