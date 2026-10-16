@@ -68,7 +68,8 @@ others. `submit_keys` names the chords that submit, from `SubmitKey::Enter`,
 `SubmitKey::ShiftEnter` and `SubmitKey::SecondaryEnter` (Cmd+Enter on macOS,
 Ctrl+Enter elsewhere). They insert nothing and emit `InputEvent::PressEnter`,
 which `is_submit_chord` recognizes. The other chords insert a line break.
-Without submit keys every chord breaks a line.
+Without submit keys every chord breaks a line. While an input method composes
+text, Enter only commits the composition.
 
 A composer whose user picks the send key, and which also sends with Cmd+Enter
 or Ctrl+Enter whatever the pick, sets the pick and the secondary Enter:

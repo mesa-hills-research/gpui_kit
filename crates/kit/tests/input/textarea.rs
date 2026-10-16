@@ -1,8 +1,8 @@
 //! Application-facing multiline editing and viewport regressions.
 use gpui_kit::{
-    App, AppContext, ClipboardItem, Context, ElementId, Entity, InputEvent as _, Modifiers,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta,
-    Subscription, TestAppContext, Window, WindowHandle,
+    App, AppContext, ClipboardItem, Context, ElementId, Entity, EntityInputHandler as _,
+    InputEvent as _, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, ScrollDelta, Subscription, TestAppContext, Window, WindowHandle,
     component::input::{InputEvent, Keymap, KeymapPlatform, SubmitKey, Textarea, TextareaState},
     div, point,
     prelude::*,
@@ -291,6 +291,44 @@ fn emacs_ctrl_j_breaks_a_line_whatever_submits(cx: &mut TestAppContext) {
             });
         }
     });
+}
+
+/// Enter during an input method's composition commits what was composed and
+/// does nothing else: it neither submits nor breaks a line, whether Enter
+/// submits or not. The next Enter does what Enter does.
+#[gpui_kit::test]
+fn enter_commits_a_composition_without_submitting_or_breaking_the_line(cx: &mut TestAppContext) {
+    for set in [vec![SubmitKey::Enter], vec![]] {
+        let submits = !set.is_empty();
+        let (handle, owner, text) = composer(cx, |state| state.submit_keys(set.iter().copied()));
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(target(&text), cx);
+            window.input("hi ", cx);
+            text.update(cx, |state, cx| {
+                state.replace_and_mark_text_in_range(None, "にほん", None, window, cx);
+            });
+            window.press("enter", cx);
+            assert_eq!(text.read(cx).value(), "hi にほん", "{set:?}");
+            let marked = text.update(cx, |state, cx| state.marked_text_range(window, cx));
+            assert_eq!(marked, None, "the composition ends");
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| assert!(owner.read(cx).enters.is_empty(), "no Enter for {set:?}"));
+
+        cx.update_window(handle.into(), |_, window, cx| window.press("enter", cx))
+            .unwrap();
+        cx.run_until_parked();
+        let expected = if submits {
+            "hi にほん"
+        } else {
+            "hi にほん\n"
+        };
+        cx.update(|cx| {
+            assert_eq!(text.read(cx).value(), expected);
+            assert_eq!(owner.read(cx).enters.len(), 1);
+        });
+    }
 }
 
 /// `submit_on_enter(true)`, kept for older code, submits with Enter and with

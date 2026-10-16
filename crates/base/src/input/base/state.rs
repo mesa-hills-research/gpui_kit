@@ -1953,6 +1953,24 @@ impl<M: InputModeKind> InputBaseState<M> {
         );
     }
 
+    /// Ends an input method's composition with what it has composed, if one
+    /// is open, and returns whether it was. Enter does this, and only this,
+    /// during a composition: it neither submits the input nor breaks a line.
+    /// Platforms send Enter to the input method first while it composes;
+    /// this covers one that hands the key on instead.
+    pub(crate) fn commit_composition(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.ime_marked_range.is_none() {
+            return false;
+        }
+        self.unmark_text(window, cx);
+        cx.notify();
+        true
+    }
+
     /// Break the line at every caret, indented for code, as Enter does in a
     /// multi-line input when it doesn't submit.
     pub(crate) fn insert_line_break(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2048,6 +2066,9 @@ impl<M: InputModeKind> InputBaseState<M> {
     }
 
     pub(super) fn enter(&mut self, action: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        if self.commit_composition(window, cx) {
+            return;
+        }
         if M::handle_context_menu_action(self, Box::new(action.clone()), window, cx) {
             return;
         }

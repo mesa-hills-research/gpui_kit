@@ -377,6 +377,9 @@ impl TextareaState {
     }
 
     fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+        if self.commit_composition(window, cx) {
+            return;
+        }
         if TextareaMode::has_inline_completion(self) {
             TextareaMode::clear_inline_completion(self, cx);
         }

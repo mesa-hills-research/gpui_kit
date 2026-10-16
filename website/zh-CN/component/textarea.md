@@ -61,7 +61,7 @@ cx.subscribe(&notes, |this, state, event: &InputEvent, cx| {
 
 ### 发送键
 
-聊天输入框用部分 Enter 组合键发送，用其他组合键换行。`submit_keys` 指定发送用的组合键，可从 `SubmitKey::Enter`、`SubmitKey::ShiftEnter` 和 `SubmitKey::SecondaryEnter`（macOS 上为 Cmd+Enter，其他平台为 Ctrl+Enter）中选择。这些组合键不插入任何内容，并发出 `InputEvent::PressEnter`，可用 `is_submit_chord` 识别。其他组合键插入换行。未设置发送键时，所有 Enter 组合键都换行。
+聊天输入框用部分 Enter 组合键发送，用其他组合键换行。`submit_keys` 指定发送用的组合键，可从 `SubmitKey::Enter`、`SubmitKey::ShiftEnter` 和 `SubmitKey::SecondaryEnter`（macOS 上为 Cmd+Enter，其他平台为 Ctrl+Enter）中选择。这些组合键不插入任何内容，并发出 `InputEvent::PressEnter`，可用 `is_submit_chord` 识别。其他组合键插入换行。未设置发送键时，所有 Enter 组合键都换行。输入法正在组字时，Enter 只会确认组字内容。
 
 如果由用户选择发送键，并且无论选择什么，Cmd+Enter 或 Ctrl+Enter 都要发送，就同时设置所选的键和 secondary Enter：
 
