@@ -1,6 +1,8 @@
+use gpui_base::TestSupportExt as _;
+
 use crate::{
     InteractiveElementExt as _, Selectable, Sizable,
-    actions::{Cancel, SelectLeft, SelectRight},
+    actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight},
     button::{Button, ButtonVariants},
     global_state::GlobalState,
     h_flex,
@@ -8,25 +10,83 @@ use crate::{
 };
 use gpui::{
     App, AppContext as _, ClickEvent, Context, DismissEvent, Entity, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, KeyBinding, MouseButton, OwnedMenu, ParentElement,
-    Render, Role, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, anchored,
-    canvas, deferred, div, prelude::FluentBuilder, px,
+    HighlightStyle, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, MouseButton,
+    OwnedMenu, ParentElement, Render, Role, SharedString, StatefulInteractiveElement, Styled,
+    StyledText, Subscription, UnderlineStyle, Window, actions, anchored, canvas, deferred, div,
+    prelude::FluentBuilder, px,
 };
 
 const CONTEXT: &str = "AppMenuBar";
+
+actions!(
+    app_menu_bar,
+    [
+        /// Move keyboard focus to the window's menu bar, on its first menu,
+        /// or back to where it was. Bound to F10 and a tap of Alt on Windows
+        /// and Linux.
+        FocusAppMenuBar
+    ]
+);
+
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
         KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
         KeyBinding::new("right", SelectRight, Some(CONTEXT)),
+        KeyBinding::new("down", SelectDown, Some(CONTEXT)),
+        KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
+        KeyBinding::new("space", Confirm { secondary: false }, Some(CONTEXT)),
     ]);
+    // macOS keeps its menus in the system menu bar.
+    if !cfg!(target_os = "macos") {
+        cx.bind_keys([
+            KeyBinding::new("f10", FocusAppMenuBar, None),
+            KeyBinding::new("alt", FocusAppMenuBar, None),
+        ]);
+    }
 }
 
 /// The application menu bar, for Windows and Linux.
+///
+/// Besides the pointer, the keyboard reaches it the way Windows users
+/// expect: F10 or a tap of Alt focuses the first menu's title, Left and
+/// Right move between titles, Down, Enter or Space open the focused menu,
+/// and Escape goes back. Alt with a menu's underlined letter opens that menu
+/// directly, and the letters are underlined while Alt is held or the bar has
+/// focus. These need the window's root, which [`gpui_kit::open_window`]
+/// mounts.
 pub struct AppMenuBar {
     menus: Vec<Entity<AppMenu>>,
     selected_index: Option<usize>,
     action_context: Option<FocusHandle>,
+    focus_handle: FocusHandle,
+    /// The menu whose title has keyboard focus while no menu is open.
+    highlighted_index: Option<usize>,
+    /// Each menu's access key: the byte offset of its letter in the name
+    /// and the letter, lowercase.
+    mnemonics: Vec<Option<(usize, char)>>,
+    /// Whether Alt is held, so the access keys are underlined.
+    alt_held: bool,
+}
+
+/// Each name's access key: its first letter or digit not taken by an earlier
+/// name, as `(byte offset, lowercase letter)`.
+fn mnemonics<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<Option<(usize, char)>> {
+    let mut taken = Vec::new();
+    names
+        .into_iter()
+        .map(|name| {
+            let found = name
+                .char_indices()
+                .filter(|(_, ch)| ch.is_alphanumeric())
+                .map(|(ix, ch)| (ix, ch.to_lowercase().next().unwrap_or(ch)))
+                .find(|(_, ch)| !taken.contains(ch));
+            if let Some((_, ch)) = found {
+                taken.push(ch);
+            }
+            found
+        })
+        .collect()
 }
 
 impl AppMenuBar {
@@ -37,6 +97,10 @@ impl AppMenuBar {
                 selected_index: None,
                 action_context: None,
                 menus: Vec::new(),
+                focus_handle: cx.focus_handle(),
+                highlighted_index: None,
+                mnemonics: Vec::new(),
+                alt_held: false,
             };
             this.reload(cx);
             this
@@ -51,17 +115,119 @@ impl AppMenuBar {
             .iter()
             .cloned()
             .collect();
+        self.mnemonics = mnemonics(menus.iter().map(|menu| menu.name.as_ref()));
         self.menus = menus
             .iter()
             .enumerate()
             .map(|(ix, menu)| AppMenu::new(ix, menu, menu_bar.clone(), cx))
             .collect();
         self.selected_index = None;
+        self.highlighted_index = None;
         self.action_context = None;
         cx.notify();
     }
 
+    /// Whether the bar has the keyboard: a menu's title is focused or a
+    /// menu is open.
+    pub fn is_active(&self) -> bool {
+        self.selected_index.is_some() || self.highlighted_index.is_some()
+    }
+
+    /// The menu whose title has keyboard focus while no menu is open.
+    pub fn highlighted_index(&self) -> Option<usize> {
+        self.highlighted_index
+    }
+
+    /// The menu that is open.
+    pub fn open_index(&self) -> Option<usize> {
+        self.selected_index
+    }
+
+    /// Focus the first menu's title from the keyboard, remembering what had
+    /// focus; if the bar already has the keyboard, give focus back instead.
+    /// What F10 and a tap of Alt do.
+    pub fn toggle_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_active() {
+            self.leave(window, cx);
+        } else if !self.menus.is_empty() {
+            self.action_context = window.focused(cx);
+            self.focus_handle.focus(window, cx);
+            self.highlighted_index = Some(0);
+            cx.notify();
+        }
+    }
+
+    /// Open the menu whose access key is `key`, as Alt with that letter
+    /// does. Returns whether one did.
+    pub fn open_menu_with_key(
+        &mut self,
+        key: char,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let key = key.to_lowercase().next().unwrap_or(key);
+        let Some(ix) = self
+            .mnemonics
+            .iter()
+            .position(|mnemonic| mnemonic.is_some_and(|(_, ch)| ch == key))
+        else {
+            return false;
+        };
+        self.highlighted_index = None;
+        self.set_selected_index(Some(ix), window, cx);
+        true
+    }
+
+    /// Underline the access keys while Alt is held.
+    pub(crate) fn set_alt_held(&mut self, held: bool, cx: &mut Context<Self>) {
+        if self.alt_held != held {
+            self.alt_held = held;
+            cx.notify();
+        }
+    }
+
+    /// Give focus back to what had it and leave keyboard mode.
+    fn leave(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.highlighted_index = None;
+        self.set_selected_index(None, window, cx);
+    }
+
+    fn on_open_highlighted(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_highlighted(window, cx);
+    }
+
+    fn on_move_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_highlighted(window, cx);
+    }
+
+    fn open_highlighted(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.highlighted_index.take() {
+            self.set_selected_index(Some(ix), window, cx);
+        }
+    }
+
+    /// While a title has focus, its access key opens its menu.
+    fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let keystroke = &event.keystroke;
+        if self.highlighted_index.is_none()
+            || keystroke.modifiers.modified()
+            || keystroke.key.chars().count() != 1
+        {
+            return;
+        }
+        if let Some(key) = keystroke.key.chars().next()
+            && self.open_menu_with_key(key, window, cx)
+        {
+            cx.stop_propagation();
+        }
+    }
+
     fn on_move_left(&mut self, _: &SelectLeft, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.highlighted_index {
+            self.highlighted_index = Some(ix.checked_sub(1).unwrap_or(self.menus.len() - 1));
+            cx.notify();
+            return;
+        }
         let Some(selected_index) = self.selected_index else {
             return;
         };
@@ -75,6 +241,11 @@ impl AppMenuBar {
     }
 
     fn on_move_right(&mut self, _: &SelectRight, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.highlighted_index {
+            self.highlighted_index = Some((ix + 1) % self.menus.len());
+            cx.notify();
+            return;
+        }
         let Some(selected_index) = self.selected_index else {
             return;
         };
@@ -88,7 +259,7 @@ impl AppMenuBar {
     }
 
     fn on_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-        self.set_selected_index(None, window, cx);
+        self.leave(window, cx);
     }
 
     fn set_selected_index(
@@ -97,7 +268,8 @@ impl AppMenuBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.selected_index.is_none() && ix.is_some() {
+        // Keep what had focus before the bar took the keyboard, not the bar.
+        if self.selected_index.is_none() && ix.is_some() && self.action_context.is_none() {
             self.action_context = window.focused(cx);
         } else if ix.is_none() {
             if let Some(action_context) = self.action_context.as_ref() {
@@ -117,18 +289,28 @@ impl AppMenuBar {
 }
 
 impl Render for AppMenuBar {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The window's root routes F10, Alt and Alt with a letter here.
+        let this = cx.entity().downgrade();
+        crate::root::WindowState::try_update(window, cx, |state, _, _| {
+            state.register_app_menu_bar(this)
+        });
         h_flex()
             .id("app-menu-bar")
+            .overflow_x_scroll()
+            .lock_scroll_axis()
+            .test_support()
+            .track_focus(&self.focus_handle)
             .role(Role::MenuBar)
             .key_context(CONTEXT)
             .on_action(cx.listener(Self::on_move_left))
             .on_action(cx.listener(Self::on_move_right))
+            .on_action(cx.listener(Self::on_move_down))
+            .on_action(cx.listener(Self::on_open_highlighted))
             .on_action(cx.listener(Self::on_cancel))
+            .on_key_down(cx.listener(Self::on_key_down))
             .size_full()
             .gap_x_1()
-            .overflow_x_scroll()
-            .lock_scroll_axis()
             .children(self.menus.clone())
     }
 }
@@ -267,6 +449,10 @@ impl AppMenu {
 impl Render for AppMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_open = self.is_open(cx);
+        let bar = self.menu_bar.read(cx);
+        let is_highlighted = bar.highlighted_index == Some(self.ix);
+        let show_mnemonic = bar.alt_held || bar.is_active();
+        let mnemonic = bar.mnemonics.get(self.ix).copied().flatten();
 
         let trigger_focus = self.trigger_focus.clone();
         div()
@@ -288,7 +474,26 @@ impl Render for AppMenu {
                     .py_0p5()
                     .compact()
                     .ghost()
-                    .label(self.name.clone())
+                    .map(|this| match mnemonic.filter(|_| show_mnemonic) {
+                        Some((offset, _)) => {
+                            let end = offset
+                                + self.name[offset..].chars().next().map_or(1, char::len_utf8);
+                            this.accessibility_label(self.name.clone()).child(
+                                StyledText::new(self.name.clone()).with_highlights([(
+                                    offset..end,
+                                    HighlightStyle {
+                                        underline: Some(UnderlineStyle {
+                                            thickness: px(1.),
+                                            ..Default::default()
+                                        }),
+                                        ..Default::default()
+                                    },
+                                )]),
+                            )
+                        }
+                        None => this.label(self.name.clone()),
+                    })
+                    .selected(is_highlighted)
                     .open(is_open)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -410,6 +615,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn access_keys_take_each_names_first_free_letter() {
+        assert_eq!(
+            mnemonics(["File", "Edit", "Format", "Fx", "Ünicode", "123", "--"]),
+            vec![
+                Some((0, 'f')),
+                Some((0, 'e')),
+                Some((1, 'o')),
+                Some((1, 'x')),
+                Some((0, 'ü')),
+                Some((0, '1')),
+                None
+            ]
+        );
+    }
+
     #[gpui::test]
     fn preserves_action_context_while_switching_menus(cx: &mut TestAppContext) {
         let (root, cx) = cx.add_window_view(|window, cx| {
@@ -418,10 +639,14 @@ mod tests {
             first_focus.focus(window, cx);
 
             TestRoot {
-                menu_bar: cx.new(|_| AppMenuBar {
+                menu_bar: cx.new(|cx| AppMenuBar {
                     menus: Vec::new(),
                     selected_index: None,
                     action_context: None,
+                    focus_handle: cx.focus_handle(),
+                    highlighted_index: None,
+                    mnemonics: Vec::new(),
+                    alt_held: false,
                 }),
                 first_focus,
                 second_focus,

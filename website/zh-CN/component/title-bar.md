@@ -159,6 +159,16 @@ WindowOptions {
 
 随应用一起分发 `com.example.App.desktop`（在 X11 上加上 `StartupWMClass=com.example.App`）及其图标。
 
+## 菜单栏与键盘
+
+在 Windows 和 Linux 上，标题栏中的 [AppMenuBar](./menu.md) 会按 Windows 用户习惯的方式响应键盘，适用于所有通过 `gpui_kit::open_window` 打开的窗口：
+
+- **F10** 或单独按一下 **Alt** 会聚焦第一个菜单的标题，再按一次则归还焦点；
+- **Left** 和 **Right** 在菜单标题之间移动，**Down**、**Enter** 或 **Space** 打开当前菜单，**Escape** 回到之前的焦点位置；
+- **Alt** 加菜单名中带下划线的字母会直接打开该菜单。按住 Alt 或菜单栏获得焦点时会显示下划线。每个菜单取其名称中尚未被前面菜单占用的第一个字母。
+
+如果某个输入框绑定了 Alt 加字母，它会保留这个按键：只有当前焦点没有处理该按键时，菜单栏才会收到它。若要把 F10 用于其他用途，请在你的键位映射中绑定它；菜单栏的绑定是没有上下文的 `FocusAppMenuBar`。
+
 ## API 参考
 
 ### TitleBar

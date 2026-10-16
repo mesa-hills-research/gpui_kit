@@ -3,6 +3,7 @@ use crate::{
     dialog::{ANIMATION_DURATION, Dialog},
     image_viewer::{ImageViewer, ImageViewerItem, ImageViewerState},
     input::AnyInputState,
+    menu::{AppMenuBar, FocusAppMenuBar},
     native_menu::FallbackMenuOverlay,
     notification::{Notification, NotificationList},
     sheet::Sheet,
@@ -12,7 +13,7 @@ use crate::{
 };
 use gpui::{
     App, AppContext, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable as _,
-    InteractiveElement, IntoElement, ParentElement as _, Render, RenderOnce, Styled,
+    InteractiveElement, IntoElement, ParentElement as _, Render, RenderOnce, Styled, WeakEntity,
     WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
 };
 use gpui_base::{TextSelection, TextSelectionScopeId};
@@ -34,6 +35,8 @@ pub(crate) struct WindowState {
     sheet_size: Option<DefiniteLength>,
     pending_focus_restore: Option<WeakFocusHandle>,
     pub(crate) active_image_viewer: Option<ActiveImageViewer>,
+    /// The window's menu bar, which F10, Alt and Alt with a letter reach.
+    app_menu_bar: Option<WeakEntity<AppMenuBar>>,
 }
 
 #[derive(Clone)]
@@ -92,6 +95,7 @@ impl WindowState {
             sheet_size: None,
             pending_focus_restore: None,
             active_image_viewer: None,
+            app_menu_bar: None,
         }
     }
 
@@ -378,6 +382,21 @@ impl WindowState {
         cx.notify();
     }
 
+    /// Route the window's menu-bar keys to `bar`, the bar it renders.
+    pub(crate) fn register_app_menu_bar(&mut self, bar: WeakEntity<AppMenuBar>) {
+        if self.app_menu_bar.as_ref().map(|bar| bar.entity_id()) != Some(bar.entity_id()) {
+            self.app_menu_bar = Some(bar);
+        }
+    }
+
+    fn app_menu_bar(window: &Window, cx: &App) -> Option<Entity<AppMenuBar>> {
+        Self::entity(window, cx)?
+            .read(cx)
+            .app_menu_bar
+            .as_ref()?
+            .upgrade()
+    }
+
     pub fn open_image_viewer(
         &mut self,
         items: Vec<ImageViewerItem>,
@@ -500,6 +519,44 @@ impl gpui_base::RootPlugin for WindowState {
                 .bg(cx.theme().tokens.background)
                 .text_color(cx.theme().foreground),
         );
+        // The window's menu bar answers keys pressed anywhere in it. These
+        // run after the focused element's own bindings, so an input that
+        // binds Alt with a letter keeps it.
+        if !cfg!(target_os = "macos") {
+            let interactivity = surface.interactivity();
+            interactivity.on_action(|_: &FocusAppMenuBar, window, cx| {
+                if let Some(bar) = Self::app_menu_bar(window, cx) {
+                    bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
+                }
+            });
+            interactivity.on_key_down(|event, window, cx| {
+                let keystroke = &event.keystroke;
+                let alt_only = keystroke.modifiers.alt
+                    && !keystroke.modifiers.control
+                    && !keystroke.modifiers.platform
+                    && !keystroke.modifiers.function;
+                let Some(key) = keystroke
+                    .key
+                    .chars()
+                    .next()
+                    .filter(|_| alt_only && keystroke.key.chars().count() == 1)
+                else {
+                    return;
+                };
+                if let Some(bar) = Self::app_menu_bar(window, cx)
+                    && bar.update(cx, |bar, cx| bar.open_menu_with_key(key, window, cx))
+                {
+                    cx.stop_propagation();
+                }
+            });
+            interactivity.on_modifiers_changed(|event, window, cx| {
+                if let Some(bar) = Self::app_menu_bar(window, cx) {
+                    let modifiers = event.modifiers;
+                    let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
+                    bar.update(cx, |bar, cx| bar.set_alt_held(alt_only, cx));
+                }
+            });
+        }
     }
 
     fn decorate(

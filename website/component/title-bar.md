@@ -162,6 +162,16 @@ WindowOptions {
 
 Ship `com.example.App.desktop` (with `StartupWMClass=com.example.App` on X11) and its icon with the application.
 
+## Menu Bar and the Keyboard
+
+On Windows and Linux the [AppMenuBar](./menu.md) in the title bar answers the keyboard as Windows users expect, in any window opened with `gpui_kit::open_window`:
+
+- **F10** or a tap of **Alt** focuses the first menu's title, and again gives focus back;
+- **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was;
+- **Alt** with a menu's underlined letter opens that menu. The letters are underlined while Alt is held or the bar has focus. Each menu takes the first letter of its name not taken by an earlier menu.
+
+An input that binds Alt with a letter keeps it: the menu bar sees the key only when nothing focused handled it. To use F10 for something else, bind it in your keymap; the bar's binding is `FocusAppMenuBar` with no context.
+
 ## API Reference
 
 ### TitleBar
