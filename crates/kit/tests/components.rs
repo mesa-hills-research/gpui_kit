@@ -175,3 +175,57 @@ fn scrollable_elements_forward_observed_focus_binding(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+struct Changes {
+    diff: Entity<gpui_component::diff_view::DiffViewState>,
+}
+impl Render for Changes {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(gpui_component::diff_view::DiffView::new(&self.diff).h(px(400.)))
+    }
+}
+
+/// A computed diff folds the unchanged lines between its hunks behind a row
+/// that unfolds them, and each file's Copy button copies its unified diff.
+#[gpui::test]
+fn diff_view_unfolds_unchanged_lines_and_copies_the_diff(cx: &mut TestAppContext) {
+    use gpui_component::diff_view::{Diff, DiffViewState};
+    cx.update(gpui_component::init);
+    let old = (1..=30).map(|n| format!("line {n}\n")).collect::<String>();
+    let new = old
+        .replace("line 3\n", "line three\n")
+        .replace("line 25\n", "line twenty-five\n");
+    let (handle, view) = common::open_window(cx, Some(size(px(600.), px(500.))), |_, cx| {
+        let diff = cx.new(|cx| DiffViewState::new(Diff::between("notes.txt", &old, &new), cx));
+        cx.new(|_| Changes { diff })
+    });
+    let diff = view.read_with(cx, |view, _| view.diff.clone());
+    let rows = |cx: &mut TestAppContext| diff.read_with(cx, |state, _| state.row_count());
+    // The file row; the first hunk (7 lines, from line 1, so nothing folds
+    // before it); the second hunk (8 lines) after its folded gap; and the
+    // folded last two lines.
+    assert_eq!(rows(cx), 1 + (1 + 7) + (1 + 8) + 1);
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        // The 15 unchanged lines between the hunks unfold in place.
+        window.click(("diff-unfold", 1usize), cx);
+    })
+    .unwrap();
+    assert_eq!(rows(cx), 1 + (1 + 7) + (1 + 8) + 1 + 15);
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click(("diff-copy", 0usize), cx);
+    })
+    .unwrap();
+    let copied = cx.read_from_clipboard().and_then(|item| item.text());
+    assert!(
+        copied.as_deref().is_some_and(|text| text
+            .starts_with("--- a/notes.txt\n+++ b/notes.txt\n@@ -1,6 +1,6 @@\n")
+            && text.contains("-line 25\n+line twenty-five\n")),
+        "{copied:?}"
+    );
+}

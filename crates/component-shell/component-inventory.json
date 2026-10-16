@@ -2628,6 +2628,12 @@
     },
     {
       "source": "ui",
+      "name": "diff_view",
+      "classification": "infrastructure",
+      "explanation": "DiffView renders a DiffViewState entity built from a Rust Diff value (parsed or computed off the UI thread), which the frozen script catalog cannot construct; it is not registered as a script component yet."
+    },
+    {
+      "source": "ui",
       "name": "image_viewer",
       "classification": "infrastructure",
       "explanation": "ImageViewer opens over the window through Rust's WindowExt::open_image_viewer with application-supplied ImageSource values (in-memory images or an LruImageCache source), which the frozen script catalog cannot construct; it is not registered as a script component yet."
@@ -2637,6 +2643,12 @@
       "name": "attachment",
       "classification": "component",
       "registration": { "status": "registered", "descriptor": "Attachment", "exports": ["Attachment"] }
+    },
+    {
+      "source": "story",
+      "name": "diff_view",
+      "classification": "infrastructure",
+      "explanation": "The Diff View story drives DiffViewState entities built from Rust Diff values, which the frozen script catalog cannot construct."
     },
     {
       "source": "story",

@@ -1115,6 +1115,40 @@ fn image_viewer_dark() {
     goldens().assert("image-viewer-dark", &image_viewer(ThemeMode::Dark));
 }
 
+struct Changes(Entity<gpui_kit::component::diff_view::DiffViewState>);
+
+impl Render for Changes {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(gpui_kit::component::diff_view::DiffView::new(&self.0))
+    }
+}
+
+fn diff_view(mode: ThemeMode) -> Screenshot {
+    use gpui_kit::component::diff_view::{Diff, DiffViewState};
+    let old = "fn timeout() -> u64 {\n    30\n}\n\nfn retries() -> u32 {\n    3\n}\n\n\n\n\n\nfn log(message: &str) {\n    eprintln!(\"{message}\");\n}\n";
+    let new = "fn timeout() -> u64 {\n    10\n}\n\nfn retries() -> u32 {\n    3\n}\n\n\n\n\n\nfn log(message: &str) {\n    tracing::info!(\"{message}\");\n    flush();\n}\n";
+    let mut app = app(mode);
+    let window = open(&mut app, (480., 400.), SCALE, |_, cx| {
+        Changes(cx.new(|cx| DiffViewState::new(Diff::between("src/net.rs", old, new), cx)))
+    });
+    app.capture(window).unwrap()
+}
+
+/// A computed diff: the file row with its counts, hunk headers, the fold between the hunks,
+/// numbered added and removed lines.
+#[test]
+fn diff_view_light() {
+    goldens().assert("diff-view", &diff_view(ThemeMode::Light));
+}
+
+#[test]
+fn diff_view_dark() {
+    goldens().assert("diff-view-dark", &diff_view(ThemeMode::Dark));
+}
+
 struct Bar;
 
 impl Render for Bar {

@@ -611,6 +611,37 @@ ImageViewer:
     zh-CN: 无法加载这张图片。
     zh-HK: 無法載入這張圖片。
     zh-TW: 無法載入這張圖片。
+DiffView:
+  label:
+    en: Changes
+    zh-CN: 更改
+    zh-HK: 更改
+    zh-TW: 變更
+  label_of:
+    en: Changes to %{path}
+    zh-CN: "%{path} 的更改"
+    zh-HK: "%{path} 的更改"
+    zh-TW: "%{path} 的變更"
+  untitled:
+    en: Untitled
+    zh-CN: 未命名
+    zh-HK: 未命名
+    zh-TW: 未命名
+  copy:
+    en: Copy diff
+    zh-CN: 复制差异
+    zh-HK: 複製差異
+    zh-TW: 複製差異
+  unfold:
+    en: Show %{count} unchanged lines
+    zh-CN: 显示 %{count} 行未更改的内容
+    zh-HK: 顯示 %{count} 行未更改的內容
+    zh-TW: 顯示 %{count} 行未變更的內容
+  no_changes:
+    en: No changes
+    zh-CN: 没有更改
+    zh-HK: 沒有更改
+    zh-TW: 沒有變更
 Carousel:
   label:
     en: Carousel

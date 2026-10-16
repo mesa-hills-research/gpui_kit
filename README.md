@@ -85,6 +85,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
   setting that stores only a family and a size. See
   [FontPicker: compact layout](website/component/font-picker.md#compact-layout).
+- **A diff view** (`gpui-component`). `DiffView` shows `Diff::between(path, old, new)` or
+  `Diff::parse(unified)` with old and new line numbers, added and removed lines on the
+  success and danger colors and marked `+`/`-`, hunk headers, syntax colors by extension
+  (computed off the UI thread), unchanged lines that fold and unfold, and a Copy button per
+  file, in a virtualized list. See [Diff View](website/component/diff-view.md).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).

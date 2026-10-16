@@ -1,0 +1,55 @@
+---
+title: Diff View
+description: Show the changes to files with line numbers, added and removed lines, hunk headers and syntax colors.
+---
+
+# Diff View
+
+Diff View shows the changes to one or more files: each file's path with its added and removed counts and a Copy button, hunk headers, and the lines with their old and new numbers. Added lines sit on the success color and removed lines on the danger color, at low opacity, and each is also marked `+` or `-`, so the change never rests on color alone. Lines use the theme's code font and syntax colors chosen by the file's extension. Long diffs scroll smoothly: only the rows on screen are laid out.
+
+## Import
+
+```rust
+use gpui_kit::component::diff_view::{Diff, DiffView, DiffViewState};
+```
+
+## Usage
+
+Build a `Diff`, keep it in a `DiffViewState`, and render a `DiffView`:
+
+```rust
+// Between two versions of a file:
+let diff = Diff::between("src/net.rs", &old_text, &new_text);
+// Or from unified diff text (`git diff`, `diff -u`, or bare `@@` hunks):
+let diff = Diff::parse(&unified_text);
+
+let state = cx.new(|cx| DiffViewState::new(diff, cx));
+
+DiffView::new(&state).h(px(360.))
+```
+
+`Diff::between` computes a line diff (Myers' shortest edit script) and groups the changes into hunks with three unchanged lines around each. It knows the whole file, so the unchanged lines between hunks fold into a row that unfolds them in place; `unfold_all` unfolds every one. A parsed diff knows only its hunks' lines, so between its hunks there is only the header.
+
+Both are plain computations on data you own. For a large input, build the `Diff` on a background thread and hand it to `DiffViewState::new` or `set_diff`. Measured in a debug build: a 10,000-line file with 100 scattered edits diffs in about 4 ms; two unrelated 5,000-line files in about 28 ms, as the search gives up past 1,500 edits and shows the differing middle as removed, then added.
+
+## Syntax colors
+
+The colors come from the active highlight theme, computed on a background thread for each side of the diff: the unchanged and removed lines as the old version, the unchanged and added lines as the new one, so a string or comment spanning lines colors correctly within a hunk. They recompute when the theme changes. Without the `tree-sitter` feature, or for an extension with no grammar, the lines are plain.
+
+## Copying
+
+Each file's Copy button copies that file's changes as unified diff text, built only when clicked. `Diff::to_unified` gives the whole diff.
+
+## API Reference
+
+| Item | Description |
+| --- | --- |
+| `Diff::between(path, old, new)` | The line diff between two versions of a file |
+| `Diff::parse(text)` | Parse unified diff text, one file or many |
+| `Diff::files()` | The files; each has `path()`, `old_path()`, `new_path()`, `lines()`, `added_lines()`, `removed_lines()` |
+| `Diff::added_lines()` / `removed_lines()` / `is_empty()` | Totals |
+| `Diff::to_unified()` / `file_unified(ix)` | Unified diff text |
+| `DiffLine::change()` / `old_line()` / `new_line()` / `text()` | One line: `LineChange::{Unchanged, Added, Removed}` and its numbers |
+| `DiffViewState::new(diff, cx)` / `set_diff(diff, cx)` | Show a diff, folded, from the top |
+| `DiffViewState::unfold_all(cx)` | Unfold every run of unchanged lines |
+| `DiffView::new(&state)` | The view; `Styled` for its size |

@@ -41,6 +41,7 @@ pub mod combobox;
 pub mod command;
 pub mod description_list;
 pub mod dialog;
+pub mod diff_view;
 pub mod dock;
 pub mod empty;
 pub mod font_picker;
