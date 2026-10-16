@@ -557,6 +557,25 @@ fn a_paste_learns_nothing(cx: &mut TestAppContext) {
     assert_eq!(learned, []);
 }
 
+/// One word pasted over a selected word looks like a spelling correction,
+/// but the user didn't write it: its sentence teaches nothing.
+#[gpui::test]
+fn a_word_pasted_over_a_selection_learns_nothing(cx: &mut TestAppContext) {
+    let word_left = if cfg!(target_os = "macos") {
+        "alt-shift-left"
+    } else {
+        "ctrl-shift-left"
+    };
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("The token is placeholder");
+        typist.cx.simulate_keystrokes(word_left);
+        paste(typist, "hunter2secret");
+        assert_eq!(typist.value(), "The token is hunter2secret");
+        typist.type_text(". Next");
+    });
+    assert_eq!(learned, []);
+}
+
 /// A line is learned once the user moves on from it, after a blank line
 /// too, as is the last item of a list before one.
 #[gpui::test]

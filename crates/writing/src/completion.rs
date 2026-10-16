@@ -644,11 +644,7 @@ impl WordSuggestions {
             generate_suggestion(&vocabulary, &local, text, offset)
         };
         let caret = excerpt.start + offset;
-        let suggestion = self.pacer.offer(text, offset, caret, suggestion, now);
-        self.typed
-            .borrow_mut()
-            .offered(caret, suggestion.as_deref());
-        suggestion
+        self.pacer.offer(text, offset, caret, suggestion, now)
     }
 
     /// Learns the most recently finished prose sentence before `offset` in
@@ -839,7 +835,6 @@ impl SuggestionProvider for WordSuggestions {
     }
 
     fn is_trigger(&self, offset: usize, text: &str, cx: &mut App) -> bool {
-        self.typed.borrow_mut().typed(offset, text);
         let triggers = self.pacer.mode() != SuggestionMode::Off
             && text.chars().any(|character| {
                 character.is_alphanumeric()

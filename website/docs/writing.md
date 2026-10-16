@@ -20,8 +20,9 @@ gets them without writing its own:
   "mispeled" offers "misspelled" first.
 - **Word suggestions** that finish the word being typed, and predict the next
   word after a space, from a vocabulary learned on the user's computer from
-  what they type. Pasted text, undo and redo and text the program inserts
-  teach nothing. A suggestion shows only when it is more likely right than
+  what they write: typing, suggestions taken with Tab and spelling
+  corrections chosen from the menu. Pasted text, undo and redo and text the
+  program inserts teach nothing, however short. A suggestion shows only when it is more likely right than
   wrong, and words the user keeps typing past are offered less. Punctuation
   between words, such as a comma, a colon or a slash, ends what a prediction
   follows: after "UI/UX, " nothing learned after "UI/UX" is offered.
