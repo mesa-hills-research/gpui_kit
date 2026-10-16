@@ -1,7 +1,9 @@
 #[cfg(test)]
 use crate::highlighter::HighlightTheme;
 use crate::highlighter::LanguageRegistry;
-use crate::highlighter::compiled::{HighlightQuery, compiled_language, layer_query};
+use crate::highlighter::compiled::{
+    HighlightQuery, compiled_language, is_highlight_capture, layer_query,
+};
 
 use anyhow::{Context, Result, anyhow};
 use gpui::{HighlightStyle, SharedString};
@@ -1005,7 +1007,10 @@ impl SyntaxHighlighter {
                         continue;
                     }
 
-                    if let Some(highlight_name) = capture_names.get(cap.index as usize) {
+                    if let Some(highlight_name) = capture_names
+                        .get(cap.index as usize)
+                        .filter(|name| is_highlight_capture(name))
+                    {
                         if !allow_overlapping_captures {
                             last_end = node_range.end;
                         }
@@ -1028,7 +1033,10 @@ impl SyntaxHighlighter {
             for cap in query_match.captures.iter() {
                 let node = cap.node;
 
-                let Some(highlight_name) = capture_names.get(cap.index as usize) else {
+                let Some(highlight_name) = capture_names
+                    .get(cap.index as usize)
+                    .filter(|name| is_highlight_capture(name))
+                else {
                     continue;
                 };
 
@@ -1391,6 +1399,31 @@ mod tests {
         let mut later = range((4, 1, 1), (8, 2, 2));
         edit_range(&delete, &mut later);
         assert_eq!(later, range((1, 0, 1), (5, 1, 2)));
+    }
+
+    /// A comment captured for spell checking first and as a comment second
+    /// took the spell-check name, which no theme colors.
+    #[cfg(feature = "tree-sitter-scala")]
+    #[test]
+    fn spell_check_and_helper_captures_leave_the_highlight_to_others() {
+        let code = "// a note\nobject Main\n";
+        let rope = Rope::from_str(code);
+        let mut highlighter = SyntaxHighlighter::new("scala");
+        highlighter.update(None, &rope, None);
+
+        let theme = HighlightTheme::default_dark();
+        let comment = theme.style("comment").and_then(|style| style.color);
+        assert!(comment.is_some());
+        let styles = highlighter.styles(&(0..code.len()), theme.as_ref());
+        assert!(
+            styles
+                .iter()
+                .any(|(range, style)| range.contains(&3) && style.color == comment),
+            "{styles:?}"
+        );
+        assert!(!super::is_highlight_capture("spell"));
+        assert!(!super::is_highlight_capture("_name"));
+        assert!(super::is_highlight_capture("comment"));
     }
 
     #[test]

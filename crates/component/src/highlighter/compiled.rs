@@ -59,10 +59,17 @@ impl HighlightName {
     }
 }
 
-/// A query with the [`HighlightName`] of each of its captures.
+/// Whether the capture `name` is a highlight. Captures named `_…` only feed
+/// a predicate of their pattern, and `spell` and `nospell` mark text for
+/// spell checking, so a highlighter leaves them out.
+pub(crate) fn is_highlight_capture(name: &str) -> bool {
+    !name.starts_with('_') && name != "spell" && name != "nospell"
+}
+
+/// A query with the [`HighlightName`] of each of its highlight captures.
 pub(crate) struct HighlightQuery {
     pub(crate) query: Query,
-    names: Box<[HighlightName]>,
+    names: Box<[Option<HighlightName>]>,
 }
 
 impl HighlightQuery {
@@ -70,14 +77,15 @@ impl HighlightQuery {
         let names = query
             .capture_names()
             .iter()
-            .map(|name| HighlightName::intern(name))
+            .map(|name| is_highlight_capture(name).then(|| HighlightName::intern(name)))
             .collect();
         Self { query, names }
     }
 
-    /// The highlight name of the capture `index`.
+    /// The highlight name of the capture `index`, or `None` when it is not a
+    /// highlight (see [`is_highlight_capture`]).
     pub(crate) fn name(&self, index: u32) -> Option<HighlightName> {
-        self.names.get(index as usize).copied()
+        self.names.get(index as usize).copied().flatten()
     }
 }
 
