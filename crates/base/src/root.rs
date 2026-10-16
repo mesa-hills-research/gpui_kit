@@ -4,7 +4,7 @@ use crate::{StyledExt, TextSelectionLayer};
 use gpui::{
     AnyElement, AnyView, App, AppContext, ClipboardItem, Context, Div, Entity, Global,
     InteractiveElement, IntoElement, KeyBinding, ParentElement, Render, Stateful, StyleRefinement,
-    Styled, Window, actions, div,
+    Styled, Subscription, Window, actions, div,
 };
 use std::{any::TypeId, rc::Rc};
 
@@ -93,6 +93,9 @@ pub struct Root {
     view: AnyView,
     style: StyleRefinement,
     plugins: Vec<Plugin>,
+    /// Reads the system's reduced-motion preference again when the window
+    /// becomes active. See [`crate::apply_system_reduce_motion`].
+    _activation: Subscription,
 }
 
 impl Root {
@@ -151,6 +154,14 @@ impl Root {
             .try_global::<PluginRegistry>()
             .map(|e| e.0.clone())
             .unwrap_or_default();
+        // Windows announces a changed preference only to windows, through
+        // messages GPUI handles, and macOS may have changed it while the
+        // application was in the background: read it again on coming back.
+        let activation = cx.observe_window_activation(window, |_, window, cx| {
+            if window.is_window_active() {
+                crate::apply_system_reduce_motion(cx);
+            }
+        });
         Self {
             view: view.into(),
             style: StyleRefinement::default(),
@@ -158,6 +169,7 @@ impl Root {
                 .into_iter()
                 .map(|(_, build)| build(window, cx))
                 .collect(),
+            _activation: activation,
         }
     }
 

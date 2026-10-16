@@ -11,10 +11,14 @@
 //! left alone.
 //!
 //! - macOS: `NSWorkspace.accessibilityDisplayShouldReduceMotion`, the
-//!   "Reduce motion" switch under Accessibility → Display.
+//!   "Reduce motion" switch under Accessibility → Display. Base follows its
+//!   changes through `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`.
 //! - Windows: `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`, the
 //!   "Animation effects" switch under Accessibility → Visual effects, whose
-//!   off state asks for reduced motion.
+//!   off state asks for reduced motion. Windows announces a change only to
+//!   windows, whose messages GPUI handles, so Base reads it again whenever a
+//!   window with a Base [`crate::Root`] becomes active: a change made in the
+//!   Settings app applies when the user comes back.
 //! - Linux: the `reduced-motion` key of the `org.freedesktop.appearance`
 //!   namespace of the XDG desktop portal's Settings interface, which GNOME
 //!   and KDE back with their own animation switches. The portal answers over
@@ -52,10 +56,10 @@ pub(crate) fn init(cx: &mut App) {
 /// Reads the operating system's reduced-motion preference into
 /// [`App::set_reduce_motion`].
 ///
-/// `gpui_base::init` calls this once. Call it again to re-read the preference
-/// on a platform Base does not follow live — macOS and Windows post no
-/// notification Base can subscribe to without a window, so a change made
-/// while the application runs reaches it only through this call.
+/// `gpui_base::init` calls this once, and a window with a Base
+/// [`crate::Root`] calls it again each time it becomes active. Base follows
+/// changes on its own on macOS and on Linux; call this to re-read the
+/// preference at other moments, such as on Windows without a Base root.
 ///
 /// The application wins over the system: when the flag no longer holds what
 /// Base last wrote, the application set it, and this call leaves it alone.
@@ -64,6 +68,10 @@ pub(crate) fn init(cx: &mut App) {
 /// test scheduler the platform is not asked at all.
 pub fn apply_system_reduce_motion(cx: &mut App) {
     if is_test_scheduler(cx) {
+        #[cfg(test)]
+        if let Some(preference) = tests::system_preference() {
+            apply_preference(preference, cx);
+        }
         return;
     }
     apply_preference(platform::read(), cx);
@@ -102,14 +110,45 @@ fn apply_preference(preference: Option<bool>, cx: &mut App) {
 
 #[cfg(target_os = "macos")]
 mod platform {
+    use std::ptr::NonNull;
+
+    use block2::RcBlock;
+    use futures::StreamExt as _;
     use gpui::App;
-    use objc2_app_kit::NSWorkspace;
+    use objc2_app_kit::{NSWorkspace, NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification};
+    use objc2_foundation::NSNotification;
 
     pub(super) fn read() -> Option<bool> {
         Some(NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion())
     }
 
-    pub(super) fn follow(_cx: &mut App) {}
+    /// Reads the preference again whenever the workspace says the
+    /// accessibility display options changed.
+    pub(super) fn follow(cx: &mut App) {
+        let (changed, mut changes) = futures::channel::mpsc::unbounded::<()>();
+        let block = RcBlock::new(move |_: NonNull<NSNotification>| {
+            let _ = changed.unbounded_send(());
+        });
+        let center = NSWorkspace::sharedWorkspace().notificationCenter();
+        // SAFETY: the name is AppKit's, no object filters the notifications,
+        // and the block only sends on a channel, which any thread may do.
+        // The notification center keeps the observer, and the block with it,
+        // for the life of the application.
+        let _observer = unsafe {
+            center.addObserverForName_object_queue_usingBlock(
+                Some(NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification),
+                None,
+                None,
+                &block,
+            )
+        };
+        cx.spawn(async move |cx| {
+            while changes.next().await.is_some() {
+                cx.update(|cx| super::apply_preference(read(), cx));
+            }
+        })
+        .detach();
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -183,10 +222,70 @@ mod platform {
 }
 
 #[cfg(test)]
-mod tests {
-    use gpui::TestAppContext;
+pub(crate) mod tests {
+    use std::cell::Cell;
+
+    use gpui::{AppContext as _, TestAppContext, VisualTestContext, div};
 
     use super::{apply_preference, apply_system_reduce_motion};
+
+    thread_local! {
+        /// What the system answers in a test, once a test says: under the
+        /// test scheduler the platform is never asked.
+        static SYSTEM_PREFERENCE: Cell<Option<Option<bool>>> = const { Cell::new(None) };
+    }
+
+    /// The preference a test's system holds, if the test set one.
+    pub(crate) fn system_preference() -> Option<Option<bool>> {
+        SYSTEM_PREFERENCE.with(Cell::get)
+    }
+
+    fn set_system_preference(preference: Option<bool>) {
+        SYSTEM_PREFERENCE.with(|cell| cell.set(Some(preference)));
+    }
+
+    struct Content;
+
+    impl gpui::Render for Content {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            div()
+        }
+    }
+
+    /// A window with a Base root reads the preference again when it becomes
+    /// active, so a change made in the system's settings while the
+    /// application was in the background applies when the user comes back.
+    #[gpui::test]
+    fn a_root_window_reads_the_preference_when_activated(cx: &mut TestAppContext) {
+        let window = cx.open_window(gpui::size(gpui::px(200.), gpui::px(100.)), |window, cx| {
+            let content = cx.new(|_| Content);
+            crate::Root::new(content, window, cx)
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let reduces = |cx: &mut VisualTestContext| cx.update(|_, cx| cx.reduce_motion());
+        let activate = |cx: &mut VisualTestContext| {
+            cx.deactivate_window();
+            cx.update(|window, _| window.activate_window());
+            cx.run_until_parked();
+        };
+
+        set_system_preference(Some(true));
+        activate(&mut cx);
+        assert!(reduces(&mut cx));
+        set_system_preference(Some(false));
+        activate(&mut cx);
+        assert!(!reduces(&mut cx));
+
+        // The application's own choice stays.
+        cx.update(|_, cx| cx.set_reduce_motion(true));
+        activate(&mut cx);
+        assert!(reduces(&mut cx));
+        set_system_preference(None);
+    }
 
     #[gpui::test]
     fn a_system_preference_for_reduced_motion_sets_the_flag(cx: &mut TestAppContext) {

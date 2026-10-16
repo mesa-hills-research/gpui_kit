@@ -45,6 +45,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   uncovered by the caret as it passes, and the rest of the line follows it. Off by default. See
   [Textarea: smooth caret](website/component/textarea.md#smooth-caret) and
   [Input: smooth caret](website/component/input.md#smooth-caret).
+- **The system's reduced-motion setting, followed** (`gpui-base`). `gpui_base::init` reads it on
+  macOS, Windows and Linux, and Base follows changes: macOS's accessibility notification, Linux's
+  desktop portal, and on Windows a new reading whenever a window with a Base `Root` becomes
+  active. An application that sets the flag itself keeps it. See
+  [Motion](website/base/motion.md).
 - **Nested scrolling** (`gpui-component`). A List or an `overflow_*_scrollbar` area inside a
   scrolling page keeps the wheel while it can scroll, where GPUI scrolled the page along with
   it. At its end the page takes over with the next gesture. See

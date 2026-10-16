@@ -3805,6 +3805,7 @@ dependencies = [
  "anyhow",
  "ashpd",
  "async-channel",
+ "block2 0.6.2",
  "chrono",
  "criterion 0.5.1",
  "data-url",

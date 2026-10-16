@@ -77,6 +77,9 @@ async-channel = "2.3.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 raw-window-handle.workspace = true
+# The block that hears the reduced-motion preference change. The version
+# objc2-foundation already pulls in.
+block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSAccessibility", "NSView", "NSWindow", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSString"] }
