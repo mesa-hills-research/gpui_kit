@@ -542,6 +542,34 @@ impl Candidates {
         }
     }
 
+    /// Gives back the room its vectors grew into as the words were added:
+    /// for the English list, 7.8 MB of index becomes 5 MB.
+    fn shrink_to_fit(&mut self) {
+        self.text.shrink_to_fit();
+        self.words.shrink_to_fit();
+        for indices in self.by_first.values_mut().chain(self.by_last.values_mut()) {
+            indices.shrink_to_fit();
+        }
+        self.by_first.shrink_to_fit();
+        self.by_last.shrink_to_fit();
+    }
+
+    /// The bytes the index takes on the heap, about.
+    #[cfg(test)]
+    fn heap_bytes(&self) -> usize {
+        let map = |map: &HashMap<(usize, char), Vec<u32>>| {
+            map.capacity() * 8 / 7 * (size_of::<(usize, char)>() + size_of::<Vec<u32>>() + 1)
+                + map
+                    .values()
+                    .map(|indices| indices.capacity() * 4)
+                    .sum::<usize>()
+        };
+        self.text.capacity()
+            + self.words.capacity() * size_of::<(u32, u8, u32)>()
+            + map(&self.by_first)
+            + map(&self.by_last)
+    }
+
     /// The word at `index`, and its [`letters`].
     fn word(&self, index: u32) -> (&str, u32) {
         let (start, length, letters) = self.words[index as usize];
@@ -610,6 +638,7 @@ impl Words {
         for word in &words {
             candidates.add(word);
         }
+        candidates.shrink_to_fit();
         Self {
             words,
             candidates,
@@ -1631,6 +1660,24 @@ pub(crate) mod tests {
         );
         let reloaded = Dictionary::load(&[WordList::English], Some(user));
         assert!(reloaded.is_correct("Zbigniewski"));
+    }
+
+    /// The index of corrections keeps no room to grow once it is read: for
+    /// the English list it takes about 5 MB, not the 7.8 MB it grew into.
+    #[test]
+    fn the_correction_index_keeps_no_spare_room() {
+        let candidates = Words::read(&[WordList::English], None).candidates;
+        assert_eq!(candidates.text.capacity(), candidates.text.len());
+        assert_eq!(candidates.words.capacity(), candidates.words.len());
+        for indices in candidates
+            .by_first
+            .values()
+            .chain(candidates.by_last.values())
+        {
+            assert_eq!(indices.capacity(), indices.len());
+        }
+        let bytes = candidates.heap_bytes();
+        assert!(bytes < 5_500_000, "{bytes} bytes");
     }
 
     /// Too few words to be a dictionary, such as a user's word list alone,
