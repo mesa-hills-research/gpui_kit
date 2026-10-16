@@ -1673,7 +1673,7 @@ mod tests {
         use EditOrigin::{Correction, History, Pasted, Program, Suggestion, Typed};
         let provider = Rc::new(WordProvider::new(&["hello"]));
         let mut test = Test::new(cx, Some(provider.clone()), menu());
-        let mut heard = |test: &mut Test| -> Vec<(String, EditOrigin)> {
+        let heard = |test: &mut Test| -> Vec<(String, EditOrigin)> {
             test.cx.run_until_parked();
             provider
                 .changes
