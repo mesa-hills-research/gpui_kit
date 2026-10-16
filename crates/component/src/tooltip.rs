@@ -533,6 +533,90 @@ mod tests {
         assert!(painted(cx), "for as long as the pointer rests on it");
     }
 
+    /// Two buttons with tooltips, a pointer's skim apart.
+    struct Pair;
+
+    impl Render for Pair {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .p(px(20.))
+                .flex()
+                .gap(px(80.))
+                .child(
+                    Button::new("a")
+                        .debug_selector(|| "a".into())
+                        .label("Alpha")
+                        .tooltip("Tip A"),
+                )
+                .child(
+                    Button::new("b")
+                        .debug_selector(|| "b".into())
+                        .label("Beta")
+                        .tooltip("Tip B"),
+                )
+        }
+    }
+
+    /// A window with the pair in a view GPUI reuses from the last frame.
+    struct CachedPair {
+        pair: Entity<Pair>,
+    }
+
+    impl Render for CachedPair {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                self.pair
+                    .clone()
+                    .cached(gpui::StyleRefinement::default().size_full()),
+            )
+        }
+    }
+
+    /// Moving from one button to the next in a reused view while something
+    /// else redraws the window, such as a streaming transcript: the first
+    /// tooltip stays through its grace period, and the second shows at once.
+    #[gpui::test]
+    fn a_redraw_elsewhere_keeps_a_reused_buttons_tooltip_through_its_grace(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let mut window_view = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let pair = cx.new(|_| Pair);
+            let view = cx.new(|_| CachedPair { pair });
+            window_view = Some(view.clone());
+            crate::Root::new(view, window, cx)
+        });
+        cx.simulate_resize(size(px(500.), px(200.)));
+        draw(cx);
+        let window_view = window_view.unwrap();
+        let a = cx.debug_bounds("a").expect("a").center();
+        let b = cx.debug_bounds("b").expect("b").center();
+        let gap = point((a.x + b.x) / 2., a.y + px(60.));
+
+        cx.simulate_mouse_move(a, None, Modifiers::default());
+        draw(cx);
+        wait(cx, LONG);
+        assert!(painted(cx), "A's tooltip shows");
+
+        cx.simulate_mouse_move(gap, None, Modifiers::default());
+        draw(cx);
+        cx.update(|_, cx| window_view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        assert!(painted(cx), "a redraw elsewhere keeps it through its grace");
+
+        wait(cx, Duration::from_millis(50));
+        cx.simulate_mouse_move(b, None, Modifiers::default());
+        draw(cx);
+        assert!(painted(cx), "B's tooltip shows at once");
+        wait(cx, LONG);
+        assert!(painted(cx), "and stays while the pointer rests on B");
+    }
+
     #[gpui::test]
     fn a_tooltip_hides_after_the_pointer_leaves(cx: &mut TestAppContext) {
         let (_, cx) = window(cx);

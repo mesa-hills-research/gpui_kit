@@ -68,8 +68,11 @@ div()
 ```
 
 A trigger in a view GPUI reuses from the last frame counts as drawn while the
-pointer rests on it. `TooltipRequest::new` anchors a request to fixed bounds
-instead, and the tooltip stays until it is hidden.
+pointer rests on it, and during the grace period after `request_hide` the
+tooltip is drawn until the grace timer ends it. Call `prepaint` inside the
+trigger element's own element ID: the trigger's state is kept under it.
+`TooltipRequest::new` anchors a request to fixed bounds instead, and the
+tooltip stays until it is hidden.
 
 ## Complete Rust example
 

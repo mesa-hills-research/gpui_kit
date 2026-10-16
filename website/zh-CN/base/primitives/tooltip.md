@@ -60,7 +60,7 @@ div()
     })
 ```
 
-GPUI 沿用上一帧的视图中的触发元素，只要指针停在其上，就算作已绘制。`TooltipRequest::new` 则把请求锚定在固定的边界上，Tooltip 会一直显示，直到被隐藏。
+GPUI 沿用上一帧的视图中的触发元素，只要指针停在其上，就算作已绘制；在 `request_hide` 之后的宽限期内，Tooltip 会一直绘制，直到宽限计时结束。请在触发元素自己的元素 ID 内调用 `prepaint`：触发元素的状态保存在这个 ID 之下。`TooltipRequest::new` 则把请求锚定在固定的边界上，Tooltip 会一直显示，直到被隐藏。
 
 ## 完整 Rust 示例
 

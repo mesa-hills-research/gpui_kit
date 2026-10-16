@@ -132,8 +132,10 @@ appears:
 - a shortcut that removes a row while the pointer rests on its action button;
 - a list that re-renders and drops a row under the pointer.
 
-A trigger in a view GPUI reuses from the last frame still counts as drawn.
-Nothing needs to be set up for this. Tooltips built with GPUI's own
+A trigger in a view GPUI reuses from the last frame counts as drawn while the
+pointer rests on it. After the pointer leaves, the tooltip stays for its short
+grace period whatever else redraws the window, so moving on to the next button
+still switches tooltips at once. Nothing needs to be set up for this. Tooltips built with GPUI's own
 `.tooltip()` on a `div` are not managed by the overlay and keep GPUI's
 behavior.
 

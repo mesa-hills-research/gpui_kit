@@ -83,7 +83,10 @@ impl TooltipTrigger {
     }
 
     /// Records the trigger's bounds for this frame. Call it from the trigger
-    /// element's prepaint, such as through [`crate::ElementExt::on_prepaint`].
+    /// element's prepaint, such as through [`crate::ElementExt::on_prepaint`],
+    /// inside the trigger element's own element ID: the state that lasts
+    /// between frames is kept under that ID, so two triggers prepainted under
+    /// one ID would share it.
     pub fn prepaint(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         // The trigger is rebuilt on every render, so what lasts between frames
         // lives in element state, under the trigger's own element ID.
@@ -350,6 +353,7 @@ impl Render for TooltipOverlay {
             .into_any_element();
         deferred(TriggerGate {
             trigger: content.trigger.clone(),
+            leaving: self.hide_task.is_some(),
             overlay: cx.entity().downgrade(),
             child: positioned,
         })
@@ -363,8 +367,17 @@ impl Render for TooltipOverlay {
 /// Deferred draws are painted after every element has been prepainted, and
 /// after GPUI has hit-tested the new frame, so by then the trigger has either
 /// marked itself or is missing from the frame.
+///
+/// Once the pointer has left the trigger, the tooltip is in its grace period
+/// and the grace timer ends it. A trigger in a view GPUI reuses from the last
+/// frame is then found by nothing (it isn't prepainted, and the pointer is no
+/// longer on its hitbox), so a frame drawn for something else mustn't take it
+/// for gone: that would hide the tooltip at once and cost the next trigger
+/// its immediate switch.
 struct TriggerGate {
     trigger: Option<Rc<TriggerState>>,
+    /// The overlay is in its grace period: the pointer left the trigger.
+    leaving: bool,
     overlay: WeakEntity<TooltipOverlay>,
     child: AnyElement,
 }
@@ -425,7 +438,7 @@ impl Element for TriggerGate {
             self.child.paint(window, cx);
             return;
         };
-        if trigger.in_frame(window) {
+        if trigger.in_frame(window) || self.leaving {
             self.child.paint(window, cx);
             return;
         }
