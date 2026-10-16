@@ -3,7 +3,7 @@ use crate::{
     dialog::{ANIMATION_DURATION, Dialog},
     image_viewer::{ImageViewer, ImageViewerItem, ImageViewerState},
     input::AnyInputState,
-    menu::{AppMenuBar, FocusAppMenuBar},
+    menu::{AltTap, AppMenuBar, FocusAppMenuBar},
     native_menu::FallbackMenuOverlay,
     notification::{Notification, NotificationList},
     sheet::Sheet,
@@ -37,6 +37,11 @@ pub(crate) struct WindowState {
     pub(crate) active_image_viewer: Option<ActiveImageViewer>,
     /// The window's menu bar, which F10, Alt and Alt with a letter reach.
     app_menu_bar: Option<WeakEntity<AppMenuBar>>,
+    /// Whether Alt went down alone and nothing has happened since that makes
+    /// its release something other than a tap: no pointer press or wheel,
+    /// no loss of focus. GPUI's lone-Alt keystroke already rules out keys.
+    alt_tap_pending: bool,
+    _window_activation: gpui::Subscription,
 }
 
 #[derive(Clone)]
@@ -96,6 +101,12 @@ impl WindowState {
             pending_focus_restore: None,
             active_image_viewer: None,
             app_menu_bar: None,
+            alt_tap_pending: false,
+            // Alt pressed before the window lost focus (Alt+Tab, say) is no
+            // tap when it is let go after the window gets focus back.
+            _window_activation: cx.observe_window_activation(window, |state, _, _| {
+                state.alt_tap_pending = false;
+            }),
         }
     }
 
@@ -389,12 +400,29 @@ impl WindowState {
         }
     }
 
+    /// The window's menu bar, unless a dialog, sheet or image viewer is
+    /// open over the window: the bar's keys must not reach past a modal
+    /// layer.
     fn app_menu_bar(window: &Window, cx: &App) -> Option<Entity<AppMenuBar>> {
-        Self::entity(window, cx)?
-            .read(cx)
-            .app_menu_bar
-            .as_ref()?
-            .upgrade()
+        let state = Self::entity(window, cx)?;
+        let state = state.read(cx);
+        if state.has_modal_layer() {
+            return None;
+        }
+        state.app_menu_bar.as_ref()?.upgrade()
+    }
+
+    /// Whether a dialog, sheet or image viewer is open over the window.
+    pub(crate) fn has_modal_layer(&self) -> bool {
+        !self.active_dialogs.is_empty()
+            || self.active_sheet.is_some()
+            || self.active_image_viewer.is_some()
+    }
+
+    /// Note whether Alt alone is down; a later release of it is a tap only
+    /// while this holds.
+    fn set_alt_tap_pending(window: &mut Window, cx: &mut App, pending: bool) {
+        Self::try_update(window, cx, |state, _, _| state.alt_tap_pending = pending);
     }
 
     pub fn open_image_viewer(
@@ -529,6 +557,15 @@ impl gpui_base::RootPlugin for WindowState {
                     bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
                 }
             });
+            interactivity.on_action(|_: &AltTap, window, cx| {
+                let pending = Self::try_update(window, cx, |state, _, _| {
+                    std::mem::take(&mut state.alt_tap_pending)
+                })
+                .unwrap_or(false);
+                if pending && let Some(bar) = Self::app_menu_bar(window, cx) {
+                    bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
+                }
+            });
             interactivity.on_key_down(|event, window, cx| {
                 let keystroke = &event.keystroke;
                 let alt_only = keystroke.modifiers.alt
@@ -550,9 +587,10 @@ impl gpui_base::RootPlugin for WindowState {
                 }
             });
             interactivity.on_modifiers_changed(|event, window, cx| {
+                let modifiers = event.modifiers;
+                let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
+                Self::set_alt_tap_pending(window, cx, alt_only);
                 if let Some(bar) = Self::app_menu_bar(window, cx) {
-                    let modifiers = event.modifiers;
-                    let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
                     bar.update(cx, |bar, cx| bar.set_alt_held(alt_only, cx));
                 }
             });
@@ -599,6 +637,40 @@ impl RenderOnce for WindowStateLayers {
             .absolute()
             .inset_0()
             .debug_selector(|| "root-layers".to_string())
+            // A pointer press or a wheel while Alt is down (Alt+click adds a
+            // caret, Alt+drag selects a column) makes Alt's release no tap.
+            // Window listeners see these before any element can stop them.
+            .when(!cfg!(target_os = "macos"), |this| {
+                let root = root.clone();
+                this.child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        move |_, _, window, _| {
+                            let clear = {
+                                let root = root.clone();
+                                move |cx: &mut App| {
+                                    root.update(cx, |state, _| state.alt_tap_pending = false)
+                                }
+                            };
+                            let on_press = clear.clone();
+                            window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, cx| {
+                                if phase == gpui::DispatchPhase::Capture {
+                                    on_press(cx);
+                                }
+                            });
+                            window.on_mouse_event(
+                                move |_: &gpui::ScrollWheelEvent, phase, _, cx| {
+                                    if phase == gpui::DispatchPhase::Capture {
+                                        clear(cx);
+                                    }
+                                },
+                            );
+                        },
+                    )
+                    .absolute()
+                    .size_0(),
+                )
+            })
             .children(WindowState::sheet_layer(root.clone(), window, cx))
             .children(WindowState::dialog_layer(&root, window, cx))
             .children(WindowState::image_viewer_layer(&root, cx))

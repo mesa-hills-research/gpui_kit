@@ -170,7 +170,20 @@ On Windows and Linux the [AppMenuBar](./menu.md) in the title bar answers the ke
 - **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was;
 - **Alt** with a menu's underlined letter opens that menu. The letters are underlined while Alt is held or the bar has focus. Each menu takes the first letter of its name not taken by an earlier menu.
 
-An input that binds Alt with a letter keeps it: the menu bar sees the key only when nothing focused handled it. To use F10 for something else, bind it in your keymap; the bar's binding is `FocusAppMenuBar` with no context.
+A tap of Alt is Alt pressed and released with nothing in between. Alt with a click, a drag or the wheel (Alt+click adds a caret in a text area) is no tap, and neither is an Alt held while the window lost focus, as with Alt+Tab away and back. Clicking another control ends keyboard mode there; the next tap starts it again. None of these keys reach the bar while a dialog, sheet or image viewer is open over the window.
+
+An input that binds Alt with a letter keeps it: the menu bar sees the key only when nothing focused handled it. The bindings have no context: F10 is `FocusAppMenuBar` and the tap is `AltTap`; bind those keys to something else in your keymap to take them over.
+
+### AppMenuBar
+
+| Method | Description |
+| --- | --- |
+| `AppMenuBar::new(cx)` | A menu bar of the menus in `GlobalState::app_menus()` |
+| `reload(cx)` | Read the menus again |
+| `toggle_focus(window, cx)` | Focus the first title from the keyboard, or give focus back (F10) |
+| `open_menu_with_key(key, window, cx)` | Open the menu with that access key; returns whether one opened |
+| `is_active()` | Whether the bar has the keyboard: a title focused or a menu open |
+| `highlighted_index()` / `open_index()` | The focused title, the open menu |
 
 ## API Reference
 

@@ -6,7 +6,7 @@ mod dropdown_menu;
 mod menu_item;
 mod popup_menu;
 
-pub use app_menu_bar::{AppMenuBar, FocusAppMenuBar};
+pub use app_menu_bar::{AltTap, AppMenuBar, FocusAppMenuBar};
 pub use context_menu::{ContextMenu, ContextMenuExt, ContextMenuState};
 pub use dropdown_menu::DropdownMenu;
 pub use popup_menu::{PopupMenu, PopupMenuItem};

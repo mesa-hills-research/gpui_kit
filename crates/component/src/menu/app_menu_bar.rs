@@ -22,9 +22,13 @@ actions!(
     app_menu_bar,
     [
         /// Move keyboard focus to the window's menu bar, on its first menu,
-        /// or back to where it was. Bound to F10 and a tap of Alt on Windows
-        /// and Linux.
-        FocusAppMenuBar
+        /// or back to where it was. Bound to F10 on Windows and Linux.
+        FocusAppMenuBar,
+        /// A tap of Alt alone. It does what [`FocusAppMenuBar`] does unless
+        /// the pointer was pressed or scrolled while Alt was down, or the
+        /// window lost focus meanwhile (an Alt+click, or Alt+Tab away and
+        /// back, is no tap). Bound to `alt` on Windows and Linux.
+        AltTap
     ]
 );
 
@@ -41,7 +45,7 @@ pub fn init(cx: &mut App) {
     if !cfg!(target_os = "macos") {
         cx.bind_keys([
             KeyBinding::new("f10", FocusAppMenuBar, None),
-            KeyBinding::new("alt", FocusAppMenuBar, None),
+            KeyBinding::new("alt", AltTap, None),
         ]);
     }
 }
@@ -67,6 +71,8 @@ pub struct AppMenuBar {
     mnemonics: Vec<Option<(usize, char)>>,
     /// Whether Alt is held, so the access keys are underlined.
     alt_held: bool,
+    /// Ends keyboard mode when focus moves out of the bar and its menus.
+    _focus_out: Option<Subscription>,
 }
 
 /// Each name's access key: its first letter or digit not taken by an earlier
@@ -101,6 +107,7 @@ impl AppMenuBar {
                 highlighted_index: None,
                 mnemonics: Vec::new(),
                 alt_held: false,
+                _focus_out: None,
             };
             this.reload(cx);
             this
@@ -184,6 +191,26 @@ impl AppMenuBar {
             self.alt_held = held;
             cx.notify();
         }
+    }
+
+    /// Focus went somewhere: if it left the bar and its open menu (the user
+    /// clicked another control), keyboard mode ends where focus now is.
+    fn on_focus_out(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_active() || self.focus_handle.contains_focused(window, cx) {
+            return;
+        }
+        let in_open_menu = self
+            .selected_index
+            .and_then(|ix| self.menus.get(ix))
+            .and_then(|menu| menu.read(cx).popup_menu.clone())
+            .is_some_and(|popup| popup.read(cx).focus_handle(cx).contains_focused(window, cx));
+        if in_open_menu {
+            return;
+        }
+        self.highlighted_index = None;
+        self.selected_index = None;
+        self.action_context = None;
+        cx.notify();
     }
 
     /// Give focus back to what had it and leave keyboard mode.
@@ -295,6 +322,13 @@ impl Render for AppMenuBar {
         crate::root::WindowState::try_update(window, cx, |state, _, _| {
             state.register_app_menu_bar(this)
         });
+        if self._focus_out.is_none() {
+            self._focus_out = Some(cx.on_focus_out(
+                &self.focus_handle.clone(),
+                window,
+                |this, _, window, cx| this.on_focus_out(window, cx),
+            ));
+        }
         h_flex()
             .id("app-menu-bar")
             .overflow_x_scroll()
@@ -647,6 +681,7 @@ mod tests {
                     highlighted_index: None,
                     mnemonics: Vec::new(),
                     alt_held: false,
+                    _focus_out: None,
                 }),
                 first_focus,
                 second_focus,
