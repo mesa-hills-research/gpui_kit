@@ -835,3 +835,58 @@ fn a_large_document_is_counted_on_another_thread(cx: &mut TestAppContext) {
     cx.update(|cx| small.count_words(&text, 0, cx));
     assert_eq!(counted(&small, "wojciech"), 1);
 }
+
+/// What a suggestion reads of the text, the excerpt around the caret holds:
+/// the suggestion, the sentence to learn and whether it is prose come out
+/// the same from it as from all of the text, wherever the caret is.
+#[test]
+fn the_text_around_the_caret_is_enough() {
+    use super::model::generate_suggestion;
+    use super::{Excerpt, preceding_sentence};
+    use crate::classify::classify_context;
+
+    let mut text = String::new();
+    for paragraph in 0..300 {
+        match paragraph % 7 {
+            0 => text.push_str("```\nfn shift(range: Range<usize>) -> usize {\n    range.end\n}\n"),
+            1 => text.push_str("```\n\n"),
+            2 => text.push_str(&"A very long line of prose that goes on. ".repeat(60)),
+            _ => text.push_str("Thanks for the update. We will circle back on the plan.\n"),
+        }
+        text.push_str("let total = compute_total(items);\nThanks for the help\n\n");
+    }
+    let vocabulary = vocabulary();
+    let rope = Rope::from(text.as_str());
+    let mut local = super::LocalIndex::new();
+    local.build(&rope, None, &|_| 0);
+    let mut offset = 0;
+    while offset < text.len() {
+        let excerpt = Excerpt::around(&rope, offset);
+        let inside = excerpt.offset_in(offset);
+        assert_eq!(excerpt.start + inside, offset);
+        let part = excerpt.text.as_str();
+        assert_eq!(
+            generate_suggestion(&vocabulary, &local, part, inside),
+            generate_suggestion(&vocabulary, &local, &text, offset),
+            "at {offset}"
+        );
+        let sentence = preceding_sentence(part, inside).map(|(range, end)| {
+            (
+                excerpt.start + range.start..excerpt.start + range.end,
+                excerpt.start + end,
+            )
+        });
+        assert_eq!(sentence, preceding_sentence(&text, offset), "at {offset}");
+        if let Some((_, end)) = sentence {
+            assert_eq!(
+                classify_context(part, end - excerpt.start),
+                classify_context(&text, end),
+                "at {offset}"
+            );
+        }
+        offset += 97;
+        while !text.is_char_boundary(offset) {
+            offset += 1;
+        }
+    }
+}

@@ -72,10 +72,10 @@ use crate::classify::{TextContext, classify_context};
 use crate::text::floor_char_boundary;
 use gpui::{App, Entity, KeyBinding, Subscription, Task, Window};
 use gpui_base::input::{
-    AcceptSuggestionWord, Rope, Suggestion, SuggestionEvent, SuggestionProvider, SuggestionRequest,
-    TextChange, TextareaState,
+    AcceptSuggestionWord, Rope, RopeExt as _, Suggestion, SuggestionEvent, SuggestionProvider,
+    SuggestionRequest, TextChange, TextareaState,
 };
-use learned::LearnedSentences;
+use learned::{LearnedSentences, typed_copies};
 use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
@@ -583,9 +583,8 @@ impl WordSuggestions {
 
     /// What a request for the suggestions at `offset` in `text` offers.
     pub(crate) fn suggest_in(&self, text: &Rope, offset: usize, now: Instant) -> Option<String> {
-        let text = text.to_string();
-        let offset = floor_char_boundary(&text, offset.min(text.len()));
-        self.suggest(&text, offset, now)
+        let excerpt = Excerpt::around(text, offset);
+        self.suggest(text, &excerpt, excerpt.offset_in(offset), now)
     }
 
     /// Follows `edits`, ranges and the text that replaced them, in the
@@ -621,44 +620,59 @@ impl WordSuggestions {
 
     /// Learns the sentence before `caret` in `text`, after a typed key.
     pub(crate) fn learn_before(&self, text: &Rope, caret: usize) {
-        let text = text.to_string();
-        let caret = floor_char_boundary(&text, caret.min(text.len()));
-        self.learn_preceding_sentence(&text, caret);
+        let excerpt = Excerpt::around(text, caret);
+        self.learn_preceding_sentence(text, &excerpt, excerpt.offset_in(caret));
     }
 
-    /// The suggestion to offer at `offset` in `text`, if any: learns the
-    /// sentence the caret just left, brings the document's index up to date,
-    /// asks the model, and lets pacing decide whether it shows now.
-    fn suggest(&self, text: &str, offset: usize, now: Instant) -> Option<String> {
-        self.learn_preceding_sentence(text, offset);
+    /// The suggestion to offer at `offset` in `excerpt` of `whole`, if any:
+    /// learns the sentence the caret just left, asks the model, and lets
+    /// pacing decide whether it shows now.
+    fn suggest(
+        &self,
+        whole: &Rope,
+        excerpt: &Excerpt,
+        offset: usize,
+        now: Instant,
+    ) -> Option<String> {
+        self.learn_preceding_sentence(whole, excerpt, offset);
 
+        let text = excerpt.text.as_str();
         let suggestion = {
             let vocabulary = self.vocabulary.borrow();
             let local = self.local_index.borrow();
 
             generate_suggestion(&vocabulary, &local, text, offset)
         };
-        let suggestion = self.pacer.offer(text, offset, suggestion, now);
+        let caret = excerpt.start + offset;
+        let suggestion = self.pacer.offer(text, offset, caret, suggestion, now);
         self.typed
             .borrow_mut()
-            .offered(offset, suggestion.as_deref());
+            .offered(caret, suggestion.as_deref());
         suggestion
     }
 
-    /// Learns the most recently finished prose sentence before the cursor,
-    /// when the user typed all of it and it isn't learned already.
-    fn learn_preceding_sentence(&self, text: &str, offset: usize) {
+    /// Learns the most recently finished prose sentence before `offset` in
+    /// `excerpt` of `whole`, when the user typed all of it and it isn't
+    /// learned already.
+    fn learn_preceding_sentence(&self, whole: &Rope, excerpt: &Excerpt, offset: usize) {
+        let text = excerpt.text.as_str();
         let Some((range, terminator_offset)) = preceding_sentence(text, offset) else {
             return;
         };
+        let sentence = &text[range.clone()];
+        let in_whole = excerpt.start + range.start..excerpt.start + range.end;
 
         {
             let typed = self.typed.borrow();
-            if typed.overlaps_untyped(range.clone())
+            if typed.overlaps_untyped(in_whole.clone())
                 || self
                     .learned
                     .borrow_mut()
-                    .is_learned(text, range.clone(), &typed)
+                    .is_learned(sentence, in_whole.end, |limit| {
+                        // Only when a sentence learned before turns up
+                        // somewhere else, which needs all of the text.
+                        typed_copies(&whole.to_string(), sentence, &typed, limit)
+                    })
             {
                 return;
             }
@@ -668,10 +682,7 @@ impl WordSuggestions {
             return;
         }
 
-        let words = self
-            .vocabulary
-            .borrow_mut()
-            .learn_sentence(&text[range.clone()]);
+        let words = self.vocabulary.borrow_mut().learn_sentence(sentence);
         if words.is_empty() {
             return;
         }
@@ -682,13 +693,63 @@ impl WordSuggestions {
                 *taught.entry(word.as_str().into()).or_default() += 1;
             }
         }
-        self.learned.borrow_mut().learned(text, range);
+        self.learned.borrow_mut().learned(sentence, in_whole.end);
         // The index counted the sentence as the document's own.
         self.with_held(|held| {
             self.local_index
                 .borrow_mut()
                 .update_extra(words.iter().map(String::as_str), held)
         });
+    }
+}
+
+/// How much of the text before the caret's line an [`Excerpt`] holds: more
+/// than anything a suggestion reads back from the caret, which is at most
+/// [`TERMINATOR_SEARCH_BYTES`] and [`SENTENCE_SCAN_BYTES`] to the start of the
+/// sentence learned, and a few kilobytes above a line to classify it as
+/// prose or code.
+const EXCERPT_BEFORE_BYTES: usize = 16 * 1024;
+
+/// How much of the text after the caret's line an [`Excerpt`] holds, for
+/// the lines below that classifying reads.
+const EXCERPT_AFTER_BYTES: usize = 2 * 1024;
+
+/// The text around the caret, copied out of the textarea's rope: whole
+/// lines from [`EXCERPT_BEFORE_BYTES`] before the caret's line to
+/// [`EXCERPT_AFTER_BYTES`] after it. A suggestion reads no further, and
+/// starting at a line keeps the start of the excerpt the start of a
+/// sentence, as the line break before it ends one.
+struct Excerpt {
+    text: String,
+    /// Where `text` starts in the whole text.
+    start: usize,
+}
+
+impl Excerpt {
+    fn around(text: &Rope, offset: usize) -> Self {
+        let offset = offset.min(text.len());
+        let row = text.offset_to_point(offset).row;
+        let line_start = text.line_start_offset(row);
+        let line_end = text.line_end_offset(row);
+        let start = text.line_start_offset(
+            text.offset_to_point(line_start.saturating_sub(EXCERPT_BEFORE_BYTES))
+                .row,
+        );
+        let end = text.line_end_offset(
+            text.offset_to_point((line_end + EXCERPT_AFTER_BYTES).min(text.len()))
+                .row,
+        );
+        Self {
+            text: text.slice(start..end).to_string(),
+            start,
+        }
+    }
+
+    /// Where byte `offset` of the whole text is in the excerpt, on a
+    /// character boundary.
+    fn offset_in(&self, offset: usize) -> usize {
+        let offset = offset.saturating_sub(self.start).min(self.text.len());
+        floor_char_boundary(&self.text, offset)
     }
 }
 

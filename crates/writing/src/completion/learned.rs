@@ -15,7 +15,6 @@ use super::is_sentence_terminator;
 use super::typed::TypedText;
 use crate::text::hash_str;
 use std::collections::HashMap;
-use std::ops::Range;
 
 #[derive(Default)]
 pub(super) struct LearnedSentences {
@@ -38,36 +37,43 @@ impl LearnedSentences {
         }
     }
 
-    /// Whether the sentence at `range` of `text` counts as learned already.
-    pub fn is_learned(&mut self, text: &str, range: Range<usize>, typed: &TypedText) -> bool {
-        let sentence = &text[range.clone()];
+    /// Whether `sentence`, which ends at byte `end` of the text, counts as
+    /// learned already. `copies` counts its finished, typed copies in the
+    /// text, up to a limit, as [`typed_copies`] does; it is called only when
+    /// the sentence was learned before but last seen elsewhere.
+    pub fn is_learned(
+        &mut self,
+        sentence: &str,
+        end: usize,
+        copies: impl FnOnce(usize) -> usize,
+    ) -> bool {
         let hash = hash_str(sentence);
         let learned = self.counts.get(&hash).copied().unwrap_or(0);
         if learned == 0 {
             return false;
         }
-        if self.last_known == Some((range.end, hash)) {
+        if self.last_known == Some((end, hash)) {
             return true;
         }
-        let copies = typed_copies(text, sentence, typed, learned as usize + 1);
-        if copies > learned as usize {
+        if copies(learned as usize + 1) > learned as usize {
             return false;
         }
-        self.last_known = Some((range.end, hash));
+        self.last_known = Some((end, hash));
         true
     }
 
-    /// Records that the sentence at `range` of `text` was learned.
-    pub fn learned(&mut self, text: &str, range: Range<usize>) {
-        let hash = hash_str(&text[range.clone()]);
+    /// Records that `sentence`, which ends at byte `end` of the text, was
+    /// learned.
+    pub fn learned(&mut self, sentence: &str, end: usize) {
+        let hash = hash_str(sentence);
         *self.counts.entry(hash).or_default() += 1;
-        self.last_known = Some((range.end, hash));
+        self.last_known = Some((end, hash));
     }
 }
 
 /// How many finished, typed copies of `sentence` `text` holds, counting up to
 /// `limit`.
-fn typed_copies(text: &str, sentence: &str, typed: &TypedText, limit: usize) -> usize {
+pub(super) fn typed_copies(text: &str, sentence: &str, typed: &TypedText, limit: usize) -> usize {
     text.match_indices(sentence)
         .filter(|&(start, _)| {
             let end = start + sentence.len();
@@ -107,7 +113,9 @@ mod tests {
 
     fn learned_at(learned: &mut LearnedSentences, text: &str, sentence: &str) -> bool {
         let start = text.rfind(sentence).unwrap();
-        learned.is_learned(text, start..start + sentence.len(), &TypedText::default())
+        learned.is_learned(sentence, start + sentence.len(), |limit| {
+            typed_copies(text, sentence, &TypedText::default(), limit)
+        })
     }
 
     #[test]
@@ -115,7 +123,7 @@ mod tests {
         let mut learned = LearnedSentences::default();
         let text = "Ferns grow slowly. Mosses grow.";
         assert!(!learned_at(&mut learned, text, "Ferns grow slowly"));
-        learned.learned(text, 0..17);
+        learned.learned(&text[0..17], 17);
         assert!(learned_at(&mut learned, text, "Ferns grow slowly"));
 
         // Moved by an edit above, it is the same sentence.

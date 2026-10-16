@@ -379,11 +379,12 @@ impl Pacer {
     }
 
     /// What to offer of the model's `suggestion` for the caret at `offset`
-    /// in `text`.
+    /// in `text`, which is at `caret` in the whole text.
     pub fn offer(
         &self,
         text: &str,
         offset: usize,
+        caret: usize,
         suggestion: Option<String>,
         now: Instant,
     ) -> Option<String> {
@@ -400,16 +401,17 @@ impl Pacer {
             }
             return None;
         };
-        let Some(offer) = Offer::new(text, offset, &suggestion) else {
+        let Some(mut offer) = Offer::new(text, offset, &suggestion) else {
             *pending = None;
             return Some(suggestion);
         };
+        offer.caret = caret;
         if typing_along {
             // Keep showing the suggestion being typed along. Should the model
             // change its mind mid-word, the new word waits for a pause.
             return match pending.as_mut() {
                 Some(typed_along)
-                    if typed_along.caret == offset && typed_along.word == offer.word =>
+                    if typed_along.caret == caret && typed_along.word == offer.word =>
                 {
                     typed_along.ghost = offer.ghost;
                     Some(suggestion)
