@@ -1697,6 +1697,47 @@ mod tests {
         assert_eq!(window_selected_text(cx), "");
     }
 
+    /// One document shown as two rows, the way a transcript splits a long
+    /// answer.
+    struct BlockRows {
+        rows: [Entity<TextViewState>; 2],
+    }
+
+    impl Render for BlockRows {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(div().h(px(40.)).child(TextView::new(&self.rows[0])))
+                .child(div().h(px(40.)).child(TextView::new(&self.rows[1])))
+        }
+    }
+
+    #[gpui::test]
+    fn a_drag_selects_across_the_block_rows_of_one_document(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let document =
+                cx.new(|cx| TextViewState::markdown("First block here\n\nSecond block here", cx));
+            let rows = [
+                cx.new(|cx| TextViewState::block_range(&document, 0..1, cx)),
+                cx.new(|cx| TextViewState::block_range(&document, 1.., cx)),
+            ];
+            let view = cx.new(|_| BlockRows { rows });
+            Root::new(view, window, cx)
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let _ = root;
+
+        drag(cx, point(px(0.), px(10.)), point(px(400.), px(50.)));
+
+        let text = window_selected_text(cx);
+        assert!(text.contains("First block here"), "got: {text:?}");
+        assert!(text.contains("Second block here"), "got: {text:?}");
+    }
+
     #[gpui::test]
     fn shift_click_extends_across_text_views(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);

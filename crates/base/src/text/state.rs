@@ -2,7 +2,7 @@ use futures::Stream as _;
 #[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 use std::{
-    ops::{Range, RangeInclusive},
+    ops::{Bound, Range, RangeBounds, RangeInclusive},
     pin::Pin,
     sync::{Arc, Mutex, OnceLock},
     task::Poll,
@@ -12,9 +12,9 @@ use std::{
 use web_time::Instant;
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, EntityId, FocusHandle, IntoElement, KeyBinding,
-    ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, Window,
-    prelude::FluentBuilder as _, px,
+    App, AppContext as _, Bounds, Context, Entity, EntityId, FocusHandle, IntoElement, KeyBinding,
+    ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Subscription,
+    Task, WeakEntity, Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
         RangeHighlight, RangeHighlightError, RenderedText, TableActionsFn, TextViewStyle,
         document::ParsedDocument,
         format,
-        node::{self, NodeContext},
+        node::{self, BlockNode, NodeContext},
         range_highlight::{
             LeafRemap, PendingReveal, RangeHighlightFrame, RenderedIndex, RevealRequest,
         },
@@ -155,6 +155,114 @@ pub struct TextViewState {
     tx: Sender<UpdateOptions>,
     _parse_task: Task<()>,
     _receive_task: Task<()>,
+    /// The document this view shows some blocks of, for a view made by
+    /// [`Self::block_range`].
+    block_range: Option<BlockRange>,
+}
+
+/// The document a [`TextViewState::block_range`] view shows some blocks of.
+struct BlockRange {
+    document: WeakEntity<TextViewState>,
+    /// The document's top-level blocks the view shows, by index.
+    blocks: (Bound<usize>, Bound<usize>),
+    /// The document's `full_update_revision` and `committed_revision` the
+    /// view last took its blocks at, and whether those blocks were complete.
+    synced: Option<(usize, usize, bool)>,
+    /// The document's source length then: where text it appended starts.
+    synced_len: usize,
+    _observe: Subscription,
+}
+
+/// Identifies a top-level block of a document while text is only appended to
+/// it, and tells a block from the blocks before a replacement of the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TextBlockId {
+    replacement: usize,
+    start: usize,
+}
+
+/// What a top-level block of a document is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TextBlockContent {
+    /// A paragraph, which may hold only an image.
+    Paragraph,
+    /// A heading of the given level, 1 to 6.
+    Heading(u8),
+    /// A bulleted, numbered or task list.
+    List,
+    /// A fenced or indented code block, with the language its fence names.
+    CodeBlock(Option<SharedString>),
+    /// A table.
+    Table,
+    /// A block quote.
+    Quote,
+    /// A thematic break.
+    Rule,
+    /// A link reference definition, which shows nothing.
+    Definition,
+    /// A block of a [`MarkdownExtensions`] plugin, by its node name.
+    Custom(SharedString),
+    /// Anything else, such as an HTML container.
+    Other,
+}
+
+/// A top-level block of a document: what a long document is split into to
+/// show it as rows of a list, each a [`TextViewState::block_range`] view.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextBlock {
+    index: usize,
+    id: TextBlockId,
+    source_range: Option<Range<usize>>,
+    content: TextBlockContent,
+    is_complete: bool,
+}
+
+impl TextBlock {
+    /// The block's place among the document's top-level blocks.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// The block's identity, which stays the same while text is appended to
+    /// the document.
+    pub fn id(&self) -> TextBlockId {
+        self.id
+    }
+
+    /// The block's range of the Markdown source, when the parser recorded it
+    /// (the HTML parser records none).
+    pub fn source_range(&self) -> Option<Range<usize>> {
+        self.source_range.clone()
+    }
+
+    /// What the block is.
+    pub fn content(&self) -> &TextBlockContent {
+        &self.content
+    }
+
+    /// Whether appending text to the document can no longer change the
+    /// block: true of every block but the last.
+    pub fn is_complete(&self) -> bool {
+        self.is_complete
+    }
+}
+
+impl TextBlockContent {
+    fn of(block: &BlockNode) -> Self {
+        match block {
+            BlockNode::Paragraph(_) => Self::Paragraph,
+            BlockNode::Heading { level, .. } => Self::Heading(*level),
+            BlockNode::List { .. } | BlockNode::ListItem { .. } => Self::List,
+            BlockNode::CodeBlock(code_block) => Self::CodeBlock(code_block.lang()),
+            BlockNode::Table(_) => Self::Table,
+            BlockNode::Blockquote { .. } => Self::Quote,
+            BlockNode::HorizontalRule { .. } => Self::Rule,
+            BlockNode::Definition { .. } => Self::Definition,
+            BlockNode::Custom(node) => Self::Custom(node.name().to_string().into()),
+            BlockNode::Root { .. } | BlockNode::Break { .. } | BlockNode::Unknown => Self::Other,
+        }
+    }
 }
 
 impl TextViewState {
@@ -235,9 +343,197 @@ impl TextViewState {
             tx,
             _parse_task,
             _receive_task,
+            block_range: None,
         };
         this.increment_update(&text, false, cx);
         this
+    }
+
+    /// A view of the top-level blocks `blocks` of `document` (by index, see
+    /// [`Self::blocks`]), which keeps parsing the text: one row of a long
+    /// document shown as a list of rows.
+    ///
+    /// Only the rows a list lays out are built, so a long streamed answer
+    /// costs what its visible rows cost. Each view selects on its own, and a
+    /// selection that starts in one row and ends in another spans the rows
+    /// between, as it spans separate text views. Text pushed to `document`
+    /// reaches the view once it is parsed, and a view whose blocks are all
+    /// complete is left alone from then on. Show either a document or views
+    /// of its blocks, as they share the parsed blocks and their selection.
+    ///
+    /// A range past the document's end shows the blocks that exist. A range
+    /// open at the end, such as `4..`, takes in the blocks appended later.
+    pub fn block_range(
+        document: &Entity<TextViewState>,
+        blocks: impl RangeBounds<usize>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let format = document.read(cx).format;
+        let mut this = Self::new(format, "", cx);
+        let observe = cx.observe(document, |this, document, cx| {
+            this.sync_block_range(&document, cx);
+        });
+        this.block_range = Some(BlockRange {
+            document: document.downgrade(),
+            blocks: (blocks.start_bound().cloned(), blocks.end_bound().cloned()),
+            synced: None,
+            synced_len: 0,
+            _observe: observe,
+        });
+        this.sync_block_range(document, cx);
+        this
+    }
+
+    /// Changes the blocks a [`Self::block_range`] view shows. Does nothing to
+    /// another view.
+    pub fn set_block_range(&mut self, blocks: impl RangeBounds<usize>, cx: &mut Context<Self>) {
+        let Some(block_range) = &mut self.block_range else {
+            return;
+        };
+        let blocks = (blocks.start_bound().cloned(), blocks.end_bound().cloned());
+        if block_range.blocks == blocks {
+            return;
+        }
+        block_range.blocks = blocks;
+        block_range.synced = None;
+        if let Some(document) = block_range.document.upgrade() {
+            self.sync_block_range(&document, cx);
+        }
+    }
+
+    /// The top-level blocks the view shows, as of the last parse that landed,
+    /// with their index among the document's blocks.
+    pub fn blocks(&self) -> Vec<TextBlock> {
+        let blocks = &self.parsed_content.document.blocks;
+        let first = self.block_range_start();
+        let document_len = first + blocks.len() + usize::from(self.block_range_is_complete());
+        let replacement = self.block_range_replacement();
+        blocks
+            .iter()
+            .enumerate()
+            .map(|(ix, block)| {
+                let index = first + ix;
+                let span = block.span();
+                TextBlock {
+                    index,
+                    id: TextBlockId {
+                        replacement,
+                        start: span.map_or(index, |span| span.start),
+                    },
+                    source_range: span.map(|span| span.start..span.end),
+                    content: TextBlockContent::of(block),
+                    is_complete: index + 1 < document_len,
+                }
+            })
+            .collect()
+    }
+
+    /// The index of the document's block the view starts with.
+    fn block_range_start(&self) -> usize {
+        match self.block_range.as_ref().map(|range| range.blocks.0) {
+            Some(Bound::Included(start)) => start,
+            Some(Bound::Excluded(start)) => start + 1,
+            _ => 0,
+        }
+    }
+
+    /// Whether the view shows blocks that are all complete.
+    fn block_range_is_complete(&self) -> bool {
+        self.block_range
+            .as_ref()
+            .and_then(|range| range.synced)
+            .is_some_and(|(_, _, complete)| complete)
+    }
+
+    /// Which replacement of its text the document is at, as far as the view
+    /// knows.
+    fn block_range_replacement(&self) -> usize {
+        match &self.block_range {
+            Some(range) => range.synced.map_or(0, |(replacement, _, _)| replacement),
+            None => self.full_update_revision,
+        }
+    }
+
+    /// Takes the view's blocks from `document`'s latest parse.
+    fn sync_block_range(&mut self, document: &Entity<TextViewState>, cx: &mut Context<Self>) {
+        let Some(block_range) = &self.block_range else {
+            return;
+        };
+        let document = document.read(cx);
+        let replacement = document.full_update_revision;
+        let revision = document.committed_revision;
+        let synced = block_range.synced;
+        // A view of complete blocks has nothing to take while text is only
+        // appended.
+        if synced.is_some_and(|(synced_replacement, synced_revision, complete)| {
+            synced_replacement == replacement && (synced_revision == revision || complete)
+        }) {
+            return;
+        }
+
+        let all = &document.parsed_content.document.blocks;
+        let start = match block_range.blocks.0 {
+            Bound::Included(start) => start,
+            Bound::Excluded(start) => start + 1,
+            Bound::Unbounded => 0,
+        }
+        .min(all.len());
+        let end = match block_range.blocks.1 {
+            Bound::Included(end) => end + 1,
+            Bound::Excluded(end) => end,
+            Bound::Unbounded => all.len(),
+        }
+        .clamp(start, all.len());
+        let complete = end < all.len();
+        let appended =
+            synced.is_some_and(|(synced_replacement, _, _)| synced_replacement == replacement);
+        let source = document.parsed_content.document.source.clone();
+        let source_len = source.len();
+        let new = ParsedContent {
+            document: ParsedDocument {
+                source,
+                blocks: Arc::new(all[start..end].to_vec()),
+            },
+            node_cx: document.parsed_content.node_cx.clone(),
+        };
+        let synced_len = block_range.synced_len;
+        let unchanged = appended
+            && new.document.blocks.len() == self.parsed_content.document.blocks.len()
+            && new
+                .document
+                .blocks
+                .iter()
+                .zip(self.parsed_content.document.blocks.iter())
+                .all(|(new, old)| new.span() == old.span() && new == old);
+        if let Some(block_range) = &mut self.block_range {
+            block_range.synced = Some((replacement, revision, complete));
+            block_range.synced_len = source_len;
+        }
+        if unchanged {
+            return;
+        }
+
+        if appended {
+            self.stream_fade.note_extend(synced_len);
+        } else {
+            self.stream_fade.note_replace();
+            self.full_update_revision = self.revision + 1;
+        }
+        self.revision += 1;
+        self.reconcile_range_highlights(&new.document, self.revision, appended);
+        self.stream_fade
+            .record(&self.parsed_content.document, &new.document, Instant::now());
+        self.parsed_content = new;
+        self.parsed_error = None;
+        if appended {
+            self.compatible_layout_update = true;
+        } else {
+            self.invalidate_measured_heights();
+            if !self.is_selecting {
+                self.reset_selection_and_adapter(cx);
+            }
+        }
+        cx.notify();
     }
 
     /// Get the text content.
@@ -300,7 +596,13 @@ impl TextViewState {
     /// [`Self::push_str`], keeping the selection; any other text replaces it.
     /// With a streamed fade-in enabled, extended text fades in; a replacement
     /// shows at once.
+    ///
+    /// A [`Self::block_range`] view stops following its document and shows
+    /// the text from then on.
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.block_range.take().is_some() {
+            self.text.clear();
+        }
         if self.text.as_str() == text {
             return;
         }
@@ -339,8 +641,16 @@ impl TextViewState {
     }
 
     /// Append partial text content to the existing text.
+    ///
+    /// Push text to the document of a [`Self::block_range`] view, not to the
+    /// view: the view stops following its document and shows the text.
     pub fn push_str(&mut self, new_text: &str, cx: &mut Context<Self>) {
         if new_text.is_empty() {
+            return;
+        }
+        if self.block_range.take().is_some() {
+            self.text.clear();
+            self.set_text(new_text, cx);
             return;
         }
         self.stream_fade.note_extend(self.text.len());
@@ -372,7 +682,11 @@ impl TextViewState {
             .markdown_extensions
             .has_same_parser_configuration(&markdown_extensions);
         self.markdown_extensions = markdown_extensions;
-        if parser_configuration_changed && self.format == TextViewFormat::Markdown {
+        // A block range view shows what its document parsed.
+        if parser_configuration_changed
+            && self.format == TextViewFormat::Markdown
+            && self.block_range.is_none()
+        {
             let text = self.text.clone();
             self.increment_update(&text, false, cx);
         }
@@ -398,7 +712,7 @@ impl TextViewState {
             return None;
         }
         if self.select_all {
-            return Some(0..self.source().len());
+            return Some(self.shown_source_range());
         }
         self.parsed_content.document.selected_source_range()
     }
@@ -419,6 +733,28 @@ impl TextViewState {
         }
     }
 
+    /// The range of the source the view shows: all of it, or the blocks of a
+    /// [`Self::block_range`] view.
+    fn shown_source_range(&self) -> Range<usize> {
+        let source = self.source();
+        if self.block_range.is_none() {
+            return 0..source.len();
+        }
+        let blocks = &self.parsed_content.document.blocks;
+        let start = blocks
+            .first()
+            .and_then(|block| block.span())
+            .map(|span| span.start);
+        let end = blocks
+            .last()
+            .and_then(|block| block.span())
+            .map(|span| span.end);
+        match (start, end) {
+            (Some(start), Some(end)) if start <= end && end <= source.len() => start..end,
+            _ => 0..0,
+        }
+    }
+
     /// Return the selected text, with `blocks` bounding which top-level blocks
     /// the selection covers.
     ///
@@ -430,7 +766,7 @@ impl TextViewState {
 
         if self.select_all {
             if format == SelectionFormat::Source {
-                return self.source().to_string();
+                return self.source()[self.shown_source_range()].to_string();
             }
 
             return self.parsed_content.document.text();
@@ -2308,6 +2644,140 @@ mod tests {
             assert_eq!(node.name(), "ticker");
             assert_eq!(node.data::<String>().map(String::as_str), Some("TSLA.US"));
         });
+    }
+
+    mod block_range {
+        use std::{cell::Cell, rc::Rc};
+
+        use gpui::{AppContext as _, Entity, TestAppContext};
+
+        use crate::text::{SelectionFormat, TextBlockContent, TextViewState};
+
+        fn document(markdown: &str, cx: &mut TestAppContext) -> Entity<TextViewState> {
+            cx.update(crate::init);
+            let document = cx.new(|cx| TextViewState::markdown(markdown, cx));
+            cx.run_until_parked();
+            document
+        }
+
+        fn rendered(view: &Entity<TextViewState>, cx: &mut TestAppContext) -> String {
+            view.read_with(cx, |view, _| view.rendered_text().as_str().to_string())
+        }
+
+        #[gpui::test]
+        fn a_view_shows_its_blocks_of_the_document(cx: &mut TestAppContext) {
+            let document = document(
+                "# Title\n\nfirst\n\nsecond\n\n```rust\nfn a() {}\n```\n",
+                cx,
+            );
+            let middle = cx.new(|cx| TextViewState::block_range(&document, 1..3, cx));
+            let tail = cx.new(|cx| TextViewState::block_range(&document, 3.., cx));
+
+            assert_eq!(rendered(&middle, cx), "first\nsecond\n");
+            assert!(rendered(&tail, cx).starts_with("fn a() {}"));
+
+            let blocks = document.read_with(cx, |document, _| document.blocks());
+            let contents = blocks
+                .iter()
+                .map(|block| block.content().clone())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                contents,
+                [
+                    TextBlockContent::Heading(1),
+                    TextBlockContent::Paragraph,
+                    TextBlockContent::Paragraph,
+                    TextBlockContent::CodeBlock(Some("rust".into())),
+                ]
+            );
+            assert_eq!(
+                blocks
+                    .iter()
+                    .map(|block| block.is_complete())
+                    .collect::<Vec<_>>(),
+                [true, true, true, false],
+                "the last block can still grow"
+            );
+            let middle_blocks = middle.read_with(cx, |middle, _| middle.blocks());
+            assert_eq!(middle_blocks.len(), 2);
+            assert_eq!(middle_blocks[0].id(), blocks[1].id());
+            assert!(middle_blocks.iter().all(|block| block.is_complete()));
+        }
+
+        #[gpui::test]
+        fn views_follow_a_streamed_document(cx: &mut TestAppContext) {
+            let document = document("first paragraph", cx);
+            let head = cx.new(|cx| TextViewState::block_range(&document, 0..1, cx));
+            let rest = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
+            let first_id = document.read_with(cx, |document, _| document.blocks()[0].id());
+
+            document.update(cx, |document, cx| document.push_str(" grows", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&head, cx), "first paragraph grows\n");
+            assert_eq!(rendered(&rest, cx), "");
+
+            document.update(cx, |document, cx| document.push_str("\n\nsecond", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&head, cx), "first paragraph grows\n");
+            assert_eq!(rendered(&rest, cx), "second\n");
+            assert_eq!(
+                document.read_with(cx, |document, _| document.blocks()[0].id()),
+                first_id,
+                "a block keeps its identity while text is appended"
+            );
+
+            // The head is complete now: more text leaves it alone.
+            let notified = Rc::new(Cell::new(0));
+            let _subscription = cx.update(|cx| {
+                let notified = notified.clone();
+                cx.observe(&head, move |_, _| notified.set(notified.get() + 1))
+            });
+            document.update(cx, |document, cx| document.push_str(" and third", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&rest, cx), "second and third\n");
+            assert_eq!(
+                notified.get(),
+                0,
+                "a view of complete blocks is not touched"
+            );
+
+            // A replacement shows at once, with new identities.
+            document.update(cx, |document, cx| document.set_text("replaced", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&head, cx), "replaced\n");
+            assert_ne!(
+                document.read_with(cx, |document, _| document.blocks()[0].id()),
+                first_id
+            );
+        }
+
+        #[gpui::test]
+        fn select_all_in_a_view_copies_its_own_blocks(cx: &mut TestAppContext) {
+            let document = document("**first**\n\nsecond\n\nthird", cx);
+            let middle = cx.new(|cx| {
+                TextViewState::block_range(&document, 1..2, cx)
+                    .selection_format(SelectionFormat::Source)
+            });
+            middle.update(cx, |middle, cx| middle.select_all(cx));
+            middle.read_with(cx, |middle, _| {
+                assert_eq!(middle.selected_text(), "second");
+                assert_eq!(middle.selected_source_range(), Some(11..17));
+            });
+        }
+
+        #[gpui::test]
+        fn set_block_range_moves_a_view_and_set_text_detaches_it(cx: &mut TestAppContext) {
+            let document = document("one\n\ntwo\n\nthree", cx);
+            let view = cx.new(|cx| TextViewState::block_range(&document, 0..1, cx));
+            view.update(cx, |view, cx| view.set_block_range(1..=2, cx));
+            assert_eq!(rendered(&view, cx), "two\nthree\n");
+
+            view.update(cx, |view, cx| view.set_text("own text", cx));
+            cx.run_until_parked();
+            document.update(cx, |document, cx| document.push_str(" more", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&view, cx), "own text\n");
+        }
     }
 
     mod range_highlights {

@@ -141,6 +141,45 @@ LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], 
 A prepared grammar stays in memory, a few megabytes each, so warm up the
 languages an application is likely to show rather than every one it enables.
 
+### A long document as rows
+
+A text view lays out its whole document every frame. A long answer in a chat
+transcript is cheaper as several rows of a `MessageScroller`, one for each
+top-level block or group of blocks, because a list lays out only the rows on
+screen. Parse the answer once with one `TextViewState`, the document, and
+show each row with a `TextViewState::block_range` view of some of its blocks:
+
+```rust
+use gpui_kit::component::text::{TextView, TextViewState};
+
+let answer = cx.new(|cx| TextViewState::markdown("", cx));
+// Streamed text goes to the document.
+answer.update(cx, |answer, cx| answer.push_str(chunk, cx));
+
+// A row for each block the answer gains, here one block per row.
+let blocks = answer.read(cx).blocks();
+let row = cx.new(|cx| TextViewState::block_range(&answer, ix..ix + 1, cx));
+
+// In the scroller's row renderer:
+TextView::new(&row)
+```
+
+A view takes its blocks from the document whenever the document's parse
+lands, and a view whose blocks are all complete is left alone from then on. A
+range open at the end, such as `ix..`, takes in the blocks appended later.
+`blocks()` lists the document's top-level blocks: what each one is (a
+paragraph, a heading, a list, a code block and its language, a table…), its
+range of the source, whether appended text can still change it, and an id
+that stays the same while text is appended. Group blocks into rows by what
+they are, and tell from the ids which rows to keep when the text was replaced.
+A selection runs across rows as it runs across separate text views, and each
+view selects and copies its own blocks. Show either the document or views of
+its blocks, as they share the parsed blocks.
+
+Streaming a 20,000-token answer at its end, a frame takes 0.9 ms with a row
+per block where the answer as one row took 12.5 ms
+(`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`).
+
 ### Highlight ranges
 
 An application that searches a document, or points at a citation inside it,

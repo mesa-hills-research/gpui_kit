@@ -267,6 +267,14 @@ append, and Markdown that completes as it streams (`**bo` becoming bold
 blocks the update reaches are compared, and frames are requested only while
 something is still fading. Reduced motion skips the fade.
 
+A long document can be shown as several views, each of some of its top-level
+blocks: `TextViewState::block_range(&document, blocks, cx)` makes a view of
+the blocks `blocks` (by index) of `document`, which keeps the parse.
+`TextViewState::blocks` lists a document's top-level blocks with an id, what
+each one is, its source range and whether appended text can still change it,
+and `set_block_range` moves a view to other blocks. See
+[A long document as rows](../component/text-view.md#a-long-document-as-rows).
+
 `TextViewState::set_range_highlights` paints backgrounds behind ranges of
 `rendered_text()`, the text plain copy produces, so an application can show
 its search results or citations without reparsing or restyling the document.

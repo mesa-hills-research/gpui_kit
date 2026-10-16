@@ -309,6 +309,11 @@ name = "code_block_stream"
 harness = false
 required-features = ["tree-sitter-rust"]
 
+[[bench]]
+name = "transcript_stream"
+harness = false
+required-features = ["tree-sitter-rust"]
+
 [lints]
 workspace = true
 

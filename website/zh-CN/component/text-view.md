@@ -80,6 +80,29 @@ LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], 
 
 准备好的语法会常驻内存，每种几兆字节，因此只预热应用可能显示的语言，而不是启用的全部语言。
 
+### 把长文档显示为多行
+
+TextView 每一帧都会布局整篇文档。聊天记录里的长回复可以拆成 `MessageScroller` 的多行显示，每个顶层块或一组块占一行，列表只布局屏幕上可见的行，开销小得多。用一个 `TextViewState` 作为文档解析整篇回复，每一行用 `TextViewState::block_range` 显示其中的部分块：
+
+```rust
+use gpui_kit::component::text::{TextView, TextViewState};
+
+let answer = cx.new(|cx| TextViewState::markdown("", cx));
+// 流式文字推给文档。
+answer.update(cx, |answer, cx| answer.push_str(chunk, cx));
+
+// 回复每多出一个块就加一行，这里一行一个块。
+let blocks = answer.read(cx).blocks();
+let row = cx.new(|cx| TextViewState::block_range(&answer, ix..ix + 1, cx));
+
+// 在 scroller 的行渲染函数里：
+TextView::new(&row)
+```
+
+文档每完成一次解析，视图就从文档取回自己的块；块全部完成的视图此后不再变化。末端开放的范围（例如 `ix..`）会包含之后追加的块。`blocks()` 列出文档的顶层块：每个块是什么（段落、标题、列表、代码块及其语言、表格……）、在源文本中的范围、追加文字后是否还会变化，以及在只追加文字期间保持不变的 id。按块的类型把块分组成行，文本被替换时用 id 判断哪些行可以保留。选区可以跨行，就像跨多个独立的 TextView 一样，每个视图选择和复制自己的块。文档本身和它的块视图只显示其一，因为它们共用解析出的块。
+
+在一篇两万 token 的回复末尾流式输出时，一块一行每帧需要 0.9 ms，而整篇作为一行需要 12.5 ms（`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`）。
+
 ### 高亮文本范围
 
 应用在文档里搜索，或者指向文档里的某处引用时，用 `set_range_highlights` 把这些范围标出来。搜索由应用负责：在视图显示的文本 `rendered_text()` 里找到范围，连同绘制用的颜色一起交回，当前结果用更醒目的颜色：

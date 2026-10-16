@@ -82,6 +82,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   code while the language compiles on a background thread, and `LanguageRegistry::warm_up`
   prepares languages ahead of time. See
   [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
+- **Long answers as list rows** (`gpui-base`). `TextViewState::block_range` shows some top-level
+  blocks of a document that another `TextViewState` parses, and `TextViewState::blocks` lists them
+  with stable ids, so a chat transcript can show a long answer as rows of a list and lay out only
+  the rows on screen: 0.9 ms a frame instead of 12.5 ms while a 20,000-token answer streams.
+  Selection runs across the rows. See
+  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.
