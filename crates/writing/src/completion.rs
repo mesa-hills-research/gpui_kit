@@ -72,7 +72,7 @@ use crate::classify::{TextContext, classify_context};
 use crate::text::floor_char_boundary;
 use gpui::{App, Entity, KeyBinding, Subscription, Task, Window};
 use gpui_base::input::{
-    AcceptSuggestionWord, Suggestion, SuggestionEvent, SuggestionProvider, SuggestionRequest,
+    AcceptSuggestionWord, Rope, Suggestion, SuggestionEvent, SuggestionProvider, SuggestionRequest,
     TextChange, TextareaState,
 };
 use learned::LearnedSentences;
@@ -473,6 +473,20 @@ impl WordSuggestions {
         })
     }
 
+    /// What a request for the suggestions at `offset` in `text` offers.
+    pub(crate) fn suggest_in(&self, text: &Rope, offset: usize, now: Instant) -> Option<String> {
+        let text = text.to_string();
+        let offset = floor_char_boundary(&text, offset.min(text.len()));
+        self.suggest(&text, offset, now)
+    }
+
+    /// Learns the sentence before `caret` in `text`, after a typed key.
+    pub(crate) fn learn_before(&self, text: &Rope, caret: usize) {
+        let text = text.to_string();
+        let caret = floor_char_boundary(&text, caret.min(text.len()));
+        self.learn_preceding_sentence(&text, caret);
+    }
+
     /// The suggestion to offer at `offset` in `text`, if any: learns the
     /// sentence the caret just left, brings the document's index up to date,
     /// asks the model, and lets pacing decide whether it shows now.
@@ -586,9 +600,11 @@ impl SuggestionProvider for WordSuggestions {
             return Task::ready(Ok(Vec::new()));
         }
 
-        let text = request.text().to_string();
-        let offset = floor_char_boundary(&text, request.offset().min(text.len()));
-        let suggestion = self.suggest(&text, offset, cx.background_executor().now());
+        let suggestion = self.suggest_in(
+            request.text(),
+            request.offset(),
+            cx.background_executor().now(),
+        );
         Task::ready(Ok(suggestion.into_iter().map(Suggestion::new).collect()))
     }
 
@@ -625,9 +641,7 @@ impl SuggestionProvider for WordSuggestions {
         self.typed.borrow_mut().changed(change);
         let now = cx.background_executor().now();
         if let Some(caret) = self.pacer.changed(change, now) {
-            let text = change.text().to_string();
-            let caret = floor_char_boundary(&text, caret.min(text.len()));
-            self.learn_preceding_sentence(&text, caret);
+            self.learn_before(change.text(), caret);
         }
     }
 }

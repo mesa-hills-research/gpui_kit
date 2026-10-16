@@ -51,6 +51,7 @@ extend-glob = [
     "suggestions.rs",
     "tests.rs",
     "textarea.rs",
+    "timings.rs",
 ]
 
 [type.spelling-tests.extend-words]
@@ -61,6 +62,7 @@ becuase = "becuase"
 definately = "definately"
 hel = "hel"
 hte = "hte"
+langauge = "langauge"
 occured = "occured"
 recieve = "recieve"
 seperate = "seperate"
@@ -68,6 +70,7 @@ teh = "teh"
 tha = "tha"
 tommorow = "tommorow"
 untill = "untill"
+wether = "wether"
 wierd = "wierd"
 
 # The text editor story's dictionary lists common misspellings, and the

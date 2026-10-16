@@ -66,7 +66,7 @@ const MIN_USEFUL_DICTIONARY_SIZE: usize = 10_000;
 const MAX_DICTIONARY_WORD_LEN: usize = 48;
 
 /// Most replacements offered for a misspelled word.
-const MAX_SUGGESTIONS: usize = 5;
+pub(crate) const MAX_SUGGESTIONS: usize = 5;
 
 /// Largest weighted edit distance between a typo and a suggestion.
 const MAX_SUGGESTION_COST: f32 = 2.0;
@@ -422,19 +422,22 @@ impl DictionaryChecker {
             scanner: RefCell::new(SpellScanner::new()),
         }
     }
-}
 
-impl SpellChecker for DictionaryChecker {
     /// Checks the whole text whatever lines were edited: whether a line is
     /// code depends on its neighbours and on fences above it, and the
     /// scanner's cache keeps unchanged lines cheap.
-    fn check(&self, request: &SpellCheckRequest, _: &mut App) -> Task<anyhow::Result<SpellCheck>> {
-        let text = request.text();
+    pub(crate) fn check_text(&self, text: &Rope, _ranges: &[Range<usize>]) -> SpellCheck {
         let misspelled = self.scanner.borrow_mut().scan(&self.dictionary, text);
-        Task::ready(Ok(SpellCheck {
+        SpellCheck {
             checked: std::iter::once(0..text.len()).collect(),
             misspelled,
-        }))
+        }
+    }
+}
+
+impl SpellChecker for DictionaryChecker {
+    fn check(&self, request: &SpellCheckRequest, _: &mut App) -> Task<anyhow::Result<SpellCheck>> {
+        Task::ready(Ok(self.check_text(request.text(), request.ranges())))
     }
 
     fn suggestions(&self, word: &str, _: &mut App) -> Vec<SharedString> {

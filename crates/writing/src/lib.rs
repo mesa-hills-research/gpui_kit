@@ -29,6 +29,8 @@ mod completion;
 mod options;
 mod spelling;
 mod text;
+#[cfg(test)]
+mod timings;
 mod writing;
 
 pub use completion::{SuggestionMode, WordSuggestions, accept_word_bindings};
