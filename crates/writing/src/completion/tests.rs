@@ -301,6 +301,27 @@ fn off_offers_nothing(cx: &mut TestAppContext) {
     assert_eq!(typist.pause_before_a_suggestion(), None);
 }
 
+/// What is typed while suggestions are off is never learned, not even once
+/// they are on again and the next key would learn the sentence before it.
+#[gpui::test]
+fn what_is_typed_while_off_is_never_learned(cx: &mut TestAppContext) {
+    let mut typist = Typist::with_vocabulary(cx, SuggestionMode::Off, Vocabulary::new());
+    typist.type_text("Mosses grow fast.");
+    typist.wait(MAX_QUIET_PAUSE);
+    typist.writing.set_suggestion_mode(SuggestionMode::Quiet);
+    typist.type_text(" T");
+    typist.wait(MAX_QUIET_PAUSE);
+    assert_eq!(learned(&typist), []);
+
+    // What is typed once they are on is.
+    typist.type_text("hen it rained. Yes");
+    typist.wait(MAX_QUIET_PAUSE);
+    assert_eq!(
+        learned(&typist),
+        counts(&[("Then", 1), ("it", 1), ("rained", 1)])
+    );
+}
+
 /// Quiet shows nothing while keys come 60 ms apart, and the suggestion once
 /// typing has paused for the pause.
 #[gpui::test]

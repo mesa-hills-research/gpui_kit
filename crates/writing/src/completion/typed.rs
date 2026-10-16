@@ -22,10 +22,17 @@ pub(super) struct TypedText {
 }
 
 impl TypedText {
-    /// Follows `change`, edit by edit.
-    pub fn changed(&mut self, change: &TextChange) {
+    /// Follows `change`, edit by edit. Unless `learning`, as while
+    /// suggestions are off, even what the user writes is untyped, so it is
+    /// never learned.
+    pub fn changed(&mut self, change: &TextChange, learning: bool) {
         for edit in change.edits() {
-            self.edit(edit.range(), edit.text(), edit.origin());
+            let origin = if learning {
+                edit.origin()
+            } else {
+                EditOrigin::Program
+            };
+            self.edit(edit.range(), edit.text(), origin);
         }
     }
 

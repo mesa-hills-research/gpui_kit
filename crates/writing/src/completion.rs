@@ -863,7 +863,9 @@ impl SuggestionProvider for WordSuggestions {
     /// what Eager would, and at the same moments: after a typed key, never
     /// at a paste, an undo or another edit the user didn't type.
     fn did_change(&self, change: &TextChange, cx: &mut App) {
-        self.typed.borrow_mut().changed(change);
+        // What is written while suggestions are off is never learned.
+        let learning = self.pacer.mode() != SuggestionMode::Off;
+        self.typed.borrow_mut().changed(change, learning);
         self.count_edits(
             change
                 .edits()

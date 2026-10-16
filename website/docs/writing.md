@@ -131,7 +131,7 @@ keystroke:
 
 | `SuggestionMode` | Behavior |
 | --- | --- |
-| `Off` | No suggestions. Nothing is learned from new typing either. |
+| `Off` | No suggestions. Nothing typed while Off is learned, then or later. |
 | `Quiet` (default) | After typing pauses for 300 ms. Each suggestion typed past adds 150 ms, up to a second, and a word typed past is not offered again after the same start for ten minutes. A suggestion stays while the user types along it. |
 | `Eager` | After every keystroke. |
 
