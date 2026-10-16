@@ -369,6 +369,30 @@ impl<T: TrackedDecoration> DecorationCollections<T> {
             .map(|entry| entry.decorations.as_slice())
     }
 
+    /// The decorations of collection `id` that overlap `range`, found
+    /// through its index rather than by looking at each.
+    pub(super) fn intersecting_in(
+        &self,
+        id: DecorationCollectionId,
+        range: &Range<usize>,
+    ) -> Vec<&T> {
+        let Some(entry) = self.entries.get(&id) else {
+            return Vec::new();
+        };
+        let mut matches = Vec::new();
+        entry.index.query(
+            &entry.decorations,
+            0..entry.decorations.len(),
+            range,
+            &mut matches,
+        );
+        matches.sort_unstable();
+        matches
+            .into_iter()
+            .map(|ix| &entry.decorations[ix])
+            .collect()
+    }
+
     pub(super) fn adjust_for_edit(&mut self, edited_range: &Range<usize>, inserted_len: usize) {
         for entry in self.entries.values_mut() {
             let len = entry.decorations.len();

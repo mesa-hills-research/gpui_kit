@@ -248,6 +248,17 @@ impl Marks {
         self.collections.adjust_for_edit(range, new_len);
     }
 
+    /// Whether a mark of collection `id` touches `range`: overlaps it or
+    /// reaches either edge. It looks through the index, so it costs nothing
+    /// like a pass over every mark.
+    pub(super) fn touches(&self, id: DecorationCollectionId, range: &Range<usize>) -> bool {
+        let around = range.start.saturating_sub(1)..range.end + 1;
+        self.collections
+            .intersecting_in(id, &around)
+            .into_iter()
+            .any(|mark| mark.range.start <= range.end && range.start <= mark.range.end)
+    }
+
     /// The marks at `offset`: those containing it, or ending or starting
     /// there.
     pub(super) fn at(&self, offset: usize) -> Vec<&Mark> {

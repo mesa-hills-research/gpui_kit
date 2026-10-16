@@ -13,8 +13,8 @@
 //! underlines are marks, so between checks they move with the text.
 //!
 //! The word being typed is never marked: a misspelling at the caret right
-//! after typing is held back, and typing in a marked word takes its
-//! underline away. A word is checked at once when it is finished, when the
+//! after typing or deleting, as with Backspace, is held back, and typing or
+//! deleting in a marked word takes its underline away. A word is checked at once when it is finished, when the
 //! user types a space, punctuation or a line break after it or moves the
 //! caret away, so its underline appears or goes without waiting for typing
 //! to pause.
@@ -361,6 +361,9 @@ impl Spelling {
     }
 }
 
+/// How far [`TextareaState::word_around`] looks on each side, in characters.
+const WORD_AROUND_CHARS: usize = 128;
+
 /// Whether `c` belongs to a word, for telling when one is finished: a
 /// letter, a digit, an apostrophe, a hyphen or an underscore.
 fn is_word_char(c: char) -> bool {
@@ -520,9 +523,16 @@ impl TextareaState {
         if let Some(edits) = &mut spelling.in_flight {
             edits.push((range.clone(), new_len));
         }
-        spelling.typed_to = (new_len > 0).then_some(range.start + new_len);
-        spelling.typing = false;
+        spelling.typed_to = Some(range.start + new_len);
+        // Deleting at the caret, such as with Backspace, edits the word
+        // there as typing does: it isn't underlined until it is finished.
+        let deleted = new_len == 0 && !range.is_empty();
+        spelling.typing = deleted;
         self.schedule_spell_check(checker.debounce(), cx);
+        if deleted {
+            let word = self.word_around(range.start);
+            self.unmark_touching(&word, cx);
+        }
     }
 
     /// After the user typed `text`, which ends at the caret: a word that
@@ -540,46 +550,54 @@ impl TextareaState {
         spelling.typing = true;
         if text.chars().next_back().is_some_and(is_word_char) {
             let word = self.word_around(caret);
-            self.unmark(|mark| touches(&word, mark), cx);
+            self.unmark_touching(&word, cx);
         }
         if text.chars().any(|c| !is_word_char(c)) {
             self.check_spelling_now(cx);
         }
     }
 
-    /// The run of word characters around `offset`.
+    /// The run of word characters around `offset`, up to
+    /// [`WORD_AROUND_CHARS`] on each side: longer than any word a checker
+    /// marks, and short of a pasted run of letters.
     fn word_around(&self, offset: usize) -> Range<usize> {
         let before: usize = self
             .text
             .chars_at(offset)
             .reversed()
             .take_while(|c| is_word_char(*c))
+            .take(WORD_AROUND_CHARS)
             .map(char::len_utf8)
             .sum();
         let after: usize = self
             .text
             .chars_at(offset)
             .take_while(|c| is_word_char(*c))
+            .take(WORD_AROUND_CHARS)
             .map(char::len_utf8)
             .sum();
         offset - before..offset + after
     }
 
-    /// Remove the underlines `unmark` picks.
-    fn unmark(&mut self, unmark: impl Fn(&Range<usize>) -> bool, cx: &mut Context<Self>) {
+    /// Remove the underlines that touch `word`. Nothing is copied when none
+    /// does, which is the usual case.
+    fn unmark_touching(&mut self, word: &Range<usize>, cx: &mut Context<Self>) {
         let Some(layer) = self.extras.spelling.layer else {
             return;
         };
-        let marks = self.extras.marks.get(layer);
-        let kept: Vec<Mark> = marks
+        if !self.extras.marks.touches(layer, word) {
+            return;
+        }
+        let kept: Vec<Mark> = self
+            .extras
+            .marks
+            .get(layer)
             .iter()
-            .filter(|mark| !unmark(&mark.range()))
+            .filter(|mark| !touches(word, &mark.range()))
             .cloned()
             .collect();
-        if kept.len() != marks.len() {
-            self.extras.marks.set(layer, kept);
-            cx.notify();
-        }
+        self.extras.marks.set(layer, kept);
+        cx.notify();
     }
 
     /// Check the edited lines now, in place of the check waiting for typing
@@ -1255,6 +1273,42 @@ mod tests {
         type_keys(&mut test, "now.");
         assert_eq!(test.marked(), ["wrdo"]);
         assert_eq!(test.value(), "The methodology is wrdo now.");
+    }
+
+    /// Backspace edits the word at the caret as typing does: after a pause it
+    /// is still held back, leaving it checks it at once, and Backspace in an
+    /// underlined word takes the underline away.
+    #[gpui::test]
+    fn a_word_edited_with_backspace_is_held_until_the_caret_leaves(cx: &mut TestAppContext) {
+        let mut words = WORDS.to_vec();
+        words.push("definitely");
+        let checker = Rc::new(WordList::new(&words));
+        let mut test = Test::new(cx, checker, "");
+        for key in "the definately".chars() {
+            let end = test.value().len();
+            test.type_at(end, &key.to_string());
+        }
+        test.pause();
+        assert!(test.marked().is_empty(), "typed and paused: held");
+
+        for _ in 0..4 {
+            test.cx.simulate_keystrokes("backspace");
+            test.draw();
+        }
+        assert_eq!(test.value(), "the defina");
+        test.pause();
+        assert!(test.marked().is_empty(), "deleted and paused: still held");
+
+        test.update(|state, _, cx| state.set_selected_range(0..0, cx));
+        test.draw();
+        assert_eq!(test.marked(), ["defina"], "the caret left it");
+
+        test.update(|state, _, cx| state.set_selected_range(10..10, cx));
+        test.draw();
+        test.cx.simulate_keystrokes("backspace");
+        test.draw();
+        assert_eq!(test.value(), "the defin");
+        assert!(test.marked().is_empty(), "Backspace in the word unmarks it");
     }
 
     /// Typing in a marked word takes its underline away while it is typed,
