@@ -155,12 +155,44 @@ pub struct TextViewState {
     compatible_layout_update: bool,
     layout_text_style: Option<(gpui::TextStyle, Pixels)>,
     parsed_error: Option<SharedString>,
-    tx: Sender<UpdateOptions>,
-    _parse_task: Task<()>,
-    _receive_task: Task<()>,
+    /// Parses text in the background. A [`Self::block_range`] view parses
+    /// nothing and has none until it is given text of its own.
+    parser: Option<BackgroundParser>,
     /// The document this view shows some blocks of, for a view made by
     /// [`Self::block_range`].
     block_range: Option<BlockRange>,
+    /// Whether [`Self::finish`] marked the text finished.
+    finished: bool,
+}
+
+/// The background parse of a [`TextViewState`]'s text, and the task that
+/// commits its results.
+struct BackgroundParser {
+    tx: Sender<UpdateOptions>,
+    _parse_task: Task<()>,
+    _receive_task: Task<()>,
+}
+
+impl BackgroundParser {
+    fn new(format: TextViewFormat, cx: &mut Context<TextViewState>) -> Self {
+        let (tx, rx) = unbounded::<UpdateOptions>();
+        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
+        let _receive_task = cx.spawn({
+            async move |weak_self, cx| {
+                while let Ok(parsed_update) = rx_result.recv().await {
+                    _ = weak_self.update(cx, |state, cx| {
+                        state.commit_parsed_update(parsed_update, cx);
+                    });
+                }
+            }
+        });
+        let _parse_task = cx.background_spawn(UpdateFuture::new(format, rx, tx_result));
+        Self {
+            tx,
+            _parse_task,
+            _receive_task,
+        }
+    }
 }
 
 /// The document a [`TextViewState::block_range`] view shows some blocks of.
@@ -281,24 +313,19 @@ impl TextViewState {
 
     /// Create a new TextViewState.
     fn new(format: TextViewFormat, text: &str, cx: &mut Context<Self>) -> Self {
+        let mut this = Self::without_text(format, cx);
+        this.parser = Some(BackgroundParser::new(format, cx));
+        this.text = text.to_string();
+        this.increment_update(text, false, cx);
+        this
+    }
+
+    /// A state that has parsed no text, and has no background parser yet.
+    fn without_text(format: TextViewFormat, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let selection_adapter = TextViewSelectionAdapter::new(cx.entity().downgrade(), cx);
 
-        let (tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
-        let _receive_task = cx.spawn({
-            async move |weak_self, cx| {
-                while let Ok(parsed_update) = rx_result.recv().await {
-                    _ = weak_self.update(cx, |state, cx| {
-                        state.commit_parsed_update(parsed_update, cx);
-                    });
-                }
-            }
-        });
-
-        let _parse_task = cx.background_spawn(UpdateFuture::new(format, rx, tx_result));
-
-        let mut this = Self {
+        Self {
             entity_id: cx.entity_id(),
             focus_handle,
             bounds: Bounds::default(),
@@ -333,7 +360,7 @@ impl TextViewState {
             fade_tick: None,
             format,
             parsed_error: None,
-            text: text.to_string(),
+            text: String::new(),
             element_text: None,
             revision: 0,
             committed_revision: 0,
@@ -344,13 +371,10 @@ impl TextViewState {
             selection_revision: 0,
             compatible_layout_update: false,
             layout_text_style: None,
-            tx,
-            _parse_task,
-            _receive_task,
+            parser: None,
             block_range: None,
-        };
-        this.increment_update(&text, false, cx);
-        this
+            finished: false,
+        }
     }
 
     /// A view of the top-level blocks `blocks` of `document` (by index, see
@@ -373,7 +397,7 @@ impl TextViewState {
         cx: &mut Context<Self>,
     ) -> Self {
         let format = document.read(cx).format;
-        let mut this = Self::new(format, "", cx);
+        let mut this = Self::without_text(format, cx);
         let observe = cx.observe(document, |this, document, cx| {
             this.sync_block_range(&document, cx);
         });
@@ -408,13 +432,21 @@ impl TextViewState {
     /// The top-level blocks the view shows, as of the last parse that landed,
     /// with their index among the document's blocks.
     pub fn blocks(&self) -> Vec<TextBlock> {
+        self.blocks_from(0)
+    }
+
+    /// The top-level blocks the view shows from the document's block
+    /// `index` on: [`Self::blocks`] without the ones before it.
+    pub fn blocks_from(&self, index: usize) -> Vec<TextBlock> {
         let blocks = &self.parsed_content.document.blocks;
         let first = self.block_range_start();
-        let document_len = first + blocks.len() + usize::from(self.block_range_is_complete());
+        let complete = self.block_range_is_complete() || self.finished;
+        let document_len = first + blocks.len() + usize::from(complete);
         let replacement = self.block_range_replacement();
         blocks
             .iter()
             .enumerate()
+            .skip(index.saturating_sub(first))
             .map(|(ix, block)| {
                 let index = first + ix;
                 let span = block.span();
@@ -430,6 +462,30 @@ impl TextViewState {
                 }
             })
             .collect()
+    }
+
+    /// How many top-level blocks the view shows, as of the last parse that
+    /// landed. Cheaper than [`Self::blocks`] to tell whether blocks were
+    /// added.
+    pub fn block_count(&self) -> usize {
+        self.parsed_content.document.blocks.len()
+    }
+
+    /// Marks the text finished: nothing more will be appended, so the last
+    /// block is complete too, and a [`Self::block_range`] view of it is left
+    /// alone from then on like the others. Appending text, or setting text
+    /// that replaces it, opens it again.
+    pub fn finish(&mut self, cx: &mut Context<Self>) {
+        if !self.finished {
+            self.finished = true;
+            cx.notify();
+        }
+    }
+
+    /// Whether [`Self::finish`] marked the text finished, and no text was
+    /// appended or set since.
+    pub fn is_finished(&self) -> bool {
+        self.finished
     }
 
     /// The index of the document's block the view starts with.
@@ -469,18 +525,6 @@ impl TextViewState {
         let synced = block_range.synced;
         let extensions = (!Arc::ptr_eq(&self.markdown_extensions, &document.markdown_extensions))
             .then(|| document.markdown_extensions.clone());
-        // A view of complete blocks has nothing to take while text is only
-        // appended.
-        if synced.is_some_and(|(synced_replacement, synced_revision, complete)| {
-            synced_replacement == replacement && (synced_revision == revision || complete)
-        }) {
-            if let Some(extensions) = extensions {
-                self.markdown_extensions = extensions;
-                cx.notify();
-            }
-            return;
-        }
-
         let all = &document.parsed_content.document.blocks;
         let start = match block_range.blocks.0 {
             Bound::Included(start) => start,
@@ -494,7 +538,20 @@ impl TextViewState {
             Bound::Unbounded => all.len(),
         }
         .clamp(start, all.len());
-        let complete = end < all.len();
+        let complete = end < all.len() || document.finished;
+        // A view of complete blocks has nothing to take while text is only
+        // appended.
+        if synced.is_some_and(|(synced_replacement, synced_revision, synced_complete)| {
+            synced_replacement == replacement
+                && synced_complete == complete
+                && (synced_revision == revision || complete)
+        }) {
+            if let Some(extensions) = extensions {
+                self.markdown_extensions = extensions;
+                cx.notify();
+            }
+            return;
+        }
         let appended =
             synced.is_some_and(|(synced_replacement, _, _)| synced_replacement == replacement);
         let source = document.parsed_content.document.source.clone();
@@ -640,6 +697,7 @@ impl TextViewState {
             return;
         }
         self.stream_fade.note_replace();
+        self.finished = false;
 
         self.text.clear();
         self.text.push_str(text);
@@ -680,6 +738,7 @@ impl TextViewState {
             self.set_text(new_text, cx);
             return;
         }
+        self.finished = false;
         self.stream_fade.note_extend(self.text.len());
         self.text.push_str(new_text);
         self.increment_update(new_text, true, cx);
@@ -718,13 +777,15 @@ impl TextViewState {
             self.revision += 1;
             self.full_update_revision = self.revision;
             self.selection_revision = self.selection_revision.wrapping_add(1);
-            _ = self.tx.try_send(UpdateOptions {
-                revision: self.revision,
-                append: false,
-                mode: ParseMode::Replace,
-                pending_text: self.text.clone(),
-                markdown_extensions: self.markdown_extensions.clone(),
-            });
+            if let Some(parser) = &self.parser {
+                _ = parser.tx.try_send(UpdateOptions {
+                    revision: self.revision,
+                    append: false,
+                    mode: ParseMode::Replace,
+                    pending_text: self.text.clone(),
+                    markdown_extensions: self.markdown_extensions.clone(),
+                });
+            }
         }
         self
     }
@@ -942,12 +1003,19 @@ impl TextViewState {
             // Keep the background parser's accumulated document in sync so a
             // later append extends this baseline instead of parsing the delta
             // as a standalone document.
-            _ = self.tx.try_send(update_options);
+            _ = self.background_parser(cx).tx.try_send(update_options);
             cx.notify();
             return;
         }
 
-        _ = self.tx.try_send(update_options);
+        _ = self.background_parser(cx).tx.try_send(update_options);
+    }
+
+    /// The background parser, started now if the state had none.
+    fn background_parser(&mut self, cx: &mut Context<Self>) -> &BackgroundParser {
+        let format = self.format;
+        self.parser
+            .get_or_insert_with(|| BackgroundParser::new(format, cx))
     }
 
     /// Commit a result of the background parser.
@@ -2975,6 +3043,76 @@ mod tests {
             document.update(cx, |document, cx| document.set_text("$MSFT.US", cx));
             cx.run_until_parked();
             assert_eq!(contents(&document, cx), [ticker]);
+        }
+
+        #[gpui::test]
+        fn a_finished_document_has_only_complete_blocks(cx: &mut TestAppContext) {
+            let document = document("one\n\ntwo\n\nthree", cx);
+            let last = cx.new(|cx| TextViewState::block_range(&document, 2..3, cx));
+            let complete = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
+                state.read_with(cx, |state, _| {
+                    state
+                        .blocks()
+                        .iter()
+                        .map(TextBlock::is_complete)
+                        .collect::<Vec<_>>()
+                })
+            };
+            assert_eq!(complete(&document, cx), [true, true, false]);
+            assert_eq!(complete(&last, cx), [false]);
+
+            document.update(cx, |document, cx| document.finish(cx));
+            cx.run_until_parked();
+            assert!(document.read_with(cx, |document, _| document.is_finished()));
+            assert_eq!(complete(&document, cx), [true, true, true]);
+            assert_eq!(complete(&last, cx), [true]);
+
+            // Text appended opens it again, and the view takes it.
+            document.update(cx, |document, cx| document.push_str(" and four", cx));
+            cx.run_until_parked();
+            assert!(!document.read_with(cx, |document, _| document.is_finished()));
+            assert_eq!(complete(&document, cx), [true, true, false]);
+            assert_eq!(rendered(&last, cx), "three and four\n");
+            assert_eq!(complete(&last, cx), [false]);
+        }
+
+        #[gpui::test]
+        fn blocks_are_counted_and_listed_from_an_index(cx: &mut TestAppContext) {
+            let document = document("one\n\ntwo\n\nthree\n\nfour", cx);
+            let middle = cx.new(|cx| TextViewState::block_range(&document, 1..3, cx));
+            let indices =
+                |blocks: Vec<TextBlock>| blocks.iter().map(TextBlock::index).collect::<Vec<_>>();
+            document.read_with(cx, |document, _| {
+                assert_eq!(document.block_count(), 4);
+                assert_eq!(indices(document.blocks_from(2)), [2, 3]);
+                assert_eq!(indices(document.blocks_from(9)), [0usize; 0]);
+                assert_eq!(document.blocks_from(1), document.blocks()[1..]);
+            });
+            middle.read_with(cx, |middle, _| {
+                assert_eq!(middle.block_count(), 2);
+                assert_eq!(indices(middle.blocks_from(0)), [1, 2]);
+                assert_eq!(indices(middle.blocks_from(2)), [2]);
+            });
+        }
+
+        /// A view parses nothing, so it has no parse tasks until it is given
+        /// text of its own.
+        #[gpui::test]
+        fn a_view_starts_a_parser_only_for_text_of_its_own(cx: &mut TestAppContext) {
+            let document = document("one\n\ntwo", cx);
+            let view = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
+            document.update(cx, |document, cx| document.push_str(" more", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&view, cx), "two more\n");
+            assert!(view.read_with(cx, |view, _| view.parser.is_none()));
+
+            view.update(cx, |view, cx| view.push_str("own **text**", cx));
+            cx.run_until_parked();
+            assert!(view.read_with(cx, |view, _| view.parser.is_some()));
+            assert_eq!(rendered(&view, cx), "own text\n");
+            view.update(cx, |view, cx| view.push_str(" grows", cx));
+            cx.run_until_parked();
+            assert_eq!(rendered(&view, cx), "own text grows\n");
         }
 
         #[gpui::test]

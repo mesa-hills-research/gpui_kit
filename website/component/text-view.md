@@ -174,7 +174,11 @@ that stays the same while text is appended. Group blocks into rows by what
 they are, and tell from the ids which rows to keep when the text was replaced.
 Setting text that differs only in the whitespace around it, such as the answer
 trimmed once it is done, is no replacement: the ids, the rows and their
-selection stay.
+selection stay. `block_count()` tells, without building the list, whether the
+document gained blocks since the last look, and `blocks_from(ix)` lists only
+the blocks from `ix` on. The last block stays incomplete until
+`TextViewState::finish` marks the answer finished, and its row is then left
+alone like the others.
 A selection runs across rows as it runs across separate text views, and each
 view selects and copies its own blocks. Show either the document or views of
 its blocks, as they share the parsed blocks.
