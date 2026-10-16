@@ -453,3 +453,56 @@ async fn the_compact_picker_keeps_the_features_behind_a_disclosure(cx: &mut Test
     .unwrap();
     assert_eq!(events.borrow().last().unwrap().feature("calt"), Some(false));
 }
+
+/// A picker for a setting that keeps only a family and a size.
+struct FamilyAndSize {
+    picker: Entity<FontPickerState>,
+    compact: bool,
+}
+
+impl Render for FamilyAndSize {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let picker = FontPicker::new(&self.picker)
+            .show_weight(false)
+            .show_line_height(false)
+            .show_features(false)
+            .collapsible_features(true);
+        div().size_full().child(if self.compact {
+            picker.compact()
+        } else {
+            picker
+        })
+    }
+}
+
+/// Each layout leaves out the rows switched off: no weight, no italic, no
+/// features, on a font that offers all of them.
+#[gpui_kit::test]
+async fn a_picker_offers_only_the_rows_its_setting_keeps(cx: &mut TestAppContext) {
+    cx.update(gpui_component::init);
+    for compact in [true, false] {
+        let (window, _) = common::open_window(cx, Some(size(px(800.), px(600.))), |window, cx| {
+            let picker = cx.new(|cx| {
+                FontPickerState::new(window, cx)
+                    .catalog(FontCatalog::from_fonts(&[JETBRAINS_MONO_SOURCE, INTER]))
+                    .default_settings(FontSettings::new("JetBrains Mono").with_size(px(14.)))
+            });
+            cx.new(|_| FamilyAndSize { picker, compact })
+        });
+        cx.run_until_parked();
+        cx.update_window(window.into(), |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find("font-picker-weight").is_none(), "{compact}");
+            assert!(window.try_find("font-picker-italic").is_none(), "{compact}");
+            assert!(
+                window.try_find("font-picker-features-toggle").is_none(),
+                "{compact}"
+            );
+            assert!(
+                window.try_find("font-picker-feature-calt").is_none(),
+                "{compact}"
+            );
+        })
+        .unwrap();
+    }
+}

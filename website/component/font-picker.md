@@ -67,6 +67,22 @@ FontPicker::new(&picker).compact()
 The full layout can keep its features behind the same button with
 `collapsible_features(true)`.
 
+### Only the rows a setting keeps
+
+A setting that stores only a family and a size, such as an application's UI
+font, shouldn't offer controls that do nothing. Leave out the weight and
+italic row, the line height and the features in either layout:
+
+```rust
+FontPicker::new(&picker)
+    .compact()
+    .show_weight(false)
+    .show_line_height(false)
+    .show_features(false)
+```
+
+All three are on by default.
+
 ## Scrolling
 
 The family list and the features scroll with the wheel or trackpad while the

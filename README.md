@@ -81,6 +81,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   counter and captions; ←/→ and Home/End browse, Escape closes and gives focus back to the
   thumbnail. It only fades in, and not at all under reduced motion. See
   [Image Viewer](website/component/image-viewer.md).
+- **Font pickers with only the rows a setting keeps** (`gpui-component`).
+  `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
+  setting that stores only a family and a size. See
+  [FontPicker: compact layout](website/component/font-picker.md#compact-layout).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).

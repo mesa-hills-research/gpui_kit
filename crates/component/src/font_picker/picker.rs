@@ -42,6 +42,9 @@ pub struct FontPicker {
     preview_text: SharedString,
     compact: bool,
     collapsible_features: bool,
+    show_weight: bool,
+    show_line_height: bool,
+    show_features: bool,
 }
 
 impl FontPicker {
@@ -52,6 +55,9 @@ impl FontPicker {
             preview_text: PREVIEW_TEXT.into(),
             compact: false,
             collapsible_features: false,
+            show_weight: true,
+            show_line_height: true,
+            show_features: true,
         }
     }
 
@@ -76,6 +82,26 @@ impl FontPicker {
     /// dozens of them. Off by default.
     pub fn collapsible_features(mut self, collapsible: bool) -> Self {
         self.collapsible_features = collapsible;
+        self
+    }
+
+    /// Offer the weight and italic controls. On by default; turn it off
+    /// where the setting the picker feeds keeps only a family and a size,
+    /// such as an application's UI font, so no control does nothing.
+    pub fn show_weight(mut self, show: bool) -> Self {
+        self.show_weight = show;
+        self
+    }
+
+    /// Offer the line height control. On by default.
+    pub fn show_line_height(mut self, show: bool) -> Self {
+        self.show_line_height = show;
+        self
+    }
+
+    /// Offer the font's OpenType features. On by default.
+    pub fn show_features(mut self, show: bool) -> Self {
+        self.show_features = show;
         self
     }
 }
@@ -363,20 +389,22 @@ impl FontPicker {
                             .flex_1()
                             .min_w_0()
                             .gap_3()
-                            .child(field(
-                                t!("FontPicker.weight").into(),
-                                h_flex()
-                                    .gap_3()
-                                    .child(
-                                        div().w(px(160.)).child(
-                                            Select::new(&weights)
-                                                .id("font-picker-weight")
-                                                .menu_width(px(200.)),
-                                        ),
-                                    )
-                                    .child(div().child(self.italic_checkbox(&chosen))),
-                                cx,
-                            ))
+                            .when(self.show_weight, |this| {
+                                this.child(field(
+                                    t!("FontPicker.weight").into(),
+                                    h_flex()
+                                        .gap_3()
+                                        .child(
+                                            div().w(px(160.)).child(
+                                                Select::new(&weights)
+                                                    .id("font-picker-weight")
+                                                    .menu_width(px(200.)),
+                                            ),
+                                        )
+                                        .child(div().child(self.italic_checkbox(&chosen))),
+                                    cx,
+                                ))
+                            })
                             .child(
                                 h_flex()
                                     .gap_3()
@@ -385,14 +413,18 @@ impl FontPicker {
                                         NumberInput::new(&size).w(px(110.)),
                                         cx,
                                     ))
-                                    .child(field(
-                                        t!("FontPicker.line_height").into(),
-                                        NumberInput::new(&line_height).w(px(110.)),
-                                        cx,
-                                    )),
+                                    .when(self.show_line_height, |this| {
+                                        this.child(field(
+                                            t!("FontPicker.line_height").into(),
+                                            NumberInput::new(&line_height).w(px(110.)),
+                                            cx,
+                                        ))
+                                    }),
                             )
                             .when(
-                                !chosen.features.is_empty() && !self.collapsible_features,
+                                self.show_features
+                                    && !chosen.features.is_empty()
+                                    && !self.collapsible_features,
                                 |this| {
                                     this.child(field(
                                         t!("FontPicker.features").into(),
@@ -404,7 +436,7 @@ impl FontPicker {
                     ),
             )
             .when(
-                !chosen.features.is_empty() && self.collapsible_features,
+                self.show_features && !chosen.features.is_empty() && self.collapsible_features,
                 |this| this.child(self.features_disclosure(&chosen, cx)),
             )
             .child(self.preview(&chosen.settings, cx))
@@ -457,23 +489,27 @@ impl FontPicker {
                         ),
                     ),
             ))
-            .child(row(
-                t!("FontPicker.weight").into(),
-                h_flex().gap_3().child(self.italic_checkbox(&chosen)).child(
-                    div()
-                        .w(select_width)
-                        .child(Select::new(&weights).id("font-picker-weight")),
-                ),
-            ))
+            .when(self.show_weight, |this| {
+                this.child(row(
+                    t!("FontPicker.weight").into(),
+                    h_flex().gap_3().child(self.italic_checkbox(&chosen)).child(
+                        div()
+                            .w(select_width)
+                            .child(Select::new(&weights).id("font-picker-weight")),
+                    ),
+                ))
+            })
             .child(row(
                 t!("FontPicker.size").into(),
                 NumberInput::new(&size).w(px(120.)),
             ))
-            .child(row(
-                t!("FontPicker.line_height").into(),
-                NumberInput::new(&line_height).w(px(120.)),
-            ))
-            .when(!chosen.features.is_empty(), |this| {
+            .when(self.show_line_height, |this| {
+                this.child(row(
+                    t!("FontPicker.line_height").into(),
+                    NumberInput::new(&line_height).w(px(120.)),
+                ))
+            })
+            .when(self.show_features && !chosen.features.is_empty(), |this| {
                 this.child(self.features_disclosure(&chosen, cx))
             })
             .child(self.preview(&chosen.settings, cx))
