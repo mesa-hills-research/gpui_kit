@@ -390,9 +390,37 @@ impl gpui_base::input::HighlightStyleResolver for HighlightTheme {
 pub type LanguageParserFactory =
     Arc<dyn Fn() -> Result<(tree_sitter::Parser, tree_sitter::Language)> + Send + Sync>;
 
+/// A registered language: an application's configuration, or one of the
+/// kit's own, whose configuration is built the first time it is asked for.
+///
+/// Building a configuration decodes the grammar's tables, which takes tens
+/// of milliseconds and megabytes per grammar, so the registry builds only
+/// those of the languages something highlights.
+#[derive(Clone)]
+enum Grammar {
+    Config(GrammarConfig),
+    Builtin(languages::Language),
+}
+
+impl Grammar {
+    fn name(&self) -> SharedString {
+        match self {
+            Self::Config(config) => config.name.clone(),
+            Self::Builtin(language) => language.name().into(),
+        }
+    }
+
+    fn has_grammar(&self) -> bool {
+        match self {
+            Self::Config(config) => config.has_grammar(),
+            Self::Builtin(language) => *language != languages::Language::Plain,
+        }
+    }
+}
+
 /// Registry for code highlighter languages.
 pub struct LanguageRegistry {
-    languages: Mutex<HashMap<SharedString, GrammarConfig>>,
+    languages: Mutex<HashMap<SharedString, Grammar>>,
     parser_factories: Mutex<HashMap<SharedString, LanguageParserFactory>>,
     /// Bumped by every registration; see [`Self::generation`].
     generation: AtomicU64,
@@ -404,7 +432,7 @@ impl LanguageRegistry {
         static INSTANCE: LazyLock<LanguageRegistry> = LazyLock::new(|| LanguageRegistry {
             languages: Mutex::new(
                 languages::Language::all()
-                    .map(|language| (language.name().into(), language.config()))
+                    .map(|language| (language.name().into(), Grammar::Builtin(language)))
                     .collect(),
             ),
             parser_factories: Mutex::new(HashMap::new()),
@@ -418,7 +446,7 @@ impl LanguageRegistry {
         self.languages
             .lock()
             .unwrap()
-            .insert(lang.to_string().into(), config.clone());
+            .insert(lang.to_string().into(), Grammar::Config(config.clone()));
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -432,6 +460,37 @@ impl LanguageRegistry {
             .unwrap()
             .insert(lang.to_string().into(), factory);
         self.generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Prepares `languages` for highlighting on a background thread: decodes
+    /// their grammars and compiles their highlight queries, so the first code
+    /// block in one of them is highlighted from its first frame.
+    ///
+    /// Without this, a language is prepared on that thread the first time a
+    /// code block needs it, and the block shows plain text until it is
+    /// ready. A prepared grammar stays in memory, a few megabytes each, so
+    /// warm up the languages an application is likely to show rather than
+    /// every one it enables.
+    ///
+    /// ```no_run
+    /// # mod gpui_kit { pub extern crate gpui_component as component; }
+    /// # fn start(cx: &gpui::App) {
+    /// use gpui_kit::component::highlighter::LanguageRegistry;
+    ///
+    /// LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], cx);
+    /// # }
+    /// ```
+    pub fn warm_up<I, S>(&self, languages: I, cx: &gpui::App)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        // The application's own waiter, so a code block that needs a language
+        // being warmed up waits for it rather than compiling it again.
+        let waiter = super::language_ready_waiter(cx).unwrap_or_else(|| {
+            super::compiled::Waiter::new(cx.background_executor().clone(), None)
+        });
+        super::compiled::warm_up(languages, &waiter);
     }
 
     /// A counter that changes whenever a language or parser factory is
@@ -473,16 +532,31 @@ impl LanguageRegistry {
     /// Returns whether `name` can produce a parser, either through a registered
     /// parser factory or a statically linked grammar.
     pub(crate) fn has_parser(&self, name: &str) -> bool {
-        let Some(config) = self.language(name) else {
+        let Some(grammar) = self.grammar_entry(name) else {
             return false;
         };
 
-        config.language.is_some()
+        grammar.has_grammar()
             || self
                 .parser_factories
                 .lock()
                 .unwrap()
-                .contains_key(&config.name)
+                .contains_key(&grammar.name())
+    }
+
+    /// The name of the language `name` (or one of its aliases) is registered
+    /// as, without decoding its grammar.
+    pub(crate) fn canonical_name(&self, name: &str) -> Option<SharedString> {
+        Some(self.grammar_entry(name)?.name())
+    }
+
+    /// The registered entry for `name`, or for the language it is an alias of.
+    fn grammar_entry(&self, name: &str) -> Option<Grammar> {
+        let languages = self.languages.lock().unwrap();
+        languages.get(name).cloned().or_else(|| {
+            languages::Language::from_name(name)
+                .and_then(|language| languages.get(language.name()).cloned())
+        })
     }
 
     /// Returns the grammar for `name`, preferring a registered parser factory.
@@ -505,12 +579,25 @@ impl LanguageRegistry {
     }
 
     /// Returns the language configuration for the given language name.
+    ///
+    /// The first lookup of one of the kit's languages decodes its grammar.
     pub fn language(&self, name: &str) -> Option<GrammarConfig> {
-        let languages = self.languages.lock().unwrap();
-        languages.get(name).cloned().or_else(|| {
-            languages::Language::from_name(name)
-                .and_then(|language| languages.get(language.name()).cloned())
-        })
+        let language = match self.grammar_entry(name)? {
+            Grammar::Config(config) => return Some(config),
+            Grammar::Builtin(language) => language,
+        };
+        // Decoded outside the lock: other languages stay available meanwhile.
+        let config = language.config();
+        let mut languages = self.languages.lock().unwrap();
+        match languages.get(language.name()) {
+            Some(Grammar::Builtin(builtin)) if *builtin == language => {
+                languages.insert(language.name().into(), Grammar::Config(config.clone()));
+                Some(config)
+            }
+            // Registered over while it was decoding.
+            Some(Grammar::Config(config)) => Some(config.clone()),
+            _ => Some(config),
+        }
     }
 }
 
@@ -566,6 +653,41 @@ mod tests {
             assert_eq!(Language::from_str("typescript"), Language::TypeScript);
             assert_eq!(Language::from_str("ts"), Language::TypeScript);
         }
+    }
+
+    #[test]
+    fn a_kit_language_is_decoded_only_when_it_is_looked_up() {
+        use super::{Grammar, languages::Language};
+
+        let registry = super::LanguageRegistry {
+            languages: std::sync::Mutex::new(
+                Language::all()
+                    .map(|language| (language.name().into(), Grammar::Builtin(language)))
+                    .collect(),
+            ),
+            parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
+            generation: std::sync::atomic::AtomicU64::new(0),
+        };
+        let decoded = |name: &str| {
+            matches!(
+                registry.languages.lock().unwrap().get(name),
+                Some(Grammar::Config(_))
+            )
+        };
+
+        assert!(registry.has_parser("jsonc"));
+        assert_eq!(registry.canonical_name("jsonc").as_deref(), Some("json"));
+        assert!(
+            !decoded("json"),
+            "names and parsers are known without a grammar"
+        );
+
+        assert_eq!(registry.language("jsonc").unwrap().name, "json");
+        assert!(decoded("json"));
+        assert!(!decoded("text"));
+        assert!(!registry.has_parser("text"));
+        #[cfg(feature = "tree-sitter-rust")]
+        assert!(!decoded("rust"), "only the language looked up is decoded");
     }
 
     #[test]

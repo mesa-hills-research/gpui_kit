@@ -33,7 +33,9 @@ mod languages;
 mod registry;
 
 #[cfg(feature = "tree-sitter")]
-pub(crate) use code_block::highlight_code_block;
+pub(crate) use code_block::{highlight_code_block, init, language_ready_waiter};
+#[cfg(feature = "tree-sitter")]
+pub(crate) use compiled::{Waiter, ready_generation};
 #[cfg(feature = "tree-sitter")]
 pub(crate) use highlighter::parse_input_bytes;
 #[cfg(feature = "tree-sitter")]

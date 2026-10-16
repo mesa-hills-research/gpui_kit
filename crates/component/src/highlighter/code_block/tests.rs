@@ -82,8 +82,9 @@ fn assert_streams_like_from_scratch(lang: &str, code: &str, seed: u64) {
                 highlighter.update(&prefix);
                 highlighter
             }
-            None => highlighter
-                .insert(CodeBlockHighlighter::new(language.clone(), &prefix).expect("a parser")),
+            None => highlighter.insert(
+                CodeBlockHighlighter::new(language.clone(), &prefix, None).expect("a parser"),
+            ),
         };
         let actual = per_byte(end, &highlighter.styles(&theme));
         let expected = from_scratch(lang, &prefix, &theme);
@@ -441,7 +442,7 @@ fn code_streamed_a_character_at_a_time_highlights_like_code_highlighted_from_scr
                     highlighter
                 }
                 None => highlighter
-                    .insert(CodeBlockHighlighter::new(language.clone(), &prefix).unwrap()),
+                    .insert(CodeBlockHighlighter::new(language.clone(), &prefix, None).unwrap()),
             };
             let actual = per_byte(end, &highlighter.styles(&theme));
             assert_same_styles(lang, &prefix, &from_scratch(lang, &prefix, &theme), &actual);
@@ -462,7 +463,7 @@ fn streamed_json_highlights_like_json_highlighted_from_scratch() {
 fn appending_reparses_once_and_a_theme_change_does_not_reparse() {
     let language = compiled_language("rust").unwrap();
     let code: SharedString = "fn main() {\n    let x = 1;\n".into();
-    let mut highlighter = CodeBlockHighlighter::new(language, &code).unwrap();
+    let mut highlighter = CodeBlockHighlighter::new(language, &code, None).unwrap();
     assert_eq!(highlighter.parses, 1);
 
     let longer: SharedString = format!("{code}    let y = \"two\";\n}}\n").into();
@@ -506,7 +507,8 @@ fn replaced_code_is_highlighted_from_scratch() {
     let language = compiled_language("rust").unwrap();
     let theme = HighlightTheme::default_dark();
     let mut highlighter =
-        CodeBlockHighlighter::new(language, &"/* an open comment\nfn a() {}\n".into()).unwrap();
+        CodeBlockHighlighter::new(language, &"/* an open comment\nfn a() {}\n".into(), None)
+            .unwrap();
     let replaced: SharedString = "fn a() { 1 }\n".into();
     highlighter.update(&replaced);
     assert_same_styles(
@@ -530,7 +532,10 @@ fn interleaved_blocks_each_keep_their_highlighting() {
         b_code.push_str(b_line);
         for code in [&a_code, &b_code] {
             let code = SharedString::from(code.clone());
-            let actual = per_byte(code.len(), &highlight_code_block("rust", &code, &theme));
+            let actual = per_byte(
+                code.len(),
+                &highlight_code_block("rust", &code, &theme, None),
+            );
             assert_same_styles("rust", &code, &from_scratch("rust", &code, &theme), &actual);
         }
     }
@@ -542,8 +547,8 @@ fn a_block_extends_the_kept_block_whose_code_it_continues() {
     let mut kept = KeptBlocks::default();
     let short: SharedString = "[1".into();
     let long: SharedString = "[1, 2".into();
-    kept.put(CodeBlockHighlighter::new(language.clone(), &short).unwrap());
-    kept.put(CodeBlockHighlighter::new(language.clone(), &long).unwrap());
+    kept.put(CodeBlockHighlighter::new(language.clone(), &short, None).unwrap());
+    kept.put(CodeBlockHighlighter::new(language.clone(), &long, None).unwrap());
 
     let longer: SharedString = "[1, 2, 3]".into();
     let block = kept.take(&language, &longer).expect("a prefix is kept");
@@ -567,7 +572,7 @@ fn kept_blocks_stay_within_their_budget() {
     };
     for ix in 0..8 {
         let code = SharedString::from(format!("[{ix}]"));
-        kept.put(CodeBlockHighlighter::new(language.clone(), &code).unwrap());
+        kept.put(CodeBlockHighlighter::new(language.clone(), &code, None).unwrap());
     }
     assert_eq!(kept.blocks.len(), 4);
     assert!(
@@ -581,7 +586,7 @@ fn kept_blocks_stay_within_their_budget() {
 
     // A block over the byte budget on its own is kept while it is in use.
     let huge = SharedString::from(format!("[{}1]", "1,".repeat(64)));
-    kept.put(CodeBlockHighlighter::new(language.clone(), &huge).unwrap());
+    kept.put(CodeBlockHighlighter::new(language.clone(), &huge, None).unwrap());
     assert_eq!(kept.blocks.len(), 1);
 }
 
@@ -589,7 +594,7 @@ fn kept_blocks_stay_within_their_budget() {
 fn highlights_handed_out_stay_as_they_were_while_the_block_grows() {
     let theme = HighlightTheme::default_dark();
     let language = compiled_language("json").unwrap();
-    let mut highlighter = CodeBlockHighlighter::new(language, &"[1, 2".into()).unwrap();
+    let mut highlighter = CodeBlockHighlighter::new(language, &"[1, 2".into(), None).unwrap();
     let held = highlighter.styles(&theme);
     let before = held.to_vec();
 
@@ -673,4 +678,94 @@ fn an_append_under_an_error_root_keeps_the_complete_items_before_it() {
         start > 0 && start < old_len,
         "highlighting starts again at {start} of {old_len}"
     );
+}
+
+/// Registers JSON under a name no other test uses, so it starts out not
+/// compiled.
+fn register_fresh_json(test: &str) -> SharedString {
+    use crate::highlighter::{LanguageConfig, LanguageRegistry};
+
+    let name = SharedString::from(format!("json-{test}"));
+    LanguageRegistry::singleton().register(
+        &name,
+        &LanguageConfig::new(
+            name.clone(),
+            tree_sitter_json::LANGUAGE.into(),
+            vec![],
+            "(number) @number",
+            "",
+            "",
+        ),
+    );
+    name
+}
+
+#[gpui::test]
+fn a_code_block_is_plain_until_its_language_is_ready(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let lang = register_fresh_json("off-thread-test");
+    let (ready, told) = gpui_base::async_util::unbounded::<()>();
+    let waiter = Waiter::new(cx.background_executor.clone(), Some(ready));
+    let theme = HighlightTheme::default_dark();
+    let code = SharedString::from("[42]");
+    let number = |styles: &[(Range<usize>, HighlightStyle)]| {
+        styles
+            .iter()
+            .find(|(range, _)| range.contains(&1))
+            .and_then(|(_, style)| style.color)
+    };
+
+    assert!(
+        highlight_code_block(&lang, &code, &theme, Some(&waiter)).is_empty(),
+        "plain while the language compiles"
+    );
+    cx.run_until_parked();
+    assert!(told.try_recv().is_ok(), "the waiter hears when it is ready");
+    assert_eq!(
+        number(&highlight_code_block(&lang, &code, &theme, Some(&waiter))),
+        theme.style("number").and_then(|style| style.color)
+    );
+}
+
+#[gpui::test]
+fn warming_a_language_up_compiles_it_in_the_background(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{
+        LanguageRegistry,
+        compiled::{Readiness, Waiter, compiled_language_now},
+    };
+
+    let lang = register_fresh_json("warm-up-test");
+    cx.update(|cx| LanguageRegistry::singleton().warm_up([lang.as_ref()], cx));
+    cx.run_until_parked();
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    assert!(matches!(
+        compiled_language_now(&lang, &waiter),
+        Readiness::Ready(Some(_))
+    ));
+}
+
+#[gpui::test]
+fn a_ready_language_installs_a_new_code_block_highlighter(cx: &mut gpui::TestAppContext) {
+    use std::{cell::Cell, rc::Rc};
+
+    cx.update(crate::init);
+    let lang = register_fresh_json("reinstall-test");
+    let installs = Rc::new(Cell::new(0));
+    cx.update(|cx| {
+        let installs = installs.clone();
+        cx.observe_global::<gpui_base::TextViewDefaults>(move |_| {
+            installs.set(installs.get() + 1);
+        })
+        .detach();
+        let waiter = super::language_ready_waiter(cx).expect("init installs the waiter");
+        let theme = HighlightTheme::default_dark();
+        assert!(highlight_code_block(&lang, &"[1]".into(), &theme, Some(&waiter)).is_empty());
+    });
+    cx.run_until_parked();
+
+    // Code blocks highlighted while the language was not ready are cached
+    // for the old highlighter, so a new one has them highlighted again.
+    assert_eq!(installs.get(), 1);
 }

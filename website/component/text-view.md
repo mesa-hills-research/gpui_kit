@@ -118,6 +118,21 @@ under a millisecond. The highlights are kept as highlight names and take the
 theme's colors when the block is drawn, so a theme change recolors code
 without parsing it.
 
+A language is prepared the first time a block needs it: its grammar is
+decoded and its queries are compiled on a background thread, which takes
+from about 20 ms to over half a second depending on the grammar, and its
+blocks show plain code until then. An application that knows which
+languages it will show can prepare them at startup:
+
+```rust
+use gpui_kit::component::highlighter::LanguageRegistry;
+
+LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], cx);
+```
+
+A prepared grammar stays in memory, a few megabytes each, so warm up the
+languages an application is likely to show rather than every one it enables.
+
 ### Highlight ranges
 
 An application that searches a document, or points at a citation inside it,

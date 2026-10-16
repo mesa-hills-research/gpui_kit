@@ -91,6 +91,8 @@ Editor::new(&editor).h(px(320.))
 
 使用 `.language()` 指定语法高亮语言。应用需要启用对应的 Cargo feature，例如 `tree-sitter-rust` 或 `tree-sitter-markdown`；也可以使用 `tree-sitter-languages` 包含全部内置语法。
 
+语法表在第一次高亮该语言时才解码，某种语言的第一个编辑器会等待这一步。`LanguageRegistry::warm_up` 可以提前在后台线程准备语言，详见 [TextView：流式输出时的代码高亮](text-view.md#流式输出时的代码高亮)。
+
 ## 编辑器选项
 
 ```rust

@@ -105,6 +105,11 @@ The language set via `.language()` selects syntax highlighting. Enable the
 matching Cargo feature, such as `tree-sitter-rust` or `tree-sitter-markdown`;
 use `tree-sitter-languages` to bundle all built-in grammars.
 
+A grammar is decoded the first time something highlights its language, and
+the first editor of a language waits for that. `LanguageRegistry::warm_up`
+prepares languages on a background thread ahead of time; see
+[TextView: code highlighting while streaming](text-view.md#code-highlighting-while-streaming).
+
 Tree-sitter and the grammars come from [Mesquite](https://github.com/mesa-hills-research/mesquite),
 a pure Rust port, so these features build without a C compiler.
 

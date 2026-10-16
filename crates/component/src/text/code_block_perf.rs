@@ -39,10 +39,23 @@ fn prefix(text: &str, len: usize) -> &str {
 const CHUNK: usize = 40;
 const CHUNKS: usize = 25;
 
+/// The resident memory of this process, in megabytes.
+fn resident_mb() -> f64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            let line = status.lines().find(|line| line.starts_with("VmRSS:"))?;
+            line.split_whitespace().nth(1)?.parse::<f64>().ok()
+        })
+        .map_or(0., |kb| kb / 1024.)
+}
+
 #[test]
 #[ignore = "timing harness, run by hand in release"]
 fn first_highlight_of_a_language() {
-    let highlighter = super::component_code_block_highlighter(HighlightTheme::default_light());
+    let before = resident_mb();
+    let highlighter =
+        super::component_code_block_highlighter(HighlightTheme::default_light(), None);
     let block = CodeBlock::from_code("fn main() {}\n", Some("rust"));
     let start = Instant::now();
     let styles = highlighter(&block);
@@ -51,7 +64,33 @@ fn first_highlight_of_a_language() {
     let _ = highlighter(&CodeBlock::from_code("fn main() { 1 }\n", Some("rust")));
     let second = start.elapsed();
     println!(
-        "first rust highlight: {first:.2?} ({} spans), second: {second:.2?}",
+        "first rust highlight: {first:.2?} ({} spans), second: {second:.2?}, resident memory {before:.0} MB -> {:.0} MB",
+        styles.len(),
+        resident_mb()
+    );
+}
+
+/// The first highlight of a language the way an application gets it: the
+/// call returns plain code at once and the language compiles in the
+/// background.
+#[gpui::test]
+#[ignore = "timing harness, run by hand in release"]
+fn first_highlight_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{Waiter, highlight_code_block};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_light();
+    let code = SharedString::from("fn main() {}\n");
+    let start = Instant::now();
+    let plain = highlight_code_block("rust", &code, &theme, Some(&waiter));
+    let call = start.elapsed();
+    let start = Instant::now();
+    cx.run_until_parked();
+    let compile = start.elapsed();
+    let styles = highlight_code_block("rust", &code, &theme, Some(&waiter));
+    println!(
+        "first rust highlight: the call took {call:.2?} ({} spans), compiling in the background {compile:.2?}, then {} spans",
+        plain.len(),
         styles.len()
     );
 }
@@ -72,7 +111,8 @@ fn another_highlighter_of_a_language() {
 #[ignore = "timing harness, run by hand in release"]
 fn streamed_block_per_chunk() {
     let source = rust_source();
-    let highlighter = super::component_code_block_highlighter(HighlightTheme::default_light());
+    let highlighter =
+        super::component_code_block_highlighter(HighlightTheme::default_light(), None);
     let lang = Some(SharedString::from("rust"));
     // Warm the grammar and the query outside the measurement.
     let _ = highlighter(&CodeBlock::from_code("fn main() {}", lang.clone()));
@@ -111,8 +151,8 @@ fn theme_change_of_a_long_block() {
     let source = rust_source();
     let code = prefix(&source, 200 * 1024).to_string();
     let lang = Some(SharedString::from("rust"));
-    let light = super::component_code_block_highlighter(HighlightTheme::default_light());
-    let dark = super::component_code_block_highlighter(HighlightTheme::default_dark());
+    let light = super::component_code_block_highlighter(HighlightTheme::default_light(), None);
+    let dark = super::component_code_block_highlighter(HighlightTheme::default_dark(), None);
     let block = CodeBlock::from_code(code, lang);
     let start = Instant::now();
     let styles = light(&block);

@@ -70,6 +70,7 @@ pub(crate) fn install_text_view_defaults(theme: &crate::Theme, cx: &mut gpui::Ap
     #[cfg(feature = "tree-sitter")]
     let defaults = defaults.with_shared_code_block_highlighter(component_code_block_highlighter(
         theme.highlight_theme.clone(),
+        crate::highlighter::language_ready_waiter(cx),
     ));
 
     defaults.install(cx);
@@ -77,18 +78,25 @@ pub(crate) fn install_text_view_defaults(theme: &crate::Theme, cx: &mut gpui::Ap
 
 /// The code block highlighter for `highlight_theme`.
 ///
-/// Each block's highlighting is kept and extended as the block streams in;
-/// see `highlighter::code_block`.
+/// Each block's highlighting is kept and extended as the block streams in
+/// (see `highlighter::code_block`). With a `waiter`, languages are compiled
+/// off the calling thread and `waiter` is told when one is ready.
 #[cfg(feature = "tree-sitter")]
 pub(crate) fn component_code_block_highlighter(
     highlight_theme: std::sync::Arc<crate::highlighter::HighlightTheme>,
+    waiter: Option<crate::highlighter::Waiter>,
 ) -> impl Fn(&gpui_base::text::CodeBlock) -> gpui_base::text::CodeBlockHighlights + Send + Sync + 'static
 {
     move |block| {
         let Some(lang) = block.lang() else {
             return Default::default();
         };
-        crate::highlighter::highlight_code_block(lang.as_ref(), &block.code(), &highlight_theme)
+        crate::highlighter::highlight_code_block(
+            lang.as_ref(),
+            &block.code(),
+            &highlight_theme,
+            waiter.as_ref(),
+        )
     }
 }
 
@@ -108,33 +116,44 @@ pub(crate) type SharedCodeBlockHighlighter =
 ///
 /// Entries are also keyed on the [`LanguageRegistry`] generation: registering
 /// a language drops them, so the next frame gets a new highlighter and code
-/// blocks painted before the language existed are highlighted again.
+/// blocks painted before the language existed are highlighted again. The
+/// same goes for a language that finishes compiling in the background.
 #[cfg(feature = "tree-sitter")]
 pub(crate) fn shared_code_block_highlighter(
     highlight_theme: &std::sync::Arc<crate::highlighter::HighlightTheme>,
+    cx: &gpui::App,
 ) -> std::sync::Arc<SharedCodeBlockHighlighter> {
-    shared_code_block_highlighter_at(highlight_theme, LanguageRegistry::singleton().generation())
+    shared_code_block_highlighter_at(
+        highlight_theme,
+        (
+            LanguageRegistry::singleton().generation(),
+            crate::highlighter::ready_generation(),
+        ),
+        crate::highlighter::language_ready_waiter(cx),
+    )
 }
 
-/// [`shared_code_block_highlighter`] at an explicit registry `generation`.
+/// [`shared_code_block_highlighter`] at an explicit registry and readiness
+/// `generation`.
 #[cfg(feature = "tree-sitter")]
 fn shared_code_block_highlighter_at(
     highlight_theme: &std::sync::Arc<crate::highlighter::HighlightTheme>,
-    generation: u64,
+    generation: (u64, u64),
+    waiter: Option<crate::highlighter::Waiter>,
 ) -> std::sync::Arc<SharedCodeBlockHighlighter> {
     use std::sync::Arc;
 
     use crate::highlighter::HighlightTheme;
 
-    /// The registry generation the entries were built at, and the entries.
+    /// The generations the entries were built at, and the entries.
     type SharedHighlighters = (
-        u64,
+        (u64, u64),
         Vec<(Arc<HighlightTheme>, Arc<SharedCodeBlockHighlighter>)>,
     );
 
     const CAPACITY: usize = 4;
     thread_local! {
-        static SHARED: RefCell<SharedHighlighters> = const { RefCell::new((0, Vec::new())) };
+        static SHARED: RefCell<SharedHighlighters> = const { RefCell::new(((0, 0), Vec::new())) };
     }
 
     SHARED.with(|cache| {
@@ -150,8 +169,9 @@ fn shared_code_block_highlighter_at(
             return highlighter.clone();
         }
 
-        let highlighter: Arc<SharedCodeBlockHighlighter> =
-            Arc::new(component_code_block_highlighter(highlight_theme.clone()));
+        let highlighter: Arc<SharedCodeBlockHighlighter> = Arc::new(
+            component_code_block_highlighter(highlight_theme.clone(), waiter),
+        );
         if shared.len() == CAPACITY {
             shared.remove(0);
         }
@@ -209,8 +229,10 @@ mod tests {
             let lang = SharedString::from("json-cache-test");
             let code = SharedString::from(r#"{"value": 42}"#);
             let number = code.find("42").unwrap()..code.find("42").unwrap() + 2;
-            let highlighter =
-                super::super::component_code_block_highlighter(HighlightTheme::default_light());
+            let highlighter = super::super::component_code_block_highlighter(
+                HighlightTheme::default_light(),
+                None,
+            );
 
             // The first call caches a plain-text highlighter for the unknown
             // language; the cache must not outlive the registration.
@@ -243,8 +265,8 @@ mod tests {
             );
 
             let block = CodeBlock::from_code(code, Some(lang));
-            let light_styles = super::super::component_code_block_highlighter(light)(&block);
-            let dark_styles = super::super::component_code_block_highlighter(dark)(&block);
+            let light_styles = super::super::component_code_block_highlighter(light, None)(&block);
+            let dark_styles = super::super::component_code_block_highlighter(dark, None)(&block);
 
             assert_eq!(color_at(&light_styles, number.clone()), light_number);
             assert_eq!(
@@ -258,13 +280,13 @@ mod tests {
         fn shared_highlighter_is_reused_for_the_same_theme() {
             // An explicit generation, so registrations by tests running in
             // parallel cannot drop the entries between calls.
-            const GENERATION: u64 = u64::MAX;
+            const GENERATION: (u64, u64) = (u64::MAX, 0);
             let light = HighlightTheme::default_light();
             let dark = HighlightTheme::default_dark();
 
-            let first = super::super::shared_code_block_highlighter_at(&light, GENERATION);
-            let again = super::super::shared_code_block_highlighter_at(&light, GENERATION);
-            let other = super::super::shared_code_block_highlighter_at(&dark, GENERATION);
+            let first = super::super::shared_code_block_highlighter_at(&light, GENERATION, None);
+            let again = super::super::shared_code_block_highlighter_at(&light, GENERATION, None);
+            let other = super::super::shared_code_block_highlighter_at(&dark, GENERATION, None);
 
             // Code blocks keep their highlights only while the highlighter is
             // the same `Arc`.
@@ -276,8 +298,10 @@ mod tests {
         fn registering_a_language_replaces_the_shared_highlighter() {
             let light = HighlightTheme::default_light();
 
-            let before = super::super::shared_code_block_highlighter_at(&light, u64::MAX - 1);
-            let after = super::super::shared_code_block_highlighter_at(&light, u64::MAX - 2);
+            let before =
+                super::super::shared_code_block_highlighter_at(&light, (u64::MAX - 1, 0), None);
+            let after =
+                super::super::shared_code_block_highlighter_at(&light, (u64::MAX - 2, 0), None);
 
             // A new `Arc` makes code blocks painted before the registration
             // highlight again.

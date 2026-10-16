@@ -6,14 +6,23 @@
 //! every editor, every code block and every injected layer was the larger
 //! part of opening one. A compiled query is immutable, so one copy serves all
 //! of them, on any thread.
+//!
+//! A language can also be compiled on a background thread, where its
+//! grammar's tables are decoded too (another 20 to 600 ms the first time a
+//! grammar is used). Code blocks ask for languages that way: until a language
+//! is ready its blocks show plain text, and whoever asked is told when it is.
 
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock, Mutex, RwLock},
+    sync::{
+        Arc, LazyLock, Mutex, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use anyhow::{Context as _, Result};
-use gpui::SharedString;
+use gpui::{BackgroundExecutor, SharedString};
+use gpui_base::async_util::Sender;
 use tree_sitter::Query;
 
 use super::LanguageRegistry;
@@ -92,97 +101,266 @@ pub(crate) struct CompiledLanguage {
     pub(crate) injection_language_capture_index: Option<u32>,
 }
 
+/// A cache entry.
+enum Slot<T> {
+    /// Being compiled in the background, by a task of each of these
+    /// [`Waiter`] domains.
+    Compiling(Vec<u64>),
+    /// Compiled, or `None` for a language without a grammar or whose queries
+    /// failed to compile.
+    Done(Option<T>),
+}
+
 #[derive(Default)]
 struct Cache {
     /// The [`LanguageRegistry::generation`] the entries were compiled at.
     generation: u64,
-    /// By canonical language name, with `None` for a language without a
-    /// grammar or whose queries failed to compile.
-    languages: HashMap<SharedString, Option<Arc<CompiledLanguage>>>,
+    /// By canonical language name.
+    languages: HashMap<SharedString, Slot<Arc<CompiledLanguage>>>,
     /// The highlights query alone, for injected layers.
-    layers: HashMap<SharedString, Option<Arc<HighlightQuery>>>,
+    layers: HashMap<SharedString, Slot<Arc<HighlightQuery>>>,
+    /// Who to tell when the compilation of a name, by a task of a domain, is
+    /// done. Kept when the entries are dropped: the task still runs and
+    /// tells them, and they ask again.
+    waiters: HashMap<(SharedString, u64), Vec<Sender<()>>>,
+}
+
+impl Cache {
+    /// Empties the cache when a language was registered since it was filled.
+    fn sync(&mut self) {
+        let generation = LanguageRegistry::singleton().generation();
+        if self.generation == generation {
+            return;
+        }
+        self.generation = generation;
+        self.languages.clear();
+        self.layers.clear();
+    }
 }
 
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(Default::default);
 
-/// Looks `name` up in the cache, or compiles it with `compile` outside the
-/// lock, so compiling one language never blocks a thread that wants another.
+/// Moves whenever a language finishes compiling in the background, so
+/// highlights made while it was not ready can tell they are out of date.
+static READY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// See [`READY_GENERATION`].
+pub(crate) fn ready_generation() -> u64 {
+    READY_GENERATION.load(Ordering::Acquire)
+}
+
+/// Whether a language can be highlighted with now.
+pub(crate) enum Readiness<T> {
+    /// Compiled, or `None` when there is nothing to compile.
+    Ready(Option<T>),
+    /// Being compiled in the background.
+    Pending,
+}
+
+/// Where a language that is not compiled yet gets compiled, and whom to
+/// tell when it is ready.
+///
+/// Each waiter is a domain of its own, an application as a rule: its tasks
+/// tell only its own senders, so no application is woken from another's
+/// threads. A language another domain is compiling is compiled again for
+/// this one.
+#[derive(Clone)]
+pub(crate) struct Waiter {
+    domain: u64,
+    executor: BackgroundExecutor,
+    ready: Option<Sender<()>>,
+}
+
+impl Waiter {
+    /// Compiles on `executor`'s threads and tells `ready`, if given.
+    pub(crate) fn new(executor: BackgroundExecutor, ready: Option<Sender<()>>) -> Self {
+        static NEXT_DOMAIN: AtomicU64 = AtomicU64::new(0);
+        Self {
+            domain: NEXT_DOMAIN.fetch_add(1, Ordering::Relaxed),
+            executor,
+            ready,
+        }
+    }
+}
+
+/// Stores what a background task of `domain` compiled and tells the
+/// domain's waiters.
+fn finish<T>(
+    name: &SharedString,
+    domain: u64,
+    generation: u64,
+    map: fn(&mut Cache) -> &mut HashMap<SharedString, Slot<T>>,
+    compiled: Option<T>,
+) {
+    let waiters = {
+        let mut cache = CACHE.lock().unwrap();
+        cache.sync();
+        if cache.generation == generation
+            && let Some(slot @ Slot::Compiling(_)) = map(&mut cache).get_mut(name)
+        {
+            *slot = Slot::Done(compiled);
+        }
+        cache
+            .waiters
+            .remove(&(name.clone(), domain))
+            .unwrap_or_default()
+    };
+    READY_GENERATION.fetch_add(1, Ordering::AcqRel);
+    for waiter in waiters {
+        _ = waiter.try_send(());
+    }
+}
+
+/// Looks `name` up in the cache, or compiles it with `compile` on this
+/// thread, outside the cache's lock, so compiling one language never blocks
+/// a thread that wants another.
 fn cached<T: Clone>(
     name: &SharedString,
-    map: impl Fn(&mut Cache) -> &mut HashMap<SharedString, Option<T>>,
+    map: fn(&mut Cache) -> &mut HashMap<SharedString, Slot<T>>,
     compile: impl FnOnce() -> Option<T>,
 ) -> Option<T> {
-    let generation = LanguageRegistry::singleton().generation();
     {
         let mut cache = CACHE.lock().unwrap();
-        if cache.generation != generation {
-            *cache = Cache {
-                generation,
-                ..Default::default()
-            };
-        }
-        if let Some(entry) = map(&mut cache).get(name) {
+        cache.sync();
+        if let Some(Slot::Done(entry)) = map(&mut cache).get(name) {
             return entry.clone();
         }
     }
 
+    let generation = LanguageRegistry::singleton().generation();
     let compiled = compile();
     let mut cache = CACHE.lock().unwrap();
+    cache.sync();
     if cache.generation == generation {
-        map(&mut cache)
-            .entry(name.clone())
-            .or_insert_with(|| compiled.clone());
+        // Tasks compiling it still tell their waiters when they are done.
+        map(&mut cache).insert(name.clone(), Slot::Done(compiled.clone()));
     }
     compiled
 }
 
-/// The compiled queries of the language `name` (or one of its aliases), or
-/// `None` when it has no grammar.
-pub(crate) fn compiled_language(name: &str) -> Option<Arc<CompiledLanguage>> {
+/// Looks `name` up in the cache without compiling on this thread: a missing
+/// entry is compiled by `compile` on `waiter`'s executor, which then tells
+/// `waiter`.
+fn cached_or_queued<T: Clone + Send + 'static>(
+    name: &SharedString,
+    map: fn(&mut Cache) -> &mut HashMap<SharedString, Slot<T>>,
+    compile: fn(&SharedString) -> Option<T>,
+    waiter: &Waiter,
+) -> Readiness<T> {
+    let mut cache = CACHE.lock().unwrap();
+    cache.sync();
+    let generation = cache.generation;
+    let spawn = match map(&mut cache).get_mut(name) {
+        Some(Slot::Done(entry)) => return Readiness::Ready(entry.clone()),
+        Some(Slot::Compiling(domains)) => {
+            let spawn = !domains.contains(&waiter.domain);
+            if spawn {
+                domains.push(waiter.domain);
+            }
+            spawn
+        }
+        None => {
+            map(&mut cache).insert(name.clone(), Slot::Compiling(vec![waiter.domain]));
+            true
+        }
+    };
+    if let Some(ready) = &waiter.ready {
+        cache
+            .waiters
+            .entry((name.clone(), waiter.domain))
+            .or_default()
+            .push(ready.clone());
+    }
+    drop(cache);
+
+    if spawn {
+        let name = name.clone();
+        let domain = waiter.domain;
+        waiter
+            .executor
+            .spawn(async move {
+                let compiled = compile(&name);
+                finish(&name, domain, generation, map, compiled);
+            })
+            .detach();
+    }
+    Readiness::Pending
+}
+
+/// The compiled queries of the language `name`, by its canonical name.
+fn compile(name: &SharedString) -> Option<Arc<CompiledLanguage>> {
+    if !LanguageRegistry::singleton().has_parser(name) {
+        return None;
+    }
+    compile_language(name)
+        .inspect_err(|err| tracing::error!("failed to compile the queries of {name:?}: {err:?}"))
+        .ok()
+        .map(Arc::new)
+}
+
+/// The highlights query of the language `name`, by its canonical name.
+fn compile_layer(name: &SharedString) -> Option<Arc<HighlightQuery>> {
     let registry = LanguageRegistry::singleton();
     let config = registry.language(name)?;
-    cached(
-        &config.name,
-        |cache| &mut cache.languages,
-        || {
-            if !registry.has_parser(name) {
-                return None;
-            }
-            compile_language(name)
-                .inspect_err(|err| {
-                    tracing::error!(
-                        "failed to compile the queries of {:?}: {err:?}",
-                        config.name
-                    )
-                })
-                .ok()
-                .map(Arc::new)
-        },
-    )
+    let grammar = registry.grammar(name).ok()?;
+    Query::new(&grammar, &config.highlights)
+        .inspect_err(|err| tracing::error!("failed to build injection query for {name:?}: {err:?}"))
+        .ok()
+        .map(|query| Arc::new(HighlightQuery::new(query)))
+}
+
+/// The compiled queries of the language `name` (or one of its aliases), or
+/// `None` when it has no grammar. Compiles them on this thread when needed.
+pub(crate) fn compiled_language(name: &str) -> Option<Arc<CompiledLanguage>> {
+    let name = LanguageRegistry::singleton().canonical_name(name)?;
+    cached(&name, |cache| &mut cache.languages, || compile(&name))
+}
+
+/// [`compiled_language`] without compiling on this thread: a language that
+/// is not compiled yet is compiled in the background, and `waiter` is told
+/// when it is ready.
+pub(crate) fn compiled_language_now(
+    name: &str,
+    waiter: &Waiter,
+) -> Readiness<Arc<CompiledLanguage>> {
+    let Some(name) = LanguageRegistry::singleton().canonical_name(name) else {
+        return Readiness::Ready(None);
+    };
+    cached_or_queued(&name, |cache| &mut cache.languages, compile, waiter)
 }
 
 /// The canonical name and the highlights query of the language `name`, for
-/// a layer injected into another language.
+/// a layer injected into another language. Compiles it on this thread when
+/// needed.
 pub(crate) fn layer_query(name: &str) -> Option<(SharedString, Arc<HighlightQuery>)> {
-    let registry = LanguageRegistry::singleton();
-    let config = registry.language(name)?;
-    let query = cached(
-        &config.name,
-        |cache| &mut cache.layers,
-        || {
-            let grammar = registry.grammar(name).ok()?;
-            Query::new(&grammar, &config.highlights)
-                .inspect_err(|err| {
-                    tracing::error!(
-                        "failed to build injection query for {:?}: {err:?}",
-                        config.name
-                    )
-                })
-                .ok()
-                .map(|query| Arc::new(HighlightQuery::new(query)))
-        },
-    )?;
-    Some((config.name, query))
+    let name = LanguageRegistry::singleton().canonical_name(name)?;
+    let query = cached(&name, |cache| &mut cache.layers, || compile_layer(&name))?;
+    Some((name, query))
+}
+
+/// [`layer_query`] without compiling on this thread, as
+/// [`compiled_language_now`].
+pub(crate) fn layer_query_now(
+    name: &str,
+    waiter: &Waiter,
+) -> Readiness<(SharedString, Arc<HighlightQuery>)> {
+    let Some(name) = LanguageRegistry::singleton().canonical_name(name) else {
+        return Readiness::Ready(None);
+    };
+    match cached_or_queued(&name, |cache| &mut cache.layers, compile_layer, waiter) {
+        Readiness::Ready(query) => Readiness::Ready(query.map(|query| (name, query))),
+        Readiness::Pending => Readiness::Pending,
+    }
+}
+
+/// Compiles `languages` in the background for `waiter`'s domain, with the
+/// highlights query their injected layers use, unless they are compiled
+/// already.
+pub(crate) fn warm_up(languages: impl IntoIterator<Item = impl AsRef<str>>, waiter: &Waiter) {
+    for language in languages {
+        _ = compiled_language_now(language.as_ref(), waiter);
+        _ = layer_query_now(language.as_ref(), waiter);
+    }
 }
 
 /// Compiles the queries of `name`, as tree-sitter-highlight does.

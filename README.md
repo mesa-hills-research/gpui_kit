@@ -72,6 +72,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   about 60 ms. Highlights are shared with the block rather than copied every frame, and a theme
   change recolors them without parsing. See
   [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
+- **Languages prepared off the UI thread** (`gpui-component`). A grammar is decoded only when
+  something highlights its language, where enabling `tree-sitter-languages` decoded all 35 at the
+  first highlight: about a second and 75 MB. A code block whose language is not ready shows plain
+  code while the language compiles on a background thread, and `LanguageRegistry::warm_up`
+  prepares languages ahead of time. See
+  [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.

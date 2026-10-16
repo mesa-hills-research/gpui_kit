@@ -38,7 +38,10 @@ use tree_sitter::{InputEdit, Parser, Point, QueryCursor, StreamingIterator, Tree
 
 use super::{
     LanguageRegistry, SyntaxHighlighter,
-    compiled::{CompiledLanguage, HighlightName, HighlightQuery, compiled_language, layer_query},
+    compiled::{
+        CompiledLanguage, HighlightName, HighlightQuery, Readiness, Waiter, compiled_language,
+        compiled_language_now, layer_query, layer_query_now, ready_generation,
+    },
     highlighter::{
         InjectionLayer, MAX_INJECTION_BYTES, MAX_INJECTION_RANGES,
         MAX_NON_COMBINED_INJECTION_PARSES, TextProvider, bounding_byte_range,
@@ -102,13 +105,24 @@ pub(crate) struct CodeBlockHighlighter {
     stacks: Vec<NameStack>,
     stack_ids: HashMap<NameStack, u32>,
     resolved: Option<Resolved>,
+    /// Compiles the languages this block waits for in the background, and
+    /// tells the application when they are ready. Without one, languages are
+    /// compiled on the calling thread.
+    waiter: Option<Waiter>,
+    /// Whether an injected language was not ready when the layers were last
+    /// found, as of [`ready_generation`] then.
+    layers_pending: Option<u64>,
     #[cfg(test)]
     parses: usize,
 }
 
 impl CodeBlockHighlighter {
     /// A highlighter of `language` for `code`.
-    fn new(language: Arc<CompiledLanguage>, code: &SharedString) -> Option<Self> {
+    fn new(
+        language: Arc<CompiledLanguage>,
+        code: &SharedString,
+        waiter: Option<&Waiter>,
+    ) -> Option<Self> {
         let (mut parser, grammar) = LanguageRegistry::singleton().parser(&language.name).ok()?;
         parser.set_language(&grammar).ok()?;
         let empty = NameStack::new();
@@ -125,6 +139,8 @@ impl CodeBlockHighlighter {
             stacks: vec![empty.clone()],
             stack_ids: HashMap::from_iter([(empty, 0)]),
             resolved: None,
+            waiter: waiter.cloned(),
+            layers_pending: None,
             #[cfg(test)]
             parses: 0,
         };
@@ -138,6 +154,14 @@ impl CodeBlockHighlighter {
 
     /// Brings the highlighting up to date with `code`.
     fn update(&mut self, code: &SharedString) {
+        // An injected language that was not ready may be now.
+        if self
+            .layers_pending
+            .is_some_and(|pending_at| pending_at != ready_generation())
+        {
+            self.reset(code);
+            return;
+        }
         if *code == self.source {
             self.source = code.clone();
             return;
@@ -153,6 +177,7 @@ impl CodeBlockHighlighter {
     fn reset(&mut self, code: &SharedString) {
         self.source = code.clone();
         self.text = Rope::from_str(code);
+        self.layers_pending = None;
         self.layers.clear();
         self.attempts.clear();
         self.combined.clear();
@@ -270,6 +295,9 @@ impl CodeBlockHighlighter {
             ranges.retain(|range| range.end_byte <= from);
         }
 
+        let ready_at = ready_generation();
+        let waiter = self.waiter.clone();
+        let mut layers_pending = false;
         let text = &self.text;
         let mut cursor = QueryCursor::new();
         cursor.set_byte_range(from..text.len());
@@ -333,7 +361,17 @@ impl CodeBlockHighlighter {
             };
             let Some((language_name, highlight_query)) = resolved_languages
                 .entry(raw_language_name.clone())
-                .or_insert_with(|| layer_query(&raw_language_name))
+                .or_insert_with(|| match &waiter {
+                    None => layer_query(&raw_language_name),
+                    Some(waiter) => match layer_query_now(&raw_language_name, waiter) {
+                        Readiness::Ready(query) => query,
+                        // Highlighted without the layer until it is ready.
+                        Readiness::Pending => {
+                            layers_pending = true;
+                            None
+                        }
+                    },
+                })
                 .clone()
             else {
                 continue;
@@ -458,6 +496,9 @@ impl CodeBlockHighlighter {
         self.layers = kept;
         self.layers.extend(new_layers);
         self.layers.sort_by_key(|layer| layer.byte_range.start);
+        if layers_pending {
+            self.layers_pending.get_or_insert(ready_at);
+        }
         start
     }
 
@@ -857,23 +898,37 @@ thread_local! {
 
 /// The highlight styles of a code block in `lang`, in `theme`.
 ///
-/// Empty for a language without a grammar.
+/// Empty for a language without a grammar. With a `waiter`, a language that
+/// is not compiled yet is compiled in the background, the code is plain until
+/// then, and `waiter` tells the application when it is ready. Without one,
+/// it is compiled here.
 pub(crate) fn highlight_code_block(
     lang: &str,
     code: &SharedString,
     theme: &Arc<super::HighlightTheme>,
+    waiter: Option<&Waiter>,
 ) -> CodeBlockHighlights {
-    let Some(language) = compiled_language(lang) else {
+    let language = match waiter {
+        None => compiled_language(lang),
+        Some(waiter) => match compiled_language_now(lang, waiter) {
+            Readiness::Ready(language) => language,
+            Readiness::Pending => None,
+        },
+    };
+    let Some(language) = language else {
         return CodeBlockHighlights::default();
     };
     KEPT_BLOCKS.with(|kept| {
         let mut kept = kept.borrow_mut();
         let mut block = match kept.take(&language, code) {
             Some(mut block) => {
+                if block.waiter.is_none() {
+                    block.waiter = waiter.cloned();
+                }
                 block.update(code);
                 block
             }
-            None => match CodeBlockHighlighter::new(language, code) {
+            None => match CodeBlockHighlighter::new(language, code, waiter) {
                 Some(block) => block,
                 None => return CodeBlockHighlights::default(),
             },
@@ -882,6 +937,46 @@ pub(crate) fn highlight_code_block(
         kept.put(block);
         styles
     })
+}
+
+/// Compiles the languages an application's code blocks wait for in the
+/// background, and repaints its windows when one is ready.
+struct LanguageReady {
+    waiter: Waiter,
+    _repaint: gpui::Task<()>,
+}
+
+impl gpui::Global for LanguageReady {}
+
+/// Has code blocks in `cx` wait for their languages off the UI thread, and
+/// repaints the windows when one is ready.
+pub(crate) fn init(cx: &mut gpui::App) {
+    let (sender, ready) = gpui_base::async_util::unbounded::<()>();
+    let repaint = cx.spawn(async move |cx| {
+        while ready.recv().await.is_ok() {
+            // One repaint for every language that is ready by now.
+            while ready.try_recv().is_ok() {}
+            _ = cx.update(|cx| {
+                // A new highlighter, so code blocks highlighted while their
+                // language was not ready are highlighted again.
+                if let Some(theme) = cx.try_global::<crate::Theme>().cloned() {
+                    crate::text::install_text_view_defaults(&theme, cx);
+                }
+                cx.refresh_windows();
+            });
+        }
+    });
+    let waiter = Waiter::new(cx.background_executor().clone(), Some(sender));
+    cx.set_global(LanguageReady {
+        waiter,
+        _repaint: repaint,
+    });
+}
+
+/// The waiter to hand [`highlight_code_block`] in `cx`, when [`init`] ran.
+pub(crate) fn language_ready_waiter(cx: &gpui::App) -> Option<Waiter> {
+    cx.try_global::<LanguageReady>()
+        .map(|ready| ready.waiter.clone())
 }
 
 #[cfg(test)]

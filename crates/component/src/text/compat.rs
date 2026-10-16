@@ -254,6 +254,7 @@ impl Element for TextView {
             ) {
                 inner = inner.shared_code_block_highlighter(super::shared_code_block_highlighter(
                     &style.highlight_theme,
+                    cx,
                 ));
             }
             inner = inner.style(resolve_component_style(
