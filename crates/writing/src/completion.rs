@@ -101,8 +101,8 @@ const MIN_WORD_LEN: usize = 2;
 /// Maximum length of a learnable word.
 const MAX_WORD_LEN: usize = 60;
 
-/// Persisted vocabulary size cap.
-const VOCAB_MAX_BYTES: u64 = 16 * 1024 * 1024;
+/// The default size cap of the saved vocabulary.
+pub(crate) const VOCAB_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 /// The most occurrences of one word the open document adds to the
 /// vocabulary's count, so one long document doesn't swamp it.

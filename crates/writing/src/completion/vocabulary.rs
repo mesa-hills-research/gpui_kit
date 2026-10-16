@@ -74,6 +74,7 @@ use super::{
     NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word, sentence_runs,
 };
 use crate::spelling::Dictionary;
+use crate::text::hash_str;
 use gpui::{App, BackgroundExecutor, Task};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
@@ -507,19 +508,37 @@ impl Counts {
         }
     }
 
-    /// Drops the entries of `level` seen `floor` times or fewer.
-    fn prune(&mut self, level: Level, floor: u32) {
+    /// Drops entries of `level` seen `floor` times or fewer until about
+    /// `bytes` of the file are gone, in an order that favours no word.
+    /// Returns about how many bytes it dropped: none once no such entry is
+    /// left.
+    fn prune(&mut self, level: Level, floor: u32, bytes: usize) -> usize {
         match level {
             Level::Words => {
-                self.words.retain(|_, forms| forms.count > floor);
-                self.total = self
+                let mut rare: Vec<(u64, Box<str>)> = self
                     .words
-                    .values()
-                    .map(|forms| u64::from(forms.count))
-                    .sum();
+                    .iter()
+                    .filter(|(_, forms)| forms.count <= floor)
+                    .map(|(word, _)| (hash_str(word), word.clone()))
+                    .collect();
+                rare.sort_unstable();
+                let mut dropped = 0;
+                for (_, word) in rare {
+                    if dropped >= bytes {
+                        break;
+                    }
+                    if let Some(forms) = self.words.remove(&word) {
+                        dropped += forms
+                            .each(&word)
+                            .map(|(form, count)| entry_bytes(form, count))
+                            .sum::<usize>();
+                        self.total -= u64::from(forms.count);
+                    }
+                }
+                dropped
             }
-            Level::Bigrams => prune_successors(&mut self.bigrams, floor),
-            Level::Trigrams => prune_successors(&mut self.trigrams, floor),
+            Level::Bigrams => prune_successors(&mut self.bigrams, floor, bytes),
+            Level::Trigrams => prune_successors(&mut self.trigrams, floor, bytes),
         }
     }
 
@@ -573,21 +592,69 @@ enum Level {
     Trigrams,
 }
 
-/// Drops the successors seen `floor` times or fewer, and the contexts left
-/// with none.
-fn prune_successors(map: &mut HashMap<Box<str>, Successors>, floor: u32) {
-    map.retain(|_, successors| {
-        successors.counts.retain(|_, count| *count > floor);
-        if successors.clause_ends <= floor {
-            successors.clause_ends = 0;
+/// About how many bytes `"form":count,` takes in the file.
+fn entry_bytes(form: &str, count: u32) -> usize {
+    form.len() + 4 + count.checked_ilog10().unwrap_or(0) as usize + 1
+}
+
+/// Drops successors seen `floor` times or fewer, and the contexts left with
+/// none, until about `bytes` of the file are gone, in an order that favours
+/// no word. Returns about how many bytes it dropped.
+fn prune_successors(map: &mut HashMap<Box<str>, Successors>, floor: u32, bytes: usize) -> usize {
+    // A successor, or a context's clause ends when the word is none.
+    let mut rare: Vec<(u64, Box<str>, Option<Box<str>>)> = Vec::new();
+    for (context, successors) in map.iter() {
+        for (word, &count) in &successors.counts {
+            if count <= floor {
+                rare.push((
+                    hash_str(context) ^ hash_str(word),
+                    context.clone(),
+                    Some(word.clone()),
+                ));
+            }
         }
-        let counts = &successors.counts;
-        successors
-            .cased
-            .retain(|form, _| counts.contains_key(fold(form).as_ref()));
-        successors.total = counts.values().sum::<u32>() + successors.clause_ends;
-        successors.total > 0
-    });
+        if successors.clause_ends > 0 && successors.clause_ends <= floor {
+            rare.push((hash_str(context), context.clone(), None));
+        }
+    }
+    rare.sort_unstable();
+    let mut dropped = 0;
+    for (_, context, word) in rare {
+        if dropped >= bytes {
+            break;
+        }
+        let Some(successors) = map.get_mut(&context) else {
+            continue;
+        };
+        match word {
+            Some(word) => {
+                let count = successors.count(&word);
+                let cased: Vec<Box<str>> = successors
+                    .cased
+                    .keys()
+                    .filter(|form| fold(form) == *word)
+                    .cloned()
+                    .collect();
+                // The plain form and each cased one are an entry each.
+                dropped += entry_bytes(&word, count) * (1 + cased.len());
+                for form in cased {
+                    successors.cased.remove(&form);
+                }
+                successors.counts.remove(&word);
+                successors.total -= count;
+            }
+            None => {
+                dropped += entry_bytes(&context, successors.clause_ends);
+                successors.total -= successors.clause_ends;
+                successors.clause_ends = 0;
+            }
+        }
+        if successors.total == 0 {
+            map.remove(&context);
+            dropped += context.len() + 6;
+        }
+    }
+    dropped
 }
 
 /// Moves a file that couldn't be read to an unused name beside it:
@@ -695,15 +762,31 @@ enum ReadError {
 }
 
 /// Reads the vocabulary file at `path`: `None` when there is none.
-fn read_file(path: &Path) -> Result<Option<SavedVocabulary>, ReadError> {
+fn read_file(path: &Path) -> Result<Option<(SavedVocabulary, u64)>, ReadError> {
     let data = match std::fs::read(path) {
         Ok(data) => data,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(ReadError::Unreadable(error)),
     };
+    let hash = hash_bytes(&data);
+    #[cfg(test)]
+    tests::PARSES.with(|parses| parses.set(parses.get() + 1));
     serde_json::from_slice(&data)
-        .map(Some)
+        .map(|saved| Some((saved, hash)))
         .map_err(ReadError::Damaged)
+}
+
+/// The hash of the file at `path`, if it can be read.
+fn file_hash(path: &Path) -> Option<u64> {
+    std::fs::read(path).ok().map(|data| hash_bytes(&data))
+}
+
+/// A hash of a file's bytes, which tells whether it changed since.
+fn hash_bytes(data: &[u8]) -> u64 {
+    use std::hash::{DefaultHasher, Hash as _, Hasher as _};
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// The key of the trigram context `first second`.
@@ -829,23 +912,30 @@ fn to_json(counts: &Counts) -> serde_json::Result<Vec<u8>> {
 }
 
 /// `counts` as `vocabulary.json` holds them, in at most `cap` bytes. Larger
-/// counts first drop their rarest entries, until they fit in seven eighths of
-/// `cap`, so they have room to grow before they prune again: the trigrams
-/// seen once, then the bigrams and then the words, then those seen twice,
-/// and so on.
+/// counts drop their rarest entries until they fit in seven eighths of
+/// `cap`, so they have room to grow before they prune again: trigrams seen
+/// once, then bigrams and then words, then those seen twice, and so on. Each
+/// step drops just enough of them, in an order that favours no word, so a
+/// file just over the cap stays close to the seven eighths.
 fn pruned_json(counts: &mut Counts, cap: u64) -> serde_json::Result<Vec<u8>> {
     let mut data = to_json(counts)?;
     if data.len() as u64 <= cap {
         return Ok(data);
     }
     let before = data.len();
-    let target = cap / 8 * 7;
+    let target = (cap / 8 * 7) as usize;
+    // Past the highest count there is nothing left to drop.
+    let highest = counts.words.values().map(Forms::count).max().unwrap_or(0);
     let mut floor = 1;
-    'pruning: loop {
+    'pruning: while floor <= highest {
         for level in [Level::Trigrams, Level::Bigrams, Level::Words] {
-            counts.prune(level, floor);
-            data = to_json(counts)?;
-            if data.len() as u64 <= target {
+            while data.len() > target {
+                if counts.prune(level, floor, data.len() - target) == 0 {
+                    break;
+                }
+                data = to_json(counts)?;
+            }
+            if data.len() <= target {
                 break 'pruning;
             }
         }
@@ -867,15 +957,18 @@ struct SaveJob {
     lock_wait: Duration,
     /// What was learned since the last save.
     learned: Counts,
-    /// The whole vocabulary, to write in place of a file gone or damaged. A
-    /// background save copies it only once a save has found it needed.
+    /// The whole vocabulary, to write in place of a file gone or damaged,
+    /// or of the file as this process last read or wrote it. A background
+    /// save copies it only once a save has found it needed.
     whole: Option<Counts>,
+    /// The hash of the file as this process last read or wrote it.
+    known: Option<u64>,
 }
 
 /// What a [`SaveJob`] did.
 enum Saved {
-    /// It wrote the file. These are its counts.
-    Written(Counts),
+    /// It wrote the file. These are its counts and the hash of its bytes.
+    Written(Counts, u64),
     /// Nothing: the file is gone or damaged, and the job had no whole
     /// vocabulary to write in its place.
     NeedsWhole,
@@ -905,8 +998,21 @@ impl SaveJob {
                 None
             }
         };
+        // The file as this process last read or wrote it: the whole
+        // vocabulary is the file with the learning since, so it is written
+        // without reading the file again or holding a second copy.
+        if let Some(whole) = self.whole.as_mut()
+            && self.known.is_some()
+            && file_hash(path) == self.known
+        {
+            let data = pruned_json(whole, self.cap)?;
+            write_whole(path, &data)?;
+            drop(lock);
+            let whole = self.whole.take().expect("a whole vocabulary");
+            return Ok(Saved::Written(whole, hash_bytes(&data)));
+        }
         let mut merged = match read_file(path) {
-            Ok(Some(mut saved)) => {
+            Ok(Some((mut saved, _))) => {
                 saved.migrate();
                 let mut counts = Counts::from_saved(saved);
                 counts.add(&self.learned);
@@ -942,10 +1048,15 @@ impl SaveJob {
         let data = pruned_json(counts, self.cap)?;
         write_whole(path, &data)?;
         drop(lock);
-        Ok(Saved::Written(match merged {
-            Some(merged) => merged,
-            None => self.whole.take().expect("a whole vocabulary"),
-        }))
+        let written = hash_bytes(&data);
+        drop(data);
+        Ok(Saved::Written(
+            match merged {
+                Some(merged) => merged,
+                None => self.whole.take().expect("a whole vocabulary"),
+            },
+            written,
+        ))
     }
 }
 
@@ -995,6 +1106,8 @@ pub(crate) struct LoadedVocabulary {
     file: Option<PathBuf>,
     /// Whether the file is from an earlier version, to write again.
     dirty: bool,
+    /// The hash of the file as read.
+    hash: Option<u64>,
 }
 
 impl LoadedVocabulary {
@@ -1009,12 +1122,14 @@ impl LoadedVocabulary {
             counts: Counts::default(),
             file: None,
             dirty: false,
+            hash: None,
         };
         match read_file(&path) {
             Ok(saved) => {
-                if let Some(mut saved) = saved {
+                if let Some((mut saved, hash)) = saved {
                     loaded.dirty = saved.migrate();
                     loaded.counts = Counts::from_saved(saved);
+                    loaded.hash = Some(hash);
                 }
                 loaded.file = Some(path);
             }
@@ -1073,6 +1188,11 @@ pub(crate) struct Vocabulary {
     needs_whole: bool,
     /// How many times counts it didn't learn itself arrived from its file.
     generation: u64,
+    /// The hash of its file as it last read or wrote it, to tell whether
+    /// another process saved since.
+    file_hash: Option<u64>,
+    /// The most bytes its file may take. See [`Self::set_cap`].
+    cap: u64,
     /// How many background saves began.
     #[cfg(test)]
     background_saves: usize,
@@ -1092,6 +1212,8 @@ impl Vocabulary {
             save_again: false,
             needs_whole: false,
             generation: 0,
+            file_hash: None,
+            cap: VOCAB_MAX_BYTES,
             #[cfg(test)]
             background_saves: 0,
         }
@@ -1121,8 +1243,15 @@ impl Vocabulary {
         counts.add(&self.counts);
         self.counts = counts;
         self.file = loaded.file;
+        self.file_hash = loaded.hash;
         self.dirty |= loaded.dirty;
         self.generation += 1;
+    }
+
+    /// Saves its file in at most `cap` bytes, pruning the rarest entries to
+    /// fit. See [`crate::WritingOptions::with_vocabulary_cap`].
+    pub(crate) fn set_cap(&mut self, cap: u64) {
+        self.cap = cap;
     }
 
     /// A number that changes whenever counts it didn't learn itself arrive:
@@ -1155,7 +1284,7 @@ impl Vocabulary {
     /// [`BLOCKING_LOCK_WAIT`] for another process's save. Past either, what
     /// it learned since its last save stays unsaved.
     pub fn save(&mut self) {
-        self.save_within(VOCAB_MAX_BYTES);
+        self.save_within(self.cap);
     }
 
     /// Saves in at most `cap` bytes, pruning to fit. What a save couldn't
@@ -1182,10 +1311,12 @@ impl Vocabulary {
             lock_wait: self.lock_wait.min(BLOCKING_LOCK_WAIT),
             learned: std::mem::take(&mut self.unsaved),
             whole: Some(std::mem::take(&mut self.counts)),
+            known: self.file_hash,
         };
         match job.run() {
-            Ok(Saved::Written(counts)) => {
+            Ok(Saved::Written(counts, hash)) => {
                 self.counts = counts;
+                self.file_hash = Some(hash);
                 self.generation += 1;
                 self.dirty = false;
                 self.needs_whole = false;
@@ -1270,10 +1401,11 @@ impl Vocabulary {
         let learned = std::mem::take(&mut self.unsaved);
         let job = SaveJob {
             path,
-            cap: VOCAB_MAX_BYTES,
+            cap: self.cap,
             lock_wait: self.lock_wait,
             learned: learned.clone(),
             whole: self.needs_whole.then(|| self.counts.clone()),
+            known: self.file_hash,
         };
         let (sender, result) = mpsc::channel();
         self.in_flight = Some(InFlight { learned, result });
@@ -1314,8 +1446,9 @@ impl Vocabulary {
             },
         };
         match result {
-            Some(Ok(Saved::Written(mut counts))) => {
+            Some(Ok(Saved::Written(mut counts, hash))) => {
                 counts.add(&self.unsaved);
+                self.file_hash = Some(hash);
                 self.needs_whole = false;
                 self.generation += 1;
                 Some(std::mem::replace(&mut self.counts, counts))
@@ -1696,13 +1829,85 @@ mod tests {
         let reloaded = scratch.load();
         assert_eq!(trigram(&reloaded, "thanks", "for", "the"), 5);
         assert_eq!(bigram(&reloaded, "notes", "on"), 200);
-        assert_eq!(trigram(&reloaded, "notes", "on", "topic7"), 0);
-        assert_eq!(bigram(&reloaded, "on", "topic7"), 0);
+        let topics_kept = (0..200)
+            .filter(|number| trigram(&reloaded, "notes", "on", &format!("topic{number}")) > 0)
+            .count();
+        assert!(
+            topics_kept < 100,
+            "most trigrams seen once go: {topics_kept} kept"
+        );
         assert_eq!(reloaded.counts.word_count("topic7"), 1);
 
         vocabulary.learn_sentence("Mosses grow faster");
         vocabulary.save_within(cap);
         assert_eq!(scratch.load().counts.word_count("mosses"), 1);
+    }
+
+    /// A vocabulary just over its cap drops just enough to fit in seven
+    /// eighths of it, not every entry seen once, and every entry it keeps has
+    /// its count.
+    #[test]
+    fn a_vocabulary_just_over_its_cap_keeps_most_of_itself() {
+        let scratch = Scratch::new("just-over");
+        let mut vocabulary = scratch.load();
+        for number in 0..400 {
+            vocabulary.learn_sentence(&format!("Notes on topic{number} today and more"));
+        }
+        let size = vocabulary.to_json().unwrap().len() as u64;
+        let cap = size - size / 20;
+        vocabulary.save_within(cap);
+        let saved = std::fs::metadata(scratch.file()).unwrap().len();
+        assert!(saved <= cap / 8 * 7, "{saved} bytes, cap {cap}");
+        assert!(
+            saved >= cap / 8 * 6,
+            "{saved} bytes kept of {size}: too much dropped"
+        );
+        let reloaded = scratch.load();
+        assert_eq!(bigram(&reloaded, "notes", "on"), 400);
+        assert_eq!(reloaded.counts.word_count("notes"), 400);
+    }
+
+    thread_local! {
+        /// How many vocabulary files this thread parsed.
+        pub(super) static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    /// A save at quit writes over a file as this process last left it
+    /// without parsing it again, and adds to one another process saved
+    /// since.
+    #[test]
+    fn a_blocking_save_parses_the_file_only_after_another_process_saved() {
+        let parses = || PARSES.with(std::cell::Cell::get);
+        let scratch = Scratch::new("unchanged");
+        let mut vocabulary = scratch.load();
+        vocabulary.learn_sentence("Ferns grow slowly");
+        vocabulary.save();
+        let before = parses();
+        vocabulary.learn_sentence("Mosses grow faster");
+        vocabulary.save();
+        assert_eq!(parses(), before, "the file was parsed again");
+        assert_eq!(
+            saved(&scratch),
+            learned_from(["Ferns grow slowly", "Mosses grow faster"])
+        );
+
+        let mut other = scratch.load();
+        other.learn_sentence("Lichens grow nowhere");
+        other.save();
+        vocabulary.learn_sentence("Ferns need shade");
+        let before = parses();
+        vocabulary.save();
+        assert_eq!(parses(), before + 1);
+        let all = [
+            "Ferns grow slowly",
+            "Mosses grow faster",
+            "Lichens grow nowhere",
+            "Ferns need shade",
+        ];
+        assert_eq!(saved(&scratch), learned_from(all));
+        let worked_from: serde_json::Value =
+            serde_json::from_slice(&vocabulary.to_json().unwrap()).unwrap();
+        assert_eq!(worked_from, learned_from(all));
     }
 
     /// The file `scratch` holds.

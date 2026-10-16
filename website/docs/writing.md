@@ -22,8 +22,9 @@ gets them without writing its own:
   word after a space, from a vocabulary learned on the user's computer from
   what they write: typing, suggestions taken with Tab and spelling
   corrections chosen from the menu. Pasted text, undo and redo and text the
-  program inserts teach nothing, however short. A suggestion shows only when it is more likely right than
-  wrong, and words the user keeps typing past are offered less. Punctuation
+  program inserts teach nothing, however short. A suggestion shows only when
+  it is more likely right than wrong, and words the user keeps typing past
+  are offered less. Punctuation
   between words, such as a comma, a colon or a slash, ends what a prediction
   follows: after "UI/UX, " nothing learned after "UI/UX" is offered.
 
@@ -93,6 +94,7 @@ read or saved, and what the suggestions learn lasts the session.
 | `with_vocabulary_file(name)` | `vocabulary.json` | what the suggestions learned, with `vocabulary.lock` beside it |
 | `with_user_dictionary_file(name)` | `user-dictionary.txt` | the words **Add to Dictionary** added, one per line |
 | `with_word_lists(lists)` | `[WordList::English]` | the word lists the dictionary accepts |
+| `with_vocabulary_cap(bytes)` | 16 MiB | the most bytes `vocabulary.json` may take |
 
 A `WordList` is `English` (the `english` feature, on by default), a
 `File(path)` read at loading, or `Text`. A list is one word per line, `#`
@@ -119,7 +121,7 @@ writing.save();
 ```
 
 A background save never holds up the UI. `save` runs on the calling thread:
-saving a vocabulary near its 16 MB cap takes a few hundred milliseconds, and
+saving a vocabulary near the default cap takes a few hundred milliseconds, and
 it waits at most a second for a background save under way and half a second
 for another process's save, after which this session's latest learning stays
 unsaved.
@@ -128,6 +130,14 @@ Several processes can share one vocabulary file. Each save adds what this
 process learned since its last save to what the file holds now, under a lock,
 and writes the file whole, so a crash leaves the old file or the new one. A
 file that doesn't parse is moved aside rather than written over.
+
+A save that would take the file past its cap drops the rarest entries, those
+seen once first, until it takes seven eighths of the cap. The vocabulary in
+memory takes about six and a half times its file: about 100 MB at the default
+16 MiB. A background save briefly needs about that much again, to read what
+other processes added to the file; `save` skips the reading when the file is
+as this process last left it. A smaller cap keeps memory down and remembers
+less of what the user wrote.
 
 ## How eagerly suggestions show
 

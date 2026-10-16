@@ -96,7 +96,8 @@ impl Writing {
 
     fn unloaded(options: &WritingOptions) -> Self {
         let dictionary = Rc::new(Dictionary::unloaded(options.user_dictionary_path()));
-        let vocabulary = Vocabulary::with_dictionary(dictionary.clone());
+        let mut vocabulary = Vocabulary::with_dictionary(dictionary.clone());
+        vocabulary.set_cap(options.vocabulary_cap());
         Self {
             loaded: Rc::new(Cell::new(false)),
             ..Self::from_parts(dictionary, vocabulary)
@@ -163,9 +164,9 @@ impl Writing {
     ///
     /// It waits at most a second for a background save, and half a second
     /// for another process's save; past either, the learning since the last
-    /// save stays unsaved. Saving a vocabulary near its 16 MB cap takes a
-    /// few hundred milliseconds. Where the application can, it closes its
-    /// windows, awaits [`Self::save_in_background`] and then quits.
+    /// save stays unsaved. Saving a vocabulary near the default 16 MiB cap
+    /// takes a few hundred milliseconds. Where the application can, it closes
+    /// its windows, awaits [`Self::save_in_background`] and then quits.
     pub fn save(&self) {
         self.vocabulary.borrow_mut().save();
     }
@@ -222,6 +223,33 @@ mod tests {
         assert_eq!(
             reloaded.vocabulary().borrow().counts().word_count("ferns"),
             1
+        );
+    }
+
+    /// The vocabulary file stays within the cap the options give.
+    #[test]
+    fn the_vocabulary_keeps_within_its_cap() {
+        let scratch = Scratch::new("vocabulary-cap");
+        let cap = 4096;
+        let options = WritingOptions::new()
+            .with_data_dir(scratch.0.clone())
+            .with_vocabulary_cap(cap);
+        let writing = Writing::load_blocking(options.clone());
+        for number in 0..400 {
+            writing
+                .vocabulary()
+                .borrow_mut()
+                .learn_sentence(&format!("Notes on topic{number} today"));
+        }
+        writing.save();
+        let saved = std::fs::metadata(options.vocabulary_path().unwrap())
+            .unwrap()
+            .len();
+        assert!(saved <= cap / 8 * 7, "{saved} bytes, cap {cap}");
+        let reloaded = Writing::load_blocking(options);
+        assert_eq!(
+            reloaded.vocabulary().borrow().counts().word_count("notes"),
+            400
         );
     }
 

@@ -31,6 +31,7 @@ pub struct WritingOptions {
     vocabulary_file: String,
     user_dictionary_file: String,
     word_lists: Vec<WordList>,
+    vocabulary_cap: u64,
 }
 
 impl Default for WritingOptions {
@@ -40,13 +41,14 @@ impl Default for WritingOptions {
             vocabulary_file: VOCABULARY_FILE.into(),
             user_dictionary_file: USER_DICTIONARY_FILE.into(),
             word_lists: WordList::defaults(),
+            vocabulary_cap: crate::completion::VOCAB_MAX_BYTES,
         }
     }
 }
 
 impl WritingOptions {
     /// No data folder, `vocabulary.json` and `user-dictionary.txt` as the
-    /// file names, and the bundled English word list.
+    /// file names, the bundled English word list and a 16 MiB vocabulary.
     pub fn new() -> Self {
         Self::default()
     }
@@ -82,6 +84,19 @@ impl WritingOptions {
         self
     }
 
+    /// The most bytes the vocabulary file may take. A save that would make
+    /// it larger drops the rarest entries until it takes seven eighths of
+    /// this. Default: 16 MiB.
+    ///
+    /// The vocabulary in memory takes about six and a half times its file:
+    /// about 100 MB at the default cap. A save in the background briefly
+    /// needs that much again, to read the file another process may have
+    /// added to. A smaller cap keeps less of what the user types.
+    pub fn with_vocabulary_cap(mut self, bytes: u64) -> Self {
+        self.vocabulary_cap = bytes;
+        self
+    }
+
     pub fn data_dir(&self) -> Option<&Path> {
         self.data_dir.as_deref()
     }
@@ -96,6 +111,10 @@ impl WritingOptions {
 
     pub fn word_lists(&self) -> &[WordList] {
         &self.word_lists
+    }
+
+    pub fn vocabulary_cap(&self) -> u64 {
+        self.vocabulary_cap
     }
 
     /// Where the vocabulary is saved, when there is a data folder.
