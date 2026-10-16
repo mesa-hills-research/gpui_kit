@@ -49,8 +49,8 @@ pub use gpui_base::input::{
     RangeDecorationStyle, Redo, Replace, Rope, RopeExt, RopeLines, Search, SelectAll, SelectToEnd,
     SelectToEndOfLine, SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart,
     SelectToStartOfLine, Selection, ShowCharacterPalette, ShowDocumentHandler, SmoothCaretOptions,
-    TabSize, TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions, Undo,
-    WrappingIndent,
+    SubmitKey, TabSize, TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions,
+    Undo, WrappingIndent,
 };
 pub use gpui_base::input::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,

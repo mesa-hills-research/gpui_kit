@@ -18,7 +18,7 @@ use gpui_kit::component::{
     h_flex,
     hover_card::HoverCard,
     input::{
-        AcceptSuggestionWord, InputEvent, RopeExt as _, ShowSuggestions, Suggestion,
+        AcceptSuggestionWord, InputEvent, RopeExt as _, ShowSuggestions, SubmitKey, Suggestion,
         SuggestionEvent, SuggestionOptions, SuggestionProvider, SuggestionRequest, Textarea,
         TextareaState,
     },
@@ -211,8 +211,8 @@ impl TextareaStory {
         let chat_input = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 5)
-                .submit_on_enter(true)
-                .placeholder("Type a message, Enter to send, Shift+Enter for newline")
+                .submit_key(SubmitKey::Enter)
+                .placeholder("Type a message and press the send key")
         });
 
         let composer = cx.new(|cx| {
@@ -268,7 +268,12 @@ impl TextareaStory {
                 &chat_input,
                 window,
                 |this: &mut Self, input, event, window, cx| match event {
-                    InputEvent::PressEnter { shift, .. } if !shift => {
+                    InputEvent::PressEnter { secondary, shift }
+                        if input
+                            .read(cx)
+                            .current_submit_key()
+                            .is_some_and(|key| key.matches(*secondary, *shift)) =>
+                    {
                         let text = input.read(cx).value().trim().to_string();
                         if !text.is_empty() {
                             this.chat_messages.push(text);
@@ -419,10 +424,31 @@ impl Render for TextareaStory {
                     ),
             )
             .child(
-                section("Submit on Enter (Chat)").w(px(560.)).child(
+                section("Send Key (Chat)").w(px(560.)).child(
                     v_flex()
                         .gap_2()
                         .w_full()
+                        .child(h_flex().gap_2().children(
+                            [
+                                (SubmitKey::Enter, "Enter"),
+                                (SubmitKey::ShiftEnter, "Shift+Enter"),
+                                (SubmitKey::SecondaryEnter, "Cmd/Ctrl+Enter"),
+                            ]
+                            .into_iter()
+                            .map(|(key, label)| {
+                                let current = self.chat_input.read(cx).current_submit_key();
+                                Button::new(label)
+                                    .label(label)
+                                    .small()
+                                    .when(current == Some(key), |button| button.primary())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.chat_input.update(cx, |state, cx| {
+                                            state.set_submit_key(Some(key), cx)
+                                        });
+                                        cx.notify();
+                                    }))
+                            }),
+                        ))
                         .child(v_flex().gap_1().children(
                             self.chat_messages.iter().enumerate().map(|(i, msg)| {
                                 div()

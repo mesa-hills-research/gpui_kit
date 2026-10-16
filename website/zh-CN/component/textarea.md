@@ -57,7 +57,33 @@ cx.subscribe(&notes, |this, state, event: &InputEvent, cx| {
 ```
 
 `TextareaState` 还提供 `insert`、`replace`、`cursor_position`、
-`soft_wrap`、`searchable` 和 `submit_on_enter`。
+`soft_wrap`、`searchable` 和 `submit_key`。
+
+### 发送键
+
+聊天输入框用一个 Enter 组合键发送，其他组合键换行。`submit_key` 选择发送用的组合键：`SubmitKey::Enter`、`SubmitKey::ShiftEnter` 或 `SubmitKey::SecondaryEnter`（macOS 上为 Cmd+Enter，其他平台为 Ctrl+Enter）。该组合键不插入任何内容，并发出 `InputEvent::PressEnter`，可用 `SubmitKey::matches` 识别；其他组合键插入换行。未设置发送键时，所有 Enter 组合键都换行。
+
+```rust
+let composer = cx.new(|cx| {
+    TextareaState::new(window, cx)
+        .auto_grow(1, 6)
+        .submit_key(SubmitKey::Enter)
+});
+
+cx.subscribe_in(&composer, window, |this, composer, event, window, cx| {
+    if let InputEvent::PressEnter { secondary, shift } = event
+        && composer.read(cx).current_submit_key().is_some_and(|key| key.matches(*secondary, *shift))
+    {
+        this.send(composer, window, cx);
+    }
+})
+.detach();
+
+// 根据设置在运行时切换。
+composer.update(cx, |state, cx| state.set_submit_key(Some(SubmitKey::ShiftEnter), cx));
+```
+
+`SubmitKey` 在设置文件中序列化为 `"enter"`、`"shift_enter"` 和 `"secondary_enter"`。`submit_on_enter(true)` 是 `submit_key(SubmitKey::Enter)` 的旧写法。
 
 ## 尺寸
 

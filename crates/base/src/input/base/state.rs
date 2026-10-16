@@ -72,6 +72,50 @@ impl Enter {
     }
 }
 
+/// The Enter chord that submits a multi-line text input, such as a chat
+/// composer's send key, set with [`InputBaseState::submit_key`].
+///
+/// The chord inserts nothing: the [`Enter`] action propagates to the
+/// elements around the input, and the input emits
+/// [`InputEvent::PressEnter`], which [`SubmitKey::matches`] recognizes. The
+/// other Enter chords insert a line break. Without a submit key every chord
+/// inserts one.
+///
+/// Saved settings name it in snake case: `"enter"`, `"secondary_enter"`,
+/// `"shift_enter"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmitKey {
+    /// Enter submits; Shift+Enter and Cmd+Enter or Ctrl+Enter break lines.
+    Enter,
+    /// Cmd+Enter on macOS and Ctrl+Enter elsewhere submits; Enter and
+    /// Shift+Enter break lines.
+    SecondaryEnter,
+    /// Shift+Enter submits; Enter and Cmd+Enter or Ctrl+Enter break lines.
+    ShiftEnter,
+}
+
+impl SubmitKey {
+    /// The chord an [`Enter`] action, or an [`InputEvent::PressEnter`], came
+    /// from: Cmd+Enter or Ctrl+Enter when `secondary`, Shift+Enter when
+    /// `shift`, and Enter otherwise.
+    pub fn of_enter(secondary: bool, shift: bool) -> Self {
+        if secondary {
+            Self::SecondaryEnter
+        } else if shift {
+            Self::ShiftEnter
+        } else {
+            Self::Enter
+        }
+    }
+
+    /// Whether the Enter chord described by `secondary` and `shift`, as an
+    /// [`InputEvent::PressEnter`] carries them, is this one.
+    pub fn matches(self, secondary: bool, shift: bool) -> bool {
+        Self::of_enter(secondary, shift) == self
+    }
+}
+
 actions!(
     input,
     [
@@ -248,7 +292,7 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(crate) text_align: TextAlign,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
-    pub(super) submit_on_enter: bool,
+    pub(super) submit_key: Option<SubmitKey>,
     pub(super) show_whitespaces: bool,
     /// This flag tells the renderer to prefer the end of the current visual line.
     pub(crate) cursor_line_end_affinity: bool,
@@ -599,7 +643,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             text_align: TextAlign::Left,
             masked: false,
             clean_on_escape: false,
-            submit_on_enter: false,
+            submit_key: None,
             show_whitespaces: false,
             loading: false,
             pattern: None,
@@ -1003,19 +1047,39 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.clean_on_escape = clean;
     }
 
-    /// Set true to treat `Enter` as a submit action in multi-line mode,
-    /// while `Shift+Enter` inserts a newline.
+    /// Submit a multi-line input with `key`, which then inserts nothing,
+    /// while the other Enter chords break lines. See [`SubmitKey`].
     ///
-    /// Default is `false` (both `Enter` and `Shift+Enter` insert a newline).
-    #[doc(hidden)]
-    pub fn submit_on_enter(mut self, submit: bool) -> Self {
-        self.submit_on_enter = submit;
+    /// By default nothing submits: every Enter chord breaks a line.
+    pub fn submit_key(mut self, key: SubmitKey) -> Self {
+        self.submit_key = Some(key);
         self
     }
 
-    pub fn set_submit_on_enter(&mut self, submit: bool, cx: &mut Context<Self>) {
-        self.submit_on_enter = submit;
+    /// Change the chord that submits, or with `None` let every Enter chord
+    /// break a line. See [`Self::submit_key`].
+    pub fn set_submit_key(&mut self, key: Option<SubmitKey>, cx: &mut Context<Self>) {
+        self.submit_key = key;
         cx.notify();
+    }
+
+    /// The chord that submits, if any. See [`Self::submit_key`].
+    pub fn current_submit_key(&self) -> Option<SubmitKey> {
+        self.submit_key
+    }
+
+    /// With `true`, Enter submits and Shift+Enter or Cmd+Enter or Ctrl+Enter
+    /// breaks a line, as [`SubmitKey::Enter`].
+    #[deprecated(note = "use `submit_key(SubmitKey::Enter)`")]
+    pub fn submit_on_enter(mut self, submit: bool) -> Self {
+        self.submit_key = submit.then_some(SubmitKey::Enter);
+        self
+    }
+
+    /// See [`Self::submit_on_enter`].
+    #[deprecated(note = "use `set_submit_key(Some(SubmitKey::Enter), cx)`")]
+    pub fn set_submit_on_enter(&mut self, submit: bool, cx: &mut Context<Self>) {
+        self.set_submit_key(submit.then_some(SubmitKey::Enter), cx);
     }
 
     /// Set whether to show whitespace characters.
@@ -1816,11 +1880,13 @@ impl<M: InputModeKind> InputBaseState<M> {
             M::clear_inline_completion(self, cx);
         }
 
-        // In multi-line mode with `submit_on_enter` enabled, a plain `Enter`
-        // (without Shift) is treated as submit: propagate the action and emit
-        // PressEnter without inserting a newline. `Shift+Enter` still inserts
-        // a newline.
-        let insert_newline = self.is_multi_line() && (!self.submit_on_enter || action.shift);
+        // In multi-line mode the submit key, if one is set, propagates the
+        // action and emits PressEnter without inserting a newline. The other
+        // Enter chords insert one.
+        let submits = self
+            .submit_key
+            .is_some_and(|key| key.matches(action.secondary, action.shift));
+        let insert_newline = self.is_multi_line() && !submits;
 
         if insert_newline {
             if !self.selections.is_single() {
@@ -1911,7 +1977,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 }
             }
         } else {
-            // Single line input or submit-on-enter: just emit the event
+            // Single line input or the submit key: just emit the event
             // (e.g.: in a dialog to confirm, or a chat textarea to send).
             self.undo_manager.break_transaction_coalescing();
             cx.propagate();
@@ -6750,7 +6816,7 @@ mod tests {
 
     #[gpui::test]
     fn test_undo_manager_submit_on_enter_commits_the_textarea_session(cx: &mut TestAppContext) {
-        let input_view = InputView::build_textarea(cx, |state| state.submit_on_enter(true));
+        let input_view = InputView::build_textarea(cx, |state| state.submit_key(SubmitKey::Enter));
         let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
         let input = input_view.input;
 

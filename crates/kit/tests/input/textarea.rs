@@ -3,7 +3,7 @@ use gpui_kit::{
     App, AppContext, ClipboardItem, Context, ElementId, Entity, InputEvent as _, Modifiers,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta,
     Subscription, TestAppContext, Window, WindowHandle,
-    component::input::{InputEvent, KeymapPlatform, Textarea, TextareaState},
+    component::input::{InputEvent, KeymapPlatform, SubmitKey, Textarea, TextareaState},
     div, point,
     prelude::*,
     px, size,
@@ -191,7 +191,63 @@ fn enter_and_shift_enter_insert_plain_newlines(cx: &mut TestAppContext) {
     });
 }
 
+/// The send key submits and inserts nothing, and the other Enter chords break
+/// lines, for each submit key on each platform's keys. Without one, every
+/// chord breaks a line.
 #[gpui_kit::test]
+fn the_submit_key_submits_and_the_other_enters_break_lines(cx: &mut TestAppContext) {
+    platform::each(cx, |keys, cx| {
+        let secondary = keys.primary("enter");
+        let chords = [
+            (SubmitKey::Enter, "enter"),
+            (SubmitKey::ShiftEnter, "shift-enter"),
+            (SubmitKey::SecondaryEnter, secondary.as_str()),
+        ];
+        for submit_key in [
+            None,
+            Some(SubmitKey::Enter),
+            Some(SubmitKey::ShiftEnter),
+            Some(SubmitKey::SecondaryEnter),
+        ] {
+            let (handle, owner, text) =
+                composer_on(keys.platform(), cx, |state| match submit_key {
+                    Some(key) => state.submit_key(key),
+                    None => state,
+                });
+            for (chord, key) in chords {
+                cx.update_window(handle.into(), |_, window, cx| {
+                    window.click(target(&text), cx);
+                    text.update(cx, |state, cx| state.set_value("send", window, cx));
+                    window.press(keys.text_end(), cx);
+                    window.press(key, cx);
+                    let submits = submit_key == Some(chord);
+                    let expected = if submits { "send" } else { "send\n" };
+                    assert_eq!(text.read(cx).value(), expected, "{key} with {submit_key:?}");
+                })
+                .unwrap();
+                cx.run_until_parked();
+                cx.update(|cx| {
+                    let (secondary, shift, value) = owner
+                        .read(cx)
+                        .enters
+                        .last()
+                        .cloned()
+                        .expect("an Enter event");
+                    assert_eq!(SubmitKey::of_enter(secondary, shift), chord, "{key}");
+                    assert_eq!(
+                        submit_key.is_some_and(|submit| submit.matches(secondary, shift)),
+                        submit_key == Some(chord),
+                    );
+                    assert!(value.starts_with("send"));
+                });
+            }
+        }
+    });
+}
+
+/// `submit_on_enter(true)`, kept for older code, is `SubmitKey::Enter`.
+#[gpui_kit::test]
+#[allow(deprecated)]
 fn submit_on_enter_preserves_text_but_shift_enter_inserts(cx: &mut TestAppContext) {
     let (handle, owner, text) = composer(cx, |state| state.submit_on_enter(true));
     cx.update_window(handle.into(), |_, window, cx| {

@@ -30,6 +30,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   a vocabulary learned from what they type, and gives every textarea a spell checker that skips
   code, paths and URLs, and a suggestion provider that completes the word and predicts the next,
   paced Off, Quiet or Eager. See [Spell checking and word suggestions](website/docs/writing.md).
+- **A send key for composers** (`gpui-base`). `TextareaState::submit_key` makes Enter, Shift+Enter
+  or Cmd/Ctrl+Enter submit a multi-line input without inserting anything, while the other Enter
+  chords break lines; `SubmitKey` is a public, serializable setting, and `submit_on_enter(true)`
+  stays as its deprecated spelling. See [Textarea: send key](website/component/textarea.md#send-key).
 - **Keybinding schemes** (`gpui-base`, `gpui-component`). A textarea follows CUA, Emacs or Vim keys
   and switches between them at run time. CUA binds each platform's own text-field shortcuts in
   every input, Emacs adds the mark, the kill ring and prefix arguments, and Vim its modes,
