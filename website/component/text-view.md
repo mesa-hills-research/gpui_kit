@@ -205,6 +205,14 @@ copy button or a line count:
 TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
 ```
 
+A selection that reaches past the last line shown copies the whole block, as
+the reader can't select the hidden lines. Any block longer than the cap is cut,
+however few lines that hides, so leave the cap off a block of only a few more
+lines than it. Range highlights and reveals don't show in the hidden lines: to
+take a find result there, expand the block first. The result's line in the
+block is the number of newlines before it in the block's part of
+`rendered_text()`.
+
 The streamed fade repaints for 350 ms after each chunk, about 30 times a
 second. With an answer as rows, those frames lay out the rows on screen,
 about a millisecond each for the answer above, and only the rows whose text

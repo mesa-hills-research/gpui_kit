@@ -1798,6 +1798,8 @@ struct CappedCode {
     lines: usize,
     /// The code the lines were taken from.
     code: SharedString,
+    /// The length of the lines.
+    len: usize,
     state: Arc<Mutex<InlineState>>,
     /// The [`CodeBlockHighlights::id`] of the highlights of the whole code,
     /// and those highlights cut to the lines.
@@ -1969,7 +1971,8 @@ impl CodeBlock {
         if selection.start >= selection.end {
             return SourceRangeSelection::Unselected;
         }
-        source_range_for_segments(&self.source_segments, selection.start..selection.end)
+        let end = self.copied_end(&state.text, selection.end);
+        source_range_for_segments(&self.source_segments, selection.start..end)
             .map(SourceRangeSelection::Mapped)
             .unwrap_or(SourceRangeSelection::Unmapped)
     }
@@ -1996,12 +1999,17 @@ impl CodeBlock {
     /// code is longer, kept for the next frame.
     fn capped_state(&self, lines: usize) -> Option<(Arc<Mutex<InlineState>>, usize)> {
         let code = self.code();
-        let end = code
+        let mut capped = self.capped.lock().ok()?;
+        let Some(end) = code
             .match_indices('\n')
             .nth(lines.saturating_sub(1))
             .map(|(ix, _)| ix)
-            .filter(|ix| ix + 1 < code.len())?;
-        let mut capped = self.capped.lock().ok()?;
+            .filter(|ix| ix + 1 < code.len())
+        else {
+            // Shown whole: a selection copies what it covers.
+            *capped = None;
+            return None;
+        };
         if let Some(capped) = capped.as_ref()
             && capped.lines == lines
             && capped.code == code
@@ -2015,6 +2023,7 @@ impl CodeBlock {
         *capped = Some(CappedCode {
             lines,
             code,
+            len: end,
             state: state.clone(),
             highlights: None,
         });
@@ -2087,9 +2096,26 @@ impl CodeBlock {
         if let Ok(state) = self.state.lock()
             && let Some(selection) = &state.selection
         {
-            text.push_str(&state.text[selection.start..selection.end]);
+            let end = self.copied_end(&state.text, selection.end);
+            text.push_str(&state.text[selection.start..end]);
         }
         text
+    }
+
+    /// Where a selection of `code` that ends at `end` is copied to: the end
+    /// of the code when only its first lines are shown and the selection
+    /// reaches past the last of them, as the reader can't select the rest.
+    fn copied_end(&self, code: &SharedString, end: usize) -> usize {
+        let capped_len = self.capped.lock().ok().and_then(|capped| {
+            capped
+                .as_ref()
+                .filter(|capped| capped.code == *code)
+                .map(|capped| capped.len)
+        });
+        match capped_len {
+            Some(len) if end >= len => code.len(),
+            _ => end,
+        }
     }
 
     /// Markdown source for the current selection.
@@ -4265,8 +4291,6 @@ mod tests {
         assert_eq!(state.lock().unwrap().text.as_ref(), "one\ntwo");
         let (again, _) = block.capped_state(2).unwrap();
         assert!(Arc::ptr_eq(&state, &again), "kept for the next frame");
-        assert!(block.capped_state(4).is_none(), "four lines show whole");
-        assert!(block.capped_state(10).is_none());
 
         let style = HighlightStyle::default();
         let highlights =
@@ -4279,6 +4303,46 @@ mod tests {
             [0..3, 4..7]
         );
         assert_eq!(block.capped_highlights(highlights, 7).id(), cut.id());
+
+        assert!(block.capped_state(4).is_none(), "four lines show whole");
+        assert!(block.capped_state(10).is_none());
+    }
+
+    /// The reader can't select the lines past the cap, so a selection that
+    /// runs past the lines shown means the whole block.
+    #[test]
+    fn a_selection_past_the_shown_lines_copies_the_whole_code() {
+        let code = "fn main() {\n    let a = 1;\n    let b = 2;\n    let c = 3;\n}\n";
+        let block =
+            CodeBlock::new(code.into(), Some("rust".into()), None::<Span>).source_segments(vec![
+                SourceSegment {
+                    rendered: 0..code.len(),
+                    source: 8..8 + code.len(),
+                    linear: true,
+                },
+            ]);
+        let (_, len) = block.capped_state(3).unwrap();
+        assert_eq!(&code[..len], "fn main() {\n    let a = 1;\n    let b = 2;");
+
+        block.set_selection(0..len);
+        assert_eq!(block.selected_text(), code);
+        assert_eq!(
+            block.selected_source(),
+            format!("```rust\n{}\n```", code.trim_end())
+        );
+        assert!(matches!(
+            block.selected_source_range(),
+            SourceRangeSelection::Mapped(range) if range == (8..8 + code.len())
+        ));
+
+        // One that ends within the shown lines copies to where it ends.
+        block.set_selection(12..len - 1);
+        assert_eq!(block.selected_text(), &code[12..len - 1]);
+
+        // Shown whole, a selection copies what it covers.
+        assert!(block.capped_state(10).is_none());
+        block.set_selection(0..len);
+        assert_eq!(block.selected_text(), &code[..len]);
     }
 
     #[test]
