@@ -642,6 +642,27 @@ DiffView:
     zh-CN: 没有更改
     zh-HK: 沒有更改
     zh-TW: 沒有變更
+TitleBar:
+  minimize:
+    en: Minimize
+    zh-CN: 最小化
+    zh-HK: 最小化
+    zh-TW: 最小化
+  maximize:
+    en: Maximize
+    zh-CN: 最大化
+    zh-HK: 最大化
+    zh-TW: 最大化
+  restore:
+    en: Restore
+    zh-CN: 还原
+    zh-HK: 還原
+    zh-TW: 還原
+  close:
+    en: Close
+    zh-CN: 关闭
+    zh-HK: 關閉
+    zh-TW: 關閉
 Carousel:
   label:
     en: Carousel

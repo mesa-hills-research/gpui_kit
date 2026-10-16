@@ -5,11 +5,12 @@ use crate::{
 };
 use gpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TitlebarOptions, Window, WindowButton, WindowButtonLayout,
-    WindowControlArea, WindowControls as PlatformWindowControls, WindowOptions, div,
-    prelude::FluentBuilder as _, px, rgb,
+    MouseButton, ParentElement, Pixels, Render, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
+    WindowButton, WindowButtonLayout, WindowControlArea, WindowControls as PlatformWindowControls,
+    WindowOptions, div, prelude::FluentBuilder as _, px, rgb,
 };
+use rust_i18n::t;
 use smallvec::SmallVec;
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
@@ -167,6 +168,17 @@ impl Caption {
         }
     }
 
+    /// The button's accessible name.
+    fn label(self) -> SharedString {
+        match self {
+            Self::Minimize => t!("TitleBar.minimize"),
+            Self::Maximize => t!("TitleBar.maximize"),
+            Self::Restore => t!("TitleBar.restore"),
+            Self::Close => t!("TitleBar.close"),
+        }
+        .into()
+    }
+
     fn area(self) -> WindowControlArea {
         match self {
             Self::Minimize => WindowControlArea::Min,
@@ -223,14 +235,19 @@ impl CaptionColors {
 }
 
 /// The font that draws Windows' caption glyphs on this machine, if any;
-/// looked up once.
+/// looked up once, by resolving just these families rather than listing
+/// every installed font.
 fn caption_glyph_font(cx: &App) -> Option<&'static str> {
     static FONT: std::sync::OnceLock<Option<&'static str>> = std::sync::OnceLock::new();
     *FONT.get_or_init(|| {
-        let installed = cx.text_system().all_font_names();
-        CAPTION_GLYPH_FONTS
-            .into_iter()
-            .find(|font| installed.iter().any(|name| name == font))
+        let text_system = cx.text_system();
+        CAPTION_GLYPH_FONTS.into_iter().find(|family| {
+            // A family that isn't installed resolves to a fallback font.
+            let id = text_system.resolve_font(&gpui::font(*family));
+            text_system
+                .get_font_for_id(id)
+                .is_some_and(|font| font.family.as_ref() == *family)
+        })
     })
 }
 
@@ -256,6 +273,8 @@ impl RenderOnce for CaptionButton {
 
         div()
             .id(caption.id())
+            .role(Role::Button)
+            .aria_label(caption.label())
             .flex()
             .flex_shrink_0()
             .items_center()
@@ -317,17 +336,19 @@ impl RenderOnce for LinuxButton {
                 cx.theme().secondary_active,
             )
         };
-        let (id, icon) = match self.button {
-            WindowButton::Minimize => ("minimize", IconName::WindowMinimize),
-            WindowButton::Maximize if window.is_maximized() => ("restore", IconName::WindowRestore),
-            WindowButton::Maximize => ("maximize", IconName::WindowMaximize),
-            WindowButton::Close => ("close", IconName::WindowClose),
+        let caption = match self.button {
+            WindowButton::Minimize => Caption::Minimize,
+            WindowButton::Maximize if window.is_maximized() => Caption::Restore,
+            WindowButton::Maximize => Caption::Maximize,
+            WindowButton::Close => Caption::Close,
         };
         let button = self.button;
         let on_close_window = self.on_close_window;
 
         div()
-            .id(id)
+            .id(caption.id())
+            .role(Role::Button)
+            .aria_label(caption.label())
             .flex()
             .w(TITLE_BAR_HEIGHT)
             .h_full()
@@ -356,7 +377,7 @@ impl RenderOnce for LinuxButton {
                     }
                 }
             })
-            .child(Icon::new(icon).small())
+            .child(Icon::new(caption.icon()).small())
     }
 }
 
@@ -504,7 +525,10 @@ impl RenderOnce for TitleBar {
             && self
                 .button_layout
                 .or_else(|| cx.button_layout())
-                .is_some_and(|layout| layout.left.iter().any(Option::is_some));
+                .is_some_and(|layout| {
+                    let [start, _] = linux_buttons(&layout, window.window_controls());
+                    !start.is_empty()
+                });
 
         div().flex_shrink_0().child(
             div()
@@ -635,6 +659,43 @@ mod tests {
             linux_buttons(&layout, tiling),
             [vec![WindowButton::Close], vec![]]
         );
+    }
+
+    /// Every window button is a button named for what it does, so a screen
+    /// reader says "Minimize" rather than a private-use glyph.
+    #[gpui::test]
+    fn window_buttons_are_named_buttons(cx: &mut gpui::TestAppContext) {
+        use gpui::{Element as _, accesskit};
+        cx.update(crate::init);
+        let window = cx.add_empty_window();
+        window.update(|window, cx| {
+            for (caption, name) in [
+                (Caption::Minimize, "Minimize"),
+                (Caption::Maximize, "Maximize"),
+                (Caption::Restore, "Restore"),
+                (Caption::Close, "Close"),
+            ] {
+                let element = CaptionButton {
+                    caption,
+                    disabled: false,
+                }
+                .render(window, cx)
+                .into_element();
+                assert_eq!(element.a11y_role(), Some(Role::Button));
+                let mut node = accesskit::Node::new(Role::Button);
+                element.write_a11y_info(&mut node);
+                assert_eq!(node.label(), Some(name));
+            }
+            let element = LinuxButton {
+                button: WindowButton::Close,
+                on_close_window: None,
+            }
+            .render(window, cx)
+            .into_element();
+            let mut node = accesskit::Node::new(Role::Button);
+            element.write_a11y_info(&mut node);
+            assert_eq!(node.label(), Some("Close"));
+        });
     }
 
     #[test]
