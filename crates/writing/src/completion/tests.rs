@@ -85,6 +85,7 @@ fn text_end() -> &'static str {
 
 struct Root {
     textarea: Entity<TextareaState>,
+    suggestions: Rc<WordSuggestions>,
     _pacing: Subscription,
 }
 
@@ -99,6 +100,7 @@ impl Render for Root {
 struct Typist {
     cx: VisualTestContext,
     textarea: Entity<TextareaState>,
+    suggestions: Rc<WordSuggestions>,
     writing: Writing,
 }
 
@@ -161,13 +163,16 @@ impl Typist {
                 let pacing = suggestions.follow(&textarea, cx);
                 Root {
                     textarea,
+                    suggestions,
                     _pacing: pacing,
                 }
             }
         });
         let mut cx = VisualTestContext::from_window(window.into(), cx);
-        let textarea = window
-            .read_with(&cx, |root, _| root.textarea.clone())
+        let (textarea, suggestions) = window
+            .read_with(&cx, |root, _| {
+                (root.textarea.clone(), root.suggestions.clone())
+            })
             .unwrap();
         cx.update(|window, cx| {
             textarea.update(cx, |state, cx| state.focus(window, cx));
@@ -176,6 +181,7 @@ impl Typist {
         Self {
             cx,
             textarea,
+            suggestions,
             writing,
         }
     }
@@ -574,6 +580,52 @@ fn a_paste_learns_nothing(cx: &mut TestAppContext) {
         typist.type_text(" eta");
         typist.cx.simulate_keystrokes(line_end());
         typist.type_text(" Theta");
+    });
+    assert_eq!(learned, []);
+}
+
+/// A message sent without a terminator still teaches its last sentence when
+/// the composer learns the rest of it as it sends, once, and under the same
+/// rules: pasted text teaches nothing.
+#[gpui::test]
+fn the_rest_of_a_sent_message_is_learned(cx: &mut TestAppContext) {
+    let send = |typist: &mut Typist| {
+        let text = typist
+            .textarea
+            .read_with(&typist.cx, |state, _| state.text().clone());
+        typist.suggestions.learn_rest(&text);
+        typist.suggestions.learn_rest(&text);
+        typist.cx.update(|window, cx| {
+            typist
+                .textarea
+                .update(cx, |state, cx| state.set_value("", window, cx))
+        });
+    };
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("Thanks. Please fix the bug");
+        send(typist);
+    });
+    assert_eq!(
+        learned,
+        counts(&[
+            ("Please", 1),
+            ("Thanks", 1),
+            ("bug", 1),
+            ("fix", 1),
+            ("the", 1)
+        ])
+    );
+
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("It works now.");
+        send(typist);
+    });
+    assert_eq!(learned, counts(&[("It", 1), ("now", 1), ("works", 1)]));
+
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("See ");
+        paste(typist, "the attached log");
+        send(typist);
     });
     assert_eq!(learned, []);
 }

@@ -50,6 +50,8 @@ Tab 接受整条建议。`accept_word_bindings` 把 Ctrl+Right（macOS 上为 Cm
 
 如果 Textarea 打开时就带有并非用户输入的文本（例如从磁盘读取的文档），请调用 `suggestions.opened_with(&text)` 告知建议，这样这些文本永远不会被学习。
 
+句子要在用户于其 `.`、`!`、`?` 或换行之后继续输入时才会被学习，因此用 Enter 发送的聊天消息的最后一句永远不会被学习。聊天输入框在发送时、清空文本之前调用 `suggestions.learn_rest(state.text())`：最后一句会按同样的规则被学习一次。
+
 ## 文件
 
 `WritingOptions` 指定文件的位置。没有数据目录时，不读取也不保存任何文件，学到的内容只在本次运行中有效。

@@ -651,10 +651,51 @@ impl WordSuggestions {
     /// `excerpt` of `whole`, when the user typed all of it and it isn't
     /// learned already.
     fn learn_preceding_sentence(&self, whole: &Rope, excerpt: &Excerpt, offset: usize) {
-        let text = excerpt.text.as_str();
-        let Some((range, terminator_offset)) = preceding_sentence(text, offset) else {
+        let Some((range, terminator_offset)) = preceding_sentence(&excerpt.text, offset) else {
             return;
         };
+        self.learn_sentence_in(whole, excerpt, range, terminator_offset);
+    }
+
+    /// Learns the last sentence of `text` as if a terminator followed it,
+    /// under the same rules as a sentence the user finished: all of it
+    /// written by the user, prose rather than code, and not learned already.
+    ///
+    /// A sentence is learned once the user types on after its terminator,
+    /// so the last sentence of a message sent with Enter, which often has no
+    /// terminator, would never be. A chat composer calls this as it sends,
+    /// before it clears the text.
+    pub fn learn_rest(&self, text: &Rope) {
+        if self.pacer.mode() == SuggestionMode::Off {
+            return;
+        }
+        let excerpt = Excerpt::around(text, text.len());
+        let rest = &excerpt.text;
+        let start = rest
+            .rfind(is_sentence_terminator)
+            .map_or(0, |terminator| terminator + 1);
+        let unfinished = rest[start..].trim();
+        if unfinished.is_empty() {
+            // The text ends with a terminator: its last sentence is finished.
+            self.learn_preceding_sentence(text, &excerpt, rest.len());
+            return;
+        }
+        let sentence_start = start + rest[start..].len() - rest[start..].trim_start().len();
+        let range = sentence_start..sentence_start + unfinished.len();
+        self.learn_sentence_in(text, &excerpt, range.clone(), range.end);
+    }
+
+    /// Learns the sentence at `range` of `excerpt` of `whole`, which ends at
+    /// `end`, if the user wrote all of it, it is prose, and it isn't learned
+    /// already.
+    fn learn_sentence_in(
+        &self,
+        whole: &Rope,
+        excerpt: &Excerpt,
+        range: Range<usize>,
+        terminator_offset: usize,
+    ) {
+        let text = excerpt.text.as_str();
         let sentence = &text[range.clone()];
         let in_whole = excerpt.start + range.start..excerpt.start + range.end;
 
