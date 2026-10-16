@@ -142,6 +142,9 @@ split-debuginfo = "unpacked"
 
 [profile.dev.package]
 resvg = { opt-level = 3 }
+# Decoding and scaling images in debug builds: a thumbnail of a screenshot
+# takes half a second unoptimized. Apps building with GPUI Kit want it too.
+image = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }

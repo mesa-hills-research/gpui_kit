@@ -75,7 +75,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **An image cache with a budget** (`gpui-base`). `LruImageCache` unloads the least recently
   drawn images once their decoded size passes a budget, never one still on screen, and decodes
   in-memory images (`LruImageCache::source`) on a background thread, scaled to fit a thumbnail
-  if asked. GPUI otherwise keeps every `ImageSource::Image` for the life of the app. See
+  if asked. It refuses an image larger than the whole budget from its header, before decoding.
+  GPUI otherwise keeps every `ImageSource::Image` for the life of the app. See
   [Image Cache](website/base/image-cache.md).
 - **An image viewer** (`gpui-component`). `window.open_image_viewer(items, ix, cx)` shows a set of
   images over the window, fitted or at actual size (Z or a double-click), with a "2 / 5"
