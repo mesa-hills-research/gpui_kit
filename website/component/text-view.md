@@ -107,6 +107,17 @@ Pass a `TextViewMotion` through `.motion(...)` to choose the duration or
 easing yourself, or to reveal each chunk word by word; see
 [GPUI Base TextView](../base/text-view.md#retained-state-and-streaming-updates).
 
+### Code highlighting while streaming
+
+With the `tree-sitter` feature, fenced code blocks are highlighted with the
+grammar their fence names. The highlighter keeps each block's parse and
+highlights, and recognizes a block that comes back with more code. A streamed
+block is parsed again only where it changed and highlighted again from the
+first line that can differ, so a chunk of a 200 KB Rust block takes well
+under a millisecond. The highlights are kept as highlight names and take the
+theme's colors when the block is drawn, so a theme change recolors code
+without parsing it.
+
 ### Highlight ranges
 
 An application that searches a document, or points at a citation inside it,

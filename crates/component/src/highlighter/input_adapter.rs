@@ -122,17 +122,6 @@ impl TreeSitterInputHighlighter {
     }
 }
 
-impl SyntaxHighlighter {
-    pub(crate) fn update_input(
-        &mut self,
-        edit: Option<BaseInputEdit>,
-        text: &Rope,
-        timeout: Option<Duration>,
-    ) -> bool {
-        self.update(edit.map(to_tree_sitter_edit), text, timeout)
-    }
-}
-
 impl InputHighlighter for TreeSitterInputHighlighter {
     fn language(&self) -> SharedString {
         self.inner.borrow().language().clone()

@@ -9,7 +9,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, RwLock},
 };
 
 use anyhow::{Context as _, Result};
@@ -18,20 +18,65 @@ use tree_sitter::Query;
 
 use super::LanguageRegistry;
 
-/// A compiled highlights query.
+/// A highlight name (`keyword`, `string.escape`, …) interned for the
+/// process, so cached highlights can name their capture in two bytes and be
+/// resolved to a theme's colors later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct HighlightName(u16);
+
+static NAMES: LazyLock<RwLock<(Vec<SharedString>, HashMap<SharedString, u16>)>> =
+    LazyLock::new(Default::default);
+
+impl HighlightName {
+    fn intern(name: &str) -> Self {
+        if let Some(id) = NAMES.read().unwrap().1.get(name) {
+            return Self(*id);
+        }
+        let mut names = NAMES.write().unwrap();
+        let (list, ids) = &mut *names;
+        if let Some(id) = ids.get(name) {
+            return Self(*id);
+        }
+        let id = u16::try_from(list.len()).expect("fewer than 65536 highlight names");
+        let name = SharedString::from(name.to_string());
+        list.push(name.clone());
+        ids.insert(name, id);
+        Self(id)
+    }
+
+    /// The name as the query wrote it.
+    pub(crate) fn name(self) -> SharedString {
+        NAMES.read().unwrap().0[self.0 as usize].clone()
+    }
+}
+
+/// A query with the [`HighlightName`] of each of its captures.
 pub(crate) struct HighlightQuery {
     pub(crate) query: Query,
+    names: Box<[HighlightName]>,
 }
 
 impl HighlightQuery {
     fn new(query: Query) -> Self {
-        Self { query }
+        let names = query
+            .capture_names()
+            .iter()
+            .map(|name| HighlightName::intern(name))
+            .collect();
+        Self { query, names }
+    }
+
+    /// The highlight name of the capture `index`.
+    pub(crate) fn name(&self, index: u32) -> Option<HighlightName> {
+        self.names.get(index as usize).copied()
     }
 }
 
 /// A language's grammar with its queries compiled.
 pub(crate) struct CompiledLanguage {
     pub(crate) name: SharedString,
+    /// The source of [`Self::highlights`].
+    pub(crate) highlights_source: SharedString,
     /// The injections, locals and highlights queries as one query, with the
     /// injection patterns disabled: injected layers are found separately.
     pub(crate) highlights: Arc<HighlightQuery>,
@@ -51,8 +96,8 @@ pub(crate) struct CompiledLanguage {
 struct Cache {
     /// The [`LanguageRegistry::generation`] the entries were compiled at.
     generation: u64,
-    /// By canonical language name; `None` for a language without a grammar
-    /// or whose queries failed to compile.
+    /// By canonical language name, with `None` for a language without a
+    /// grammar or whose queries failed to compile.
     languages: HashMap<SharedString, Option<Arc<CompiledLanguage>>>,
     /// The highlights query alone, for injected layers.
     layers: HashMap<SharedString, Option<Arc<HighlightQuery>>>,
@@ -213,6 +258,7 @@ fn compile_language(name: &str) -> Result<CompiledLanguage> {
 
     Ok(CompiledLanguage {
         name: config.name.clone(),
+        highlights_source: query_source.into(),
         local_scope_capture_index: capture_index(&query, "local.scope"),
         local_def_capture_index: capture_index(&query, "local.definition"),
         local_def_value_capture_index: capture_index(&query, "local.definition-value"),
@@ -247,5 +293,14 @@ mod tests {
             "plain text has no grammar"
         );
         assert!(compiled_language("no-such-language").is_none());
+    }
+
+    #[test]
+    fn highlight_names_are_interned() {
+        let a = HighlightName::intern("keyword.test-intern");
+        let b = HighlightName::intern("keyword.test-intern");
+        assert_eq!(a, b);
+        assert_eq!(a.name().as_ref(), "keyword.test-intern");
+        assert_ne!(a, HighlightName::intern("string.test-intern"));
     }
 }

@@ -17,16 +17,12 @@ pub use gpui_base::text::{
 pub use style::TextViewStyle;
 
 #[cfg(feature = "tree-sitter")]
-use std::{cell::RefCell, collections::HashMap};
+use std::cell::RefCell;
 
 use gpui::Styled as _;
-#[cfg(feature = "tree-sitter")]
-use gpui_base::input::{InputEdit, Point, RopeExt as _};
-#[cfg(feature = "tree-sitter")]
-use ropey::Rope;
 
 #[cfg(feature = "tree-sitter")]
-use crate::highlighter::{LanguageRegistry, SyntaxHighlighter};
+use crate::highlighter::LanguageRegistry;
 
 #[cfg(all(test, feature = "tree-sitter"))]
 mod code_block_perf;
@@ -79,48 +75,20 @@ pub(crate) fn install_text_view_defaults(theme: &crate::Theme, cx: &mut gpui::Ap
     defaults.install(cx);
 }
 
+/// The code block highlighter for `highlight_theme`.
+///
+/// Each block's highlighting is kept and extended as the block streams in;
+/// see `highlighter::code_block`.
 #[cfg(feature = "tree-sitter")]
 pub(crate) fn component_code_block_highlighter(
     highlight_theme: std::sync::Arc<crate::highlighter::HighlightTheme>,
 ) -> impl Fn(&gpui_base::text::CodeBlock) -> gpui_base::text::CodeBlockHighlights + Send + Sync + 'static
 {
     move |block| {
-        thread_local! {
-            static HIGHLIGHTERS: RefCell<HashMap<gpui::SharedString, SyntaxHighlighter>> =
-                RefCell::new(HashMap::new());
-        }
-
         let Some(lang) = block.lang() else {
             return Default::default();
         };
-        let code = block.code();
-        HIGHLIGHTERS.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            let highlighter = cache
-                .entry(lang.clone())
-                .or_insert_with(|| SyntaxHighlighter::new(lang.as_ref()));
-            if let Some(config) = LanguageRegistry::singleton().language(lang.as_ref())
-                && highlighter.language() != &config.name
-            {
-                *highlighter = SyntaxHighlighter::new(lang.as_ref());
-            }
-
-            let old_end_byte = highlighter.text().len();
-            let old_end_position = highlighter.text().offset_to_point(old_end_byte);
-            let code_rope = Rope::from_str(code.as_ref());
-            let edit = InputEdit {
-                start_byte: 0,
-                old_end_byte,
-                new_end_byte: code.len(),
-                start_position: Point::new(0, 0),
-                old_end_position,
-                new_end_position: code_rope.offset_to_point(code.len()),
-            };
-            highlighter.update_input(Some(edit), &code_rope, None);
-            highlighter
-                .styles(&(0..code.len()), highlight_theme.as_ref())
-                .into()
-        })
+        crate::highlighter::highlight_code_block(lang.as_ref(), &block.code(), &highlight_theme)
     }
 }
 

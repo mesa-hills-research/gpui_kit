@@ -135,7 +135,7 @@ TextView::markdown("highlighted", source).code_block_highlighter(|block| {
 
 Ranges are UTF-8 byte ranges relative to `CodeBlock::code()`. Invalid ranges are discarded. The highlighter implementation and its language registrations remain entirely application-owned.
 
-A streamed code block is a new `CodeBlock` with every chunk, so a highlighter that builds a fresh list of ranges each time copies the whole list per chunk. A highlighter that keeps its results can share them instead: install it with `TextViewDefaults::with_shared_code_block_highlighter` and return `CodeBlockHighlights`, made with `CodeBlockHighlights::shared` from an `Arc<Vec<_>>` it keeps. When the block grows, change that `Vec` through `Arc::make_mut` and hand out a new `CodeBlockHighlights` for it. The block that showed the old ranges has usually been dropped by then, so the ranges are extended in place.
+A streamed code block is a new `CodeBlock` with every chunk, so a highlighter that builds a fresh list of ranges each time copies the whole list per chunk. A highlighter that keeps its results can share them instead: install it with `TextViewDefaults::with_shared_code_block_highlighter` and return `CodeBlockHighlights`, made with `CodeBlockHighlights::shared` from an `Arc<Vec<_>>` it keeps. When the block grows, change that `Vec` through `Arc::make_mut` and hand out a new `CodeBlockHighlights` for it. The block that showed the old ranges has usually been dropped by then, so the ranges are extended in place. GPUI Component's highlighter works this way.
 
 ## Markdown extensions
 

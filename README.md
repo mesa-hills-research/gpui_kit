@@ -66,6 +66,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   a pure Rust port, so they build without a C compiler and cross-compile to Windows without
   MinGW headers. Kotlin and Svelte use the tree-sitter-kotlin-ng and tree-sitter-svelte-ng
   grammars. See [Editor: basic usage](website/component/editor.md#basic-usage).
+- **Code highlighting that keeps up with a stream** (`gpui-base`, `gpui-component`). Each fenced
+  code block keeps its parse and highlights, and a block that streams in is parsed and highlighted
+  again only where it changed: a chunk of a 200 KB Rust block takes about 0.4 ms where it took
+  about 60 ms. Highlights are shared with the block rather than copied every frame, and a theme
+  change recolors them without parsing. See
+  [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.
