@@ -1,11 +1,15 @@
+use std::{cell::RefCell, rc::Rc};
+
 use gpui_kit::assets::Assets;
 use gpui_kit::component::{
     button::Button,
     h_flex,
+    message_scroller::{MessageScroller, MessageScrollerState},
     switch::Switch,
-    text::{TextView, TextViewState},
+    text::{TextBlockId, TextView, TextViewState},
     v_flex,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 pub struct Example {
@@ -14,6 +18,15 @@ pub struct Example {
     scroll_handle: ScrollHandle,
     replay_id: usize,
     stream_fade: bool,
+    /// Shows each top-level block as a row of a list, the way a chat
+    /// transcript keeps a long answer cheap to draw.
+    as_rows: bool,
+    /// Shows the first lines of each code block only.
+    cap_code_blocks: bool,
+    scroller: Entity<MessageScrollerState>,
+    /// One view per block of the answer, and the block each shows.
+    rows: Rc<RefCell<Vec<(TextBlockId, Entity<TextViewState>)>>>,
+    _sync_rows: Subscription,
     _task: Task<()>,
     _update_task: Task<()>,
 }
@@ -25,6 +38,7 @@ impl Example {
         let markdown_state =
             cx.new(|cx| TextViewState::markdown("# Streaming Markdown Parse\n\n", cx));
         let scroll_handle = ScrollHandle::new();
+        let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
 
         let (tx, rx) = smol::channel::unbounded::<(usize, String)>();
         let _task = cx.spawn({
@@ -45,20 +59,56 @@ impl Example {
                 }
             }
         });
+        let _sync_rows = cx.observe(&markdown_state, |this, state, cx| {
+            this.sync_rows(&state, cx);
+        });
 
-        Self {
-            markdown_state,
+        let mut this = Self {
+            markdown_state: markdown_state.clone(),
             scroll_handle,
             tx,
             replay_id: 0,
             stream_fade: true,
+            as_rows: false,
+            cap_code_blocks: false,
+            scroller,
+            rows: Rc::default(),
+            _sync_rows,
             _task,
             _update_task: Task::ready(()),
-        }
+        };
+        this.sync_rows(&markdown_state, cx);
+        this
     }
 
     fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
+    }
+
+    /// Gives each top-level block of the answer a row: a view of that block,
+    /// added when the block appears. Ids change when the text is replaced,
+    /// and the rows start over then.
+    fn sync_rows(&mut self, state: &Entity<TextViewState>, cx: &mut Context<Self>) {
+        let blocks = state.read(cx).blocks();
+        let mut rows = self.rows.borrow_mut();
+        let kept = rows
+            .iter()
+            .zip(&blocks)
+            .take_while(|((id, _), block)| *id == block.id())
+            .count();
+        let removed = rows.len() - kept;
+        rows.truncate(kept);
+        for block in &blocks[kept..] {
+            let ix = block.index();
+            let row = cx.new(|cx| TextViewState::block_range(state, ix..ix + 1, cx));
+            rows.push((block.id(), row));
+        }
+        let added = blocks.len() - kept;
+        if removed > 0 || added > 0 {
+            self.scroller.update(cx, |scroller, cx| {
+                scroller.splice(kept..kept + removed, added, cx);
+            });
+        }
     }
 
     /// Simulate streaming by updating markdown state in chunks
@@ -88,6 +138,9 @@ impl Example {
 
 impl Render for Example {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let stream_fade = self.stream_fade;
+        let cap_code_blocks = self.cap_code_blocks;
+        let rows = self.rows.clone();
         v_flex()
             .id("example")
             .size_full()
@@ -113,22 +166,59 @@ impl Render for Example {
                                 this.stream_fade = *checked;
                                 cx.notify();
                             })),
-                    ),
-            )
-            .child(
-                div()
-                    .id("contents")
-                    .flex_1()
-                    .w_full()
-                    .track_scroll(&self.scroll_handle)
-                    .overflow_y_scroll()
-                    .size_full()
+                    )
                     .child(
-                        TextView::new(&self.markdown_state)
-                            .selectable(true)
-                            .stream_fade(self.stream_fade),
+                        Switch::new("as-rows")
+                            .checked(self.as_rows)
+                            .label("A row per block")
+                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                this.as_rows = *checked;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Switch::new("cap-code-blocks")
+                            .checked(self.cap_code_blocks)
+                            .label("First 8 lines of code")
+                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                this.cap_code_blocks = *checked;
+                                cx.notify();
+                            })),
                     ),
             )
+            .map(|this| {
+                if self.as_rows {
+                    this.child(
+                        MessageScroller::new("rows", self.scroller.clone(), move |ix, _, _| {
+                            let row = rows.borrow()[ix].1.clone();
+                            div().w_full().child(
+                                TextView::new(&row)
+                                    .selectable(true)
+                                    .stream_fade(stream_fade)
+                                    .when(cap_code_blocks, |view| view.code_block_max_lines(8)),
+                            )
+                        })
+                        .flex_1()
+                        .w_full(),
+                    )
+                } else {
+                    this.child(
+                        div()
+                            .id("contents")
+                            .flex_1()
+                            .w_full()
+                            .track_scroll(&self.scroll_handle)
+                            .overflow_y_scroll()
+                            .size_full()
+                            .child(
+                                TextView::new(&self.markdown_state)
+                                    .selectable(true)
+                                    .stream_fade(stream_fade)
+                                    .when(cap_code_blocks, |view| view.code_block_max_lines(8)),
+                            ),
+                    )
+                }
+            })
     }
 }
 
