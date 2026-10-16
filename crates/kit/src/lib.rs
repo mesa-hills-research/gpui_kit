@@ -12,6 +12,7 @@
 //! | [`base`]        | `gpui-base`       | always           |
 //! | [`component`]   | `gpui-component`  | `component` (on) |
 //! | [`assets`]      | `gpui-kit-assets` | `assets` (on)    |
+//! | `assets::fonts` | `gpui-kit-assets` | `fonts` (off)    |
 //!
 //! On desktop and web, `application` opens the platform. Mobile applications
 //! supply their backend to `Application::with_platform`. [`init`] initializes the enabled

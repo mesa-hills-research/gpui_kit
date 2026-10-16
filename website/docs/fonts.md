@@ -137,6 +137,37 @@ italic text; a single regular file is not a promise of all styles. Bundling
 also makes a desktop app independent of whether that family is installed on
 the user's machine. Keep the font's redistribution license with the app.
 
+### Bundled Work Sans and JetBrains Mono
+
+GPUI Kit can embed two families for you: Work Sans for the interface and
+JetBrains Mono for code. Turn on the `fonts` feature:
+
+```toml
+gpui-kit = { version = "…", features = ["fonts"] }
+```
+
+Each is a variable font, upright and italic, so every weight from regular to
+bold draws from the font's own design rather than a synthesized bold.
+Register them before the first window, then name them in the theme:
+
+```rust
+use gpui_kit::assets::fonts;
+
+cx.text_system()
+    .add_fonts(fonts::all())
+    .expect("the bundled fonts are valid");
+Theme::update(cx, |theme| {
+    theme.font_family = fonts::WORK_SANS_FAMILY.into();
+    theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+});
+```
+
+`fonts::WORK_SANS`, `WORK_SANS_ITALIC`, `JETBRAINS_MONO` and
+`JETBRAINS_MONO_ITALIC` give the bytes of one file each. The four files add
+about 1.3 MiB to the binary. Both families are under the SIL Open Font
+License 1.1; ship the license texts from the `gpui-kit-assets` crate's
+`fonts` folder with your application.
+
 The [GPUI Kit web gallery](https://github.com/longbridge/gpui-kit/blob/main/crates/story-web/src/lib.rs) bundles `Inter Variable`, `JetBrains Mono`, a subset of `Noto Sans SC`, and `IBM Plex Sans` this way. Rust's [`include_bytes!`](https://doc.rust-lang.org/std/macro.include_bytes.html) puts those font bytes into the WebAssembly download. The gallery's CJK subset is about 42 KB, compared with about 1.2 MB for its source font: subset known interface copy to limit initial payload, then plan separately for arbitrary text entered by users.
 
 ### Try a bundled font in `hello_world`

@@ -7,9 +7,9 @@
 use std::{borrow::Cow, cell::RefCell, rc::Rc, time::Duration};
 
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, InputEvent as _,
-    IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render,
-    Result, SharedString, Styled as _, Task, Window,
+    AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, FontWeight,
+    InputEvent as _, IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
+    ParentElement as _, Render, Result, SharedString, Styled as _, Task, Window,
     assets::Assets,
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Sizable as _, Theme, ThemeMode,
@@ -24,7 +24,9 @@ use gpui_kit::{
         menu::{PopupMenu, PopupMenuItem},
         progress::{ProgressCircle, ProgressSegment, UsageBar},
     },
-    div, px, size,
+    div,
+    prelude::FluentBuilder as _,
+    px, size,
     test::TestWindowExt as _,
 };
 use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
@@ -954,6 +956,103 @@ fn progress_meters() {
 #[test]
 fn progress_meters_dark() {
     goldens().assert("progress-meters-dark", &meters(ThemeMode::Dark));
+}
+
+/// The weights a UI uses, in the bundled variable fonts.
+const SPECIMEN_WEIGHTS: [FontWeight; 4] = [
+    FontWeight::NORMAL,
+    FontWeight::MEDIUM,
+    FontWeight::SEMIBOLD,
+    FontWeight::BOLD,
+];
+
+/// An app with GPUI Kit's bundled Work Sans and JetBrains Mono registered.
+fn app_with_bundled_fonts() -> ScreenshotApp {
+    let mut app = app(ThemeMode::Light);
+    app.update(|cx| {
+        cx.text_system()
+            .add_fonts(gpui_kit_assets::fonts::all())
+            .unwrap()
+    });
+    app
+}
+
+struct FontSpecimens;
+
+impl Render for FontSpecimens {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit_assets::fonts::{JETBRAINS_MONO_FAMILY, WORK_SANS_FAMILY};
+        let row = |family: &'static str, weight: FontWeight, italic: bool| {
+            div()
+                .font_family(family)
+                .font_weight(weight)
+                .when(italic, |this| this.italic())
+                .child(format!(
+                    "{family} {}{} Hamburgefonstiv 0123",
+                    weight.0,
+                    if italic { " italic" } else { "" }
+                ))
+        };
+        page(cx)
+            .gap_1()
+            .children(SPECIMEN_WEIGHTS.map(|weight| row(WORK_SANS_FAMILY, weight, false)))
+            .child(row(WORK_SANS_FAMILY, FontWeight::NORMAL, true))
+            .child(row(WORK_SANS_FAMILY, FontWeight::BOLD, true))
+            .child(row(JETBRAINS_MONO_FAMILY, FontWeight::NORMAL, false))
+            .child(row(JETBRAINS_MONO_FAMILY, FontWeight::BOLD, false))
+            .child(row(JETBRAINS_MONO_FAMILY, FontWeight::NORMAL, true))
+    }
+}
+
+/// Work Sans and JetBrains Mono at the weights a UI uses, upright and italic.
+#[test]
+fn bundled_fonts() {
+    let mut app = app_with_bundled_fonts();
+    let window = open(&mut app, (480., 290.), SCALE, |_, _| FontSpecimens);
+    goldens().assert("bundled-fonts", &app.capture(window).unwrap());
+}
+
+struct Ink(&'static str, FontWeight);
+
+impl Render for Ink {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx)
+            .font_family(self.0)
+            .font_weight(self.1)
+            .child("Hamburgefonstiv")
+    }
+}
+
+/// How much ink a screenshot holds: the sum of how far each pixel is from white.
+fn ink(screenshot: &Screenshot) -> u64 {
+    screenshot
+        .image
+        .pixels()
+        .map(|pixel| {
+            let [r, g, b, _] = pixel.0;
+            (765 - (r as u64 + g as u64 + b as u64)) / 3
+        })
+        .sum()
+}
+
+/// The bundled fonts are variable fonts, and each weight draws with its own instance: every step
+/// from regular to bold puts more ink on the page. A static regular face would draw the same
+/// strokes at every weight, or one fake bold.
+#[test]
+fn bundled_fonts_draw_each_weight() {
+    use gpui_kit_assets::fonts::{JETBRAINS_MONO_FAMILY, WORK_SANS_FAMILY};
+    let mut app = app_with_bundled_fonts();
+    for family in [WORK_SANS_FAMILY, JETBRAINS_MONO_FAMILY] {
+        let inks = SPECIMEN_WEIGHTS.map(|weight| {
+            let window = open(&mut app, (240., 48.), SCALE, |_, _| Ink(family, weight));
+            ink(&app.capture(window).unwrap())
+        });
+        assert!(
+            inks.windows(2).all(|pair| pair[0] < pair[1]),
+            "{family} draws {inks:?} ink at weights {:?}",
+            SPECIMEN_WEIGHTS.map(|weight| weight.0)
+        );
+    }
 }
 
 struct Bar;

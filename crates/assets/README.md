@@ -107,7 +107,40 @@ preserves custom/retired filenames. It does not expand the default component
 bundle: changes to `default-icons.txt` are deliberate compatibility decisions.
 `--check` verifies every upstream file byte for byte.
 
+## Fonts
+
+The optional `fonts` feature (`gpui-kit`'s `fonts`) embeds Work Sans and
+JetBrains Mono as variable fonts, upright and italic, about 1.3 MiB in all.
+Every weight draws from the font's own design instead of a synthesized bold, so
+medium, semibold and bold text keep their shapes. Register them before opening
+a window and name their families in the theme:
+
+```rust
+use gpui_kit::assets::fonts;
+
+cx.text_system().add_fonts(fonts::all())?;
+Theme::update(cx, |theme| {
+    theme.font_family = fonts::WORK_SANS_FAMILY.into();
+    theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+});
+```
+
+| File in `fonts/` | Source | SHA-256 |
+| --- | --- | --- |
+| `work-sans/WorkSans-Variable.ttf` | Google Fonts `ofl/worksans/WorkSans[wght].ttf` (Work Sans repository commit b35c810) | `f50f61f2…1f9f63` |
+| `work-sans/WorkSans-Italic-Variable.ttf` | Google Fonts `ofl/worksans/WorkSans-Italic[wght].ttf` | `0a9f935e…2341ec` |
+| `jetbrains-mono/JetBrainsMono-Variable.ttf` | JetBrains Mono 2.304 release, `fonts/variable/JetBrainsMono[wght].ttf` | `662a196d…cac016` |
+| `jetbrains-mono/JetBrainsMono-Italic-Variable.ttf` | JetBrains Mono 2.304 release, `fonts/variable/JetBrainsMono-Italic[wght].ttf` | `f115aaa1…1063f2` |
+
+The files are unmodified; only their names drop the `[wght]` suffix. To update
+one, download the new release from the same source, replace the file, and
+update this table.
+
 ## License
 
 Crate code: Apache-2.0. Lucide SVGs: ISC, with the upstream Feather-derived icons
-under MIT; see [LICENSE-LUCIDE](LICENSE-LUCIDE) for complete attribution.
+under MIT; see [LICENSE-LUCIDE](LICENSE-LUCIDE) for complete attribution. Work
+Sans and JetBrains Mono: SIL Open Font License 1.1; see
+[fonts/work-sans/OFL.txt](fonts/work-sans/OFL.txt) and
+[fonts/jetbrains-mono/OFL.txt](fonts/jetbrains-mono/OFL.txt). An application
+that ships them keeps these license files with it.

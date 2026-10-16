@@ -57,6 +57,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   (and the ring a stroke width), and read out a value text such as "142k of 1M tokens" instead of
   a bare percentage. `UsageBar` shows a bar with its label, its amount and a legend of its
   segments in text. See [Progress](website/component/progress.md#usagebar).
+- **Work Sans and JetBrains Mono** (`gpui-kit-assets`). The `fonts` feature embeds both as
+  variable fonts, upright and italic, so medium, semibold and bold text use the real weights.
+  `gpui_kit::assets::fonts::all()` goes straight to `add_fonts`. See
+  [Fonts: bundled Work Sans and JetBrains Mono](website/docs/fonts.md#bundled-work-sans-and-jetbrains-mono).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).

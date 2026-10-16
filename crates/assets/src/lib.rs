@@ -7,6 +7,9 @@
 mod icon;
 pub use icon::{IconName, IconNamed};
 
+#[cfg(feature = "fonts")]
+pub mod fonts;
+
 /// Embed application assets for GPUI Component.
 ///
 /// This assets provides icons svg files for [IconName].

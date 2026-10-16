@@ -106,6 +106,30 @@ Theme::update(cx, |theme| theme.font_family = "MyFont".into());
 
 这里要写字体文件**内部**的 family 名称，它可能与文件名不同。若要稳定显示常规、粗体和斜体，应注册所需的各个字体文件；单个常规字体文件不保证所有样式。打包字体也能让桌面应用不依赖用户是否已安装该字体族。分发时要保留相应的字体许可。
 
+### 内置的 Work Sans 与 JetBrains Mono
+
+GPUI Kit 可以替你嵌入两个字体族：界面用的 Work Sans 和代码用的 JetBrains Mono。开启 `fonts` feature：
+
+```toml
+gpui-kit = { version = "…", features = ["fonts"] }
+```
+
+两者都是可变字体，各有正体和斜体，所以从常规到粗体的每个字重都来自字体本身的设计，而不是合成的粗体。在打开第一个窗口之前注册它们，再在主题中使用它们的名称：
+
+```rust
+use gpui_kit::assets::fonts;
+
+cx.text_system()
+    .add_fonts(fonts::all())
+    .expect("the bundled fonts are valid");
+Theme::update(cx, |theme| {
+    theme.font_family = fonts::WORK_SANS_FAMILY.into();
+    theme.mono_font_family = fonts::JETBRAINS_MONO_FAMILY.into();
+});
+```
+
+`fonts::WORK_SANS`、`WORK_SANS_ITALIC`、`JETBRAINS_MONO` 和 `JETBRAINS_MONO_ITALIC` 各自对应一个字体文件的字节。这四个文件会让二进制增大约 1.3 MiB。两个字体族都采用 SIL Open Font License 1.1；请把 `gpui-kit-assets` crate 中 `fonts` 目录里的许可文本随应用一起分发。
+
 [GPUI Kit Web 画廊](https://github.com/longbridge/gpui-kit/blob/main/crates/story-web/src/lib.rs)就这样打包 `Inter Variable`、`JetBrains Mono`、`Noto Sans SC` 子集和 `IBM Plex Sans`。Rust 的 [`include_bytes!`](https://doc.rust-lang.org/std/macro.include_bytes.html) 会把这些字体字节放入 WebAssembly 下载包。画廊所用的 CJK 子集约 42 KB，源字体约 1.2 MB：已知界面文案可以制作子集来控制初始体积，但用户任意输入的文字需要另行安排字体来源。
 
 ### 跟做：在 `hello_world` 中注册打包字体

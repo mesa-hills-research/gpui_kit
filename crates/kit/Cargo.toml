@@ -21,6 +21,8 @@ default = ["component", "assets"]
 component = ["dep:gpui-component"]
 # The default icon set for `gpui-component`, `gpui_kit::assets`.
 assets = ["dep:gpui-kit-assets"]
+# Work Sans and JetBrains Mono as variable fonts, `gpui_kit::assets::fonts`.
+fonts = ["assets", "gpui-kit-assets/fonts"]
 # GPUI's test harness, native-platform rendering, and Kit UI test helpers.
 test-support = ["gpui/test-support", "gpui_platform/test-support", "gpui-base/test-support", "gpui-component?/test-support"]
 # Frame-event instrumentation remains opt-in for performance builds.
@@ -83,6 +85,8 @@ gpui_web.workspace = true
 [dev-dependencies]
 chrono = "0.4.38"
 gpui = { workspace = true, features = ["test-support"] }
+# The bundled fonts, for the golden that checks their weights render.
+gpui-kit-assets = { workspace = true, features = ["fonts"] }
 lsp-types.workspace = true
 serde_json.workspace = true
 
