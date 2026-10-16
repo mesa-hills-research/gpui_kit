@@ -44,6 +44,8 @@ let document = cx.new(|cx| {
 let pacing = suggestions.follow(&document, cx);
 ```
 
+`Writing::load` 会立即返回，并在后台线程读取单词表和词汇。在它们读取完成之前（通常不到一秒，词汇很大时会更久），不会标出任何拼写错误，单词建议也只知道用户刚输入的内容；读取完成后，所有 Textarea 都会重新检查拼写。`is_loaded` 表示是否已读取完成。`Writing::load_blocking` 在调用线程上读取，适用于测试和命令行工具。
+
 Tab 接受整条建议。`accept_word_bindings` 把 Ctrl+Right（macOS 上为 Cmd+Right）绑定为只接受建议中的下一个单词；没有建议时，这个键照常移动光标。
 
 如果 Textarea 打开时就带有并非用户输入的文本（例如从磁盘读取的文档），请调用 `suggestions.opened_with(&text)` 告知建议，这样这些文本永远不会被学习。

@@ -79,7 +79,7 @@ use learned::LearnedSentences;
 use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -479,6 +479,9 @@ pub struct WordSuggestions {
     local_index: RefCell<LocalIndex>,
     /// The document's words being counted on another thread.
     counting: RefCell<Option<Counting>>,
+    /// The vocabulary's generation the document's extra counts were worked
+    /// out at.
+    vocabulary_generation: Cell<u64>,
     learned: RefCell<LearnedSentences>,
     /// The words this document taught the shared vocabulary.
     taught: RefCell<WordTally>,
@@ -494,6 +497,7 @@ impl WordSuggestions {
             vocabulary,
             local_index: RefCell::new(LocalIndex::new()),
             counting: RefCell::new(None),
+            vocabulary_generation: Cell::new(0),
             learned: RefCell::new(LearnedSentences::default()),
             taught: RefCell::new(WordTally::new()),
             opened: RefCell::new(WordTally::new()),
@@ -543,6 +547,12 @@ impl WordSuggestions {
         }
         let mut index = self.local_index.borrow_mut();
         let caret = Some(caret);
+        let generation = self.vocabulary.borrow().generation();
+        if self.vocabulary_generation.replace(generation) != generation {
+            // What the vocabulary holds of the document's words may have
+            // changed.
+            self.with_held(|held| index.update_all_extra(held));
+        }
         if index
             .text()
             .is_some_and(|counted| counted.len() == text.len())

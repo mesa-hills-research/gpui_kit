@@ -1,9 +1,10 @@
 use crate::WritingOptions;
-use crate::completion::vocabulary::Vocabulary;
+use crate::completion::vocabulary::{LoadedVocabulary, Vocabulary};
 use crate::completion::{SuggestionMode, SuggestionPacing, WordSuggestions};
-use crate::spelling::{Dictionary, DictionaryChecker};
+use crate::spelling::{Dictionary, DictionaryChecker, Words};
 use gpui::{App, Task};
-use std::cell::RefCell;
+use gpui_base::input::refresh_spelling;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// The writing aids an application shares between its textareas: the
@@ -34,22 +35,81 @@ pub struct Writing {
     dictionary: Rc<Dictionary>,
     vocabulary: Rc<RefCell<Vocabulary>>,
     pacing: Rc<SuggestionPacing>,
+    loaded: Rc<Cell<bool>>,
+}
+
+/// What loading reads, on a background thread.
+struct Read {
+    words: Words,
+    vocabulary: Option<LoadedVocabulary>,
+}
+
+impl Read {
+    fn read(options: &WritingOptions) -> Self {
+        Self {
+            words: Words::read(
+                options.word_lists(),
+                options.user_dictionary_path().as_deref(),
+            ),
+            vocabulary: options.vocabulary_path().map(LoadedVocabulary::read),
+        }
+    }
 }
 
 impl Writing {
-    /// Loads the dictionary and the vocabulary `options` name.
+    /// Starts loading the dictionary and the vocabulary `options` name, and
+    /// returns at once. They are read on a background thread. Until they
+    /// arrive, the spell checkers find no word misspelled and suggestions
+    /// draw on what the user types and the document's own words; then every
+    /// textarea's spelling is checked again.
     ///
     /// Suggestions start in [`SuggestionMode::Quiet`].
-    pub fn load(options: WritingOptions, _cx: &mut App) -> Self {
-        let dictionary = Rc::new(Dictionary::load(
-            options.word_lists(),
-            options.user_dictionary_path(),
-        ));
-        let vocabulary = match options.vocabulary_path() {
-            Some(path) => Vocabulary::load_from(path, dictionary.clone()),
-            None => Vocabulary::with_dictionary(dictionary.clone()),
-        };
-        Self::from_parts(dictionary, vocabulary)
+    pub fn load(options: WritingOptions, cx: &mut App) -> Self {
+        let writing = Self::unloaded(&options);
+        let read = cx
+            .background_executor()
+            .spawn(async move { Read::read(&options) });
+        let loading = writing.clone();
+        cx.spawn(async move |cx| {
+            let read = read.await;
+            cx.update(|cx| {
+                loading.install(read);
+                refresh_spelling(cx);
+            });
+        })
+        .detach();
+        writing
+    }
+
+    /// Loads the dictionary and the vocabulary `options` name on this
+    /// thread, as [`Self::load`] does on another. For tests and tools.
+    pub fn load_blocking(options: WritingOptions) -> Self {
+        let writing = Self::unloaded(&options);
+        writing.install(Read::read(&options));
+        writing
+    }
+
+    /// Whether the dictionary and the vocabulary have arrived.
+    pub fn is_loaded(&self) -> bool {
+        self.loaded.get()
+    }
+
+    fn unloaded(options: &WritingOptions) -> Self {
+        let dictionary = Rc::new(Dictionary::unloaded(options.user_dictionary_path()));
+        let vocabulary = Vocabulary::with_dictionary(dictionary.clone());
+        Self {
+            loaded: Rc::new(Cell::new(false)),
+            ..Self::from_parts(dictionary, vocabulary)
+        }
+    }
+
+    /// Takes what loading read, with what was learned and added meanwhile.
+    fn install(&self, read: Read) {
+        self.dictionary.install(read.words);
+        if let Some(vocabulary) = read.vocabulary {
+            self.vocabulary.borrow_mut().install(vocabulary);
+        }
+        self.loaded.set(true);
     }
 
     /// Writing aids that read and save nothing: a dictionary that accepts
@@ -64,6 +124,7 @@ impl Writing {
             dictionary,
             vocabulary: Rc::new(RefCell::new(vocabulary)),
             pacing: Rc::new(SuggestionPacing::new(SuggestionMode::default())),
+            loaded: Rc::new(Cell::new(true)),
         }
     }
 
@@ -133,6 +194,8 @@ mod tests {
             .with_user_dictionary_file("mine.txt")
             .with_word_lists([WordList::English]);
         let writing = cx.update(|cx| Writing::load(options.clone(), cx));
+        cx.run_until_parked();
+        assert!(writing.is_loaded());
         writing.dictionary().add_word("Wojciech");
         writing
             .vocabulary()
@@ -147,12 +210,44 @@ mod tests {
         names.sort();
         assert_eq!(names, ["mine.txt", "words.json", "words.lock"]);
 
-        let reloaded = cx.update(|cx| Writing::load(options, cx));
+        let reloaded = Writing::load_blocking(options);
         assert!(reloaded.dictionary().is_correct("Wojciech"));
         assert_eq!(
             reloaded.vocabulary().borrow().counts().word_count("ferns"),
             1
         );
+    }
+
+    /// Loading happens on another thread. What the user adds and teaches
+    /// meanwhile is kept, and saved with what was read.
+    #[gpui::test]
+    fn what_is_learned_while_loading_is_kept(cx: &mut TestAppContext) {
+        let scratch = Scratch::new("loading");
+        let options = WritingOptions::new().with_data_dir(scratch.0.clone());
+        let earlier = Writing::load_blocking(options.clone());
+        earlier
+            .vocabulary()
+            .borrow_mut()
+            .learn_sentence("Ferns grow slowly");
+        earlier.save();
+
+        let writing = cx.update(|cx| Writing::load(options.clone(), cx));
+        assert!(!writing.is_loaded());
+        assert!(writing.dictionary().is_correct("mispeled"));
+        writing.dictionary().add_word("Wojciech");
+        writing
+            .vocabulary()
+            .borrow_mut()
+            .learn_sentence("Ferns need shade");
+        cx.run_until_parked();
+
+        assert!(writing.is_loaded());
+        assert!(!writing.dictionary().is_correct("mispeled"));
+        assert!(writing.dictionary().is_correct("Wojciech"));
+        let ferns = |writing: &Writing| writing.vocabulary().borrow().counts().word_count("ferns");
+        assert_eq!(ferns(&writing), 2);
+        writing.save();
+        assert_eq!(ferns(&Writing::load_blocking(options)), 2);
     }
 
     /// A textarea checked by the writing aids underlines what the dictionary

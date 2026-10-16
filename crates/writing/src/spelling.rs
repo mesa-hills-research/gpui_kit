@@ -51,7 +51,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -125,7 +125,7 @@ pub struct Dictionary {
     words: RefCell<HashSet<Box<str>>>,
     /// Words accepted until the application quits, in lower case.
     ignored: RefCell<HashSet<Box<str>>>,
-    loaded: bool,
+    loaded: Cell<bool>,
     has_apostrophe_entries: Cell<bool>,
     generation: Cell<u64>,
     /// The user's word list, which [`Self::add_word`] appends to.
@@ -135,89 +135,61 @@ pub struct Dictionary {
 impl Dictionary {
     /// An empty, unloaded dictionary that accepts every word.
     pub fn empty() -> Self {
+        Self::unloaded(None)
+    }
+
+    /// An empty dictionary that accepts every word until [`Self::install`]
+    /// gives it its words. [`Self::add_word`] appends to the user's word
+    /// list at `user_dictionary`.
+    pub(crate) fn unloaded(user_dictionary: Option<PathBuf>) -> Self {
         Self {
             words: RefCell::new(HashSet::new()),
             ignored: RefCell::new(HashSet::new()),
-            loaded: false,
+            loaded: Cell::new(false),
             has_apostrophe_entries: Cell::new(false),
             generation: Cell::new(0),
-            user_dictionary: None,
+            user_dictionary,
         }
     }
 
     /// Loads `word_lists` and the user's word list at `user_dictionary`, which
-    /// [`Self::add_word`] then appends to.
+    /// [`Self::add_word`] then appends to, on this thread.
     pub(crate) fn load(word_lists: &[WordList], user_dictionary: Option<PathBuf>) -> Self {
-        let mut texts: Vec<Cow<'static, str>> =
-            word_lists.iter().filter_map(WordList::read).collect();
-        if let Some(path) = &user_dictionary
-            && let Ok(content) = std::fs::read_to_string(path)
-        {
-            texts.push(Cow::Owned(content));
-        }
-        Self {
-            user_dictionary,
-            ..Self::from_wordlists(texts.iter().map(|text| text.as_ref()))
-        }
+        let words = Words::read(word_lists, user_dictionary.as_deref());
+        let dictionary = Self::unloaded(user_dictionary);
+        dictionary.install(words);
+        dictionary
     }
 
-    /// A dictionary of the words in `wordlists`.
-    pub(crate) fn from_wordlists<'a>(wordlists: impl IntoIterator<Item = &'a str>) -> Self {
-        let mut words: HashSet<Box<str>> = HashSet::new();
-        for content in wordlists {
-            Self::insert_wordlist(content, &mut words);
-        }
-
-        let loaded = words.len() >= MIN_USEFUL_DICTIONARY_SIZE;
+    /// Takes the words read for it, with any words added while they were
+    /// read.
+    pub(crate) fn install(&self, read: Words) {
+        let count = {
+            let mut words = self.words.borrow_mut();
+            let added = std::mem::replace(&mut *words, read.words);
+            words.extend(added);
+            words.len()
+        };
+        let loaded = count >= MIN_USEFUL_DICTIONARY_SIZE;
         if loaded {
-            log::info!("Spell dictionary loaded ({} words)", words.len());
-        } else if words.is_empty() {
+            log::info!("Spell dictionary loaded ({count} words)");
+        } else if count == 0 {
             log::info!("No spell dictionary found; spell checking is inactive");
         } else {
             log::warn!(
-                "Wordlist too small to act as a dictionary ({} words); spell checking is inactive",
-                words.len()
+                "Wordlist too small to act as a dictionary ({count} words); spell checking is inactive"
             );
         }
-
-        let has_apostrophe_entries = words.iter().any(|w| w.contains('\''));
-
-        Self {
-            words: RefCell::new(words),
-            ignored: RefCell::new(HashSet::new()),
-            loaded,
-            has_apostrophe_entries: Cell::new(has_apostrophe_entries),
-            generation: Cell::new(0),
-            user_dictionary: None,
-        }
-    }
-
-    /// Parses a wordlist, stripping Hunspell affix flags and skipping
-    /// comments, blanks, and malformed entries.
-    fn insert_wordlist(content: &str, into: &mut HashSet<Box<str>>) {
-        for line in content.lines() {
-            let entry = line.trim();
-            if entry.is_empty() || entry.starts_with('#') {
-                continue;
-            }
-            let word = entry.split('/').next().unwrap_or(entry).trim();
-            if word.is_empty() || word.len() > MAX_DICTIONARY_WORD_LEN {
-                continue;
-            }
-            if !word
-                .chars()
-                .all(|c| c.is_alphabetic() || c == '\'' || c == '-')
-            {
-                continue;
-            }
-            into.insert(Box::from(word));
-        }
+        self.loaded.set(loaded);
+        self.has_apostrophe_entries
+            .set(read.has_apostrophe_entries || self.has_apostrophe_entries.get());
+        self.generation.set(self.generation.get() + 1);
     }
 
     /// Whether a usable dictionary was loaded. An unloaded one accepts every
     /// word.
     pub fn is_loaded(&self) -> bool {
-        self.loaded
+        self.loaded.get()
     }
 
     /// Number of entries in the dictionary.
@@ -287,7 +259,7 @@ impl Dictionary {
     /// apostrophe entries at all, contractions are treated as unknowable and
     /// pass. Hyphenated compounds are validated part by part.
     pub fn is_correct(&self, word: &str) -> bool {
-        if !self.loaded || word.is_empty() {
+        if !self.is_loaded() || word.is_empty() {
             return true;
         }
         {
@@ -339,7 +311,7 @@ impl Dictionary {
     /// Generates up to `limit` correction suggestions for a misspelled word,
     /// best first. See the module docs for the ranking.
     pub fn suggest(&self, word: &str, limit: usize) -> Vec<String> {
-        if !self.loaded || word.is_empty() || limit == 0 {
+        if !self.is_loaded() || word.is_empty() || limit == 0 {
             return Vec::new();
         }
         let target: Vec<char> = word.to_lowercase().chars().collect();
@@ -403,6 +375,56 @@ impl Dictionary {
             }
         }
         suggestions
+    }
+}
+
+/// The words of a dictionary's word lists, read on any thread.
+pub(crate) struct Words {
+    words: HashSet<Box<str>>,
+    has_apostrophe_entries: bool,
+}
+
+impl Words {
+    /// Reads `word_lists` and the user's word list at `user_dictionary`.
+    pub(crate) fn read(word_lists: &[WordList], user_dictionary: Option<&Path>) -> Self {
+        let mut texts: Vec<Cow<'static, str>> =
+            word_lists.iter().filter_map(WordList::read).collect();
+        if let Some(path) = user_dictionary
+            && let Ok(content) = std::fs::read_to_string(path)
+        {
+            texts.push(Cow::Owned(content));
+        }
+        let mut words: HashSet<Box<str>> = HashSet::new();
+        for content in &texts {
+            Self::insert_wordlist(content, &mut words);
+        }
+        let has_apostrophe_entries = words.iter().any(|word| word.contains('\''));
+        Self {
+            words,
+            has_apostrophe_entries,
+        }
+    }
+
+    /// Parses a wordlist, stripping Hunspell affix flags and skipping
+    /// comments, blanks, and malformed entries.
+    fn insert_wordlist(content: &str, into: &mut HashSet<Box<str>>) {
+        for line in content.lines() {
+            let entry = line.trim();
+            if entry.is_empty() || entry.starts_with('#') {
+                continue;
+            }
+            let word = entry.split('/').next().unwrap_or(entry).trim();
+            if word.is_empty() || word.len() > MAX_DICTIONARY_WORD_LEN {
+                continue;
+            }
+            if !word
+                .chars()
+                .all(|c| c.is_alphabetic() || c == '\'' || c == '-')
+            {
+                continue;
+            }
+            into.insert(Box::from(word));
+        }
     }
 }
 

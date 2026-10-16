@@ -972,6 +972,67 @@ fn log_failed_save(path: &Path, error: &io::Error) {
     );
 }
 
+/// A vocabulary file as read, on any thread, for [`Vocabulary::install`].
+pub(crate) struct LoadedVocabulary {
+    counts: Counts,
+    /// The file to save to: none when it couldn't be read and mustn't be
+    /// written over.
+    file: Option<PathBuf>,
+    /// Whether the file is from an earlier version, to write again.
+    dirty: bool,
+}
+
+impl LoadedVocabulary {
+    /// Reads the vocabulary saved at `path`, to save there from then on.
+    ///
+    /// A file that doesn't parse, such as one cut short, is never written
+    /// over: it is moved aside to a name beside it, and learning starts
+    /// afresh. One that can't be read or moved is left alone, and nothing is
+    /// saved this session.
+    pub fn read(path: PathBuf) -> Self {
+        let mut loaded = Self {
+            counts: Counts::default(),
+            file: None,
+            dirty: false,
+        };
+        match read_file(&path) {
+            Ok(saved) => {
+                if let Some(mut saved) = saved {
+                    loaded.dirty = saved.migrate();
+                    loaded.counts = Counts::from_saved(saved);
+                }
+                loaded.file = Some(path);
+            }
+            Err(ReadError::Unreadable(error)) => log::error!(
+                "Couldn't read the word suggestions' vocabulary {}: {error}. It won't be saved \
+                 over this session.",
+                path.display()
+            ),
+            Err(ReadError::Damaged(error)) => match set_aside(&path) {
+                Ok(kept) => {
+                    log::warn!(
+                        "The word suggestions' vocabulary {} is damaged ({error}). It was kept as {}, \
+                         and a new one started.",
+                        path.display(),
+                        kept.display()
+                    );
+                    loaded.file = Some(path);
+                }
+                // Another process starting at the same time moved it first.
+                Err(move_error) if move_error.kind() == io::ErrorKind::NotFound => {
+                    loaded.file = Some(path);
+                }
+                Err(move_error) => log::error!(
+                    "The word suggestions' vocabulary {} is damaged ({error}), and couldn't be moved \
+                     aside ({move_error}). It won't be saved over this session.",
+                    path.display()
+                ),
+            },
+        }
+        loaded
+    }
+}
+
 /// The persistent vocabulary learned from typed text, shared by every
 /// textarea of the application.
 pub(crate) struct Vocabulary {
@@ -995,6 +1056,8 @@ pub(crate) struct Vocabulary {
     /// Whether the last background save found the file gone or damaged, so
     /// the next one sends the whole vocabulary.
     needs_whole: bool,
+    /// How many times counts it didn't learn itself arrived from its file.
+    generation: u64,
     /// How many background saves began.
     #[cfg(test)]
     background_saves: usize,
@@ -1013,6 +1076,7 @@ impl Vocabulary {
             in_flight: None,
             save_again: false,
             needs_whole: false,
+            generation: 0,
             #[cfg(test)]
             background_saves: 0,
         }
@@ -1034,44 +1098,30 @@ impl Vocabulary {
     /// saved this session.
     pub fn load_from(path: PathBuf, dictionary: Rc<Dictionary>) -> Self {
         let mut vocabulary = Self::with_dictionary(dictionary);
-        match read_file(&path) {
-            Ok(saved) => {
-                if let Some(saved) = saved {
-                    vocabulary.read(saved);
-                }
-                vocabulary.file = Some(path);
-            }
-            Err(ReadError::Unreadable(error)) => log::error!(
-                "Couldn't read the word suggestions' vocabulary {}: {error}. It won't be saved \
-                 over this session.",
-                path.display()
-            ),
-            Err(ReadError::Damaged(error)) => match set_aside(&path) {
-                Ok(kept) => {
-                    log::warn!(
-                        "The word suggestions' vocabulary {} is damaged ({error}). It was kept as {}, \
-                         and a new one started.",
-                        path.display(),
-                        kept.display()
-                    );
-                    vocabulary.file = Some(path);
-                }
-                // Another process starting at the same time moved it first.
-                Err(move_error) if move_error.kind() == io::ErrorKind::NotFound => {
-                    vocabulary.file = Some(path);
-                }
-                Err(move_error) => log::error!(
-                    "The word suggestions' vocabulary {} is damaged ({error}), and couldn't be moved \
-                     aside ({move_error}). It won't be saved over this session.",
-                    path.display()
-                ),
-            },
-        }
+        vocabulary.install(LoadedVocabulary::read(path));
         vocabulary
+    }
+
+    /// Takes the vocabulary read from its file, with what this one learned
+    /// while it was read added, and saves to that file from then on.
+    pub fn install(&mut self, loaded: LoadedVocabulary) {
+        let mut counts = loaded.counts;
+        counts.add(&self.counts);
+        self.counts = counts;
+        self.file = loaded.file;
+        self.dirty |= loaded.dirty;
+        self.generation += 1;
+    }
+
+    /// A number that changes whenever counts it didn't learn itself arrive:
+    /// from its file, at loading or saving.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Takes the counts of a file. One saved before version 2 keeps its
     /// words and drops its n-grams.
+    #[cfg(test)]
     fn read(&mut self, mut saved: SavedVocabulary) {
         let migrated = saved.migrate();
         self.counts = Counts::from_saved(saved);
@@ -1112,6 +1162,7 @@ impl Vocabulary {
         match job.run() {
             Ok(Saved::Written(counts)) => {
                 self.counts = counts;
+                self.generation += 1;
                 self.dirty = false;
                 self.needs_whole = false;
             }
@@ -1236,6 +1287,7 @@ impl Vocabulary {
             Some(Ok(Saved::Written(mut counts))) => {
                 counts.add(&self.unsaved);
                 self.needs_whole = false;
+                self.generation += 1;
                 Some(std::mem::replace(&mut self.counts, counts))
             }
             result => {

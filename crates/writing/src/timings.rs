@@ -11,9 +11,9 @@
 //! block every forty paragraphs.
 
 use crate::completion::local::LocalIndex;
-use crate::completion::vocabulary::Vocabulary;
+use crate::completion::vocabulary::{LoadedVocabulary, Vocabulary};
 use crate::spelling::tests::{Scratch, english};
-use crate::spelling::{Dictionary, MAX_SUGGESTIONS};
+use crate::spelling::{Dictionary, MAX_SUGGESTIONS, Words};
 use crate::{WordList, Writing};
 use gpui_base::input::Rope;
 use std::hint::black_box;
@@ -31,6 +31,19 @@ fn time<T>(name: &str, runs: usize, per: u32, mut work: impl FnMut() -> T) -> Du
             start.elapsed() / per
         })
         .collect();
+    samples.sort();
+    let median = samples[runs / 2];
+    println!(
+        "{name:<52} median {median:>11.3?}   fastest {:>11.3?}   ({runs} runs)",
+        samples[0]
+    );
+    median
+}
+
+/// Prints the median and the fastest of the times `work` returns, for work
+/// that times a part of itself.
+fn time_part(name: &str, runs: usize, mut work: impl FnMut() -> Duration) -> Duration {
+    let mut samples: Vec<Duration> = (0..runs).map(|_| work()).collect();
     samples.sort();
     let median = samples[runs / 2];
     println!(
@@ -163,6 +176,15 @@ fn typed_into_the_middle(text: &str) -> (Rope, Rope, std::ops::Range<usize>) {
 fn timings_dictionary() {
     time("load the English dictionary", 10, 1, || {
         Dictionary::load(&[WordList::English], None)
+    });
+    time_part("  of which on the UI thread", 10, || {
+        let words = Words::read(&[WordList::English], None);
+        let dictionary = Dictionary::unloaded(None);
+        let start = Instant::now();
+        dictionary.install(words);
+        let installing = start.elapsed();
+        drop(dictionary);
+        installing
     });
     let dictionary = english();
     let typos = [
@@ -310,6 +332,15 @@ fn timings_vocabulary_files() {
     );
     time("load the vocabulary", 5, 1, || {
         Vocabulary::load_from(path.clone(), dictionary.clone())
+    });
+    time_part("  of which on the UI thread", 5, || {
+        let read = LoadedVocabulary::read(path.clone());
+        let mut vocabulary = Vocabulary::with_dictionary(dictionary.clone());
+        let start = Instant::now();
+        vocabulary.install(read);
+        let installing = start.elapsed();
+        drop(vocabulary);
+        installing
     });
     time("save one more sentence", 5, 1, || {
         vocabulary.learn_sentence(&prose.sentence());

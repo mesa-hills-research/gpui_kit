@@ -61,6 +61,13 @@ let document = cx.new(|cx| {
 let pacing = suggestions.follow(&document, cx);
 ```
 
+`Writing::load` returns at once and reads the word lists and the vocabulary
+on a background thread. Until they arrive, which takes a fraction of a second
+(longer for a large vocabulary), nothing is underlined and suggestions know
+only what the user types; then every textarea's spelling is checked again.
+`is_loaded` says whether they have arrived. `Writing::load_blocking` reads
+them on the calling thread, for tests and tools.
+
 Tab takes a whole suggestion. `accept_word_bindings` binds Ctrl+Right, or
 Cmd+Right on macOS, to take its next word; with nothing offered the key moves
 the caret as usual.
