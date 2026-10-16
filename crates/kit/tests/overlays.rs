@@ -3,6 +3,7 @@ use gpui_kit::component::{
     Root, WindowExt,
     button::Button,
     dialog::{DialogAction, DialogClose, DialogFooter},
+    image_viewer::{ImageViewerItem, ImageViewerState},
     input::{Input, InputState},
     notification::Notification,
 };
@@ -404,6 +405,99 @@ async fn a_sheet_without_a_transition_opens_in_place(cx: &mut TestAppContext) {
     cx.update_window(handle.into(), |_, window, _| {
         let sheet = window.find("sheet-content").bounds();
         assert_eq!(sheet.right(), window.viewport_size().width, "{sheet:?}");
+    })
+    .unwrap();
+}
+
+struct Gallery {
+    viewer: Option<Entity<ImageViewerState>>,
+}
+impl Render for Gallery {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .p_4()
+            .child(Button::new("thumbnail").label("Open").on_click(cx.listener(
+                |this, _, window, cx| {
+                    let items = (1..=3).map(|n| {
+                        ImageViewerItem::new(format!("missing-{n}.png"))
+                            .with_caption(format!("shot-{n}.png"))
+                    });
+                    this.viewer = Some(window.open_image_viewer(items, 0, cx));
+                },
+            )))
+    }
+}
+
+/// The viewer opens over the window with focus, browses with the keys a
+/// reader expects, switches to actual size by double-click and Z, and Escape
+/// closes it with focus back on the thumbnail that opened it.
+#[gpui_kit::test]
+fn image_viewer_browses_by_keyboard_and_returns_focus(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (handle, gallery) = common::open_window(cx, Some(size(px(800.), px(600.))), |_, cx| {
+        cx.new(|_| Gallery { viewer: None })
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        // The keyboard path: focus the thumbnail (Tab only reaches Root's
+        // binding once something holds focus, so the first stop is what Tab
+        // does), open it with Enter.
+        window.focus_next(cx);
+        window.render_frame(cx);
+        assert_eq!(window.find("thumbnail").focused(), Some(true));
+        window.press("enter", cx);
+        window.render_frame(cx);
+        let viewer = window.find("image-viewer");
+        assert_eq!(viewer.role(), Some(gpui_kit::Role::Dialog));
+        assert_eq!(viewer.focused(), Some(true));
+        assert_eq!(viewer.bounds().size.width, px(800.));
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-1.png")
+        );
+
+        window.press("right", cx);
+        window.press("right", cx);
+        window.press("right", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-3.png")
+        );
+        window.press("home", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-1.png")
+        );
+        window.press("end", cx);
+        window.press("left", cx);
+        assert_eq!(
+            window.find("image-viewer-stage").label(),
+            Some("shot-2.png")
+        );
+    })
+    .unwrap();
+    let viewer = common::update_content(handle, &gallery, cx, |gallery, _, _| {
+        gallery.viewer.clone().expect("opened")
+    })
+    .unwrap();
+    let actual_size = |cx: &mut TestAppContext| viewer.read_with(cx, |v, _| v.is_actual_size());
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.double_click("image-viewer-stage", cx)
+    })
+    .unwrap();
+    assert!(actual_size(cx));
+    cx.update_window(handle.into(), |_, window, cx| window.press("z", cx))
+        .unwrap();
+    assert!(!actual_size(cx));
+
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.press("escape", cx);
+        window.render_frame(cx);
+        assert!(window.try_find("image-viewer").is_none());
+        assert!(!window.has_active_image_viewer(cx));
+        assert_eq!(window.find("thumbnail").focused(), Some(true));
     })
     .unwrap();
 }

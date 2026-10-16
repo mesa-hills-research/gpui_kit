@@ -1055,6 +1055,66 @@ fn bundled_fonts_draw_each_weight() {
     }
 }
 
+/// An in-memory picture: a framed window mock-up in one hue, no text.
+fn picture(width: u32, height: u32, hue: u32) -> std::sync::Arc<gpui_kit::Image> {
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">
+<rect width="100%" height="100%" fill="hsl({hue}, 45%, 62%)"/>
+<rect x="5%" y="6%" width="90%" height="10%" rx="6" fill="hsl({hue}, 40%, 82%)"/>
+<rect x="5%" y="22%" width="38%" height="68%" rx="6" fill="hsl({hue}, 40%, 75%)"/>
+<rect x="48%" y="22%" width="47%" height="68%" rx="6" fill="hsl({hue}, 40%, 88%)"/>
+</svg>"#
+    );
+    std::sync::Arc::new(gpui_kit::Image::from_bytes(
+        gpui_kit::ImageFormat::Svg,
+        svg.into_bytes(),
+    ))
+}
+
+struct Behind;
+
+impl Render for Behind {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(gpui_kit::component::TitleBar::new())
+            .child(div().p_4().child("The window under the viewer"))
+    }
+}
+
+fn image_viewer(mode: ThemeMode) -> Screenshot {
+    use gpui_kit::component::{WindowExt as _, image_viewer::ImageViewerItem};
+    let mut app = app(mode);
+    let window = open(&mut app, (520., 360.), SCALE, |_, _| Behind);
+    act(&mut app, window, |window, cx| {
+        let items = [(400, 240, 210), (300, 300, 150), (640, 360, 20)]
+            .into_iter()
+            .enumerate()
+            .map(|(ix, (width, height, hue))| {
+                ImageViewerItem::new(picture(width, height, hue))
+                    .with_caption(format!("shot-{}.png · {width} × {height}", ix + 1))
+            });
+        window.open_image_viewer(items, 1, cx);
+    });
+    app.capture(window).unwrap()
+}
+
+/// The image viewer over a window: the counter, the caption, the image fitted below the title
+/// bar, the previous and next buttons.
+#[test]
+fn image_viewer_light() {
+    goldens().assert("image-viewer", &image_viewer(ThemeMode::Light));
+}
+
+#[test]
+fn image_viewer_dark() {
+    goldens().assert("image-viewer-dark", &image_viewer(ThemeMode::Dark));
+}
+
 struct Bar;
 
 impl Render for Bar {

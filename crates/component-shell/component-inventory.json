@@ -2627,10 +2627,22 @@
       "registration": { "status": "registered", "descriptor": "ShimmerText", "exports": ["ShimmerText"] }
     },
     {
+      "source": "ui",
+      "name": "image_viewer",
+      "classification": "infrastructure",
+      "explanation": "ImageViewer opens over the window through Rust's WindowExt::open_image_viewer with application-supplied ImageSource values (in-memory images or an LruImageCache source), which the frozen script catalog cannot construct; it is not registered as a script component yet."
+    },
+    {
       "source": "story",
       "name": "attachment",
       "classification": "component",
       "registration": { "status": "registered", "descriptor": "Attachment", "exports": ["Attachment"] }
+    },
+    {
+      "source": "story",
+      "name": "image_viewer",
+      "classification": "infrastructure",
+      "explanation": "The Image Viewer story opens the viewer through Rust's WindowExt over in-memory images held by an LruImageCache, which the frozen script catalog cannot construct."
     },
     {
       "source": "story",

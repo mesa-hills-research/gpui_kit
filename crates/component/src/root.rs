@@ -1,6 +1,7 @@
 use crate::{
-    ActiveTheme, ElementExt, Placement,
+    ActiveTheme, ElementExt, Placement, WindowExt as _,
     dialog::{ANIMATION_DURATION, Dialog},
+    image_viewer::{ImageViewer, ImageViewerItem, ImageViewerState},
     input::AnyInputState,
     native_menu::FallbackMenuOverlay,
     notification::{Notification, NotificationList},
@@ -10,9 +11,9 @@ use crate::{
     window_border,
 };
 use gpui::{
-    App, AppContext, Context, DefiniteLength, ElementId, Entity, FocusHandle, InteractiveElement,
-    IntoElement, ParentElement as _, Render, RenderOnce, Styled, WeakFocusHandle, Window, div,
-    prelude::FluentBuilder as _,
+    App, AppContext, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable as _,
+    InteractiveElement, IntoElement, ParentElement as _, Render, RenderOnce, Styled,
+    WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
 };
 use gpui_base::{TextSelection, TextSelectionScopeId};
 use std::{any::TypeId, rc::Rc};
@@ -32,6 +33,14 @@ pub(crate) struct WindowState {
     touch_selection_overlay: Entity<WindowTouchSelectionOverlay>,
     sheet_size: Option<DefiniteLength>,
     pending_focus_restore: Option<WeakFocusHandle>,
+    pub(crate) active_image_viewer: Option<ActiveImageViewer>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ActiveImageViewer {
+    pub(crate) state: Entity<ImageViewerState>,
+    /// The handle focused before the viewer opened, usually its thumbnail.
+    previous_focused_handle: Option<WeakFocusHandle>,
 }
 
 #[derive(Clone)]
@@ -82,6 +91,7 @@ impl WindowState {
             touch_selection_overlay: cx.new(|cx| WindowTouchSelectionOverlay::new(window, cx)),
             sheet_size: None,
             pending_focus_restore: None,
+            active_image_viewer: None,
         }
     }
 
@@ -368,6 +378,51 @@ impl WindowState {
         cx.notify();
     }
 
+    pub fn open_image_viewer(
+        &mut self,
+        items: Vec<ImageViewerItem>,
+        selected_index: usize,
+        window: &mut Window,
+        cx: &mut Context<'_, WindowState>,
+    ) -> Entity<ImageViewerState> {
+        let previous_focused_handle = self
+            .active_image_viewer
+            .take()
+            .and_then(|viewer| viewer.previous_focused_handle)
+            .or_else(|| window.focused(cx).map(|handle| handle.downgrade()));
+        let state = cx.new(|cx| ImageViewerState::new(items, selected_index, cx));
+        let focus_handle = state.read(cx).focus_handle(cx);
+        focus_handle.focus(window, cx);
+        self.active_image_viewer = Some(ActiveImageViewer {
+            state: state.clone(),
+            previous_focused_handle,
+        });
+        gpui_base::TextSelection::clear(window, cx);
+        cx.notify();
+        state
+    }
+
+    pub fn close_image_viewer(&mut self, window: &mut Window, cx: &mut Context<'_, WindowState>) {
+        let Some(viewer) = self.active_image_viewer.take() else {
+            return;
+        };
+        if let Some(handle) = viewer
+            .previous_focused_handle
+            .and_then(|handle| handle.upgrade())
+        {
+            window.focus(&handle, cx);
+        }
+        cx.notify();
+    }
+
+    fn image_viewer_layer(
+        root: &Entity<WindowState>,
+        cx: &App,
+    ) -> Option<impl IntoElement + use<>> {
+        let viewer = root.read(cx).active_image_viewer.clone()?;
+        Some(ImageViewer::new(&viewer.state).on_close(|window, cx| window.close_image_viewer(cx)))
+    }
+
     pub fn push_notification(
         &mut self,
         note: impl Into<Notification>,
@@ -489,6 +544,7 @@ impl RenderOnce for WindowStateLayers {
             .debug_selector(|| "root-layers".to_string())
             .children(WindowState::sheet_layer(root.clone(), window, cx))
             .children(WindowState::dialog_layer(&root, window, cx))
+            .children(WindowState::image_viewer_layer(&root, cx))
             .children(WindowState::notification_layer(&root, cx))
     }
 }

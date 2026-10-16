@@ -95,6 +95,7 @@ impl Gallery {
                 StoryContainer::panel::<HoverCardStory>(window, cx),
                 StoryContainer::panel::<IconStory>(window, cx),
                 StoryContainer::panel::<ImageStory>(window, cx),
+                StoryContainer::panel::<ImageViewerStory>(window, cx),
                 StoryContainer::panel::<InputStory>(window, cx),
                 StoryContainer::panel::<InputGroupStory>(window, cx),
                 StoryContainer::panel::<KbdStory>(window, cx),

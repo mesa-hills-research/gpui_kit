@@ -734,6 +734,7 @@ impl StoryState {
             "SelectStory" => story!(SelectStory),
             "IconStory" => story!(IconStory),
             "ImageStory" => story!(ImageStory),
+            "ImageViewerStory" => story!(ImageViewerStory),
             "InputStory" => story!(InputStory),
             "ListStory" => story!(ListStory),
             "MarkerStory" => story!(MarkerStory),

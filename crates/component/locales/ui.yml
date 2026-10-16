@@ -570,6 +570,47 @@ Pagination:
     zh-CN: 下一页
     zh-HK: 下一頁
     zh-TW: 下一頁
+ImageViewer:
+  label:
+    en: Image viewer
+    zh-CN: 图片查看器
+    zh-HK: 圖片檢視器
+    zh-TW: 圖片檢視器
+  image:
+    en: Image %{current} of %{total}
+    zh-CN: 第 %{current} 张图片，共 %{total} 张
+    zh-HK: 第 %{current} 張圖片，共 %{total} 張
+    zh-TW: 第 %{current} 張圖片，共 %{total} 張
+  previous:
+    en: Previous image
+    zh-CN: 上一张
+    zh-HK: 上一張
+    zh-TW: 上一張
+  next:
+    en: Next image
+    zh-CN: 下一张
+    zh-HK: 下一張
+    zh-TW: 下一張
+  actual_size:
+    en: Actual size
+    zh-CN: 实际大小
+    zh-HK: 實際大小
+    zh-TW: 實際大小
+  fit:
+    en: Fit to window
+    zh-CN: 适合窗口
+    zh-HK: 適合視窗
+    zh-TW: 適合視窗
+  close:
+    en: Close
+    zh-CN: 关闭
+    zh-HK: 關閉
+    zh-TW: 關閉
+  error:
+    en: Couldn’t load this image.
+    zh-CN: 无法加载这张图片。
+    zh-HK: 無法載入這張圖片。
+    zh-TW: 無法載入這張圖片。
 Carousel:
   label:
     en: Carousel

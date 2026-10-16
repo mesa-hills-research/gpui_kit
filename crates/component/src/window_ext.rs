@@ -2,6 +2,7 @@ use crate::root::WindowState;
 use crate::{
     Placement,
     dialog::{AlertDialog, Dialog},
+    image_viewer::{ImageViewerItem, ImageViewerState},
     input::AnyInputState,
     notification::Notification,
     sheet::Sheet,
@@ -61,6 +62,26 @@ pub trait WindowExt: Sized {
 
     /// Closes all active Dialogs.
     fn close_all_dialogs(&mut self, cx: &mut App);
+
+    /// Opens a full-window [`ImageViewer`](crate::image_viewer::ImageViewer)
+    /// over the window, below its title bar, showing `items[selected_index]`.
+    ///
+    /// The viewer takes focus; Escape or its close button closes it and gives
+    /// focus back to what had it, usually the thumbnail that opened it. Opening
+    /// another replaces it. Returns the viewer's state, to follow or change
+    /// the image shown.
+    fn open_image_viewer(
+        &mut self,
+        items: impl IntoIterator<Item = ImageViewerItem>,
+        selected_index: usize,
+        cx: &mut App,
+    ) -> Entity<ImageViewerState>;
+
+    /// Return true if an image viewer is open.
+    fn has_active_image_viewer(&mut self, cx: &mut App) -> bool;
+
+    /// Closes the image viewer, giving focus back to what had it before.
+    fn close_image_viewer(&mut self, cx: &mut App);
 
     /// Pushes a notification to the notification list.
     fn push_notification(&mut self, note: impl Into<Notification>, cx: &mut App);
@@ -156,6 +177,30 @@ impl WindowExt for Window {
     fn close_all_dialogs(&mut self, cx: &mut App) {
         WindowState::update(self, cx, |root, window, cx| {
             root.close_all_dialogs(window, cx);
+        })
+    }
+
+    fn open_image_viewer(
+        &mut self,
+        items: impl IntoIterator<Item = ImageViewerItem>,
+        selected_index: usize,
+        cx: &mut App,
+    ) -> Entity<ImageViewerState> {
+        let items = items.into_iter().collect();
+        WindowState::update(self, cx, move |root, window, cx| {
+            root.open_image_viewer(items, selected_index, window, cx)
+        })
+    }
+
+    #[inline]
+    fn has_active_image_viewer(&mut self, cx: &mut App) -> bool {
+        WindowState::read(self, cx).active_image_viewer.is_some()
+    }
+
+    #[inline]
+    fn close_image_viewer(&mut self, cx: &mut App) {
+        WindowState::update(self, cx, |root, window, cx| {
+            root.close_image_viewer(window, cx);
         })
     }
 

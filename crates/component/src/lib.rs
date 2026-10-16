@@ -49,6 +49,7 @@ pub mod group_box;
 pub mod highlighter;
 pub mod history;
 pub mod hover_card;
+pub mod image_viewer;
 pub mod input;
 pub mod kbd;
 pub mod label;
@@ -134,6 +135,7 @@ pub fn init(cx: &mut App) {
     root::init(cx);
     gpui_base::init(cx);
     input::init(cx);
+    image_viewer::init(cx);
     date_picker::init(cx);
     dock::init(cx);
     sheet::init(cx);
