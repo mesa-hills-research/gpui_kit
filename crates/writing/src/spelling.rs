@@ -123,6 +123,8 @@ const SMOOTHED_CODE_SKIP_SCORE: f64 = 0.1;
 /// has typed it a few times.
 pub struct Dictionary {
     words: RefCell<HashSet<Box<str>>>,
+    /// The words again, by length and letter, for corrections.
+    candidates: RefCell<Candidates>,
     /// Words accepted until the application quits, in lower case.
     ignored: RefCell<HashSet<Box<str>>>,
     loaded: Cell<bool>,
@@ -144,6 +146,7 @@ impl Dictionary {
     pub(crate) fn unloaded(user_dictionary: Option<PathBuf>) -> Self {
         Self {
             words: RefCell::new(HashSet::new()),
+            candidates: RefCell::new(Candidates::default()),
             ignored: RefCell::new(HashSet::new()),
             loaded: Cell::new(false),
             has_apostrophe_entries: Cell::new(false),
@@ -167,7 +170,14 @@ impl Dictionary {
         let count = {
             let mut words = self.words.borrow_mut();
             let added = std::mem::replace(&mut *words, read.words);
-            words.extend(added);
+            let mut candidates = read.candidates;
+            for word in added {
+                if !words.contains(&word) {
+                    candidates.add(&word);
+                    words.insert(word);
+                }
+            }
+            *self.candidates.borrow_mut() = candidates;
             words.len()
         };
         let loaded = count >= MIN_USEFUL_DICTIONARY_SIZE;
@@ -220,6 +230,7 @@ impl Dictionary {
         if !self.words.borrow_mut().insert(Box::from(word)) {
             return;
         }
+        self.candidates.borrow_mut().add(word);
         if word.contains('\'') {
             self.has_apostrophe_entries.set(true);
         }
@@ -319,27 +330,21 @@ impl Dictionary {
             return Vec::new();
         }
         let first = target.first().copied();
-        let last = target.last().copied();
         let target_is_lowercase = word.chars().all(|c| !c.is_uppercase());
 
-        let words = self.words.borrow();
+        let candidates = self.candidates.borrow();
         let mut matches: Vec<(f32, &str)> = Vec::new();
-        for cand in words.iter() {
-            let cand_len = cand.chars().count();
-            if cand_len.abs_diff(target.len()) > MAX_SUGGESTION_LENGTH_DIFFERENCE {
-                continue;
-            }
+        let mut cand_chars: Vec<char> = Vec::new();
+        let mut rows = Rows::default();
+        for (cand, cand_len) in candidates.near(&target) {
             let cand_first = cand.chars().next().map(|c| c.to_ascii_lowercase());
-            let cand_last = cand.chars().last().map(|c| c.to_ascii_lowercase());
-            if cand_first != first && cand_last != last {
-                continue;
-            }
-            let cand_chars: Vec<char> = cand.to_lowercase().chars().collect();
-            let Some(mut cost) = typo_distance(&target, &cand_chars, MAX_SUGGESTION_COST) else {
+            lowercase_into(cand, &mut cand_chars);
+            let Some(mut cost) = rows.typo_distance(&target, &cand_chars, MAX_SUGGESTION_COST)
+            else {
                 continue;
             };
             if cost == 0.0 {
-                if cand.as_ref() == word {
+                if cand == word {
                     continue;
                 }
                 cost = CASE_ONLY_COST;
@@ -360,7 +365,7 @@ impl Dictionary {
                 .min(4);
             cost -= 0.02 * shared_prefix as f32;
             cost += 0.03 * cand_len.abs_diff(target.len()) as f32;
-            matches.push((cost, cand.as_ref()));
+            matches.push((cost, cand));
         }
 
         matches.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(b.1)));
@@ -378,9 +383,129 @@ impl Dictionary {
     }
 }
 
+/// Which letters a word in lower case has: a bit for each of `a` to `z`, one
+/// for the apostrophe, one for the hyphen and one for every other character.
+fn letters(word: &[char]) -> u32 {
+    word.iter().fold(0, |letters, &c| {
+        letters
+            | match c {
+                'a'..='z' => 1 << (c as u32 - 'a' as u32),
+                '\'' | '\u{2019}' => 1 << 26,
+                '-' => 1 << 27,
+                _ => 1 << 28,
+            }
+    })
+}
+
+/// How many [`letters`] apart rule a word out as a correction of another.
+/// Every edit changes the letters a word holds at a cost of at least 0.375
+/// a letter (a substitution changes two for 0.75 or more, an insertion or a
+/// deletion one for 0.4 or more), and each letter one word has and the other
+/// lacks takes one such change at least, so six of them cost at least 2.25,
+/// more than [`MAX_SUGGESTION_COST`].
+const MAX_LETTERS_APART: u32 = 6;
+
+/// `word` in lower case, as characters, in `chars`.
+fn lowercase_into(word: &str, chars: &mut Vec<char>) {
+    chars.clear();
+    if word.is_ascii() {
+        chars.extend(
+            word.bytes()
+                .map(|byte| char::from(byte.to_ascii_lowercase())),
+        );
+    } else {
+        chars.extend(word.to_lowercase().chars());
+    }
+}
+
+/// A dictionary's words by length and by first and last letter, so that
+/// corrections look only at the words that could be one: about a
+/// twentieth of an English dictionary for a word of average length.
+#[derive(Default)]
+struct Candidates {
+    /// The words, one after another.
+    text: String,
+    /// Where each word is in `text`, and its [`letters`].
+    words: Vec<(u32, u8, u32)>,
+    /// Indices into `words` by their length in characters and their first
+    /// letter, in ASCII lower case.
+    by_first: HashMap<(usize, char), Vec<u32>>,
+    /// The same by their last letter.
+    by_last: HashMap<(usize, char), Vec<u32>>,
+}
+
+impl Candidates {
+    fn add(&mut self, word: &str) {
+        let Ok(length) = u8::try_from(word.len()) else {
+            return;
+        };
+        let index = self.words.len() as u32;
+        let mut lowercase = Vec::new();
+        lowercase_into(word, &mut lowercase);
+        self.words
+            .push((self.text.len() as u32, length, letters(&lowercase)));
+        self.text.push_str(word);
+        let chars = word.chars().count();
+        if let Some(first) = word.chars().next() {
+            self.by_first
+                .entry((chars, first.to_ascii_lowercase()))
+                .or_default()
+                .push(index);
+        }
+        if let Some(last) = word.chars().next_back() {
+            self.by_last
+                .entry((chars, last.to_ascii_lowercase()))
+                .or_default()
+                .push(index);
+        }
+    }
+
+    /// The word at `index`, and its [`letters`].
+    fn word(&self, index: u32) -> (&str, u32) {
+        let (start, length, letters) = self.words[index as usize];
+        (
+            &self.text[start as usize..start as usize + length as usize],
+            letters,
+        )
+    }
+
+    /// The words that could be within [`MAX_SUGGESTION_COST`] of `target`,
+    /// with their length in characters, each once: those within
+    /// [`MAX_SUGGESTION_LENGTH_DIFFERENCE`] characters of its length that
+    /// begin with its first letter or end with its last, and that are fewer
+    /// than [`MAX_LETTERS_APART`] [`letters`] apart from it.
+    fn near<'a>(&'a self, target: &[char]) -> impl Iterator<Item = (&'a str, usize)> {
+        let first = target.first().copied();
+        let last = target.last().copied();
+        let target_letters = letters(target);
+        let close = move |(word, letters): (&'a str, u32)| {
+            ((letters ^ target_letters).count_ones() < MAX_LETTERS_APART).then_some(word)
+        };
+        let length = target.len();
+        let lengths = length.saturating_sub(MAX_SUGGESTION_LENGTH_DIFFERENCE)
+            ..=length + MAX_SUGGESTION_LENGTH_DIFFERENCE;
+        lengths.flat_map(move |chars| {
+            let beginning = first
+                .and_then(|first| self.by_first.get(&(chars, first)))
+                .into_iter()
+                .flatten()
+                .filter_map(move |&index| close(self.word(index)));
+            // Words that also begin with `first` came with those.
+            let ending = last
+                .and_then(|last| self.by_last.get(&(chars, last)))
+                .into_iter()
+                .flatten()
+                .filter_map(move |&index| close(self.word(index)))
+                .filter(move |word| word.chars().next().map(|c| c.to_ascii_lowercase()) != first);
+            beginning.chain(ending).map(move |word| (word, chars))
+        })
+    }
+}
+
 /// The words of a dictionary's word lists, read on any thread.
 pub(crate) struct Words {
     words: HashSet<Box<str>>,
+    candidates: Candidates,
     has_apostrophe_entries: bool,
 }
 
@@ -399,8 +524,13 @@ impl Words {
             Self::insert_wordlist(content, &mut words);
         }
         let has_apostrophe_entries = words.iter().any(|word| word.contains('\''));
+        let mut candidates = Candidates::default();
+        for word in &words {
+            candidates.add(word);
+        }
         Self {
             words,
+            candidates,
             has_apostrophe_entries,
         }
     }
@@ -790,47 +920,66 @@ fn substitution_cost(a: char, b: char) -> f32 {
 /// Optimal string alignment (restricted Damerau-Levenshtein) distance with
 /// costs weighted for typing mistakes, from typed `a` to candidate `b`.
 /// Returns `None` as soon as the distance provably exceeds `max`.
+#[cfg(test)]
 fn typo_distance(a: &[char], b: &[char], max: f32) -> Option<f32> {
-    let n = b.len();
-    let mut prev2: Vec<f32> = vec![0.0; n + 1];
-    let mut prev: Vec<f32> = vec![0.0; n + 1];
-    for j in 1..=n {
-        prev[j] = prev[j - 1] + gap_cost(b, j);
-    }
-    let mut cur: Vec<f32> = vec![0.0; n + 1];
+    Rows::default().typo_distance(a, b, max)
+}
 
-    for i in 1..=a.len() {
-        cur[0] = prev[0] + gap_cost(a, i);
-        let mut row_min = cur[0];
+/// The rows [`Rows::typo_distance`] works in, kept from one word to the
+/// next.
+#[derive(Default)]
+struct Rows {
+    prev2: Vec<f32>,
+    prev: Vec<f32>,
+    cur: Vec<f32>,
+}
+
+impl Rows {
+    /// See [`typo_distance`].
+    fn typo_distance(&mut self, a: &[char], b: &[char], max: f32) -> Option<f32> {
+        let n = b.len();
+        let Self { prev2, prev, cur } = self;
+        for row in [&mut *prev2, &mut *prev, &mut *cur] {
+            row.clear();
+            row.resize(n + 1, 0.0);
+        }
         for j in 1..=n {
-            let mut v = (prev[j] + gap_cost(a, i))
-                .min(cur[j - 1] + gap_cost(b, j))
-                .min(prev[j - 1] + substitution_cost(a[i - 1], b[j - 1]));
-            if i > 1
-                && j > 1
-                && a[i - 1] != a[i - 2]
-                && a[i - 1] == b[j - 2]
-                && a[i - 2] == b[j - 1]
-            {
-                let cost = if is_vowel(a[i - 1]) && is_vowel(a[i - 2]) {
-                    VOWEL_TRANSPOSITION_COST
-                } else {
-                    TRANSPOSITION_COST
-                };
-                v = v.min(prev2[j - 2] + cost);
-            }
-            cur[j] = v;
-            row_min = row_min.min(v);
+            prev[j] = prev[j - 1] + gap_cost(b, j);
         }
-        if row_min > max {
-            return None;
-        }
-        std::mem::swap(&mut prev2, &mut prev);
-        std::mem::swap(&mut prev, &mut cur);
-    }
 
-    let d = prev[n];
-    (d <= max).then_some(d)
+        for i in 1..=a.len() {
+            cur[0] = prev[0] + gap_cost(a, i);
+            let mut row_min = cur[0];
+            for j in 1..=n {
+                let mut v = (prev[j] + gap_cost(a, i))
+                    .min(cur[j - 1] + gap_cost(b, j))
+                    .min(prev[j - 1] + substitution_cost(a[i - 1], b[j - 1]));
+                if i > 1
+                    && j > 1
+                    && a[i - 1] != a[i - 2]
+                    && a[i - 1] == b[j - 2]
+                    && a[i - 2] == b[j - 1]
+                {
+                    let cost = if is_vowel(a[i - 1]) && is_vowel(a[i - 2]) {
+                        VOWEL_TRANSPOSITION_COST
+                    } else {
+                        TRANSPOSITION_COST
+                    };
+                    v = v.min(prev2[j - 2] + cost);
+                }
+                cur[j] = v;
+                row_min = row_min.min(v);
+            }
+            if row_min > max {
+                return None;
+            }
+            std::mem::swap(prev2, prev);
+            std::mem::swap(prev, cur);
+        }
+
+        let d = prev[n];
+        (d <= max).then_some(d)
+    }
 }
 
 /// Adjusts a suggestion's casing to match the shape of the source word.
@@ -892,6 +1041,123 @@ pub(crate) mod tests {
                 Some(intended),
                 "{typo}: {suggestions:?}"
             );
+        }
+    }
+
+    /// Corrections as `Dictionary::suggest` found them by trying every word
+    /// of the dictionary.
+    fn suggest_by_scan(dictionary: &Dictionary, word: &str, limit: usize) -> Vec<String> {
+        let target: Vec<char> = word.to_lowercase().chars().collect();
+        let first = target.first().copied();
+        let last = target.last().copied();
+        let target_is_lowercase = word.chars().all(|c| !c.is_uppercase());
+        let words = dictionary.words.borrow();
+        let mut matches: Vec<(f32, &str)> = Vec::new();
+        for cand in words.iter() {
+            let cand_len = cand.chars().count();
+            if cand_len.abs_diff(target.len()) > MAX_SUGGESTION_LENGTH_DIFFERENCE {
+                continue;
+            }
+            let cand_first = cand.chars().next().map(|c| c.to_ascii_lowercase());
+            let cand_last = cand.chars().last().map(|c| c.to_ascii_lowercase());
+            if cand_first != first && cand_last != last {
+                continue;
+            }
+            let cand_chars: Vec<char> = cand.to_lowercase().chars().collect();
+            let Some(mut cost) = typo_distance(&target, &cand_chars, MAX_SUGGESTION_COST) else {
+                continue;
+            };
+            if cost == 0.0 {
+                if cand.as_ref() == word {
+                    continue;
+                }
+                cost = CASE_ONLY_COST;
+            }
+            if cand_first != first {
+                cost += FIRST_LETTER_COST;
+            }
+            if target_is_lowercase && cand.chars().any(|c| c.is_uppercase()) {
+                cost += CASE_COST;
+            }
+            let shared_prefix = target
+                .iter()
+                .zip(&cand_chars)
+                .take_while(|(a, b)| a == b)
+                .count()
+                .min(4);
+            cost -= 0.02 * shared_prefix as f32;
+            cost += 0.03 * cand_len.abs_diff(target.len()) as f32;
+            matches.push((cost, cand.as_ref()));
+        }
+        matches.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+        let mut suggestions: Vec<String> = Vec::new();
+        for (_, candidate) in matches {
+            let suggestion = match_case(word, candidate);
+            if !suggestions.contains(&suggestion) {
+                suggestions.push(suggestion);
+            }
+            if suggestions.len() == limit {
+                break;
+            }
+        }
+        suggestions
+    }
+
+    /// Looking only at words of about the right length that share the first
+    /// or the last letter finds what trying every word finds, in the same
+    /// order, words added later included.
+    #[test]
+    fn corrections_are_those_of_trying_every_word() {
+        let dictionary = english();
+        dictionary.add_word("Wojciech");
+        dictionary.add_word("Ångström");
+        for word in [
+            "mispeled",
+            "teh",
+            "Teh",
+            "TEH",
+            "recieve",
+            "seperate",
+            "occured",
+            "definately",
+            "accomodate",
+            "untill",
+            "wierd",
+            "becuase",
+            "adress",
+            "tommorow",
+            "dont",
+            "im",
+            "wont",
+            "Wojceich",
+            "Angstrom",
+            "ångstrom",
+            "a",
+            "ab",
+            "xq",
+            "hte",
+            "yuo",
+            "qwzx",
+            "photograhpy",
+            "Mississipi",
+            "zzzzzzzzzzzz",
+            "english",
+            "Paris",
+            "paris",
+            "e-mial",
+            "cafe",
+            "naïve",
+            "Straße",
+            "colour",
+            "organisation",
+        ] {
+            for limit in [1, MAX_SUGGESTIONS, 50] {
+                assert_eq!(
+                    dictionary.suggest(word, limit),
+                    suggest_by_scan(&dictionary, word, limit),
+                    "{word} {limit}"
+                );
+            }
         }
     }
 
