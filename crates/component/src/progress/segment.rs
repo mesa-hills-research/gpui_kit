@@ -61,11 +61,12 @@ impl ProgressSegment {
         self.value_text.as_ref()
     }
 
-    /// The amount as read out: the value text, else the rounded percentage.
-    pub(super) fn spoken_value(&self) -> SharedString {
+    /// The amount as shown and read out: the value text, else the rounded
+    /// percentage `drawn`, what the track has room to draw of it.
+    pub(super) fn spoken_value(&self, drawn: f32) -> SharedString {
         self.value_text
             .clone()
-            .unwrap_or_else(|| format!("{}%", self.value.round()).into())
+            .unwrap_or_else(|| format!("{}%", drawn.round()).into())
     }
 }
 
@@ -91,14 +92,29 @@ pub(super) fn segment_ends(segments: &[ProgressSegment]) -> Vec<f32> {
         .collect()
 }
 
+/// How much of each segment the track draws, in percent: segments stacked
+/// past 100 are cut off there.
+pub(super) fn drawn_values(segments: &[ProgressSegment]) -> Vec<f32> {
+    let mut start = 0.;
+    segment_ends(segments)
+        .into_iter()
+        .map(|end| {
+            let drawn = end - start;
+            start = end;
+            drawn
+        })
+        .collect()
+}
+
 /// The accessible value of a segmented indicator: each labelled segment and
 /// its amount, in order, e.g. "System 8%, Conversation about 42k".
 pub(super) fn describe_segments(segments: &[ProgressSegment]) -> SharedString {
     segments
         .iter()
-        .map(|segment| match segment.label() {
-            Some(label) => format!("{label} {}", segment.spoken_value()),
-            None => segment.spoken_value().to_string(),
+        .zip(drawn_values(segments))
+        .map(|(segment, drawn)| match segment.label() {
+            Some(label) => format!("{label} {}", segment.spoken_value(drawn)),
+            None => segment.spoken_value(drawn).to_string(),
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -148,5 +164,21 @@ mod tests {
         );
         assert_eq!(segments[2].value(), 10.);
         assert_eq!(ProgressSegment::new(120., color).value(), 100.);
+    }
+
+    /// A segment cut off at the end of the track reads the part drawn.
+    #[test]
+    fn segments_past_the_track_read_what_is_drawn() {
+        let color = hsla(0., 0., 0., 1.);
+        let segments = [
+            ProgressSegment::new(80., color).with_label("Conversation"),
+            ProgressSegment::new(40., color).with_label("Tool results"),
+            ProgressSegment::new(10., color).with_label("Free"),
+        ];
+        assert_eq!(drawn_values(&segments), vec![80., 20., 0.]);
+        assert_eq!(
+            describe_segments(&segments).as_ref(),
+            "Conversation 80%, Tool results 20%, Free 0%"
+        );
     }
 }

@@ -290,6 +290,10 @@ menu.action_context(focus_handle)
     .menu("Paste", Box::new(Paste))
 ```
 
+## 应用菜单栏
+
+窗口的菜单栏 `AppMenuBar` 位于标题栏中，用这些菜单打开应用的菜单。它的键盘操作（F10、Alt、访问键）和方法见 [Title Bar](./title-bar.md#appmenubar)。
+
 ## API 参考
 
 - [PopupMenu]

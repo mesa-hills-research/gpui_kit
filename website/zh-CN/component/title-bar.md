@@ -161,7 +161,7 @@ WindowOptions {
 
 ## 菜单栏与键盘
 
-在 Windows 和 Linux 上，标题栏中的 [AppMenuBar](./menu.md) 会按 Windows 用户习惯的方式响应键盘，适用于所有通过 `gpui_kit::open_window` 打开的窗口：
+在 Windows 和 Linux 上，标题栏中的 [AppMenuBar](#appmenubar) 会按 Windows 用户习惯的方式响应键盘，适用于所有通过 `gpui_kit::open_window` 打开的窗口：
 
 - **F10** 或单独按一下 **Alt** 会聚焦第一个菜单的标题，再按一次则归还焦点；
 - **Left** 和 **Right** 在菜单标题之间移动，**Down**、**Enter** 或 **Space** 打开当前菜单，**Escape** 回到之前的焦点位置；

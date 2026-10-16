@@ -113,7 +113,7 @@ impl Render for MyView {
 
 ### 分段
 
-`segments` 用多个分段并排填充进度条，取代单一数值。每个分段是一个 [`ProgressSegment`](#progresssegment)，有自己的数值（占整条的百分比）、颜色和标签。相邻分段之间留有一条细缝，每个分段的终点各自过渡。
+`segments` 用多个分段并排填充进度条，取代单一数值。每个分段是一个 [`ProgressSegment`](#progresssegment)，有自己的数值（占整条的百分比）、颜色和标签。相邻分段之间留有一条细缝，每个分段的终点各自过渡。各分段加起来超过 100 时，超出的部分在末端截去，没有数值文本的分段会显示并朗读实际画出的部分。
 
 ```rust
 use gpui_kit::component::progress::{Progress, ProgressSegment};

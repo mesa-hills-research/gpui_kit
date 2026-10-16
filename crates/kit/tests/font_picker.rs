@@ -454,19 +454,26 @@ async fn the_compact_picker_keeps_the_features_behind_a_disclosure(cx: &mut Test
     assert_eq!(events.borrow().last().unwrap().feature("calt"), Some(false));
 }
 
-/// A picker for a setting that keeps only a family and a size.
+/// A picker for a setting that keeps only a family and a size, or, for
+/// comparison, one that keeps every row.
 struct FamilyAndSize {
     picker: Entity<FontPickerState>,
     compact: bool,
+    every_row: bool,
 }
 
 impl Render for FamilyAndSize {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let picker = FontPicker::new(&self.picker)
-            .show_weight(false)
-            .show_line_height(false)
-            .show_features(false)
-            .collapsible_features(true);
+        // Features inline in the full layout, in a disclosure in the compact.
+        let picker = FontPicker::new(&self.picker).collapsible_features(false);
+        let picker = if self.every_row {
+            picker
+        } else {
+            picker
+                .show_weight(false)
+                .show_line_height(false)
+                .show_features(false)
+        };
         div().size_full().child(if self.compact {
             picker.compact()
         } else {
@@ -476,33 +483,49 @@ impl Render for FamilyAndSize {
 }
 
 /// Each layout leaves out the rows switched off: no weight, no italic, no
-/// features, on a font that offers all of them.
+/// line height, no features, on a font that offers all of them.
 #[gpui_kit::test]
 async fn a_picker_offers_only_the_rows_its_setting_keeps(cx: &mut TestAppContext) {
     cx.update(gpui_component::init);
     for compact in [true, false] {
-        let (window, _) = common::open_window(cx, Some(size(px(800.), px(600.))), |window, cx| {
-            let picker = cx.new(|cx| {
-                FontPickerState::new(window, cx)
-                    .catalog(FontCatalog::from_fonts(&[JETBRAINS_MONO_SOURCE, INTER]))
-                    .default_settings(FontSettings::new("JetBrains Mono").with_size(px(14.)))
-            });
-            cx.new(|_| FamilyAndSize { picker, compact })
-        });
-        cx.run_until_parked();
-        cx.update_window(window.into(), |_, window, cx| {
-            window.render_frame(cx);
-            assert!(window.try_find("font-picker-weight").is_none(), "{compact}");
-            assert!(window.try_find("font-picker-italic").is_none(), "{compact}");
-            assert!(
-                window.try_find("font-picker-features-toggle").is_none(),
-                "{compact}"
-            );
-            assert!(
-                window.try_find("font-picker-feature-calt").is_none(),
-                "{compact}"
-            );
-        })
-        .unwrap();
+        for every_row in [true, false] {
+            let (window, _) =
+                common::open_window(cx, Some(size(px(800.), px(900.))), |window, cx| {
+                    let picker = cx.new(|cx| {
+                        FontPickerState::new(window, cx)
+                            .catalog(FontCatalog::from_fonts(&[JETBRAINS_MONO_SOURCE, INTER]))
+                            .default_settings(
+                                FontSettings::new("JetBrains Mono").with_size(px(14.)),
+                            )
+                    });
+                    cx.new(|_| FamilyAndSize {
+                        picker,
+                        compact,
+                        every_row,
+                    })
+                });
+            cx.run_until_parked();
+            cx.update_window(window.into(), |_, window, cx| {
+                window.render_frame(cx);
+                let case = format!("compact {compact}, every row {every_row}");
+                let shown = |id: &'static str| window.try_find(id).is_some();
+                assert_eq!(shown("font-picker-weight"), every_row, "{case}");
+                assert_eq!(shown("font-picker-italic"), every_row, "{case}");
+                assert_eq!(shown("font-picker-line-height"), every_row, "{case}");
+                // The full layout lists the features inline, the compact
+                // one behind a toggle.
+                assert_eq!(
+                    shown("font-picker-feature-calt"),
+                    every_row && !compact,
+                    "{case}"
+                );
+                assert_eq!(
+                    shown("font-picker-features-toggle"),
+                    every_row && compact,
+                    "{case}"
+                );
+            })
+            .unwrap();
+        }
     }
 }

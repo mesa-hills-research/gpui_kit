@@ -3,7 +3,7 @@ use gpui::{
     Styled, Window, div, prelude::FluentBuilder as _,
 };
 
-use super::{Progress, ProgressSegment};
+use super::{Progress, ProgressSegment, segment::drawn_values};
 use crate::{ActiveTheme as _, Sizable, Size, StyledExt as _, h_flex, v_flex};
 
 /// A labelled usage meter: what is measured and how much, a bar, and for a
@@ -94,32 +94,39 @@ impl UsageBar {
         v_flex()
             .gap_1()
             .text_xs()
-            .children(segments.iter().map(|segment| {
-                h_flex()
-                    .gap_2()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .size_2()
-                            .rounded_xs()
-                            .bg(segment.color()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
+            .children(
+                segments
+                    .iter()
+                    .zip(drawn_values(segments))
+                    .map(|(segment, drawn)| {
+                        h_flex()
+                            .gap_2()
                             .min_w_0()
-                            .truncate()
-                            .when_some(segment.label().cloned(), |this, label| this.child(label)),
-                    )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_color(muted)
-                            .font_features(crate::time::time_field::tabular_figures())
-                            .child(segment.spoken_value()),
-                    )
-            }))
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .size_2()
+                                    .rounded_xs()
+                                    .bg(segment.color()),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .when_some(segment.label().cloned(), |this, label| {
+                                        this.child(label)
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_color(muted)
+                                    .font_features(crate::time::time_field::tabular_figures())
+                                    .child(segment.spoken_value(drawn)),
+                            )
+                    }),
+            )
     }
 }
 

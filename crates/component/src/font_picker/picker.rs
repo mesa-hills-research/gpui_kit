@@ -2,6 +2,7 @@ use gpui::{
     App, Entity, InteractiveElement as _, IntoElement, ParentElement, RenderOnce, SharedString,
     StyleRefinement, Styled, Window, div, percentage, prelude::FluentBuilder as _, px, relative,
 };
+use gpui_base::TestSupportExt as _;
 use rust_i18n::t;
 
 use super::{FontFeature, FontPickerState, FontSettings};
@@ -416,7 +417,10 @@ impl FontPicker {
                                     .when(self.show_line_height, |this| {
                                         this.child(field(
                                             t!("FontPicker.line_height").into(),
-                                            NumberInput::new(&line_height).w(px(110.)),
+                                            div()
+                                                .id("font-picker-line-height")
+                                                .test_support()
+                                                .child(NumberInput::new(&line_height).w(px(110.))),
                                             cx,
                                         ))
                                     }),
@@ -506,7 +510,10 @@ impl FontPicker {
             .when(self.show_line_height, |this| {
                 this.child(row(
                     t!("FontPicker.line_height").into(),
-                    NumberInput::new(&line_height).w(px(120.)),
+                    div()
+                        .id("font-picker-line-height")
+                        .test_support()
+                        .child(NumberInput::new(&line_height).w(px(120.))),
                 ))
             })
             .when(self.show_features && !chosen.features.is_empty(), |this| {

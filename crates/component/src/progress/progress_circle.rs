@@ -227,17 +227,11 @@ impl ProgressCircle {
                     0.
                 };
                 for (ix, ring_arc) in paint.arcs.iter().enumerate() {
-                    if ring_arc.end <= ring_arc.start {
+                    let Some((start, end)) = segment_angles(ring_arc.start, ring_arc.end, gap)
+                    else {
                         continue;
-                    }
-                    let mut data = ArcData::new(
-                        &(),
-                        ix + 1,
-                        ring_arc.end - ring_arc.start,
-                        (ring_arc.start / 100.) * TAU,
-                        (ring_arc.end / 100.) * TAU,
-                    );
-                    data.pad_angle = gap;
+                    };
+                    let data = ArcData::new(&(), ix + 1, ring_arc.end - ring_arc.start, start, end);
                     arc.paint(&data, ring_arc.color, &bounds, window);
                 }
 
@@ -384,6 +378,15 @@ impl RenderOnce for ProgressCircle {
     }
 }
 
+/// The angles of a ring segment from `start` to `end` percent, inset by
+/// half of `gap` (an angle) at each end so it stays apart from its
+/// neighbours, whatever its span. `None` when nothing is left to draw.
+fn segment_angles(start: f32, end: f32, gap: f32) -> Option<(f32, f32)> {
+    let start_angle = (start / 100.) * TAU + gap / 2.;
+    let end_angle = (end / 100.) * TAU - gap / 2.;
+    (end_angle > start_angle).then_some((start_angle, end_angle))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,13 +432,35 @@ mod tests {
             ProgressSegment::new(40., color).with_label("Tool results"),
         ]);
         assert_eq!(circle.total_value(), 100.);
+        // The last segment is cut off at the end of the ring: it reads the
+        // part drawn.
         assert_eq!(
             circle.spoken_value().as_deref(),
-            Some("System 30%, Conversation 50%, Tool results 40%")
+            Some("System 30%, Conversation 50%, Tool results 20%")
         );
 
         // Explicit text wins over the generated description.
         let circle = circle.accessibility_value("All of it");
         assert_eq!(circle.spoken_value().as_deref(), Some("All of it"));
+    }
+
+    /// Every segment keeps its gap, one past half the ring included.
+    #[test]
+    fn ring_segments_keep_their_gaps_at_any_span() {
+        let gap = 0.02;
+        let (start, end) = segment_angles(0., 60., gap).unwrap();
+        assert!((start - gap / 2.).abs() < 1e-6);
+        assert!(((end - start) - (0.6 * TAU - gap)).abs() < 1e-5);
+        let (next_start, _) = segment_angles(60., 90., gap).unwrap();
+        assert!(
+            ((next_start - end) - gap).abs() < 1e-5,
+            "a gap between them"
+        );
+        assert_eq!(segment_angles(10., 10.1, gap), None, "too thin to draw");
+        assert_eq!(
+            segment_angles(0., 100., 0.),
+            Some((0., TAU)),
+            "a lone ring is whole"
+        );
     }
 }

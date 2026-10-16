@@ -164,7 +164,7 @@ Ship `com.example.App.desktop` (with `StartupWMClass=com.example.App` on X11) an
 
 ## Menu Bar and the Keyboard
 
-On Windows and Linux the [AppMenuBar](./menu.md) in the title bar answers the keyboard as Windows users expect, in any window opened with `gpui_kit::open_window`:
+On Windows and Linux the [AppMenuBar](#appmenubar) in the title bar answers the keyboard as Windows users expect, in any window opened with `gpui_kit::open_window`:
 
 - **F10** or a tap of **Alt** focuses the first menu's title, and again gives focus back;
 - **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was;

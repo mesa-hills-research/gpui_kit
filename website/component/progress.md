@@ -115,7 +115,7 @@ impl Render for MyView {
 
 ### Segments
 
-`segments` fills the bar with several parts side by side instead of one value, each a [`ProgressSegment`](#progresssegment) with its own value (in percent of the bar), color and label. A hairline keeps neighbours apart, and each segment's end moves on its own transition.
+`segments` fills the bar with several parts side by side instead of one value, each a [`ProgressSegment`](#progresssegment) with its own value (in percent of the bar), color and label. A hairline keeps neighbours apart, and each segment's end moves on its own transition. Segments that add up past 100 are cut off at the end, and a segment without value text shows and reads the part drawn.
 
 ```rust
 use gpui_kit::component::progress::{Progress, ProgressSegment};

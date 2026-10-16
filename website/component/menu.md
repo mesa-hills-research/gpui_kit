@@ -322,6 +322,10 @@ menu.action_context(focus_handle)
     .menu("Paste", Box::new(Paste))
 ```
 
+## App menu bar
+
+The window's menu bar, `AppMenuBar`, lives in the title bar and opens these menus from the app's menus. Its keyboard (F10, Alt, access keys) and its methods are described with the [Title Bar](./title-bar.md#appmenubar).
+
 ## API Reference
 
 - [PopupMenu]
