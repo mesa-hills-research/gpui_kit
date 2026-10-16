@@ -26,7 +26,6 @@ pub use menu::*;
 
 const DEFAULT_WIDTH: Pixels = px(255.);
 const COLLAPSED_WIDTH: Pixels = px(48.);
-const SIDEBAR_TRANSITION_DURATION: Duration = Duration::from_millis(200);
 
 /// The way a [`Sidebar`] behaves when it is collapsed.
 ///
@@ -165,6 +164,19 @@ impl SidebarAnimationState {
         }
     }
 
+    /// Jump straight to `target_width`, mounting or unmounting the content
+    /// at once and cancelling a pending hide: the snap of a zero-length
+    /// transition.
+    fn settle(&mut self, target_width: Pixels, offcanvas_collapsed: bool) {
+        self.from_width = target_width;
+        self.target_width = target_width;
+        self.render_child = !offcanvas_collapsed;
+        if self.hide_scheduled {
+            self.hide_request = self.hide_request.wrapping_add(1);
+        }
+        self.hide_scheduled = false;
+    }
+
     fn finish_hide(&mut self, request: u64) -> bool {
         if self.render_child
             && self.hide_scheduled
@@ -231,6 +243,7 @@ pub struct Sidebar<E: SidebarItem + 'static> {
     side: Side,
     collapsible: SidebarCollapsible,
     collapsed: bool,
+    transition_duration: Option<Duration>,
 }
 
 impl<E: SidebarItem> Sidebar<E> {
@@ -245,6 +258,7 @@ impl<E: SidebarItem> Sidebar<E> {
             side: Side::Left,
             collapsible: SidebarCollapsible::Icon,
             collapsed: false,
+            transition_duration: None,
         }
     }
 
@@ -269,6 +283,18 @@ impl<E: SidebarItem> Sidebar<E> {
     /// Set the sidebar to be collapsed
     pub fn collapsed(mut self, collapsed: bool) -> Self {
         self.collapsed = collapsed;
+        self
+    }
+
+    /// Set how long collapsing and expanding takes. `Duration::ZERO` snaps
+    /// between the two widths in one frame.
+    ///
+    /// Defaults to the theme's `motion_tokens().duration_normal`. Reduced
+    /// motion snaps whatever the duration. A sidebar toggled often, beside
+    /// content that reflows with its width, is a good candidate for a snap:
+    /// a glide re-lays out that content on every frame of it.
+    pub fn transition_duration(mut self, duration: Duration) -> Self {
+        self.transition_duration = Some(duration);
         self
     }
 
@@ -512,6 +538,19 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let animation_state = window.use_keyed_state(format!("{}-anim-w", id), cx, |_, _| {
             SidebarAnimationState::new(target_width, !layout.offcanvas_collapsed)
         });
+        let duration = self
+            .transition_duration
+            .unwrap_or(cx.theme().motion_tokens().duration_normal);
+        if duration.is_zero() {
+            // Snap: settle the state too, so a later glide starts from here.
+            animation_state.update(cx, |state, _| {
+                state.settle(target_width, layout.offcanvas_collapsed)
+            });
+            return sidebar_wrapper(format!("{}-anim", id), layout.align_child_to_end)
+                .w(target_width)
+                .when(!layout.offcanvas_collapsed, |this| this.child(sidebar))
+                .into_any_element();
+        }
 
         let hide_request = if animation_state
             .read(cx)
@@ -527,9 +566,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             cx.spawn({
                 let animation_state = animation_state.clone();
                 async move |cx| {
-                    cx.background_executor()
-                        .timer(SIDEBAR_TRANSITION_DURATION)
-                        .await;
+                    cx.background_executor().timer(duration).await;
                     _ = animation_state.update(cx, |state, cx| {
                         if state.finish_hide(hide_request) {
                             cx.notify();
@@ -546,7 +583,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let wrapper = sidebar_wrapper(format!("{}-anim", id), layout.align_child_to_end)
             .when(animation_state.render_child, |this| this.child(sidebar));
 
-        EffectTransition::new(SIDEBAR_TRANSITION_DURATION)
+        EffectTransition::new(duration)
             .ease(ease_in_out_cubic)
             .width(from_w, to_w)
             .apply(wrapper, sidebar_animation_id(&id, from_w, to_w))
@@ -774,5 +811,72 @@ mod tests {
         assert!(!state.render_child);
         assert_eq!(state.from_width, px(0.));
         assert_eq!(state.target_width, px(0.));
+    }
+
+    #[test]
+    fn settling_should_jump_to_the_target_and_cancel_a_pending_hide() {
+        let mut state = SidebarAnimationState::new(px(240.), true);
+        let request = state.update_target(px(0.), true).unwrap();
+
+        state.settle(px(0.), true);
+        assert_eq!((state.from_width, state.target_width), (px(0.), px(0.)));
+        assert!(!state.render_child);
+        assert!(!state.finish_hide(request), "the stale hide must not run");
+
+        state.settle(px(240.), false);
+        assert_eq!((state.from_width, state.target_width), (px(240.), px(240.)));
+        assert!(state.render_child);
+    }
+
+    struct SidebarHost {
+        collapsed: bool,
+        duration: Option<Duration>,
+    }
+
+    impl gpui::Render for SidebarHost {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            h_flex().size_full().child(
+                div()
+                    .flex_none()
+                    .h_full()
+                    .debug_selector(|| "host".into())
+                    .child(
+                        Sidebar::<SidebarMenu>::new("sidebar")
+                            .collapsed(self.collapsed)
+                            .when_some(self.duration, |this, duration| {
+                                this.transition_duration(duration)
+                            }),
+                    ),
+            )
+        }
+    }
+
+    /// The width the sidebar takes on the first frame after collapsing.
+    fn width_after_collapsing(duration: Option<Duration>, cx: &mut gpui::TestAppContext) -> Pixels {
+        cx.update(crate::init);
+        let (host, cx) = cx.add_window_view(|_, _| SidebarHost {
+            collapsed: false,
+            duration,
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        host.update(cx, |host, cx| {
+            host.collapsed = true;
+            cx.notify();
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.debug_bounds("host").unwrap().size.width
+    }
+
+    #[gpui::test]
+    fn a_zero_transition_snaps_to_the_collapsed_width(cx: &mut gpui::TestAppContext) {
+        assert_eq!(
+            width_after_collapsing(Some(Duration::ZERO), cx),
+            COLLAPSED_WIDTH
+        );
+    }
+
+    #[gpui::test]
+    fn the_default_transition_glides_from_the_expanded_width(cx: &mut gpui::TestAppContext) {
+        assert!(width_after_collapsing(None, cx) > COLLAPSED_WIDTH);
     }
 }

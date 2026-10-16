@@ -85,6 +85,20 @@ SidebarToggleButton::new()
     })
 ```
 
+### Collapse Transition
+
+The sidebar glides between its widths over the theme's `motion_tokens().duration_normal`. `transition_duration` changes that, and `Duration::ZERO` snaps in one frame. Reduced motion snaps either way.
+
+```rust
+use std::time::Duration;
+
+Sidebar::new("sidebar")
+    .collapsed(collapsed)
+    .transition_duration(Duration::ZERO)
+```
+
+Snap a sidebar that is toggled often beside content that reflows with its width, such as a reading column: a glide lays that content out again on every frame of it.
+
 ### Nested Menu Items
 
 ```rust

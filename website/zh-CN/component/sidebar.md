@@ -78,6 +78,20 @@ SidebarToggleButton::new()
     })
 ```
 
+### 折叠过渡
+
+Sidebar 在两种宽度之间切换时，会按主题的 `motion_tokens().duration_normal` 平滑过渡。`transition_duration` 可以修改时长，`Duration::ZERO` 表示在一帧内直接切换。开启“减少动态效果”时始终直接切换。
+
+```rust
+use std::time::Duration;
+
+Sidebar::new("sidebar")
+    .collapsed(collapsed)
+    .transition_duration(Duration::ZERO)
+```
+
+如果 Sidebar 切换得很频繁，旁边的内容（例如阅读区）又会随它的宽度重新排版，建议直接切换：平滑过渡的每一帧都要重新排版这些内容。
+
 ### 嵌套菜单
 
 ```rust

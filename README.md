@@ -67,6 +67,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   on a background thread. `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes
   once, and every theme applied after keeps them, in one update. See
   [Theme: font overrides](website/component/theme.md#font-overrides).
+- **Sidebars and sheets that can snap** (`gpui-component`). `Sidebar::transition_duration` and
+  `Sheet::transition_duration` set how long collapsing or sliding in takes, `Duration::ZERO`
+  snaps, and both default to the theme's normal motion duration instead of fixed 200 ms and
+  150 ms. See [Sidebar: collapse transition](website/component/sidebar.md#collapse-transition).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).

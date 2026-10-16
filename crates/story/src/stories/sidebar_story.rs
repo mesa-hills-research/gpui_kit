@@ -34,6 +34,7 @@ enum SidebarOption {
     Right,
     ClickToOpen,
     DynamicChildren,
+    Snap,
 }
 
 pub struct SidebarStory {
@@ -45,6 +46,7 @@ pub struct SidebarStory {
     side: Side,
     click_to_open_submenu: bool,
     show_dynamic_children: bool,
+    snap: bool,
     focus_handle: gpui_kit::FocusHandle,
     checked: bool,
 }
@@ -69,6 +71,7 @@ impl SidebarStory {
             checked: false,
             click_to_open_submenu: false,
             show_dynamic_children: false,
+            snap: false,
         }
     }
 
@@ -110,6 +113,7 @@ impl SidebarStory {
                                 let right = self.side.is_right();
                                 let click_to_open = self.click_to_open_submenu;
                                 let dynamic_children = self.show_dynamic_children;
+                                let snap = self.snap;
                                 move |menu, _, _| {
                                     menu.menu_with_check(
                                         "Icon mode",
@@ -141,6 +145,11 @@ impl SidebarStory {
                                         "Dynamic Children",
                                         dynamic_children,
                                         Box::new(SidebarOption::DynamicChildren),
+                                    )
+                                    .menu_with_check(
+                                        "Snap Open and Closed",
+                                        snap,
+                                        Box::new(SidebarOption::Snap),
                                     )
                                 }
                             }),
@@ -472,6 +481,7 @@ impl Render for SidebarStory {
                     SidebarOption::DynamicChildren => {
                         this.show_dynamic_children = !this.show_dynamic_children
                     }
+                    SidebarOption::Snap => this.snap = !this.snap,
                 }
                 cx.notify();
             }))
@@ -485,6 +495,9 @@ impl Render for SidebarStory {
                     .side(self.side)
                     .collapsible(collapsible)
                     .collapsed(self.collapsed)
+                    .when(self.snap, |this| {
+                        this.transition_duration(std::time::Duration::ZERO)
+                    })
                     .w(px(220.))
                     .gap_0()
                     .header(

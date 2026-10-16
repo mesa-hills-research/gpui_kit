@@ -183,8 +183,9 @@ async fn escape_dismisses_dialog_and_sheet_and_restores_focus(cx: &mut TestAppCo
     })
     .await;
     // GPUI's non-synced Animation uses std::time::Instant, not the test clock.
-    // Finish the actual 150 ms entrance before asserting its final geometry.
-    std::thread::sleep(Duration::from_millis(160));
+    // Finish the actual entrance (the theme's normal duration, 180 ms) before
+    // asserting its final geometry.
+    std::thread::sleep(Duration::from_millis(200));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         let sheet = window.find("sheet-content").bounds();
@@ -361,4 +362,48 @@ async fn alert_dialog_default_buttons_reach_their_dialog_when_focus_was_stolen(
         window.try_find("dialog").is_none()
     })
     .await;
+}
+
+struct SnappingSheet;
+impl Render for SnappingSheet {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(
+                Button::new("inspect")
+                    .label("Inspect…")
+                    .on_click(|_, window, cx| {
+                        window.open_sheet(cx, |sheet, _, _| {
+                            sheet
+                                .title("Inspector")
+                                .transition_duration(Duration::ZERO)
+                                .child("Details")
+                        });
+                    }),
+            )
+    }
+}
+
+/// A sheet with a zero transition is in place on the frame it opens, where
+/// the slide would start it off the window's edge.
+#[gpui_kit::test]
+async fn a_sheet_without_a_transition_opens_in_place(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let (handle, _) = common::open_window(cx, Some(size(px(800.), px(600.))), |_, cx| {
+        cx.new(|_| SnappingSheet)
+    });
+    cx.update_window(handle.into(), |_, window, cx| {
+        window.render_frame(cx);
+        window.click("inspect", cx);
+    })
+    .unwrap();
+    cx.wait_for(handle.into(), Duration::from_secs(1), |window, _| {
+        window.try_find("sheet-content").is_some()
+    })
+    .await;
+    cx.update_window(handle.into(), |_, window, _| {
+        let sheet = window.find("sheet-content").bounds();
+        assert_eq!(sheet.right(), window.viewport_size().width, "{sheet:?}");
+    })
+    .unwrap();
 }
