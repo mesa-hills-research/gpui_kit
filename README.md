@@ -66,6 +66,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   a pure Rust port, so they build without a C compiler and cross-compile to Windows without
   MinGW headers. Kotlin and Svelte use the tree-sitter-kotlin-ng and tree-sitter-svelte-ng
   grammars. See [Editor: basic usage](website/component/editor.md#basic-usage).
+- **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
+  next frame is released when the block is replaced, where every chunk of a long streamed block
+  used to leave a copy of its layout behind.
 - **Ghost text that makes room** (`gpui-base`). An inline completion in the middle of a line moves
   the rest of the line right, and the line wraps with it, where upstream painted over the text.
 - **Meters with a limit and segments** (`gpui-component`). `ProgressCircle` and `Progress` mark a

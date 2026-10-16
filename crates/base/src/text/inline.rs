@@ -255,13 +255,57 @@ struct RetainedLayout {
     text_style: TextStyle,
 }
 
+/// The layouts the previous frame left, by the address of their state, with
+/// the bytes of text they hold.
+#[derive(Default)]
+struct RetainedLayouts {
+    layouts: HashMap<usize, RetainedLayout>,
+    text_bytes: usize,
+    /// The text bytes at which dead entries are swept next.
+    sweep_at_bytes: usize,
+}
+
 thread_local! {
-    static RETAINED_LAYOUTS: RefCell<HashMap<usize, RetainedLayout>> = RefCell::new(HashMap::new());
+    static RETAINED_LAYOUTS: RefCell<RetainedLayouts> = RefCell::default();
 }
 
 /// Dead entries (states that were dropped without a final paint, e.g. a
 /// replaced document) are swept once the table grows past this many.
 const RETAINED_SWEEP_AT: usize = 4096;
+/// Dead entries are also swept once the table holds this many bytes of
+/// text, or twice the bytes the live entries held at the last sweep,
+/// whichever is more. A streamed block is a new state with every chunk, and
+/// the old state's layout stays behind dead. For a long code block that is
+/// megabytes a chunk, which a count of entries alone let pile up by the
+/// thousand.
+const RETAINED_SWEEP_BYTES: usize = 256 * 1024;
+
+impl RetainedLayouts {
+    fn remove(&mut self, key: usize) -> Option<RetainedLayout> {
+        let retained = self.layouts.remove(&key)?;
+        self.text_bytes -= retained.text.len();
+        Some(retained)
+    }
+
+    fn insert(&mut self, key: usize, retained: RetainedLayout) {
+        if self.layouts.len() >= RETAINED_SWEEP_AT
+            || self.text_bytes >= self.sweep_at_bytes.max(RETAINED_SWEEP_BYTES)
+        {
+            self.layouts
+                .retain(|_, retained| retained.state.strong_count() > 0);
+            self.text_bytes = self
+                .layouts
+                .values()
+                .map(|retained| retained.text.len())
+                .sum();
+            self.sweep_at_bytes = self.text_bytes * 2;
+        }
+        self.text_bytes += retained.text.len();
+        if let Some(replaced) = self.layouts.insert(key, retained) {
+            self.text_bytes -= replaced.text.len();
+        }
+    }
+}
 
 fn state_key(state: &Arc<Mutex<InlineState>>) -> usize {
     Arc::as_ptr(state) as usize
@@ -270,7 +314,7 @@ fn state_key(state: &Arc<Mutex<InlineState>>) -> usize {
 /// Takes the layout retained for `state`, if the previous frame left one.
 fn take_retained_layout(state: &Arc<Mutex<InlineState>>) -> Option<RetainedLayout> {
     RETAINED_LAYOUTS.with(|layouts| {
-        let retained = layouts.borrow_mut().remove(&state_key(state))?;
+        let retained = layouts.borrow_mut().remove(state_key(state))?;
         // The address may belong to a new state by now.
         retained
             .state
@@ -284,17 +328,11 @@ fn take_retained_layout(state: &Arc<Mutex<InlineState>>) -> Option<RetainedLayou
 /// by the previous frame is taken at layout time, so one that is present
 /// afterwards was put there this frame, by another element of the same state.
 fn has_retained_layout(state: &Arc<Mutex<InlineState>>) -> bool {
-    RETAINED_LAYOUTS.with(|layouts| layouts.borrow().contains_key(&state_key(state)))
+    RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.contains_key(&state_key(state)))
 }
 
 fn retain_layout(state: &Arc<Mutex<InlineState>>, retained: RetainedLayout) {
-    RETAINED_LAYOUTS.with(|layouts| {
-        let mut layouts = layouts.borrow_mut();
-        if layouts.len() >= RETAINED_SWEEP_AT {
-            layouts.retain(|_, retained| retained.state.strong_count() > 0);
-        }
-        layouts.insert(state_key(state), retained);
-    });
+    RETAINED_LAYOUTS.with(|layouts| layouts.borrow_mut().insert(state_key(state), retained));
 }
 
 impl InlineState {
@@ -2354,7 +2392,7 @@ mod retained_layout_tests {
             cx.update(|window, cx| window.draw(cx).clear(cx));
         }
 
-        let retained = RETAINED_LAYOUTS.with(|layouts| layouts.borrow().len());
+        let retained = RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.len());
         assert_eq!(retained, 2, "one layout per paragraph state");
     }
 
@@ -2388,8 +2426,9 @@ mod retained_layout_tests {
         let (retained, alive) = RETAINED_LAYOUTS.with(|layouts| {
             let layouts = layouts.borrow();
             (
-                layouts.len(),
+                layouts.layouts.len(),
                 layouts
+                    .layouts
                     .values()
                     .filter(|retained| retained.state.strong_count() > 0)
                     .count(),
@@ -2427,10 +2466,50 @@ mod retained_layout_tests {
         let alive = RETAINED_LAYOUTS.with(|layouts| {
             layouts
                 .borrow()
+                .layouts
                 .values()
                 .filter(|retained| retained.state.strong_count() > 0)
                 .count()
         });
         assert_eq!(alive, 3, "one live layout per remaining fragment");
+    }
+
+    /// A streamed block is a new state with every chunk, so each chunk left
+    /// the layout of the whole block before it behind, until four thousand
+    /// had piled up: gigabytes for a long code block.
+    #[gpui::test]
+    fn a_streamed_block_does_not_keep_a_layout_per_chunk(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let code = "let value = compute(1, 2);\n".repeat(2000);
+        let (view, cx) = cx.add_window_view(|_, cx| Once {
+            state: cx.new(|cx| TextViewState::markdown(&format!("```\n{}", &code[..8000]), cx)),
+        });
+        cx.run_until_parked();
+        for end in (8000..code.len()).step_by(4000) {
+            let chunk = &code[end..(end + 4000).min(code.len())];
+            view.update(cx, |view, cx| {
+                view.state.update(cx, |state, cx| state.push_str(chunk, cx));
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        }
+
+        let (live, dead) = RETAINED_LAYOUTS.with(|layouts| {
+            let layouts = layouts.borrow();
+            let bytes = |alive: bool| -> usize {
+                layouts
+                    .layouts
+                    .values()
+                    .filter(|retained| (retained.state.strong_count() > 0) == alive)
+                    .map(|retained| retained.text.len())
+                    .sum()
+            };
+            (bytes(true), bytes(false))
+        });
+        assert!(live >= code.len() - 1, "the block's layout is kept");
+        assert!(
+            dead <= (2 * live).max(super::RETAINED_SWEEP_BYTES),
+            "{dead} bytes of dead layouts beside {live} live ones"
+        );
     }
 }
