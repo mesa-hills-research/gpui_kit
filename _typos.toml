@@ -2,9 +2,10 @@
 extend-ignore-re = [
     '\\u\{[0-9A-Fa-f]+\}',
     # Keymap tests mark the caret and selections inside words, as in "baˇr"
-    # and "hel«ˇlo»", and type parts of words.
+    # and "hel«ˇlo»".
     '\w*[ˇ«»]+\w*',
-    'type_text\("[^"]*"\)',
+    # Tests that type the start of a word, as in `type_text("hel")`.
+    '(type_text|type_and_wait)\("[^"]*"\)',
     # A test that `crate_name` drops what isn't ASCII.
     '"café"\)\.unwrap\(\), "caf"',
 ]
@@ -49,7 +50,6 @@ extend-glob = [
     "spelling.rs",
     "suggestion_menu.rs",
     "suggestions.rs",
-    "tests.rs",
     "textarea.rs",
     "timings.rs",
 ]
