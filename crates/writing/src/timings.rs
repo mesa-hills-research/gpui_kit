@@ -346,4 +346,12 @@ fn timings_vocabulary_files() {
         vocabulary.learn_sentence(&prose.sentence());
         vocabulary.save();
     });
+    // As if another process were saving.
+    let lock = std::fs::File::create(path.with_extension("lock")).unwrap();
+    lock.try_lock().unwrap();
+    time("save while another process saves", 3, 1, || {
+        vocabulary.learn_sentence(&prose.sentence());
+        vocabulary.save();
+    });
+    drop(lock);
 }

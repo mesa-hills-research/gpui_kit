@@ -69,9 +69,19 @@ Tab 接受整条建议。`accept_word_bindings` 把 Ctrl+Right（macOS 上为 Cm
 // 保存文档、关闭窗口时，或定时保存。
 writing.save_in_background(cx).detach();
 
-// 退出时，此时保存必须完成。
+// 退出：先关闭窗口，保存完成后再退出。
+let saved = writing.save_in_background(cx);
+cx.spawn(async move |cx| {
+    saved.await;
+    cx.update(|cx| cx.quit());
+})
+.detach();
+
+// 在退出处理函数中，此时无法再等待。
 writing.save();
 ```
+
+后台保存从不阻塞界面。`save` 在调用线程上执行：保存接近 16 MB 上限的词汇需要几百毫秒；它最多等待一秒让正在进行的后台保存完成，最多等待半秒让其他进程的保存完成，超时后本次会话最近学到的内容不会被保存。
 
 多个进程可以共享同一个词汇文件。每次保存都会在加锁后，把本进程自上次保存以来学到的内容加到文件当前的内容上，并完整地重写文件；因此崩溃只会留下旧文件或新文件之一。无法解析的文件会被移到一旁，而不会被覆盖。
 

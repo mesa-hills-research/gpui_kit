@@ -53,8 +53,10 @@
 //! order of saves. A save takes the lock on `vocabulary.lock` beside the
 //! file, reads the file, adds its counts, writes the file whole and goes on
 //! from the result. So another process's learning reaches this one when this
-//! one next saves. A save that can't get the lock within [`LOCK_WAIT`] keeps
-//! its learning for the next one.
+//! one next saves. A save that can't get the lock in time keeps its
+//! learning for the next one: [`LOCK_WAIT`] for a background save, and
+//! [`BLOCKING_LOCK_WAIT`] for one on the calling thread, which the user may
+//! be waiting for.
 //!
 //! Loading takes no lock, since a save replaces the file in one step. A
 //! crash loses only what that process learned since its last save. A file
@@ -89,9 +91,17 @@ use std::time::{Duration, Instant};
 /// this way.
 pub(crate) const SENTENCE_START: &str = "<s>";
 
-/// How long a save waits for another process to finish saving. Saving a
-/// vocabulary at its size cap takes a second or two.
+/// How long a background save waits for another process to finish saving.
+/// Saving a vocabulary at its size cap takes a second or two.
 const LOCK_WAIT: Duration = Duration::from_secs(5);
+
+/// How long a save on the calling thread, which the user may be waiting
+/// for, waits for another process to finish saving.
+const BLOCKING_LOCK_WAIT: Duration = Duration::from_millis(500);
+
+/// How long a save on the calling thread waits for a background save under
+/// way to finish.
+const BLOCKING_SAVE_WAIT: Duration = Duration::from_secs(1);
 
 /// How often a save waiting for the lock tries it again.
 const LOCK_RETRY: Duration = Duration::from_millis(20);
@@ -1136,8 +1146,12 @@ impl Vocabulary {
 
     /// Adds what it learned since its last save to the file, if anything,
     /// on this thread. A background save under way is waited for first, so
-    /// its learning counts once. For quitting, and for closing the last
-    /// window, where the save has to finish.
+    /// its learning counts once. For quitting, where the save has to finish
+    /// and nothing else can wait for it.
+    ///
+    /// It waits at most [`BLOCKING_SAVE_WAIT`] for a background save and
+    /// [`BLOCKING_LOCK_WAIT`] for another process's save. Past either, what
+    /// it learned since its last save stays unsaved.
     pub fn save(&mut self) {
         self.save_within(VOCAB_MAX_BYTES);
     }
@@ -1145,7 +1159,15 @@ impl Vocabulary {
     /// Saves in at most `cap` bytes, pruning to fit. What a save couldn't
     /// write stays for the next one.
     fn save_within(&mut self, cap: u64) {
-        self.finish_background_save(true);
+        let replaced = self.finish_background_save(Some(BLOCKING_SAVE_WAIT));
+        drop(replaced);
+        if self.in_flight.is_some() {
+            log::warn!(
+                "A background save of the word suggestions' vocabulary is still running. What was \
+                 learned since it began isn't saved."
+            );
+            return;
+        }
         if !self.dirty {
             return;
         }
@@ -1155,7 +1177,7 @@ impl Vocabulary {
         let mut job = SaveJob {
             path,
             cap,
-            lock_wait: self.lock_wait,
+            lock_wait: self.lock_wait.min(BLOCKING_LOCK_WAIT),
             learned: std::mem::take(&mut self.unsaved),
             whole: Some(std::mem::take(&mut self.counts)),
         };
@@ -1200,7 +1222,7 @@ impl Vocabulary {
                 running.await;
                 let (replaced, again) = {
                     let mut this = vocabulary.borrow_mut();
-                    let replaced = this.finish_background_save(false);
+                    let replaced = this.finish_background_save(None);
                     (replaced, std::mem::take(&mut this.save_again))
                 };
                 drop_in_background(replaced, cx.background_executor());
@@ -1223,7 +1245,7 @@ impl Vocabulary {
     ) -> Option<Task<()>> {
         let (replaced, save) = {
             let mut this = vocabulary.borrow_mut();
-            let replaced = this.finish_background_save(false);
+            let replaced = this.finish_background_save(None);
             (replaced, this.begin_background_save())
         };
         drop_in_background(replaced, executor);
@@ -1269,19 +1291,25 @@ impl Vocabulary {
     /// with the learning since it began on top, and the vocabulary it
     /// replaces is returned, since freeing it takes a while. One that failed,
     /// or never ran, puts its learning back.
-    fn finish_background_save(&mut self, wait: bool) -> Option<Counts> {
+    fn finish_background_save(&mut self, wait: Option<Duration>) -> Option<Counts> {
         let in_flight = self.in_flight.take()?;
-        let result = if wait {
-            in_flight.result.recv().ok()
-        } else {
-            match in_flight.result.try_recv() {
+        let result = match wait {
+            Some(wait) => match in_flight.result.recv_timeout(wait) {
+                Ok(result) => Some(result),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    self.in_flight = Some(in_flight);
+                    return None;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => None,
+            },
+            None => match in_flight.result.try_recv() {
                 Ok(result) => Some(result),
                 Err(mpsc::TryRecvError::Empty) => {
                     self.in_flight = Some(in_flight);
                     return None;
                 }
                 Err(mpsc::TryRecvError::Disconnected) => None,
-            }
+            },
         };
         match result {
             Some(Ok(Saved::Written(mut counts))) => {
@@ -1765,6 +1793,54 @@ mod tests {
             saved(&scratch),
             learned_from(["Ferns grow slowly", "Mosses grow faster"])
         );
+    }
+
+    /// A save on the calling thread waits only briefly for another process's
+    /// lock, as the user may be waiting for it.
+    #[test]
+    fn a_blocking_save_waits_briefly_for_the_lock() {
+        let scratch = Scratch::new("brief");
+        let mut vocabulary = scratch.load();
+        vocabulary.learn_sentence("Ferns grow slowly");
+        let held = lock(&scratch.file(), Duration::ZERO).unwrap();
+        let started = Instant::now();
+        vocabulary.save();
+        let waited = started.elapsed();
+        assert!(
+            (BLOCKING_LOCK_WAIT..LOCK_WAIT).contains(&waited),
+            "{waited:?}"
+        );
+        assert!(vocabulary.dirty);
+        drop(held);
+    }
+
+    /// A save on the calling thread waits only briefly for a background save
+    /// under way, and saves nothing if that one is still running. Once it
+    /// ends, the next save adds everything.
+    #[test]
+    fn a_blocking_save_waits_briefly_for_a_background_save() {
+        let scratch = Scratch::new("in-flight");
+        let mut vocabulary = scratch.load();
+        vocabulary.learn_sentence("Ferns grow slowly");
+        let (sender, result) = mpsc::channel();
+        vocabulary.in_flight = Some(InFlight {
+            learned: Counts::default(),
+            result,
+        });
+        let started = Instant::now();
+        vocabulary.save();
+        let waited = started.elapsed();
+        assert!(
+            (BLOCKING_SAVE_WAIT..2 * BLOCKING_SAVE_WAIT).contains(&waited),
+            "{waited:?}"
+        );
+        assert!(vocabulary.dirty && vocabulary.in_flight.is_some());
+        assert!(!scratch.file().exists());
+
+        drop(sender);
+        vocabulary.save();
+        assert!(!vocabulary.dirty);
+        assert_eq!(saved(&scratch), learned_from(["Ferns grow slowly"]));
     }
 
     /// A process that ends without saving, as in a crash, loses only what it

@@ -158,7 +158,14 @@ impl Writing {
 
     /// Adds what the suggestions learned since the last save to the
     /// vocabulary file, on this thread, after waiting for a background save
-    /// under way. For quitting, where the save has to finish.
+    /// under way. For quitting, where nothing can wait for
+    /// [`Self::save_in_background`].
+    ///
+    /// It waits at most a second for a background save, and half a second
+    /// for another process's save; past either, the learning since the last
+    /// save stays unsaved. Saving a vocabulary near its 16 MB cap takes a
+    /// few hundred milliseconds. Where the application can, it closes its
+    /// windows, awaits [`Self::save_in_background`] and then quits.
     pub fn save(&self) {
         self.vocabulary.borrow_mut().save();
     }

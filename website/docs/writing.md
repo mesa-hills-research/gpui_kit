@@ -100,9 +100,23 @@ The vocabulary saves when the application says so:
 // When a document is saved, a window closes, or on a timer.
 writing.save_in_background(cx).detach();
 
-// At quit, where the save has to finish.
+// To quit: close the windows, then quit once the save is done.
+let saved = writing.save_in_background(cx);
+cx.spawn(async move |cx| {
+    saved.await;
+    cx.update(|cx| cx.quit());
+})
+.detach();
+
+// In a quit handler, where nothing can wait.
 writing.save();
 ```
+
+A background save never holds up the UI. `save` runs on the calling thread:
+saving a vocabulary near its 16 MB cap takes a few hundred milliseconds, and
+it waits at most a second for a background save under way and half a second
+for another process's save, after which this session's latest learning stays
+unsaved.
 
 Several processes can share one vocabulary file. Each save adds what this
 process learned since its last save to what the file holds now, under a lock,
