@@ -1,4 +1,4 @@
-use crate::input::{CursorShape, InputExtras as _, InputModeKind};
+use crate::input::{CursorShape, EditOrigin, InputExtras as _, InputModeKind};
 use gpui::Corners;
 use gpui::Half;
 use gpui::{
@@ -3998,14 +3998,16 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
             // still composing does not, nor does text the platform inserts
             // in place of other text.
             self.state.update(cx, |state, cx| {
-                state.caret_motion(CaretMotion::Typing, |state| {
-                    gpui::EntityInputHandler::replace_text_in_range(
-                        state,
-                        replacement_range,
-                        text,
-                        window,
-                        cx,
-                    )
+                state.with_edit_origin(EditOrigin::Typed, |state| {
+                    state.caret_motion(CaretMotion::Typing, |state| {
+                        gpui::EntityInputHandler::replace_text_in_range(
+                            state,
+                            replacement_range,
+                            text,
+                            window,
+                            cx,
+                        )
+                    })
                 })
             });
         }
@@ -4020,6 +4022,10 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
         cx: &mut App,
     ) {
         if !self.mode_takes(new_text, window, cx) {
+            // What an input method composes is typed.
+            let origin = self.state.update(cx, |state, _| {
+                std::mem::replace(&mut state.edit_origin, EditOrigin::Typed)
+            });
             self.inner.replace_and_mark_text_in_range(
                 range_utf16,
                 new_text,
@@ -4027,6 +4033,7 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
                 window,
                 cx,
             );
+            self.state.update(cx, |state, _| state.edit_origin = origin);
         }
     }
 

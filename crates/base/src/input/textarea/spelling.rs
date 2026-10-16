@@ -852,7 +852,9 @@ impl TextareaState {
         self.undo_manager.break_transaction_coalescing();
         self.undo_manager.set_pending_intent(EditIntent::Atomic);
         let range_utf16 = self.range_to_utf16(&range);
-        self.replace_text_in_range_silent(Some(range_utf16), &action.text, window, cx);
+        self.with_edit_origin(crate::input::EditOrigin::Correction, |this| {
+            this.replace_text_in_range_silent(Some(range_utf16), &action.text, window, cx)
+        });
         self.undo_manager.break_transaction_coalescing();
         // The caret ends after a word that was chosen, not typed.
         self.extras.spelling.typed_to = None;

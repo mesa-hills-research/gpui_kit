@@ -221,7 +221,11 @@ TextareaState::new(window, cx)
 `SuggestionEvent::Accepted` and `SuggestionEvent::Dismissed` report what the user
 did with a suggestion. The provider's `did_change` hears every edit with the
 text's revision, so it can keep its own index of the text current without
-copying it, and `debounce` delays requests while the user types.
+copying it, and `debounce` delays requests while the user types. Each edit's
+`origin` says where it came from: `Typed`, `Suggestion` (taken with Tab),
+`Correction` (chosen from a misspelling's menu), `Pasted`, `History` (undo and
+redo) or `Program`, so a provider that learns from the text can learn only
+what the user wrote.
 
 `ShowSuggestions`, `AcceptSuggestion`, `AcceptSuggestionWord`,
 `SelectNextSuggestion`, `SelectPreviousSuggestion` and `DismissSuggestions` have

@@ -258,6 +258,10 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) inline_tokens: Option<Box<super::inline_tokens::InlineTokenStore>>,
     pub(super) pending_token: Option<super::InlineToken>,
     pub(super) replaying_history: bool,
+    /// Where the edits being made come from, for [`TextEdit::origin`].
+    ///
+    /// [`TextEdit::origin`]: crate::input::TextEdit::origin
+    pub(crate) edit_origin: crate::input::EditOrigin,
     pub(super) validated_token_edit: bool,
     pub(super) document_revision: u64,
     pub(super) token_presentation: super::InlineTokenPresentation,
@@ -645,6 +649,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             inline_tokens: None,
             pending_token: None,
             replaying_history: false,
+            edit_origin: crate::input::EditOrigin::Program,
             validated_token_edit: false,
             document_revision: 0,
             token_presentation: Default::default(),
@@ -2780,7 +2785,31 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// the counts match on a multi-line one. A clipboard without text (an
     /// image, say) is left alone rather than replacing the selection with
     /// nothing.
+    /// Runs `f`, whose edits come from `origin`. See
+    /// [`crate::input::TextEdit::origin`].
+    pub(crate) fn with_edit_origin<R>(
+        &mut self,
+        origin: crate::input::EditOrigin,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let outer = std::mem::replace(&mut self.edit_origin, origin);
+        let result = f(self);
+        self.edit_origin = outer;
+        result
+    }
+
     fn insert_clipboard(
+        &mut self,
+        clipboard: ClipboardItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.with_edit_origin(crate::input::EditOrigin::Pasted, |this| {
+            this.insert_clipboard_text(clipboard, window, cx)
+        });
+    }
+
+    fn insert_clipboard_text(
         &mut self,
         clipboard: ClipboardItem,
         window: &mut Window,
@@ -2957,7 +2986,9 @@ impl<M: InputModeKind> InputBaseState<M> {
                 (change.old_range.into(), &change.new_text)
             };
             let range_utf16 = self.range_to_utf16(&range);
-            self.replace_text_in_range_silent(Some(range_utf16), text, window, cx);
+            self.with_edit_origin(crate::input::EditOrigin::History, |this| {
+                this.replace_text_in_range_silent(Some(range_utf16), text, window, cx)
+            });
             self.replay_tokens(&range, text.len(), change.token_delta.as_deref(), undo);
         }
         self.restore_selections(replay.selections);

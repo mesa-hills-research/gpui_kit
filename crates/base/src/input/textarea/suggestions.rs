@@ -238,12 +238,39 @@ impl SuggestionRequest {
     }
 }
 
+/// Where an edit of the text came from.
+///
+/// A provider that learns from the text, such as word suggestions learning
+/// what the user writes, tells by this what the user wrote: typing, a
+/// suggestion the user took and a spelling correction the user chose, but not
+/// a paste, an undo or text the program set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum EditOrigin {
+    /// Typed on the keyboard or through an input method, with what the input
+    /// adds to it, such as the closing bracket of a typed opening one.
+    Typed,
+    /// A suggestion taken with Tab, or a word of it.
+    Suggestion,
+    /// A spelling correction chosen from a misspelling's menu
+    /// ([`crate::input::ReplaceMisspelling`]).
+    Correction,
+    /// A paste from the clipboard.
+    Pasted,
+    /// Undo or redo.
+    History,
+    /// Anything else: text the program set or inserted, such as with
+    /// `set_value`, and editing commands that rewrite text.
+    Program,
+}
+
 /// One replacement in a [`TextChange`], in the coordinates of the text as it
 /// stood just before it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextEdit {
     range: Range<usize>,
     text: String,
+    origin: EditOrigin,
 }
 
 impl TextEdit {
@@ -255,6 +282,11 @@ impl TextEdit {
     /// The text that replaced it.
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Where the edit came from.
+    pub fn origin(&self) -> EditOrigin {
+        self.origin
     }
 }
 
@@ -694,6 +726,7 @@ impl TextareaState {
         suggestions.pending_edits.push(TextEdit {
             range: range.clone(),
             text,
+            origin: self.edit_origin,
         });
         // The edit is still being applied: its revision is counted after this
         // returns. Report it once the whole update is done.
@@ -950,7 +983,9 @@ impl TextareaState {
         self.undo_manager.break_transaction_coalescing();
         self.undo_manager.set_pending_intent(EditIntent::Atomic);
         let range_utf16 = self.range_to_utf16(&range);
-        self.replace_text_in_range_silent(Some(range_utf16), text, window, cx);
+        self.with_edit_origin(EditOrigin::Suggestion, |this| {
+            this.replace_text_in_range_silent(Some(range_utf16), text, window, cx)
+        });
         self.undo_manager.break_transaction_coalescing();
 
         let partial = word.is_some();
@@ -1629,6 +1664,65 @@ mod tests {
         assert_eq!(test.labels(), ["hey"]);
         test.update(|state, window, cx| assert!(state.accept_suggestion(window, cx)));
         assert_eq!(test.value(), "hey");
+    }
+
+    /// Each edit the provider hears says where it came from: typing, a taken
+    /// suggestion, a paste, undo, a spelling correction and the program.
+    #[gpui::test]
+    fn edits_say_where_they_came_from(cx: &mut TestAppContext) {
+        use EditOrigin::{Correction, History, Pasted, Program, Suggestion, Typed};
+        let provider = Rc::new(WordProvider::new(&["hello"]));
+        let mut test = Test::new(cx, Some(provider.clone()), menu());
+        let mut heard = |test: &mut Test| -> Vec<(String, EditOrigin)> {
+            test.cx.run_until_parked();
+            provider
+                .changes
+                .borrow_mut()
+                .drain(..)
+                .flat_map(|change| {
+                    change
+                        .edits()
+                        .iter()
+                        .map(|edit| (edit.text().to_string(), edit.origin()))
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        };
+
+        test.cx.simulate_input("hel");
+        assert_eq!(
+            heard(&mut test),
+            [
+                ("h".into(), Typed),
+                ("e".into(), Typed),
+                ("l".into(), Typed)
+            ]
+        );
+        test.cx.simulate_keystrokes("tab");
+        assert_eq!(test.value(), "hello");
+        assert_eq!(heard(&mut test), [("hello".into(), Suggestion)]);
+
+        test.cx
+            .write_to_clipboard(gpui::ClipboardItem::new_string(" world".into()));
+        test.cx.dispatch_action(crate::input::Paste);
+        assert_eq!(heard(&mut test), [(" world".into(), Pasted)]);
+        test.cx.dispatch_action(Undo);
+        assert_eq!(heard(&mut test), [(String::new(), History)]);
+
+        let revision = test
+            .textarea
+            .read_with(&test.cx, |state, _| state.revision());
+        test.cx.dispatch_action(crate::input::ReplaceMisspelling {
+            range: 0..5,
+            text: "Hullo".into(),
+            revision,
+        });
+        assert_eq!(test.value(), "Hullo");
+        assert_eq!(heard(&mut test), [("Hullo".into(), Correction)]);
+
+        test.update(|state, window, cx| state.set_value("set", window, cx));
+        let program = heard(&mut test);
+        assert!(!program.is_empty() && program.iter().all(|(_, origin)| *origin == Program));
     }
 
     /// Tab accepts like Enter does, and either key can be left to the text.

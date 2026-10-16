@@ -150,7 +150,7 @@ pub use spelling::{
 pub use state::*;
 pub use suggestion_menu::{SuggestionItemContext, SuggestionItemRenderer, SuggestionMenu};
 pub use suggestions::{
-    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
+    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, EditOrigin, SelectNextSuggestion,
     SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionOptions,
     SuggestionProvider, SuggestionRequest, SuggestionTrigger, TextChange, TextEdit,
 };

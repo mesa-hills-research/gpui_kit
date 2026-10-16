@@ -26,7 +26,7 @@ pub use context_menu::{ContextMenuStyle, ContextMenuTarget};
 pub(crate) use gpui_base::input::InputBaseState;
 pub use gpui_base::input::cua;
 pub use gpui_base::input::{
-    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, SelectNextSuggestion,
+    AcceptSuggestion, AcceptSuggestionWord, DismissSuggestions, EditOrigin, SelectNextSuggestion,
     SelectPreviousSuggestion, ShowSuggestions, Suggestion, SuggestionEvent, SuggestionItemContext,
     SuggestionOptions, SuggestionProvider, SuggestionRequest, SuggestionTrigger, TextChange,
     TextEdit,
