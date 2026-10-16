@@ -3114,8 +3114,12 @@ impl<M: InputModeKind> Element for TextElement<M> {
         // The smooth caret draws the caret behind where it is while it glides
         // there. Menus, scrolling and the input method keep using the caret.
         let text_x = bounds.origin.x + last_layout.line_number_width;
+        // Right-aligned text keeps the caret inside the viewport edge, as
+        // `layout_cursors` keeps it where it is.
+        let caret_edge = (last_layout.text_align == TextAlign::Right)
+            .then(|| input_bounds.right() - CURSOR_WIDTH);
         let caret_frame = self.state.update(cx, |state, cx| {
-            state.smooth_caret_frame(&last_layout, text_x, window, cx)
+            state.smooth_caret_frame(&last_layout, text_x, caret_edge, window, cx)
         });
 
         let search_match_paths = self.layout_search_matches(&last_layout, &mut bounds, cx);

@@ -718,11 +718,13 @@ impl<M: InputModeKind> InputBaseState<M> {
     }
 
     /// Advances the smooth caret to this frame, whose layout is `layout`.
-    /// `text_x` is the window x of the content's left edge.
+    /// `text_x` is the window x of the content's left edge, and the caret is
+    /// drawn no further right than `caret_edge`, if any.
     pub(super) fn smooth_caret_frame(
         &mut self,
         layout: &LastLayout,
         text_x: Pixels,
+        caret_edge: Option<Pixels>,
         window: &mut Window,
         cx: &App,
     ) -> CaretFrame {
@@ -736,7 +738,6 @@ impl<M: InputModeKind> InputBaseState<M> {
             && self.focus_handle.is_focused(window)
             && window.is_window_active()
             && !self.disabled
-            && self.is_multi_line()
             && stamp.simple
             && !self.tokens_visible()
             && self.extras.caret_offset().is_none())
@@ -796,7 +797,11 @@ impl<M: InputModeKind> InputBaseState<M> {
         };
 
         window.request_animation_frame();
-        let plan = caret_plan(&animation, x, text_x, window.scale_factor());
+        let mut plan = caret_plan(&animation, x, text_x, window.scale_factor());
+        if let Some(edge) = caret_edge {
+            plan.caret_x = plan.caret_x.min(edge);
+            plan.target_x = plan.target_x.min(edge);
+        }
         #[cfg(test)]
         {
             self.smooth_caret.last_frame =

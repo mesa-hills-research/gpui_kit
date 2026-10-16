@@ -260,6 +260,28 @@ binding or an open completion menu sees them the same way. A read-only input
 offers only `Copy` and `Select All`; a masked input keeps its value out of the
 clipboard.
 
+### Smooth Caret
+
+`smooth_caret(true)` glides the caret to where it moves instead of jumping, as in a
+[textarea](./textarea.md#smooth-caret): a typed character is uncovered by the caret as it passes,
+the rest of the text moves along with it, and Backspace, the arrow keys and the word motions glide
+too. A field that scrolls glides in the scrolled text. In right- or center-aligned text, where
+typing moves the text before the caret as well, typed characters appear at once and the arrow keys
+still glide. While the system asks for reduced motion the caret moves at once.
+
+```rust
+let input = cx.new(|cx| {
+    InputState::new(window, cx)
+        .placeholder("Search")
+        .smooth_caret(true)
+});
+
+// From a setting, at run time.
+input.update(cx, |input, cx| input.set_smooth_caret(false, cx));
+```
+
+`smooth_caret_options` takes the same `SmoothCaretOptions` as a textarea.
+
 ### Paste Hook
 
 `on_paste` intercepts the clipboard before the default text insertion, so

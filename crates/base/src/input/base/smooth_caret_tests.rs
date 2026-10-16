@@ -1466,3 +1466,220 @@ fn the_code_editor_glides_too(cx: &mut TestAppContext) {
     });
     assert!(!sample(&cx).expect("the caret glides").plan.splits_row());
 }
+
+/// A focused single-line input with the smooth caret on, `width` wide.
+struct LineGlider {
+    cx: gpui::VisualTestContext,
+    input: gpui::Entity<crate::input::InputState>,
+}
+
+struct LineWindow {
+    input: gpui::Entity<crate::input::InputState>,
+    width: Pixels,
+}
+
+impl gpui::Render for LineWindow {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        _: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        use gpui::{ParentElement as _, Styled as _};
+        gpui::div().size_full().child(
+            gpui::div()
+                .w(self.width)
+                .h(px(32.))
+                .child(crate::input::Input::new(&self.input)),
+        )
+    }
+}
+
+impl LineGlider {
+    fn new(cx: &mut TestAppContext, width: Pixels, text: &str, align: gpui::TextAlign) -> Self {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.clear_key_bindings();
+            for keymap in Keymap::ALL {
+                cx.bind_keys(keymap.bindings(KeymapPlatform::Linux));
+            }
+        });
+        let text = text.to_string();
+        let window = cx.open_window(gpui::size(px(600.), px(200.)), move |window, cx| {
+            LineWindow {
+                input: cx.new(|cx| {
+                    crate::input::InputState::new(window, cx)
+                        .smooth_caret(true)
+                        .default_value(text)
+                }),
+                width,
+            }
+        });
+        let mut cx = gpui::VisualTestContext::from_window(window.into(), cx);
+        let input = window
+            .read_with(&cx, |window, _| window.input.clone())
+            .unwrap();
+        cx.update(|window, cx| {
+            window.activate_window();
+            input.update(cx, |state, cx| {
+                state.set_text_align(align, cx);
+                state.focus(window, cx);
+                let end = state.text().len();
+                state.set_selected_range(end..end, cx);
+            });
+        });
+        let mut glider = Self { cx, input };
+        glider.draw();
+        glider
+    }
+
+    fn draw(&mut self) {
+        self.cx.update(|window, cx| window.draw(cx).clear(cx));
+        self.cx.run_until_parked();
+    }
+
+    fn type_text(&mut self, text: &str) {
+        self.cx.simulate_input(text);
+        self.draw();
+    }
+
+    fn advance(&mut self, ms: u64) {
+        self.cx.executor().advance_clock(Duration::from_millis(ms));
+        self.draw();
+    }
+
+    fn sample(&self) -> Option<Sample> {
+        self.input.read_with(&self.cx, |state, _| {
+            state
+                .smooth_caret
+                .last_frame
+                .clone()
+                .map(|(plan, x, velocity)| Sample { plan, x, velocity })
+        })
+    }
+
+    fn caret_x(&self) -> Pixels {
+        self.input.read_with(&self.cx, |state, _| {
+            state.cursor_layout().expect("a caret").0.origin.x
+        })
+    }
+
+    fn painted_caret(&self) -> Option<Bounds<Pixels>> {
+        self.input
+            .read_with(&self.cx, |state, _| state.smooth_caret.painted_caret)
+    }
+
+    /// Types `text`, checks the frames glide right from where the caret was
+    /// to where it is and uncover the text as they go, and that the caret is
+    /// drawn where it is once they end.
+    #[track_caller]
+    fn types_gliding(&mut self, text: &str) {
+        let before = self.caret_x();
+        self.type_text(text);
+        let target = self.caret_x();
+        let first = self.sample().expect("typing glides");
+        assert_close(first.plan.target_x, target, "it glides to the caret");
+        assert!(first.x < target.as_f32(), "it starts behind the caret");
+        let mut previous = first;
+        for _ in 0..typing_ms() / FRAME_MS {
+            self.advance(FRAME_MS);
+            let Some(sample) = self.sample() else {
+                break;
+            };
+            assert_uncovering(&sample);
+            assert!(sample.x > previous.x, "it glides right");
+            previous = sample;
+        }
+        assert!(self.sample().is_none(), "it settles");
+        assert_eq!(self.painted_caret().unwrap().origin.x, self.caret_x());
+        // The caret only moved by what was typed, wherever the text is.
+        let _ = before;
+    }
+}
+
+/// A single-line input glides its caret and uncovers typed text as a
+/// textarea does, and the arrow keys and Backspace glide too.
+#[gpui::test]
+fn a_single_line_input_glides_too(cx: &mut TestAppContext) {
+    let mut glider = LineGlider::new(cx, px(400.), "abc", gpui::TextAlign::Left);
+    let before = glider.caret_x();
+    glider.types_gliding("W");
+    assert_close(glider.caret_x(), before + px(CHAR), "one character on");
+
+    glider.cx.simulate_keystrokes("left");
+    glider.draw();
+    assert!(glider.sample().is_some(), "the arrow keys glide");
+    glider.advance(300);
+    glider.cx.simulate_keystrokes("backspace");
+    glider.draw();
+    let sample = glider.sample().expect("Backspace glides");
+    assert!(
+        !sample.plan.ghosts.is_empty(),
+        "the deleted glyph is still drawn"
+    );
+}
+
+/// While the system asks for reduced motion, and with the smooth caret off,
+/// a single-line input's caret moves at once.
+#[gpui::test]
+fn a_single_line_input_moves_at_once_with_reduced_motion(cx: &mut TestAppContext) {
+    let mut glider = LineGlider::new(cx, px(400.), "abc", gpui::TextAlign::Left);
+    glider.cx.update(|_, cx| cx.set_reduce_motion(true));
+    glider.type_text("W");
+    assert!(glider.sample().is_none(), "reduced motion");
+    glider.cx.update(|_, cx| cx.set_reduce_motion(false));
+
+    glider.cx.update(|_, cx| {
+        glider
+            .input
+            .update(cx, |state, cx| state.set_smooth_caret(false, cx))
+    });
+    glider.type_text("X");
+    assert!(glider.sample().is_none(), "the smooth caret is off");
+}
+
+/// Typing at the right edge of a narrow input scrolls the text, and the
+/// caret glides in the scrolled text to where it is.
+#[gpui::test]
+fn a_scrolled_single_line_input_glides_to_the_caret(cx: &mut TestAppContext) {
+    let text = "a long line of text that does not fit";
+    let mut glider = LineGlider::new(cx, px(120.), text, gpui::TextAlign::Left);
+    assert!(glider.caret_x() < px(130.), "scrolled to the caret");
+    for key in ["x", "y", "z"] {
+        glider.types_gliding(key);
+        assert!(glider.caret_x() < px(130.), "the caret stays in view");
+    }
+}
+
+/// In right- and center-aligned text, typing moves the text before the caret
+/// too, which no glide explains, so the caret is drawn where it is at once.
+/// The arrow keys glide it along the aligned text, to where it is drawn
+/// without the smooth caret.
+#[gpui::test]
+fn aligned_single_line_inputs_glide_to_the_caret(cx: &mut TestAppContext) {
+    for align in [gpui::TextAlign::Right, gpui::TextAlign::Center] {
+        let mut glider = LineGlider::new(cx, px(300.), "abcdef", align);
+        glider.type_text("W");
+        assert!(
+            glider.sample().is_none(),
+            "{align:?}: typing is drawn at once"
+        );
+        assert_eq!(glider.painted_caret().unwrap().origin.x, glider.caret_x());
+
+        for key in ["left", "left", "right"] {
+            let before = glider.caret_x();
+            glider.cx.simulate_keystrokes(key);
+            glider.draw();
+            let target = glider.caret_x();
+            let first = glider.sample().expect("the arrow keys glide");
+            assert_close(first.plan.target_x, target, "it glides to the caret");
+            assert_close(first.plan.caret_x, before, "from where it was");
+            glider.advance(300);
+            assert!(glider.sample().is_none());
+            assert_eq!(
+                glider.painted_caret().unwrap().origin.x,
+                target,
+                "{align:?} {key}"
+            );
+        }
+    }
+}

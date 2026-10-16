@@ -1225,7 +1225,7 @@ mod tests {
         words.extend(["methodology", "is"]);
         let checker = Rc::new(WordList::new(&words));
         let mut test = Test::new(cx, checker.clone(), "");
-        let mut type_keys = |test: &mut Test, keys: &str| {
+        let type_keys = |test: &mut Test, keys: &str| {
             for key in keys.chars() {
                 let end = test.value().len();
                 test.type_at(end, &key.to_string());

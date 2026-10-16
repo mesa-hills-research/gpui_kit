@@ -1068,6 +1068,54 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.submit_key
     }
 
+    /// Glide the caret to where it moves instead of jumping there, and draw a
+    /// typed character only as the caret passes it, in any input: a
+    /// single-line input, a textarea or the code editor. Off by default.
+    ///
+    /// Typing, Backspace, the arrow keys and the word motions glide the caret
+    /// along its row, and every other movement is instant. Only drawing is
+    /// animated: the text, the undo history and everything else that reads
+    /// the text change at once. While the system asks for reduced motion the
+    /// caret moves at once. [`SmoothCaretOptions`] sets what glides and how
+    /// fast.
+    ///
+    /// [`SmoothCaretOptions`]: crate::input::SmoothCaretOptions
+    pub fn smooth_caret(mut self, enabled: bool) -> Self {
+        self.smooth_caret.enabled = enabled;
+        self
+    }
+
+    /// Turn the smooth caret on or off. See [`Self::smooth_caret`].
+    pub fn set_smooth_caret(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.smooth_caret.enabled = enabled;
+        if !enabled {
+            self.smooth_caret.stop();
+        }
+        cx.notify();
+    }
+
+    /// Whether the smooth caret is on. See [`Self::smooth_caret`].
+    pub fn has_smooth_caret(&self) -> bool {
+        self.smooth_caret.enabled
+    }
+
+    /// Set what the smooth caret glides and how fast. It takes effect while
+    /// the smooth caret is on.
+    pub fn smooth_caret_options(mut self, options: super::SmoothCaretOptions) -> Self {
+        self.smooth_caret.options = options;
+        self
+    }
+
+    /// See [`Self::smooth_caret_options`].
+    pub fn set_smooth_caret_options(
+        &mut self,
+        options: super::SmoothCaretOptions,
+        cx: &mut Context<Self>,
+    ) {
+        self.smooth_caret.options = options;
+        cx.notify();
+    }
+
     /// With `true`, Enter submits and Shift+Enter or Cmd+Enter or Ctrl+Enter
     /// breaks a line, as [`SubmitKey::Enter`].
     #[deprecated(note = "use `submit_key(SubmitKey::Enter)`")]
@@ -4086,9 +4134,12 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
             // Masking rewrites the whole document, so ranges recorded against
             // the old text no longer point at anything.
             M::reset_annotations(self);
+            self.smooth_caret
+                .note_edit(0..old_text.len(), self.text.len());
             M::did_edit(self, &(0..old_text.len()), self.text.len(), cx);
         } else {
             M::adjust_annotations(self, &range, new_text.len());
+            self.smooth_caret.note_edit(range.clone(), new_text.len());
             M::did_edit(self, &range, new_text.len(), cx);
         }
         if mask_changed {
@@ -10769,53 +10820,6 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
     ) {
         self.wrapping_indent = wrapping_indent;
         self.display_map.set_wrapping_indent(wrapping_indent, cx);
-        cx.notify();
-    }
-
-    /// Glide the caret to where it moves instead of jumping there, and draw a
-    /// typed character only as the caret passes it. Off by default.
-    ///
-    /// Typing, Backspace, the arrow keys and the word motions glide the caret
-    /// along its row, and every other movement is instant. Only drawing is
-    /// animated: the text, the undo history and everything else that reads
-    /// the text change at once. While the system asks for reduced motion the
-    /// caret moves at once. [`SmoothCaretOptions`] sets what glides and how
-    /// fast.
-    ///
-    /// [`SmoothCaretOptions`]: crate::input::SmoothCaretOptions
-    pub fn smooth_caret(mut self, enabled: bool) -> Self {
-        self.smooth_caret.enabled = enabled;
-        self
-    }
-
-    /// Turn the smooth caret on or off. See [`Self::smooth_caret`].
-    pub fn set_smooth_caret(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.smooth_caret.enabled = enabled;
-        if !enabled {
-            self.smooth_caret.stop();
-        }
-        cx.notify();
-    }
-
-    /// Whether the smooth caret is on. See [`Self::smooth_caret`].
-    pub fn has_smooth_caret(&self) -> bool {
-        self.smooth_caret.enabled
-    }
-
-    /// Set what the smooth caret glides and how fast. It takes effect while
-    /// the smooth caret is on.
-    pub fn smooth_caret_options(mut self, options: super::SmoothCaretOptions) -> Self {
-        self.smooth_caret.options = options;
-        self
-    }
-
-    /// See [`Self::smooth_caret_options`].
-    pub fn set_smooth_caret_options(
-        &mut self,
-        options: super::SmoothCaretOptions,
-        cx: &mut Context<Self>,
-    ) {
-        self.smooth_caret.options = options;
         cx.notify();
     }
 }

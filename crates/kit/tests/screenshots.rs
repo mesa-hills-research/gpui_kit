@@ -670,6 +670,58 @@ fn smooth_caret(mode: ThemeMode) -> Vec<(u64, Screenshot)> {
         .collect()
 }
 
+/// A single-line input alone, for the smooth caret.
+struct Field {
+    input: Entity<InputState>,
+}
+
+impl Render for Field {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(Input::new(&self.input))
+    }
+}
+
+/// A single-line input holding `text` with the caret at `caret`, with the smooth caret on unless
+/// `smooth` is false, and motion back on, as in [`smooth_caret_window`].
+fn input_smooth_caret_window(
+    mut app: ScreenshotApp,
+    text: &'static str,
+    caret: usize,
+    smooth: bool,
+) -> (ScreenshotApp, AnyWindowHandle) {
+    app.update(|cx| cx.set_reduce_motion(false));
+    let window = open(&mut app, (300., 72.), SCALE, move |window, cx| {
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .smooth_caret(smooth)
+                .default_value(text)
+        });
+        input.update(cx, |input, cx| {
+            input.focus(window, cx);
+            input.set_selected_range(caret..caret, cx);
+        });
+        Field { input }
+    });
+    app.capture(window).unwrap();
+    (app, window)
+}
+
+/// A single-line input's smooth caret 0, 25, 50 and 100 ms after a "W" is typed in the middle,
+/// as [`smooth_caret`] for a text editor.
+fn input_smooth_caret(mode: ThemeMode) -> Vec<(u64, Screenshot)> {
+    let (mut app, window) = input_smooth_caret_window(app(mode), "Hello world", 5, true);
+    act(&mut app, window, |window, cx| window.input("W", cx));
+    let mut elapsed = 0;
+    [0, 25, 50, 100]
+        .into_iter()
+        .map(|ms| {
+            app.advance_clock(Duration::from_millis(ms - elapsed));
+            elapsed = ms;
+            (ms, app.capture(window).unwrap())
+        })
+        .collect()
+}
+
 struct Gutters {
     short: Entity<TextareaState>,
     long: Entity<TextareaState>,
@@ -1307,6 +1359,27 @@ fn smooth_caret_uncovering_a_letter_dark() {
     for (ms, shot) in smooth_caret(ThemeMode::Dark) {
         goldens().assert(&format!("smooth-caret-{ms}ms-dark"), &shot);
     }
+}
+
+#[test]
+fn input_smooth_caret_uncovering_a_letter() {
+    for (ms, shot) in input_smooth_caret(ThemeMode::Light) {
+        goldens().assert(&format!("input-smooth-caret-{ms}ms"), &shot);
+    }
+}
+
+/// Once its caret has settled, a single-line input is drawn exactly as without the smooth
+/// caret.
+#[test]
+fn input_smooth_caret_settles_to_the_plain_drawing() {
+    let settled = |smooth| {
+        let (mut app, window) =
+            input_smooth_caret_window(app(ThemeMode::Light), "Hello world", 5, smooth);
+        act(&mut app, window, |window, cx| window.input("W", cx));
+        app.advance_clock(Duration::from_millis(100));
+        app.capture(window).unwrap().image
+    };
+    assert!(settled(true) == settled(false));
 }
 
 /// Once the caret has settled, the line is drawn exactly as without the smooth caret.

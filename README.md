@@ -40,10 +40,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   operators, text objects, registers and command line. See
   [Textarea: keybindings](website/component/textarea.md#keybindings), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
-- **A smooth caret** (`gpui-base`). `smooth_caret(true)` on a textarea or the code editor glides
-  the caret to where it moves. A typed character is uncovered by the caret as it passes, and the
-  rest of the line follows it. Off by default. See
-  [Textarea: smooth caret](website/component/textarea.md#smooth-caret).
+- **A smooth caret** (`gpui-base`). `smooth_caret(true)` on any input (a single-line input, a
+  textarea or the code editor) glides the caret to where it moves. A typed character is
+  uncovered by the caret as it passes, and the rest of the line follows it. Off by default. See
+  [Textarea: smooth caret](website/component/textarea.md#smooth-caret) and
+  [Input: smooth caret](website/component/input.md#smooth-caret).
 - **Nested scrolling** (`gpui-component`). A List or an `overflow_*_scrollbar` area inside a
   scrolling page keeps the wheel while it can scroll, where GPUI scrolled the page along with
   it. At its end the page takes over with the next gesture. See

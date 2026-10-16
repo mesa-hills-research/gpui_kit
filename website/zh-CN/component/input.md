@@ -225,6 +225,23 @@ handle 和菜单属于这次手势产生的选区。只要其他操作改变了�
 
 剪切、复制和粘贴通过输入框自身的 action 执行，因此自定义快捷键或打开中的补全菜单都能以同样方式处理它们。只读输入框只提供 `复制` 和 `全选`；密码输入框的内容不会进入剪贴板。
 
+### 平滑光标
+
+`smooth_caret(true)` 让光标平滑滑动到新位置，而不是直接跳过去，与 [Textarea](./textarea.md) 相同：输入的字符随光标经过而显现，其后的文字跟随光标移动，退格、方向键和按词移动也会滑动。可以横向滚动的输入框会在滚动后的文字中滑动。右对齐或居中对齐的文字在输入时连光标前的文字也会移动，因此输入的字符会立即显示，方向键仍然滑动。系统要求减少动态效果时，光标会立即移动。
+
+```rust
+let input = cx.new(|cx| {
+    InputState::new(window, cx)
+        .placeholder("Search")
+        .smooth_caret(true)
+});
+
+// 根据设置在运行时切换。
+input.update(cx, |input, cx| input.set_smooth_caret(false, cx));
+```
+
+`smooth_caret_options` 接受与 Textarea 相同的 `SmoothCaretOptions`。
+
 ### 粘贴钩子
 
 `on_paste` 会在默认文本插入之前拦截剪贴板内容，因此粘贴的图片和复制的文件可以保存在应用状态中，而不会被静默丢弃。`Input`、`Textarea` 和 `Editor` 均可使用。
