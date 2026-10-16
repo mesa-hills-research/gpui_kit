@@ -47,7 +47,7 @@ let cursor = notes.read(cx).cursor_position(cx);
 let value = notes.read(cx).value();
 ```
 
-不希望视觉换行时使用 `soft_wrap(false)`。只有某个组合键应提交而非换行时才设置 `submit_key(SubmitKey::Enter)`、`ShiftEnter` 或 `SecondaryEnter`；其他 Enter 组合键仍然换行。`TextareaState` 发出与 `InputState` 相同的 `InputEvent`。
+不希望视觉换行时使用 `soft_wrap(false)`。只为应提交而非换行的 Enter 组合键设置 `submit_keys`，例如 `[SubmitKey::Enter, SubmitKey::SecondaryEnter]`。其他 Enter 组合键仍然换行。`TextareaState` 发出与 `InputState` 相同的 `InputEvent`。
 
 ## 表现
 

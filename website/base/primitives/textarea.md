@@ -57,10 +57,10 @@ let value = notes.read(cx).value();
 ```
 
 Use `soft_wrap(false)` when visual wrapping is undesirable. Set
-`submit_key(SubmitKey::Enter)`, `ShiftEnter` or `SecondaryEnter` only when that
-chord should submit instead of inserting a line break; the other Enter chords
-still break lines. `TextareaState` emits the same `InputEvent` variants as
-`InputState`.
+`submit_keys` only for the Enter chords that should submit instead of
+inserting a line break, such as `[SubmitKey::Enter, SubmitKey::SecondaryEnter]`.
+The other Enter chords still break lines. `TextareaState` emits the same
+`InputEvent` variants as `InputState`.
 
 ## Presentation
 

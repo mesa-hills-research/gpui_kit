@@ -57,33 +57,37 @@ cx.subscribe(&notes, |this, state, event: &InputEvent, cx| {
 ```
 
 `TextareaState` 还提供 `insert`、`replace`、`cursor_position`、
-`soft_wrap`、`searchable` 和 `submit_key`。
+`soft_wrap`、`searchable` 和 `submit_keys`。
 
 ### 发送键
 
-聊天输入框用一个 Enter 组合键发送，其他组合键换行。`submit_key` 选择发送用的组合键：`SubmitKey::Enter`、`SubmitKey::ShiftEnter` 或 `SubmitKey::SecondaryEnter`（macOS 上为 Cmd+Enter，其他平台为 Ctrl+Enter）。该组合键不插入任何内容，并发出 `InputEvent::PressEnter`，可用 `SubmitKey::matches` 识别；其他组合键插入换行。未设置发送键时，所有 Enter 组合键都换行。
+聊天输入框用部分 Enter 组合键发送，用其他组合键换行。`submit_keys` 指定发送用的组合键，可从 `SubmitKey::Enter`、`SubmitKey::ShiftEnter` 和 `SubmitKey::SecondaryEnter`（macOS 上为 Cmd+Enter，其他平台为 Ctrl+Enter）中选择。这些组合键不插入任何内容，并发出 `InputEvent::PressEnter`，可用 `is_submit_chord` 识别。其他组合键插入换行。未设置发送键时，所有 Enter 组合键都换行。
+
+如果由用户选择发送键，并且无论选择什么，Cmd+Enter 或 Ctrl+Enter 都要发送，就同时设置所选的键和 secondary Enter：
 
 ```rust
 let composer = cx.new(|cx| {
     TextareaState::new(window, cx)
         .auto_grow(1, 6)
-        .submit_key(SubmitKey::Enter)
+        .submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])
 });
 
 cx.subscribe_in(&composer, window, |this, composer, event, window, cx| {
     if let InputEvent::PressEnter { secondary, shift } = event
-        && composer.read(cx).current_submit_key().is_some_and(|key| key.matches(*secondary, *shift))
+        && composer.read(cx).is_submit_chord(*secondary, *shift)
     {
         this.send(composer, window, cx);
     }
 })
 .detach();
 
-// 根据设置在运行时切换。
-composer.update(cx, |state, cx| state.set_submit_key(Some(SubmitKey::ShiftEnter), cx));
+// 根据设置在运行时切换：Shift+Enter 发送，Enter 换行。
+composer.update(cx, |state, cx| {
+    state.set_submit_keys([SubmitKey::ShiftEnter, SubmitKey::SecondaryEnter], cx)
+});
 ```
 
-`SubmitKey` 在设置文件中序列化为 `"enter"`、`"shift_enter"` 和 `"secondary_enter"`。`submit_on_enter(true)` 是 `submit_key(SubmitKey::Enter)` 的旧写法。
+`SubmitKey` 在设置文件中序列化为 `"enter"`、`"shift_enter"` 和 `"secondary_enter"`。旧的 `submit_on_enter(true)` 用 Enter 以及 Cmd+Enter 或 Ctrl+Enter 发送，等同于 `submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])`。
 
 ## 尺寸
 

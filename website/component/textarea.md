@@ -59,40 +59,46 @@ cx.subscribe(&notes, |this, state, event: &InputEvent, cx| {
 ```
 
 `insert`, `replace`, `cursor_position`, `soft_wrap`, `searchable`, and
-`submit_key` are available on `TextareaState`.
+`submit_keys` are available on `TextareaState`.
 
 ### Send key
 
-A chat composer submits with one Enter chord and breaks lines with the
-others. `submit_key` picks the chord: `SubmitKey::Enter`,
-`SubmitKey::ShiftEnter`, or `SubmitKey::SecondaryEnter` (Cmd+Enter on macOS,
-Ctrl+Enter elsewhere). That chord inserts nothing and emits
-`InputEvent::PressEnter`, which `SubmitKey::matches` recognizes; the other
-chords insert a line break. Without a submit key every chord breaks a line.
+A chat composer submits with some Enter chords and breaks lines with the
+others. `submit_keys` names the chords that submit, from `SubmitKey::Enter`,
+`SubmitKey::ShiftEnter` and `SubmitKey::SecondaryEnter` (Cmd+Enter on macOS,
+Ctrl+Enter elsewhere). They insert nothing and emit `InputEvent::PressEnter`,
+which `is_submit_chord` recognizes. The other chords insert a line break.
+Without submit keys every chord breaks a line.
+
+A composer whose user picks the send key, and which also sends with Cmd+Enter
+or Ctrl+Enter whatever the pick, sets the pick and the secondary Enter:
 
 ```rust
 let composer = cx.new(|cx| {
     TextareaState::new(window, cx)
         .auto_grow(1, 6)
-        .submit_key(SubmitKey::Enter)
+        .submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])
 });
 
 cx.subscribe_in(&composer, window, |this, composer, event, window, cx| {
     if let InputEvent::PressEnter { secondary, shift } = event
-        && composer.read(cx).current_submit_key().is_some_and(|key| key.matches(*secondary, *shift))
+        && composer.read(cx).is_submit_chord(*secondary, *shift)
     {
         this.send(composer, window, cx);
     }
 })
 .detach();
 
-// From a setting, at run time.
-composer.update(cx, |state, cx| state.set_submit_key(Some(SubmitKey::ShiftEnter), cx));
+// From a setting, at run time: Shift+Enter sends, Enter breaks lines.
+composer.update(cx, |state, cx| {
+    state.set_submit_keys([SubmitKey::ShiftEnter, SubmitKey::SecondaryEnter], cx)
+});
 ```
 
 `SubmitKey` serializes as `"enter"`, `"shift_enter"` and `"secondary_enter"`
-for settings files. `submit_on_enter(true)` is the older spelling of
-`submit_key(SubmitKey::Enter)`.
+for settings files. The older `submit_on_enter(true)` submits with Enter and
+with Cmd+Enter or Ctrl+Enter, the same as
+`submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])`.
 
 ## Sizes
 

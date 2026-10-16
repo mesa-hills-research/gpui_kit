@@ -211,7 +211,7 @@ impl TextareaStory {
         let chat_input = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 5)
-                .submit_key(SubmitKey::Enter)
+                .submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])
                 .placeholder("Type a message and press the send key")
         });
 
@@ -269,10 +269,7 @@ impl TextareaStory {
                 window,
                 |this: &mut Self, input, event, window, cx| match event {
                     InputEvent::PressEnter { secondary, shift }
-                        if input
-                            .read(cx)
-                            .current_submit_key()
-                            .is_some_and(|key| key.matches(*secondary, *shift)) =>
+                        if input.read(cx).is_submit_chord(*secondary, *shift) =>
                     {
                         let text = input.read(cx).value().trim().to_string();
                         if !text.is_empty() {
@@ -429,21 +426,24 @@ impl Render for TextareaStory {
                         .gap_2()
                         .w_full()
                         .child(h_flex().gap_2().children(
+                            // Cmd/Ctrl+Enter sends whichever key is chosen.
                             [
                                 (SubmitKey::Enter, "Enter"),
                                 (SubmitKey::ShiftEnter, "Shift+Enter"),
-                                (SubmitKey::SecondaryEnter, "Cmd/Ctrl+Enter"),
+                                (SubmitKey::SecondaryEnter, "Cmd/Ctrl+Enter only"),
                             ]
                             .into_iter()
                             .map(|(key, label)| {
-                                let current = self.chat_input.read(cx).current_submit_key();
+                                let keys = [key, SubmitKey::SecondaryEnter];
+                                let chosen = self.chat_input.read(cx).current_submit_keys()
+                                    == key_set(keys).as_slice();
                                 Button::new(label)
                                     .label(label)
                                     .small()
-                                    .when(current == Some(key), |button| button.primary())
+                                    .when(chosen, |button| button.primary())
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.chat_input.update(cx, |state, cx| {
-                                            state.set_submit_key(Some(key), cx)
+                                            state.set_submit_keys(keys, cx)
                                         });
                                         cx.notify();
                                     }))
@@ -556,4 +556,11 @@ impl Render for TextareaStory {
                 .description("References keep their identity through selection, deletion and undo. Copy returns the underlying text.")
                 .w_full().child(self.tokens.clone()))
     }
+}
+
+/// `keys`, each once, as a textarea keeps its submit keys.
+fn key_set(keys: [SubmitKey; 2]) -> Vec<SubmitKey> {
+    let mut set = keys.to_vec();
+    set.dedup();
+    set
 }

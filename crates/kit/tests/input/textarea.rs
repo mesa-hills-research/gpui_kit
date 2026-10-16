@@ -191,38 +191,41 @@ fn enter_and_shift_enter_insert_plain_newlines(cx: &mut TestAppContext) {
     });
 }
 
-/// The send key submits and inserts nothing, and the other Enter chords break
-/// lines, for each submit key on each platform's keys. Without one, every
-/// chord breaks a line.
+/// Each submit key submits and inserts nothing, and the other Enter chords
+/// break lines, for sets of one, two and three keys on each platform's keys.
+/// Without submit keys, every chord breaks a line.
 #[gpui_kit::test]
-fn the_submit_key_submits_and_the_other_enters_break_lines(cx: &mut TestAppContext) {
+fn submit_keys_submit_and_the_other_enters_break_lines(cx: &mut TestAppContext) {
+    use SubmitKey::{Enter, SecondaryEnter, ShiftEnter};
     platform::each(cx, |keys, cx| {
         let secondary = keys.primary("enter");
         let chords = [
-            (SubmitKey::Enter, "enter"),
-            (SubmitKey::ShiftEnter, "shift-enter"),
-            (SubmitKey::SecondaryEnter, secondary.as_str()),
+            (Enter, "enter"),
+            (ShiftEnter, "shift-enter"),
+            (SecondaryEnter, secondary.as_str()),
         ];
-        for submit_key in [
-            None,
-            Some(SubmitKey::Enter),
-            Some(SubmitKey::ShiftEnter),
-            Some(SubmitKey::SecondaryEnter),
-        ] {
-            let (handle, owner, text) =
-                composer_on(keys.platform(), cx, |state| match submit_key {
-                    Some(key) => state.submit_key(key),
-                    None => state,
-                });
+        let sets: [&[SubmitKey]; 7] = [
+            &[],
+            &[Enter],
+            &[ShiftEnter],
+            &[SecondaryEnter],
+            &[Enter, SecondaryEnter],
+            &[ShiftEnter, SecondaryEnter],
+            &[Enter, ShiftEnter, SecondaryEnter],
+        ];
+        for set in sets {
+            let (handle, owner, text) = composer_on(keys.platform(), cx, |state| {
+                state.submit_keys(set.iter().copied())
+            });
             for (chord, key) in chords {
+                let submits = set.contains(&chord);
                 cx.update_window(handle.into(), |_, window, cx| {
                     window.click(target(&text), cx);
                     text.update(cx, |state, cx| state.set_value("send", window, cx));
                     window.press(keys.text_end(), cx);
                     window.press(key, cx);
-                    let submits = submit_key == Some(chord);
                     let expected = if submits { "send" } else { "send\n" };
-                    assert_eq!(text.read(cx).value(), expected, "{key} with {submit_key:?}");
+                    assert_eq!(text.read(cx).value(), expected, "{key} with {set:?}");
                 })
                 .unwrap();
                 cx.run_until_parked();
@@ -234,10 +237,7 @@ fn the_submit_key_submits_and_the_other_enters_break_lines(cx: &mut TestAppConte
                         .cloned()
                         .expect("an Enter event");
                     assert_eq!(SubmitKey::of_enter(secondary, shift), chord, "{key}");
-                    assert_eq!(
-                        submit_key.is_some_and(|submit| submit.matches(secondary, shift)),
-                        submit_key == Some(chord),
-                    );
+                    assert_eq!(text.read(cx).is_submit_chord(secondary, shift), submits);
                     assert!(value.starts_with("send"));
                 });
             }
@@ -245,36 +245,42 @@ fn the_submit_key_submits_and_the_other_enters_break_lines(cx: &mut TestAppConte
     });
 }
 
-/// `submit_on_enter(true)`, kept for older code, is `SubmitKey::Enter`.
+/// `submit_on_enter(true)`, kept for older code, submits with Enter and with
+/// Cmd+Enter or Ctrl+Enter, as it always did, and Shift+Enter breaks a line.
 #[gpui_kit::test]
 #[allow(deprecated)]
-fn submit_on_enter_preserves_text_but_shift_enter_inserts(cx: &mut TestAppContext) {
-    let (handle, owner, text) = composer(cx, |state| state.submit_on_enter(true));
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.click(target(&text), cx);
-        window.input("send", cx);
-        window.press("enter", cx);
-        assert_eq!(text.read(cx).value(), "send");
-        assert_eq!(text.read(cx).cursor(), 4);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update(|cx| assert_eq!(owner.read(cx).enters, vec![(false, false, "send".into())]));
-    cx.update_window(handle.into(), |_, window, cx| {
-        window.press("shift-enter", cx);
-        assert_eq!(text.read(cx).value(), "send\n");
-        assert_eq!(text.read(cx).cursor(), 5);
-    })
-    .unwrap();
-    cx.run_until_parked();
-    cx.update(|cx| {
-        assert_eq!(
-            owner.read(cx).enters,
-            vec![
-                (false, false, "send".into()),
-                (false, true, "send\n".into()),
-            ]
-        )
+fn submit_on_enter_submits_with_enter_and_the_secondary_enter(cx: &mut TestAppContext) {
+    platform::each(cx, |keys, cx| {
+        let (handle, owner, text) =
+            composer_on(keys.platform(), cx, |state| state.submit_on_enter(true));
+        cx.update(|cx| {
+            assert_eq!(
+                text.read(cx).current_submit_keys(),
+                [SubmitKey::Enter, SubmitKey::SecondaryEnter]
+            )
+        });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(target(&text), cx);
+            window.input("send", cx);
+            window.press("enter", cx);
+            assert_eq!(text.read(cx).value(), "send");
+            window.press(&keys.primary("enter"), cx);
+            assert_eq!(text.read(cx).value(), "send");
+            window.press("shift-enter", cx);
+            assert_eq!(text.read(cx).value(), "send\n");
+            assert_eq!(text.read(cx).cursor(), 5);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| {
+            let chords: Vec<(bool, bool)> = owner
+                .read(cx)
+                .enters
+                .iter()
+                .map(|(secondary, shift, _)| (*secondary, *shift))
+                .collect();
+            assert_eq!(chords, [(false, false), (true, false), (false, true)]);
+        });
     });
 }
 
