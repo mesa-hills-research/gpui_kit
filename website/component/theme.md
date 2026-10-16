@@ -105,9 +105,9 @@ for theme in THEMES {
 ThemeRegistry::watch_dir(user_themes_dir, cx, |cx| { /* apply the saved theme */ })?;
 ```
 
-Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. The kit's two defaults are never replaced. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case; the folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` last only until the folder next loads.
+Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. No theme takes the name of one of the kit's two defaults; a folder theme marked `is_default` becomes the default of its mode instead, until its file goes. A copy whose mode differs from the theme it replaces doesn't take over that theme while it is the active light or dark theme. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case; the folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` stay registered, under the names no other theme takes.
 
-`ThemeRegistry::load_dir` reads a folder once, the same way, without watching it. Use it where hot reload isn't wanted, and in tests: `watch_dir`'s watcher runs on its own thread, which a `#[gpui::test]`'s deterministic executor rejects.
+`ThemeRegistry::load_dir` reads a folder once, the same way, without watching it. Use it where hot reload isn't wanted, and in tests: `watch_dir`'s watcher runs on its own thread, which a `#[gpui::test]`'s deterministic executor rejects. Each `watch_dir` or `load_dir` call replaces the folder before it: an earlier watch stops, and a read of an earlier folder that ends late is dropped, so the folder asked for last is the one registered.
 
 ## Font overrides
 

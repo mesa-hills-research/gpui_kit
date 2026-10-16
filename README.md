@@ -64,8 +64,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Bundled themes, a user folder, and fonts that stay** (`gpui-component`). `ThemeRegistry`
   keeps themes an app embeds (`add_bundled_themes_from_str`) across reloads of the watched
   folder, whose themes replace bundled ones of the same name ignoring case; the folder is read
-  on a background thread. `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes
-  once, and every theme applied after keeps them, in one update. See
+  on a background thread (`ThemeRegistry::load_dir` reads a folder once, without a watcher, for
+  tests). `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes once, and every
+  theme applied after keeps them, in one update. See
   [Theme: font overrides](website/component/theme.md#font-overrides).
 - **Sidebars and sheets that can snap** (`gpui-component`). `Sidebar::transition_duration` and
   `Sheet::transition_duration` set how long collapsing or sliding in takes, `Duration::ZERO`
