@@ -121,6 +121,22 @@ Radio::new("option")
     .tooltip("Select this option to enable feature X")
 ```
 
+### When the Trigger Goes Away
+
+A tooltip shown by a component's `tooltip` or `tooltip_with_action` belongs to
+the element it describes. When that element is no longer drawn, the tooltip
+disappears in the same frame, and one still waiting for its show delay never
+appears:
+
+- a Close button whose click closes its page;
+- a shortcut that removes a row while the pointer rests on its action button;
+- a list that re-renders and drops a row under the pointer.
+
+A trigger in a view GPUI reuses from the last frame still counts as drawn.
+Nothing needs to be set up for this. Tooltips built with GPUI's own
+`.tooltip()` on a `div` are not managed by the overlay and keep GPUI's
+behavior.
+
 ### Complex Tooltip Content
 
 ```rust

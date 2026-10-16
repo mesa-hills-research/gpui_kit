@@ -1,14 +1,15 @@
 use crate::root::WindowState;
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Action, AnyElement, AnyView, App, AppContext, Bounds, Context, ElementId, IntoElement,
-    MouseButton, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement,
+    Action, AnyElement, AnyView, App, AppContext, Context, ElementId, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_base::{
     Tooltip as BaseTooltip, TooltipOverlay as BaseTooltipOverlay,
     TooltipRequest as BaseTooltipRequest, TooltipTransition as BaseTooltipTransition,
+    TooltipTrigger,
 };
 
 use crate::{
@@ -155,36 +156,40 @@ pub(crate) fn render_tooltip(
     _: &mut Window,
     _: &mut App,
 ) -> AnyElement {
-    div().child(content_view).map(|element| match transition {
-        BaseTooltipTransition::Switch {
-            epoch,
-            previous,
-            current,
-        } => {
-            let same_row = (current.origin.y - previous.origin.y).abs() < px(10.);
-            if !same_row {
-                return element.into_any_element();
+    // The selector lets tests see whether a tooltip was painted.
+    div()
+        .debug_selector(|| "tooltip".into())
+        .child(content_view)
+        .map(|element| match transition {
+            BaseTooltipTransition::Switch {
+                epoch,
+                previous,
+                current,
+            } => {
+                let same_row = (current.origin.y - previous.origin.y).abs() < px(10.);
+                if !same_row {
+                    return element.into_any_element();
+                }
+                let dx = current.center().x - previous.center().x;
+                EffectTransition::new(SLIDE_DURATION)
+                    .ease(ease_in_out_cubic)
+                    .slide_x(-dx, px(0.))
+                    .apply(
+                        element,
+                        ElementId::NamedInteger("tooltip-slide".into(), epoch as u64),
+                    )
+                    .into_any_element()
             }
-            let dx = current.center().x - previous.center().x;
-            EffectTransition::new(SLIDE_DURATION)
-                .ease(ease_in_out_cubic)
-                .slide_x(-dx, px(0.))
+            BaseTooltipTransition::Enter { epoch } => EffectTransition::new(ENTER_DURATION)
+                .ease(ease_out_cubic)
+                .slide_y(px(4.), px(0.))
+                .fade(0.0, 1.0)
                 .apply(
                     element,
-                    ElementId::NamedInteger("tooltip-slide".into(), epoch as u64),
+                    ElementId::NamedInteger("tooltip-enter".into(), epoch as u64),
                 )
-                .into_any_element()
-        }
-        BaseTooltipTransition::Enter { epoch } => EffectTransition::new(ENTER_DURATION)
-            .ease(ease_out_cubic)
-            .slide_y(px(4.), px(0.))
-            .fade(0.0, 1.0)
-            .apply(
-                element,
-                ElementId::NamedInteger("tooltip-enter".into(), epoch as u64),
-            )
-            .into_any_element(),
-    })
+                .into_any_element(),
+        })
 }
 
 // ── Extension trait for managed tooltips ─────────────────────────────────────
@@ -250,24 +255,23 @@ pub(crate) trait ManagedTooltipExt:
         build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
     ) -> Self {
         let build_tooltip = Rc::new(build_tooltip);
-        let trigger_bounds_cell: Rc<Cell<Bounds<Pixels>>> = Rc::new(Cell::new(Bounds::default()));
-        let bounds_writer = trigger_bounds_cell.clone();
+        let trigger = TooltipTrigger::new();
 
-        self.on_prepaint(move |bounds, _, _| {
-            bounds_writer.set(bounds);
+        self.on_prepaint({
+            let trigger = trigger.clone();
+            move |bounds, window, _| trigger.prepaint(bounds, window)
         })
         .on_hover({
-            let trigger_bounds_cell = trigger_bounds_cell.clone();
             let build_tooltip = build_tooltip.clone();
             move |hovered, window, cx| {
                 if let Some(overlay) = WindowState::tooltip_overlay(window, cx) {
                     if *hovered {
-                        let bounds = trigger_bounds_cell.get();
                         overlay.update(cx, |o: &mut BaseTooltipOverlay, cx| {
                             let build = build_tooltip.clone();
-                            let request = BaseTooltipRequest::new(bounds, move |window, cx| {
-                                build(window, cx)
-                            });
+                            let request =
+                                BaseTooltipRequest::for_trigger(&trigger, move |window, cx| {
+                                    build(window, cx)
+                                });
                             let request = match preferred_placement {
                                 Some(placement) => request.placement(placement),
                                 None => request,
@@ -293,3 +297,251 @@ pub(crate) trait ManagedTooltipExt:
 }
 
 impl<E: StatefulInteractiveElement + crate::ElementExt> ManagedTooltipExt for E {}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use gpui::{
+        AppContext as _, Context, Entity, InputEvent as _, InteractiveElement as _, IntoElement,
+        Modifiers, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
+        Render, Styled as _, TestAppContext, VisualTestContext, Window, div, point,
+        prelude::FluentBuilder as _, px, size,
+    };
+
+    use crate::button::Button;
+
+    /// Longer than any show delay or grace period.
+    const LONG: Duration = Duration::from_secs(2);
+
+    /// A page with a close button, like a settings page that closes itself.
+    struct Page {
+        open: bool,
+    }
+
+    impl Render for Page {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let page = cx.entity();
+            div().size_full().p(px(20.)).when(self.open, |this| {
+                this.child(
+                    Button::new("close")
+                        .debug_selector(|| "close".into())
+                        .label("Close")
+                        .tooltip("Close Settings")
+                        .on_click(move |_, _, cx| {
+                            page.update(cx, |page, cx| {
+                                page.open = false;
+                                cx.notify();
+                            })
+                        }),
+                )
+            })
+        }
+    }
+
+    fn window(cx: &mut TestAppContext) -> (Entity<Page>, &mut VisualTestContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let mut page = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| Page { open: true });
+            page = Some(view.clone());
+            crate::Root::new(view, window, cx)
+        });
+        cx.simulate_resize(size(px(400.), px(300.)));
+        draw(cx);
+        (page.unwrap(), cx)
+    }
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+    }
+
+    fn wait(cx: &mut VisualTestContext, duration: Duration) {
+        cx.executor().advance_clock(duration);
+        draw(cx);
+    }
+
+    fn painted(cx: &mut VisualTestContext) -> bool {
+        cx.debug_bounds("tooltip").is_some()
+    }
+
+    fn button_center(cx: &mut VisualTestContext) -> Point<Pixels> {
+        cx.debug_bounds("close")
+            .expect("the close button is painted")
+            .center()
+    }
+
+    /// Rests the pointer on the close button until its tooltip shows.
+    fn hover_until_shown(cx: &mut VisualTestContext) -> Point<Pixels> {
+        let center = button_center(cx);
+        cx.simulate_mouse_move(center, None, Modifiers::default());
+        draw(cx);
+        assert!(!painted(cx), "a tooltip waits for the show delay");
+        wait(cx, LONG);
+        assert!(painted(cx), "a resting pointer shows the tooltip");
+        center
+    }
+
+    fn close(page: &Entity<Page>, cx: &mut VisualTestContext) {
+        cx.update(|_, cx| {
+            page.update(cx, |page, cx| {
+                page.open = false;
+                cx.notify();
+            })
+        });
+    }
+
+    fn assert_gone_for_good(cx: &mut VisualTestContext) {
+        assert!(
+            cx.debug_bounds("close").is_none(),
+            "the button left the window"
+        );
+        assert!(
+            !painted(cx),
+            "the tooltip disappears with the frame that drops its button"
+        );
+        wait(cx, LONG);
+        assert!(!painted(cx), "and does not come back");
+    }
+
+    /// The click that removes the button, as Windows delivers it: capturing
+    /// the mouse on press and releasing it on release each produce a mouse
+    /// move at the same position, and the release's move arrives before the
+    /// frame that drops the button.
+    #[gpui::test]
+    fn clicking_a_button_that_closes_its_page_takes_the_tooltip_with_it(cx: &mut TestAppContext) {
+        let (_, cx) = window(cx);
+        let position = hover_until_shown(cx);
+
+        cx.simulate_mouse_down(position, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(position, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| {
+            window.dispatch_event(
+                MouseUpEvent {
+                    position,
+                    button: MouseButton::Left,
+                    modifiers: Modifiers::default(),
+                    click_count: 1,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.dispatch_event(
+                MouseMoveEvent {
+                    position,
+                    pressed_button: None,
+                    modifiers: Modifiers::default(),
+                }
+                .to_platform_input(),
+                cx,
+            );
+        });
+        draw(cx);
+
+        assert_gone_for_good(cx);
+    }
+
+    /// A shortcut can close the page while the pointer rests on the button.
+    #[gpui::test]
+    fn a_shown_tooltip_disappears_when_its_button_is_removed(cx: &mut TestAppContext) {
+        let (page, cx) = window(cx);
+        hover_until_shown(cx);
+
+        close(&page, cx);
+        draw(cx);
+
+        assert_gone_for_good(cx);
+    }
+
+    #[gpui::test]
+    fn a_pending_tooltip_never_shows_once_its_button_is_removed(cx: &mut TestAppContext) {
+        let (page, cx) = window(cx);
+        let center = button_center(cx);
+        cx.simulate_mouse_move(center, None, Modifiers::default());
+        draw(cx);
+        wait(cx, Duration::from_millis(100));
+        assert!(!painted(cx));
+
+        close(&page, cx);
+        draw(cx);
+
+        assert_gone_for_good(cx);
+    }
+
+    /// The show timer can fire after the update that removes the button and
+    /// before the frame that drops it.
+    #[gpui::test]
+    fn a_tooltip_shown_after_its_button_was_removed_is_never_painted(cx: &mut TestAppContext) {
+        let (page, cx) = window(cx);
+        let center = button_center(cx);
+        cx.simulate_mouse_move(center, None, Modifiers::default());
+        draw(cx);
+
+        cx.update(|_, cx| {
+            page.update(cx, |page, _| page.open = false);
+        });
+        cx.executor().advance_clock(LONG);
+        draw(cx);
+
+        assert_gone_for_good(cx);
+    }
+
+    /// A window drawing its page as a cached view, which GPUI reuses from the
+    /// last frame while only the window around it renders again.
+    struct Shell {
+        page: Entity<Page>,
+    }
+
+    impl Render for Shell {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                self.page
+                    .clone()
+                    .cached(gpui::StyleRefinement::default().size_full()),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn a_tooltip_stays_while_its_button_is_reused_from_the_last_frame(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let mut shell = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let page = cx.new(|_| Page { open: true });
+            let view = cx.new(|_| Shell { page });
+            shell = Some(view.clone());
+            crate::Root::new(view, window, cx)
+        });
+        cx.simulate_resize(size(px(400.), px(300.)));
+        draw(cx);
+        let shell = shell.unwrap();
+        hover_until_shown(cx);
+
+        for _ in 0..3 {
+            cx.update(|_, cx| shell.update(cx, |_, cx| cx.notify()));
+            draw(cx);
+            assert!(painted(cx), "the reused button keeps its tooltip");
+        }
+        wait(cx, LONG);
+        assert!(painted(cx), "for as long as the pointer rests on it");
+    }
+
+    #[gpui::test]
+    fn a_tooltip_hides_after_the_pointer_leaves(cx: &mut TestAppContext) {
+        let (_, cx) = window(cx);
+        hover_until_shown(cx);
+
+        cx.simulate_mouse_move(point(px(390.), px(290.)), None, Modifiers::default());
+        draw(cx);
+        assert!(painted(cx), "the tooltip outlasts the pointer briefly");
+        wait(cx, LONG);
+        assert!(!painted(cx), "then hides");
+    }
+}

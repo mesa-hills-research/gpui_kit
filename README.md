@@ -111,6 +111,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   tests and use the gpui fork's
   `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
+- **Tooltips that leave with their trigger** (`gpui-base`, `gpui-component`). A component's tooltip
+  is drawn only on frames that draw the element it describes, so it disappears with a button
+  whose click closes its page or a row that re-renders away, and one waiting for its show delay
+  never appears. `TooltipTrigger` and `TooltipRequest::for_trigger` give a custom trigger the
+  same. See [Tooltip: when the trigger goes away](website/component/tooltip.md#when-the-trigger-goes-away).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it

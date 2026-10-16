@@ -34,6 +34,34 @@ use gpui_kit::base::{Tooltip};
 
 受控状态应保存在父渲染类型或 GPUI entity 中；在回调中更新并调用 `cx.notify()`，不要在每次渲染时重建持久 entity。
 
+### 让 Tooltip 跟随触发元素
+
+`TooltipOverlay` 显示一个 `TooltipRequest`。用 `TooltipRequest::for_trigger` 创建的请求只在同时绘制其触发元素的帧中绘制，因此 Tooltip 会随它所说明的元素一起消失（例如点击后关闭所在页面的按钮），仍在等待显示延迟的 Tooltip 也不会出现。构建触发元素时创建一个 `TooltipTrigger`，并在元素的 prepaint 中每帧记录它的边界：
+
+```rust
+use gpui_kit::base::{ElementExt as _, TooltipOverlay, TooltipRequest, TooltipTrigger};
+
+let trigger = TooltipTrigger::new();
+div()
+    .id("save")
+    .on_prepaint({
+        let trigger = trigger.clone();
+        move |bounds, window, _| trigger.prepaint(bounds, window)
+    })
+    .on_hover(move |hovered, window, cx| {
+        if *hovered {
+            overlay.update(cx, |overlay: &mut TooltipOverlay, cx| {
+                let request = TooltipRequest::for_trigger(&trigger, |_, cx| {
+                    cx.new(|_| SaveTooltip).into()
+                });
+                overlay.request_show(request, window, cx);
+            });
+        }
+    })
+```
+
+GPUI 沿用上一帧的视图中的触发元素，只要指针停在其上，就算作已绘制。`TooltipRequest::new` 则把请求锚定在固定的边界上，Tooltip 会一直显示，直到被隐藏。
+
 ## 完整 Rust 示例
 
 <<< ../../../../crates/base/examples/showcase/components/tooltip.rs{rust}

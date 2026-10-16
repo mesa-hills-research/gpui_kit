@@ -1,9 +1,14 @@
-use std::{rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 use gpui::{
-    AnyElement, AnyView, App, Bounds, Context, Div, ElementId, InteractiveElement, IntoElement,
+    AnyElement, AnyView, App, Bounds, Context, Div, Element, ElementId, GlobalElementId,
+    HitboxBehavior, HitboxId, InspectorElementId, InteractiveElement, IntoElement, LayoutId,
     ParentElement, Pixels, Render, RenderOnce, Role, Stateful, StatefulInteractiveElement, Styled,
-    Task, Window, deferred, div, prelude::FluentBuilder as _, px,
+    Task, WeakEntity, Window, deferred, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{Placement, Positioner};
@@ -51,15 +56,79 @@ impl RenderOnce for Tooltip {
     }
 }
 
+/// The element a tooltip belongs to.
+///
+/// Create one when building the trigger element and call [`Self::prepaint`]
+/// from the element's prepaint, every frame. A request made with
+/// [`TooltipRequest::for_trigger`] is then drawn only on frames that draw its
+/// trigger: the tooltip disappears on the first frame without the trigger, and
+/// one still waiting for its show delay never appears.
+#[derive(Clone, Default)]
+pub struct TooltipTrigger(Rc<RefCell<Option<Rc<TriggerState>>>>);
+
+/// What the overlay knows of a trigger, kept across frames for as long as the
+/// trigger element is drawn.
+#[derive(Default)]
+struct TriggerState {
+    bounds: Cell<Bounds<Pixels>>,
+    hitbox: Cell<Option<HitboxId>>,
+    prepainted: Cell<bool>,
+}
+
+impl TooltipTrigger {
+    /// A trigger not drawn yet. Keep it with the element it describes, and
+    /// hand the same one to [`TooltipRequest::for_trigger`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records the trigger's bounds for this frame. Call it from the trigger
+    /// element's prepaint, such as through [`crate::ElementExt::on_prepaint`].
+    pub fn prepaint(&self, bounds: Bounds<Pixels>, window: &mut Window) {
+        // The trigger is rebuilt on every render, so what lasts between frames
+        // lives in element state, under the trigger's own element ID.
+        let state = window.with_global_id("tooltip-trigger".into(), |id, window| {
+            window.with_element_state::<Rc<TriggerState>, _>(id, |state, _| {
+                let state = state.unwrap_or_default();
+                (state.clone(), state)
+            })
+        });
+        // A view cached by GPUI replays this hitbox without prepainting the
+        // trigger again, which is how a reused trigger is still found.
+        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+        state.bounds.set(bounds);
+        state.hitbox.set(Some(hitbox.id));
+        state.prepainted.set(true);
+        *self.0.borrow_mut() = Some(state);
+    }
+}
+
+impl TriggerState {
+    /// Whether the frame being painted has the trigger in it. Call it once per
+    /// frame, during paint: it consumes the mark the trigger's prepaint left.
+    fn in_frame(&self, window: &Window) -> bool {
+        // A trigger in a reused view was not prepainted, but the pointer
+        // still rests on its replayed hitbox.
+        self.prepainted.replace(false)
+            || self
+                .hitbox
+                .get()
+                .is_some_and(|hitbox| hitbox.should_handle_scroll(window))
+    }
+}
+
 /// Content requested by a tooltip trigger.
 #[derive(Clone)]
 pub struct TooltipRequest {
     build: TooltipBuilder,
     trigger_bounds: Bounds<Pixels>,
     preferred_placement: Option<Placement>,
+    trigger: Option<Rc<TriggerState>>,
 }
 
 impl TooltipRequest {
+    /// A request anchored to `trigger_bounds`, shown until it is hidden. Prefer
+    /// [`Self::for_trigger`], which also hides the tooltip with its trigger.
     pub fn new(
         trigger_bounds: Bounds<Pixels>,
         build: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -68,6 +137,30 @@ impl TooltipRequest {
             build: Rc::new(build),
             trigger_bounds,
             preferred_placement: None,
+            trigger: None,
+        }
+    }
+
+    /// A request anchored to `trigger` and shown only while it is drawn.
+    pub fn for_trigger(
+        trigger: &TooltipTrigger,
+        build: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
+    ) -> Self {
+        // Unset only before the trigger's first prepaint, when nothing can
+        // have hovered it yet.
+        let state = trigger.0.borrow().clone().unwrap_or_default();
+        Self {
+            build: Rc::new(build),
+            trigger_bounds: state.bounds.get(),
+            preferred_placement: None,
+            trigger: Some(state),
+        }
+    }
+
+    /// Clears the trigger's mark from frames before this request was shown.
+    fn begin_showing(&self) {
+        if let Some(trigger) = &self.trigger {
+            trigger.prepainted.set(false);
         }
     }
 
@@ -151,6 +244,7 @@ impl TooltipOverlay {
         let was_visible = self.content.is_some();
         if was_visible || self.had_recent_tooltip {
             self.previous_bounds = self.content.as_ref().map(|content| content.trigger_bounds);
+            content.begin_showing();
             self.content = Some(content);
             self.show_task = None;
             self.is_switching = was_visible;
@@ -164,6 +258,7 @@ impl TooltipOverlay {
             cx.background_executor().timer(SHOW_DELAY).await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if this.epoch == epoch {
+                    content.begin_showing();
                     this.content = Some(content);
                     this.previous_bounds = None;
                     this.is_switching = false;
@@ -210,6 +305,18 @@ impl TooltipOverlay {
             cx.notify();
         }
     }
+
+    /// Hides the tooltip if it still belongs to `trigger`, which is gone.
+    fn trigger_left(&mut self, trigger: &Rc<TriggerState>, cx: &mut Context<Self>) {
+        let shown_for_trigger = self
+            .content
+            .as_ref()
+            .and_then(|content| content.trigger.as_ref())
+            .is_some_and(|shown| Rc::ptr_eq(shown, trigger));
+        if shown_for_trigger {
+            self.hide(cx);
+        }
+    }
 }
 
 impl Default for TooltipOverlay {
@@ -235,15 +342,99 @@ impl Render for TooltipOverlay {
             },
         };
         let rendered = (self.renderer)(view, transition, window, cx);
-        deferred(
-            TooltipPositioner::new(content.trigger_bounds)
-                .when_some(content.preferred_placement, |this, placement| {
-                    this.placement(placement)
-                })
-                .child(rendered),
-        )
+        let positioned = TooltipPositioner::new(content.trigger_bounds)
+            .when_some(content.preferred_placement, |this, placement| {
+                this.placement(placement)
+            })
+            .child(rendered)
+            .into_any_element();
+        deferred(TriggerGate {
+            trigger: content.trigger.clone(),
+            overlay: cx.entity().downgrade(),
+            child: positioned,
+        })
         .with_priority(TOOLTIP_PRIORITY)
         .into_any_element()
+    }
+}
+
+/// Paints the tooltip only on frames that have its trigger.
+///
+/// Deferred draws are painted after every element has been prepainted, and
+/// after GPUI has hit-tested the new frame, so by then the trigger has either
+/// marked itself or is missing from the frame.
+struct TriggerGate {
+    trigger: Option<Rc<TriggerState>>,
+    overlay: WeakEntity<TooltipOverlay>,
+    child: AnyElement,
+}
+
+impl IntoElement for TriggerGate {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for TriggerGate {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (self.child.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        _: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let Some(trigger) = self.trigger.clone() else {
+            self.child.paint(window, cx);
+            return;
+        };
+        if trigger.in_frame(window) {
+            self.child.paint(window, cx);
+            return;
+        }
+        let overlay = self.overlay.clone();
+        window.defer(cx, move |_, cx| {
+            overlay
+                .update(cx, |overlay, cx| overlay.trigger_left(&trigger, cx))
+                .ok();
+        });
     }
 }
 
