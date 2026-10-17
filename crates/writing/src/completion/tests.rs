@@ -630,6 +630,28 @@ fn the_rest_of_a_sent_message_is_learned(cx: &mut TestAppContext) {
     assert_eq!(learned, []);
 }
 
+/// A long message without a terminator teaches what the same message ended
+/// with a period would: only its last kilobyte or so, as a sentence is
+/// never read further back than that.
+#[gpui::test]
+fn a_long_unfinished_message_learns_what_a_finished_one_would(cx: &mut TestAppContext) {
+    let message = format!("Alpha {}omega", "lorem ipsum dolor ".repeat(70));
+    let finished = learned_in_both_modes(cx, |typist| {
+        typist.type_text(&message);
+        typist.type_text(". ");
+    });
+    let rest = learned_in_both_modes(cx, |typist| {
+        typist.type_text(&message);
+        let text = typist
+            .textarea
+            .read_with(&typist.cx, |state, _| state.text().clone());
+        typist.suggestions.learn_rest(&text);
+    });
+    assert_eq!(rest, finished);
+    assert!(rest.iter().any(|(word, _)| word == "omega"), "{rest:?}");
+    assert!(!rest.iter().any(|(word, _)| word == "Alpha"), "{rest:?}");
+}
+
 /// A composer is cleared at every send, so a message or a sentence the user
 /// sends again is learned again, each time.
 #[gpui::test]

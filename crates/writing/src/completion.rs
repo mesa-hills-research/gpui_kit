@@ -697,9 +697,11 @@ impl WordSuggestions {
         }
         let excerpt = Excerpt::around(text, text.len());
         let rest = &excerpt.text;
-        let start = rest
+        // No further back than a sentence a terminator ends is read.
+        let floor = floor_char_boundary(rest, rest.len().saturating_sub(SENTENCE_SCAN_BYTES));
+        let start = rest[floor..]
             .rfind(is_sentence_terminator)
-            .map_or(0, |terminator| terminator + 1);
+            .map_or(floor, |terminator| floor + terminator + 1);
         let unfinished = rest[start..].trim();
         if unfinished.is_empty() {
             // The text ends with a terminator: its last sentence is finished.
