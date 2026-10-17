@@ -245,10 +245,17 @@ fn cached<T: Clone>(
     let compiled = compile();
     let mut cache = CACHE.lock().unwrap();
     cache.sync();
-    if !registry.changed_since(name, generation) {
-        // Tasks compiling it still tell their waiters when they are done.
-        map(&mut cache).insert(name.clone(), Slot::Done(compiled.clone()));
+    if registry.changed_since(name, generation) {
+        return compiled;
     }
+    // Another thread that compiled it meanwhile stored its copy first, and
+    // may have handed it out. Everyone shares that one, as kept highlighting
+    // is tied to the copy it was made with.
+    if let Some(Slot::Done(stored)) = map(&mut cache).get(name) {
+        return stored.clone();
+    }
+    // Tasks compiling it still tell their waiters when they are done.
+    map(&mut cache).insert(name.clone(), Slot::Done(compiled.clone()));
     compiled
 }
 
@@ -510,6 +517,41 @@ mod tests {
             "plain text has no grammar"
         );
         assert!(compiled_language("no-such-language").is_none());
+    }
+
+    /// Two threads that both find a language missing compile it at once. The
+    /// one that stores its copy last finds the other's stored, and both hand
+    /// out that one.
+    #[test]
+    fn a_language_compiled_twice_at_once_is_shared() {
+        use crate::highlighter::LanguageConfig;
+
+        let name = SharedString::from("json-compiled-twice-at-once");
+        LanguageRegistry::singleton().register(
+            &name,
+            &LanguageConfig::new(
+                name.clone(),
+                tree_sitter_json::LANGUAGE.into(),
+                vec![],
+                "(number) @number",
+                "",
+                "",
+            ),
+        );
+        let mut other = None;
+        let first = cached(
+            &name,
+            |cache| &mut cache.languages,
+            || {
+                // The other thread, done while this one compiles.
+                other = compiled_language(&name);
+                compile(&name)
+            },
+        )
+        .expect("a grammar");
+        let other = other.expect("a grammar");
+        assert!(Arc::ptr_eq(&first, &other));
+        assert!(Arc::ptr_eq(&compiled_language(&name).unwrap(), &other));
     }
 
     #[test]
