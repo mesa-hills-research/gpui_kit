@@ -868,12 +868,18 @@ mod tests {
         cx: &mut gpui::TestAppContext,
     ) {
         let (view, cx) = title_bar_window(cx);
-        let middle = WIDTH / 2.;
         let inset = leading_inset(cfg!(target_os = "macos"), false);
+        let controls = end_controls_width();
+        // Reserve equal platform space on both sides. The content compensates
+        // for the actual inset and controls, so each case has the same room.
+        let reserve = inset.max(controls);
+        let width = WIDTH + reserve * 2.;
+        cx.simulate_resize(gpui::size(width, px(100.)));
+        let middle = width / 2.;
         let slots = |start, center, end| Slots {
-            start,
+            start: start + f32::from(reserve - inset),
             center: Some(center),
-            end,
+            end: end + f32::from(reserve - controls),
             end_as_child: false,
         };
 
@@ -883,7 +889,7 @@ mod tests {
         assert!((center.center().x - middle).abs() < px(1.), "{center:?}");
         assert_eq!(center.size.width, px(160.));
         assert_eq!(start.left(), inset);
-        assert_eq!(end.right(), WIDTH - end_controls_width());
+        assert_eq!(end.right(), width - controls);
 
         // A wide start pushes the center toward the end, clear of the start.
         let [start, center, end] = lay_out(cx, &view, slots(420., 160., 60.));
