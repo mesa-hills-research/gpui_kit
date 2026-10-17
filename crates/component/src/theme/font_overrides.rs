@@ -13,8 +13,8 @@ use gpui::{FontFeatures, Pixels, SharedString};
 ///
 /// Each field left unset follows the theme, and unset monospace font
 /// features, which themes leave to the application, keep the font's own.
-/// `font_size` is also the application's zoom: [`Root`](crate::Root) sets
-/// the window's rem size from it.
+/// `font_size` is also the application's zoom, as [`Root`](crate::Root)
+/// sets the window's rem size from it.
 ///
 /// ```ignore
 /// Theme::update(cx, |theme| {
@@ -73,8 +73,8 @@ impl FontOverrides {
 
     /// The OpenType features of the monospace font, e.g. `calt` and `liga`
     /// set to 0 to show code without ligatures. They apply wherever the
-    /// components set text in the monospace font: code blocks and inline code
-    /// in text views, diffs, code editors and key caps.
+    /// components set text in the monospace font, in code blocks and inline
+    /// code of text views, diffs, code editors and key caps.
     pub fn with_mono_font_features(mut self, features: FontFeatures) -> Self {
         self.mono_font_features = Some(features);
         self
