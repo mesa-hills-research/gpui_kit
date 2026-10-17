@@ -922,6 +922,8 @@ impl Serialize for SavingSuccessors<'_> {
 
 /// `counts` as `vocabulary.json` holds them.
 fn to_json(counts: &Counts) -> serde_json::Result<Vec<u8>> {
+    #[cfg(test)]
+    tests::WRITES.with(|writes| writes.set(writes.get() + 1));
     serde_json::to_vec(&Saving(counts))
 }
 
@@ -929,8 +931,10 @@ fn to_json(counts: &Counts) -> serde_json::Result<Vec<u8>> {
 /// counts drop their rarest entries until they fit in seven eighths of
 /// `cap`, so they have room to grow before they prune again: trigrams seen
 /// once, then bigrams and then words, then those seen twice, and so on. Each
-/// step drops just enough of them, in an order that favours no word, so a
-/// file just over the cap stays close to the seven eighths.
+/// step drops just enough of them, by an estimate of their bytes, in an
+/// order that favours no word, so a file just over the cap stays close to
+/// the seven eighths. The counts are written out again only once the
+/// estimate says they fit.
 fn pruned_json(counts: &mut Counts, cap: u64) -> serde_json::Result<Vec<u8>> {
     let mut data = to_json(counts)?;
     if data.len() as u64 <= cap {
@@ -941,19 +945,27 @@ fn pruned_json(counts: &mut Counts, cap: u64) -> serde_json::Result<Vec<u8>> {
     // Past the highest count there is nothing left to drop.
     let highest = counts.words.values().map(Forms::count).max().unwrap_or(0);
     let mut floor = 1;
-    'pruning: while floor <= highest {
+    // What is still over the target, by the estimate of what was dropped.
+    // Asking for a little more covers what the estimate misses, so the file
+    // is written again about once.
+    let mut over = data.len() - target;
+    loop {
         for level in [Level::Trigrams, Level::Bigrams, Level::Words] {
-            while data.len() > target {
-                if counts.prune(level, floor, data.len() - target) == 0 {
-                    break;
-                }
-                data = to_json(counts)?;
+            if over == 0 {
+                break;
             }
-            if data.len() <= target {
-                break 'pruning;
-            }
+            over = over.saturating_sub(counts.prune(level, floor, over + over / 32));
         }
-        floor += 1;
+        // Everything seen `floor` times or fewer is gone: on to the next.
+        if over > 0 && floor < highest {
+            floor += 1;
+            continue;
+        }
+        data = to_json(counts)?;
+        if data.len() <= target || over > 0 {
+            break;
+        }
+        over = data.len() - target;
     }
     log::info!(
         "The word suggestions' vocabulary reached {before} bytes. It dropped the entries seen \
@@ -1929,6 +1941,8 @@ mod tests {
     thread_local! {
         /// How many vocabulary files this thread parsed.
         pub(super) static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        /// How many times this thread wrote counts out as a file's bytes.
+        pub(super) static WRITES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
 
     /// A save at quit writes over a file as this process last left it
@@ -1967,6 +1981,39 @@ mod tests {
         let worked_from: serde_json::Value =
             serde_json::from_slice(&vocabulary.to_json().unwrap()).unwrap();
         assert_eq!(worked_from, learned_from(all));
+    }
+
+    /// A vocabulary far over its cap drops entries from several levels and
+    /// counts, and is written out once more to check the estimate, not once
+    /// for each.
+    #[test]
+    fn a_deep_prune_writes_the_counts_out_once() {
+        let mut vocabulary = Vocabulary::new();
+        for number in 0..400 {
+            vocabulary.learn_sentence(&format!(
+                "Notes on topic{number} for day{} today",
+                number % 7
+            ));
+        }
+        for _ in 0..3 {
+            vocabulary.learn_sentence("Thanks for the update");
+        }
+        let size = vocabulary.to_json().unwrap().len() as u64;
+        let cap = size / 5;
+        let mut counts = vocabulary.counts.clone();
+        let writes = || WRITES.with(std::cell::Cell::get);
+        let before = writes();
+        let data = pruned_json(&mut counts, cap).unwrap();
+        assert!(
+            data.len() as u64 <= cap / 8 * 7,
+            "{} bytes, cap {cap}",
+            data.len()
+        );
+        assert!(
+            counts.bigrams.len() < vocabulary.counts.bigrams.len(),
+            "bigrams dropped too"
+        );
+        assert_eq!(writes() - before, 2, "once to measure, once pruned");
     }
 
     /// The file `scratch` holds.
