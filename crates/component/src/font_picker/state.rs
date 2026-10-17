@@ -1,6 +1,10 @@
 //! The state of a font picker: the catalog, the chosen font and the controls
 //! that change it.
 
+#[cfg(test)]
+#[path = "state_tests.rs"]
+mod tests;
+
 use std::borrow::Cow;
 
 use anyhow::Result;
@@ -16,7 +20,7 @@ use crate::{
     ActiveTheme as _, IndexPath, h_flex,
     input::{InputEvent, InputState},
     list::{ListDelegate, ListEvent, ListItem, ListState},
-    searchable_list::{SearchableListItem, SearchableVec},
+    searchable_list::{SearchableListDelegate as _, SearchableListItem, SearchableVec},
     select::{SelectEvent, SelectItem, SelectState},
 };
 
@@ -48,6 +52,7 @@ pub enum FontPickerEvent {
 /// ```
 pub struct FontPickerState {
     catalog: Option<FontCatalog>,
+    loading: bool,
     /// Fonts to read into the catalog once it is loaded, and whether the
     /// user added them.
     pending: Vec<(Cow<'static, [u8]>, bool)>,
@@ -170,6 +175,7 @@ impl FontPickerState {
 
         Self {
             catalog: None,
+            loading: true,
             pending: Vec::new(),
             pending_family: None,
             settings,
@@ -189,6 +195,7 @@ impl FontPickerState {
     /// Show `catalog` instead of the system's fonts.
     pub fn catalog(mut self, catalog: FontCatalog) -> Self {
         self.catalog = Some(catalog);
+        self.loading = false;
         self
     }
 
@@ -226,20 +233,23 @@ impl FontPickerState {
         self.families.update(cx, |families, _| {
             families.delegate_mut().monospace_only = monospace_only;
         });
-        match self.catalog.clone() {
-            Some(catalog) => self.set_catalog(catalog, window, cx),
-            None => {
-                self._load = cx.spawn_in(window, async move |this, cx| {
-                    let Ok(load) = cx.update(|_, cx| FontCatalog::load(cx)) else {
-                        return;
-                    };
-                    let catalog = load.await;
-                    this.update_in(cx, |this, window, cx| this.set_catalog(catalog, window, cx))
-                        .ok();
-                });
-                self.sync_controls(window, cx);
-            }
+        if self.loading {
+            // Bundled and previously added fonts are usable while the system
+            // catalog is being read. Keep their data for the completed catalog.
+            self.apply_catalog(FontCatalog::default(), window, cx);
+            let load = FontCatalog::load(cx);
+            self._load = cx.spawn_in(window, async move |this, cx| {
+                let catalog = load.await;
+                this.update_in(cx, |this, window, cx| {
+                    this.loading = false;
+                    this.apply_catalog(catalog, window, cx);
+                })
+                .ok();
+            });
+        } else if let Some(catalog) = self.catalog.clone() {
+            self.apply_catalog(catalog, window, cx);
         }
+        self.sync_controls(window, cx);
     }
 
     /// Show only monospaced families, or every family.
@@ -265,14 +275,14 @@ impl FontPickerState {
         &self.settings
     }
 
-    /// The catalog on offer, once it is read.
+    /// The catalog on offer, including known application fonts while loading.
     pub fn font_catalog(&self) -> Option<&FontCatalog> {
         self.catalog.as_ref()
     }
 
     /// Whether the system's fonts are still being read.
     pub fn is_loading(&self) -> bool {
-        self.catalog.is_none()
+        self.loading
     }
 
     /// The family of the chosen font, when the catalog has it.
@@ -287,6 +297,7 @@ impl FontPickerState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pending_family = None;
         self.settings = settings;
         self.sync_controls(window, cx);
         cx.notify();
@@ -304,22 +315,13 @@ impl FontPickerState {
         cx: &mut Context<Self>,
     ) -> Result<Vec<SharedString>> {
         cx.text_system().add_fonts(fonts.clone())?;
-        let names = match &mut self.catalog {
-            Some(catalog) => catalog.add_fonts(&fonts),
-            None => {
-                let names = FontCatalog::from_fonts(&fonts)
-                    .families()
-                    .iter()
-                    .map(|family| family.name().clone())
-                    .collect();
-                self.pending
-                    .extend(fonts.into_iter().map(|font| (font, true)));
-                names
-            }
-        };
-        if let Some(catalog) = self.catalog.clone() {
-            self.set_catalog(catalog, window, cx);
+        let mut catalog = self.catalog.clone().unwrap_or_default();
+        let names = catalog.add_fonts(&fonts);
+        if self.loading {
+            self.pending
+                .extend(fonts.into_iter().map(|font| (font, true)));
         }
+        self.apply_catalog(catalog, window, cx);
         Ok(names)
     }
 
@@ -327,17 +329,20 @@ impl FontPickerState {
     /// emit [`FontPickerEvent::Change`]. Does nothing when the catalog lacks
     /// it. While the catalog is loading, the choice waits for it.
     pub fn choose_family_named(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(catalog) = &self.catalog else {
-            self.pending_family = Some(SharedString::from(name.to_string()));
-            return;
-        };
-        if let Some(family) = catalog.family(name).cloned() {
+        let family = self
+            .catalog
+            .as_ref()
+            .and_then(|catalog| catalog.family(name));
+        if let Some(family) = family.cloned() {
+            self.pending_family = None;
             // Search for it, so the list shows it whatever was searched.
             self.families.update(cx, |families, cx| {
                 families.set_query(family.name(), window, cx)
             });
             self.choose_family(&family, window, cx);
             self.sync_family_row(window, cx);
+        } else if self.loading {
+            self.pending_family = Some(SharedString::from(name.to_string()));
         }
     }
 
@@ -373,6 +378,7 @@ impl FontPickerState {
     }
 
     fn choose_family(&mut self, family: &FontFamily, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_family = None;
         let settings = self.settings.for_family(family);
         self.change(settings, window, cx);
     }
@@ -391,28 +397,55 @@ impl FontPickerState {
         cx.notify();
     }
 
-    fn set_catalog(
+    /// Replace the offered catalog without registering fonts with the text system.
+    ///
+    /// Keeps the chosen settings, search, focus, open dropdown and scroll position.
+    /// Cancels the initial system load so it cannot overwrite this catalog.
+    /// Pending application and added fonts are included. Emits no change event,
+    /// except for an explicit family choice queued while loading.
+    pub fn set_catalog(
+        &mut self,
+        catalog: FontCatalog,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self._load = Task::ready(());
+        self.loading = false;
+        self.apply_catalog(catalog, window, cx);
+    }
+
+    fn apply_catalog(
         &mut self,
         mut catalog: FontCatalog,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        for (font, added) in std::mem::take(&mut self.pending) {
-            if added {
-                catalog.add_fonts(&[font]);
+        for (font, added) in &self.pending {
+            if *added {
+                catalog.add_fonts(std::slice::from_ref(font));
             } else {
-                catalog.include_fonts(&[font]);
+                catalog.include_fonts(std::slice::from_ref(font));
             }
         }
+        if !self.loading {
+            self.pending.clear();
+        }
+        let chosen = self.settings.family().clone();
+        let loading = self.loading;
         self.families.update(cx, |families, cx| {
             families.delegate_mut().catalog = Some(catalog.clone());
+            families.delegate_mut().loading = loading;
             families.delegate_mut().refilter();
+            let row = families.delegate().row_of(&chosen).map(IndexPath::new);
+            families.set_selected_index(row, window, cx);
             cx.notify();
         });
         self.catalog = Some(catalog);
         self.sync_family_select(window, cx);
-        self.sync_controls(window, cx);
-        if let Some(family) = self.pending_family.take() {
+        self.sync_weights(window, cx);
+        if !self.loading
+            && let Some(family) = self.pending_family.take()
+        {
             self.choose_family_named(&family, window, cx);
         }
         cx.notify();
@@ -459,8 +492,31 @@ impl FontPickerState {
             .collect();
         let chosen = self.chosen_family_name();
         self.family_select.update(cx, |select, cx| {
-            select.set_items(SearchableVec::new(items), window, cx);
-            select.set_selected_value(&chosen, window, cx);
+            let mut items = SearchableVec::new(items);
+            // Keep the committed selection in full-list coordinates, as Select
+            // expects when Escape clears its query. The cursor uses filtered rows.
+            select.state.selection = items
+                .position(&chosen)
+                .and_then(|ix| items.item(ix).cloned().map(|item| (ix, item)))
+                .into_iter()
+                .collect();
+            select.state.list.update(cx, |list, cx| {
+                let cursor = list
+                    .selected_index()
+                    .and_then(|ix| list.delegate().delegate.item(ix))
+                    .map(|item| item.name.clone());
+                let query = list.query_input.read(cx).value();
+                items.perform_search(&query, window, cx).detach();
+                let ix = cursor
+                    .as_ref()
+                    .and_then(|name| items.position(name))
+                    .or_else(|| items.position(&chosen))
+                    .or_else(|| (items.items_count(0) > 0).then_some(IndexPath::new(0)));
+                list.delegate_mut().delegate = items;
+                list.set_selected_index(ix, window, cx);
+                cx.notify();
+            });
+            select.state.sync_snapshot(cx);
             cx.notify();
         });
     }
@@ -606,6 +662,7 @@ impl SearchableListItem for FamilyItem {
 #[derive(Default)]
 pub(super) struct FamilyList {
     catalog: Option<FontCatalog>,
+    loading: bool,
     query: String,
     monospace_only: bool,
     /// Indices into the catalog's families.
@@ -705,11 +762,11 @@ impl ListDelegate for FamilyList {
             .justify_center()
             .text_sm()
             .text_color(cx.theme().muted_foreground)
-            .child(t!("FontPicker.no_match").to_string())
-    }
-
-    fn loading(&self, _: &App) -> bool {
-        self.catalog.is_none()
+            .child(if self.loading {
+                t!("FontPicker.loading").to_string()
+            } else {
+                t!("FontPicker.no_match").to_string()
+            })
     }
 
     fn set_selected_index(

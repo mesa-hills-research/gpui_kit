@@ -153,6 +153,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   at actual size, and Escape closes it and gives focus back to the thumbnail. Dialogs stack
   with it in the order they open. It only fades in, and not at all under reduced motion. See
   [Image Viewer](website/component/image-viewer.md).
+- **Background font catalogs** (`gpui-component`). `FontCatalog::load` enumerates installed
+  families on the background executor. Pickers keep their search and selection as fonts arrive,
+  and `FontPickerState::set_catalog` updates an open picker in place. See
+  [FontPicker](website/component/font-picker.md#loading-and-replacing-a-catalog).
 - **Font pickers with only the rows a setting keeps** (`gpui-component`).
   `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
   setting that stores only a family and a size. See

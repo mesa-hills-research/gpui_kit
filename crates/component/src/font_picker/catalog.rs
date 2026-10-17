@@ -269,14 +269,20 @@ impl FontCatalog {
     /// Lists the families the text system can draw, in the background.
     ///
     /// The names come from the text system, so they include fonts added with
-    /// `add_fonts` before the call. The weights, styles and features come
+    /// `add_fonts` before the background task runs. Enumeration and reading
+    /// the installed font files both run on the background executor.
+    /// The weights, styles and features come
     /// from the installed font files. A family whose files are not found
     /// there, such as one an application registered from its own data, is
     /// listed with no faces until [`Self::add_fonts`] reads them.
     pub fn load(cx: &App) -> Task<Self> {
-        let names = cx.text_system().all_font_names();
+        let text_system = cx.text_system().clone();
+        Self::load_names(cx, move || text_system.all_font_names())
+    }
+
+    fn load_names(cx: &App, names: impl FnOnce() -> Vec<String> + Send + 'static) -> Task<Self> {
         cx.background_executor()
-            .spawn(async move { Self::with_system_faces(names) })
+            .spawn(async move { Self::with_system_faces(names()) })
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -435,4 +441,28 @@ fn faces_by_family(database: &fontdb::Database) -> BTreeMap<String, Vec<FontFace
         });
     }
     families
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[gpui::test]
+    async fn family_enumeration_waits_for_the_background_executor(cx: &mut gpui::TestAppContext) {
+        let enumerated = Arc::new(AtomicBool::new(false));
+        let load = cx.update(|cx| {
+            FontCatalog::load_names(cx, {
+                let enumerated = enumerated.clone();
+                move || {
+                    enumerated.store(true, Ordering::SeqCst);
+                    vec!["A test family".into()]
+                }
+            })
+        });
+        assert!(!enumerated.load(Ordering::SeqCst));
+        let catalog = load.await;
+        assert!(enumerated.load(Ordering::SeqCst));
+        assert!(catalog.family("A test family").is_some());
+    }
 }

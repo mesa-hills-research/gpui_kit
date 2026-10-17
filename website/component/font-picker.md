@@ -121,6 +121,41 @@ let catalog = FontCatalog::from_fonts(&[
 FontPickerState::new(window, cx).catalog(catalog)
 ```
 
+### Loading and replacing a catalog
+
+`FontCatalog::load(cx) -> Task<FontCatalog>` enumerates the installed families
+and reads their faces on the background executor. The existing API returns
+immediately with the task. Fonts registered before the task runs are included.
+
+A newly created picker shows **Loading fonts** while it waits. Application and
+previously added fonts can already be searched and chosen. The current font
+stays in the compact trigger and preview. When the catalog arrives, the search,
+chosen settings, focus, dropdown and scroll position stay in place.
+`is_loading()` reports whether the system catalog is still being read.
+
+Use `set_catalog` to replace a live picker's catalog after registering fonts
+with the text system yourself, or to share one loaded catalog between pickers.
+It cancels the picker's initial load and includes any pending application or
+added fonts. It preserves the current settings even if the replacement lacks
+that family. A queued `choose_family_named` choice is applied when available.
+Other catalog updates emit no `FontPickerEvent::Change`.
+
+```rust
+let load = FontCatalog::load(cx);
+cx.spawn_in(window, async move |this, cx| {
+    let catalog = load.await;
+    this.update_in(cx, |this, window, cx| {
+        this.picker.update(cx, |picker, cx| {
+            picker.set_catalog(catalog, window, cx);
+        });
+    }).ok();
+}).detach();
+```
+
+The mutation takes `&mut self`, a `FontCatalog`, `&mut Window` and
+`&mut Context<FontPickerState>`. It updates the picker in place, so callers can
+keep the same entity while the dropdown is open.
+
 ## Adding a font file
 
 `add_fonts` registers font data with the text system and adds its families to

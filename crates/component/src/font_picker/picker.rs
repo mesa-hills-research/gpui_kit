@@ -348,6 +348,7 @@ impl FontPicker {
 
     fn render_full(self, chosen: Chosen, cx: &mut App) -> impl IntoElement {
         let state = self.state.read(cx);
+        let loading = state.is_loading();
         let (families, weights, size, line_height) = (
             state.families.clone(),
             state.weights.clone(),
@@ -377,11 +378,11 @@ impl FontPicker {
                                     .border_color(cx.theme().border)
                                     .rounded(cx.theme().radius)
                                     .overflow_hidden()
-                                    .child(
-                                        List::new(&families).search_placeholder(
-                                            t!("FontPicker.search").to_string(),
-                                        ),
-                                    ),
+                                    .child(List::new(&families).search_placeholder(if loading {
+                                        t!("FontPicker.loading").to_string()
+                                    } else {
+                                        t!("FontPicker.search").to_string()
+                                    })),
                             )
                             .child(self.monospace_checkbox(chosen.monospace_only)),
                     )
@@ -467,7 +468,11 @@ impl FontPicker {
             .gap_4()
             .refine_style(&self.style)
             .child(row(
-                t!("FontPicker.family").into(),
+                if loading {
+                    t!("FontPicker.loading").into()
+                } else {
+                    t!("FontPicker.family").into()
+                },
                 h_flex()
                     .gap_3()
                     .child(self.monospace_checkbox(chosen.monospace_only))
@@ -476,18 +481,18 @@ impl FontPicker {
                             Select::new(&family_select)
                                 .id("font-picker-family")
                                 .search_placeholder(t!("FontPicker.search").to_string())
-                                .placeholder(if loading {
-                                    t!("FontPicker.loading").to_string()
-                                } else {
-                                    chosen.settings.family().to_string()
-                                })
-                                .empty(|_, cx| {
+                                .placeholder(chosen.settings.family().clone())
+                                .empty(move |_, cx| {
                                     h_flex()
                                         .h_16()
                                         .justify_center()
                                         .text_sm()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child(t!("FontPicker.no_match").to_string())
+                                        .child(if loading {
+                                            t!("FontPicker.loading").to_string()
+                                        } else {
+                                            t!("FontPicker.no_match").to_string()
+                                        })
                                 })
                                 .menu_max_h(px(320.)),
                         ),
