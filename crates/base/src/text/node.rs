@@ -21,8 +21,8 @@ use crate::{
         MarkdownNode, TableActionsFn,
         document::NodeRenderOptions,
         inline::{
-            Inline, InlineHighlight, InlineState, InlineStyles, combine_highlights,
-            fade_highlights, text_runs, text_size_ranges,
+            Inline, InlineHighlight, InlineState, InlineStyles, append_highlights, fade_highlights,
+            text_runs, text_size_ranges,
         },
         inline_flow::{InlineFlow, InlineFlowItem, slice_ranges},
         range_highlight::{RangeHighlightFrame, RevealAt, RevealRequest},
@@ -1234,7 +1234,7 @@ impl Paragraph {
                 }
                 node_highlights.push((inner_range, highlight));
             }
-            highlights = combine_highlights(highlights, node_highlights);
+            append_highlights(&mut highlights, node_highlights);
             offset += text_len;
         }
         let text = SharedString::from(text);
@@ -2571,7 +2571,7 @@ impl Paragraph {
                     )
                 })
                 .collect::<Vec<_>>();
-            highlights = combine_highlights(highlights, node_highlights);
+            append_highlights(&mut highlights, node_highlights);
             offset += inline_node.text.len();
         }
         highlights
@@ -2739,7 +2739,7 @@ impl Paragraph {
                     node_highlights.push((inner_range, highlight));
                 }
 
-                highlights = combine_highlights(highlights, node_highlights);
+                append_highlights(&mut highlights, node_highlights);
                 offset += text_len;
             }
         }
@@ -2926,7 +2926,7 @@ impl Paragraph {
                     node_highlights.push((inner_range, highlight));
                 }
 
-                highlights = combine_highlights(highlights, node_highlights);
+                append_highlights(&mut highlights, node_highlights);
                 offset += text_len;
             }
         }

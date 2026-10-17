@@ -104,6 +104,33 @@ pub(super) fn combine_highlights(
     combined
 }
 
+/// Adds the highlights of the next inline node of a paragraph, `next`, to
+/// those of the nodes before it, `highlights`, as [`combine_highlights`]
+/// does for the two.
+///
+/// The highlights of a node lie past those of the nodes before it, so they
+/// are combined among themselves and appended. Combining every node's with
+/// all of the paragraph's so far took time in proportion to the square of
+/// the paragraph's length: tens of milliseconds a frame for a long one.
+pub(super) fn append_highlights(
+    highlights: &mut Vec<(Range<usize>, InlineHighlight)>,
+    next: Vec<(Range<usize>, InlineHighlight)>,
+) {
+    if next.is_empty() {
+        return;
+    }
+    let next = combine_highlights(Vec::new(), next);
+    let follows = match (highlights.last(), next.first()) {
+        (Some((last, _)), Some((first, _))) => last.end <= first.start,
+        _ => true,
+    };
+    if follows {
+        highlights.extend(next);
+    } else {
+        *highlights = combine_highlights(std::mem::take(highlights), next);
+    }
+}
+
 /// Layers a streamed fade-in over `highlights`: text inside each fade range
 /// loses that share of its color, and a highlight background fades with it so
 /// an inline code chip does not appear before its text.
@@ -2123,8 +2150,8 @@ pub(super) mod test_fonts {
 #[cfg(test)]
 mod tests {
     use super::{
-        GlyphBox, InlineHighlight, aligned_row_left, combine_highlights, point_in_text_selection,
-        range_boxes, text_runs,
+        GlyphBox, InlineHighlight, aligned_row_left, append_highlights, combine_highlights,
+        point_in_text_selection, range_boxes, text_runs,
     };
     use gpui::{FontWeight, HighlightStyle, SharedString, TextAlign, TextStyle, point, px};
     use std::ops::Range;
@@ -2252,6 +2279,42 @@ mod tests {
         // A ligature drawing "fi" in one glyph.
         let glyphs = [glyph(0..2, 0, 0., 10.), glyph(2..3, 0, 10., 15.)];
         assert_eq!(range_boxes(&glyphs, 1..2), [(0, px(0.), px(10.))]);
+    }
+
+    #[test]
+    fn appended_highlights_are_the_highlights_combined() {
+        let style = |weight: f32| {
+            InlineHighlight::from(HighlightStyle {
+                font_weight: Some(FontWeight(weight)),
+                ..Default::default()
+            })
+        };
+        // Nodes of a paragraph, each with marks that can overlap one
+        // another, at increasing offsets.
+        let mut state = 7u64;
+        let mut next = |max: usize| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) as usize % max
+        };
+        let mut appended = Vec::new();
+        let mut combined = Vec::new();
+        let mut offset = 0;
+        for _ in 0..200 {
+            let len = 1 + next(20);
+            let marks = (0..next(4))
+                .map(|_| {
+                    let start = offset + next(len);
+                    let end = start + 1 + next(offset + len - start);
+                    (start..end, style(100. * (1 + next(8)) as f32))
+                })
+                .collect::<Vec<_>>();
+            append_highlights(&mut appended, marks.clone());
+            combined = combine_highlights(combined, marks);
+            offset += len;
+        }
+        assert_eq!(appended, combined);
     }
 
     #[test]
