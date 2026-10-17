@@ -81,6 +81,39 @@ fn page(cx: &App) -> gpui_kit::Div {
         .gap_3()
 }
 
+struct SelectableHighlights;
+
+impl Render for SelectableHighlights {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(
+            gpui_kit::base::SelectableText::new(
+                "highlighted-text",
+                "Find matches stay selectable. Drag across this text to copy it.",
+            )
+            .highlights([(
+                5..12,
+                gpui_kit::HighlightStyle {
+                    background_color: Some(cx.theme().selection),
+                    font_weight: Some(FontWeight::BOLD),
+                    ..Default::default()
+                },
+            )]),
+        )
+    }
+}
+
+#[test]
+fn selectable_highlights() {
+    for (mode, name) in [
+        (ThemeMode::Light, "selectable-highlights"),
+        (ThemeMode::Dark, "selectable-highlights-dark"),
+    ] {
+        let mut app = app(mode);
+        let window = open(&mut app, (320., 100.), SCALE, |_, _| SelectableHighlights);
+        goldens().assert(name, &app.capture(window).unwrap());
+    }
+}
+
 struct Buttons;
 
 impl Render for Buttons {

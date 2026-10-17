@@ -175,6 +175,25 @@ impl Render for LabelStory {
                     ),
             )
             .child(
+                section("Selectable highlights")
+                    .description("Drag across highlighted text to select and copy it.")
+                    .w_full()
+                    .child(
+                        gpui_kit::base::SelectableText::new(
+                            "selectable-highlights",
+                            "Find matches stay selectable, including 中文 text.",
+                        )
+                        .highlights([(
+                            5..12,
+                            HighlightStyle {
+                                background_color: Some(cx.theme().selection),
+                                font_weight: Some(FontWeight::BOLD),
+                                ..Default::default()
+                            },
+                        )]),
+                    ),
+            )
+            .child(
                 section("Layout")
                     .description("Labels support alignment and natural wrapping.")
                     .w(px(560.))

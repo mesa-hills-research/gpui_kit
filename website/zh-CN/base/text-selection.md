@@ -8,6 +8,27 @@ order: 3
 
 `gpui-base` 的文本选择基础设施允许一次拖拽跨越多个独立绘制的文本块，同时保留每个参与者自己的布局与绘制逻辑。它适合文档、消息流和其他由多个自定义元素组成、但用户期望像连续文本一样选择的界面。
 
+## 可选择的高亮文本
+
+`SelectableText` 为普通文本段处理布局和窗口级选择。`highlights` builder
+按范围应用 `HighlightStyle`，原始文本仍可选择和复制。范围使用 UTF-8 字节偏移，
+必须按顺序排列、互不重叠，且起止位置都位于字符边界。再次调用会替换之前的高亮。
+
+```rust
+use gpui_kit::{FontWeight, HighlightStyle};
+use gpui_kit::base::SelectableText;
+
+SelectableText::new("result", "Find matching text")
+    .highlights([(5..13, HighlightStyle {
+        font_weight: Some(FontWeight::BOLD),
+        ..Default::default()
+    })]);
+```
+
+保持元素 ID 在多次渲染之间稳定。多个文本段组成同一可选择文档时，使用
+`SelectableText::with_handle` 和 `document_order`。Kit 窗口已安装选择层，
+仅使用 Base 的窗口需要按下文安装。
+
 ## 开始使用
 
 核心由窗口级 `TextSelectionState`、稳定的 `SelectableTextHandle`、prepaint 阶段注册的几何信息，以及把全局选择投影到各文本 run 的辅助 API 组成。

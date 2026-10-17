@@ -1,9 +1,9 @@
 use std::ops::Range;
 
 use gpui::{
-    App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, GlobalElementId, Hitbox,
-    HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels, Point,
-    SharedString, StyledText, TextStyleRefinement, Window, transparent_black,
+    App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, GlobalElementId, HighlightStyle,
+    Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels,
+    Point, SharedString, StyledText, TextStyleRefinement, Window, transparent_black,
 };
 
 use crate::{TextSelection, TextSelectionHandle, TextSelectionRegistration, TextSelectionRun};
@@ -62,6 +62,18 @@ impl SelectableText {
     /// Sets the text style the run is laid out and painted with.
     pub fn text_style(mut self, style: TextStyleRefinement) -> Self {
         self.text_style = Some(style);
+        self
+    }
+
+    /// Highlights ranges without changing selection or copied text.
+    ///
+    /// Ranges are UTF-8 byte offsets, ordered and non-overlapping, with both
+    /// endpoints on character boundaries. A later call replaces the highlights.
+    pub fn highlights(
+        mut self,
+        highlights: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
+    ) -> Self {
+        self.styled_text = self.styled_text.with_highlights(highlights);
         self
     }
 
@@ -292,6 +304,56 @@ mod tests {
         cx.update(|window, cx| {
             let _ = window.draw(cx);
             assert_eq!(TextSelection::selected_text(window, cx), "alpha beta");
+        });
+    }
+
+    #[gpui::test]
+    fn highlighted_text_keeps_unicode_selection(cx: &mut TestAppContext) {
+        struct HighlightedText;
+        impl Render for HighlightedText {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(TextSelectionLayer).child(
+                    SelectableText::new("highlighted", "alpha 中文 beta").highlights([
+                        (
+                            0..5,
+                            gpui::HighlightStyle {
+                                font_weight: Some(gpui::FontWeight::BOLD),
+                                ..Default::default()
+                            },
+                        ),
+                        (
+                            6..12,
+                            gpui::HighlightStyle {
+                                font_style: Some(gpui::FontStyle::Italic),
+                                ..Default::default()
+                            },
+                        ),
+                    ]),
+                )
+            }
+        }
+        let (_, cx) = cx.add_window_view(|_, _| HighlightedText);
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(
+            point(px(0.), px(12.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            point(px(300.), px(12.)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            point(px(300.), px(12.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert_eq!(TextSelection::selected_text(window, cx), "alpha 中文 beta");
         });
     }
 

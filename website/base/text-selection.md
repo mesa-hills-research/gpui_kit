@@ -12,6 +12,29 @@ exampleKind: base
 
 Use it when you render text with `StyledText`, `TextLayout`, a virtualized document, or another custom GPUI `Element`.
 
+## Selectable highlighted text
+
+`SelectableText` handles layout and window selection for a plain text run. Its
+`highlights` builder applies `HighlightStyle` ranges while keeping the original
+text available for selection and copying. Ranges use UTF-8 byte offsets and must
+be ordered, non-overlapping, and end on character boundaries. Calling the builder
+again replaces the previous highlights.
+
+```rust
+use gpui_kit::{FontWeight, HighlightStyle};
+use gpui_kit::base::SelectableText;
+
+SelectableText::new("result", "Find matching text")
+    .highlights([(5..13, HighlightStyle {
+        font_weight: Some(FontWeight::BOLD),
+        ..Default::default()
+    })]);
+```
+
+Keep the element ID stable between renders. Use `SelectableText::with_handle` and
+`document_order` when several runs form one selectable document. Kit windows
+already install the selection layer. Base-only windows install it as described below.
+
 ## Get started
 
 To add text selection to a custom GPUI participant, connect its layout and paint lifecycle to the window selection state as shown below.
