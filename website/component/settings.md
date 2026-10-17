@@ -226,6 +226,26 @@ SettingGroup::new()
     .footer(|_, _| "Changes apply to this device only.")
 ```
 
+### Cache Independent Groups
+
+Pass `SettingGroup::key(u64)` to reuse a group's layout and paint between
+changes. Use a revision or a hash of every application value that affects its
+content, style or callbacks. Entity-backed controls such as Input still redraw
+when their state notifies. Search, available width, size, group variant and
+theme changes refresh the affected groups automatically.
+
+```rust
+SettingGroup::new()
+    .key(preferences_revision)
+    .title("Editing")
+    .items(editing_items)
+```
+
+The key is a revision, not an identity. If groups move or are replaced, change
+the keys at those positions. Groups without a key keep the existing behavior
+and render with their containing page. Keep page and group order stable while
+editing so controls retain their keyed state.
+
 ## Setting Item
 
 ### Basic Item

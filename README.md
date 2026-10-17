@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Cached Settings groups** (`gpui-component`). `SettingGroup::key` reuses unchanged groups
+  while editable controls keep their own redraws. Groups without a key keep the existing
+  behavior. See [Settings](website/component/settings.md#cache-independent-groups).
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.

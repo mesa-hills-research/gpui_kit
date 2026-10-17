@@ -1,5 +1,6 @@
 mod fields;
 mod group;
+mod group_view;
 mod item;
 mod page;
 mod settings;

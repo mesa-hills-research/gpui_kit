@@ -454,24 +454,26 @@ impl SettingsStory {
                 .resettable(resettable)
                 .icon(Icon::new(IconName::Info))
                 .group(
-                    SettingGroup::new().item(SettingItem::render(|_options, _, cx| {
-                        v_flex()
-                            .gap_3()
-                            .w_full()
-                            .items_center()
-                            .justify_center()
-                            .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
-                            .child("GPUI Component")
-                            .child(
-                                Label::new(
-                                    "Rust GUI components for building fantastic cross-platform \
+                    SettingGroup::new()
+                        .key(0)
+                        .item(SettingItem::render(|_options, _, cx| {
+                            v_flex()
+                                .gap_3()
+                                .w_full()
+                                .items_center()
+                                .justify_center()
+                                .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
+                                .child("GPUI Component")
+                                .child(
+                                    Label::new(
+                                        "Rust GUI components for building fantastic cross-platform \
                                     desktop application by using GPUI.",
+                                    )
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground),
                                 )
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground),
-                            )
-                            .into_any()
-                    })),
+                                .into_any()
+                        })),
                 )
                 .group(SettingGroup::new().title("Links").items(vec![
                         SettingItem::new(

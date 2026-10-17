@@ -215,6 +215,24 @@ SettingGroup::new()
     .footer(|_, _| "Changes apply to this device only.")
 ```
 
+### 独立缓存分组
+
+使用 `SettingGroup::key(u64)` 可在内容未变化时复用分组的布局和绘制结果。
+传入版本号，或对影响内容、样式及回调的所有应用状态计算哈希。
+Input 等拥有 Entity 状态的控件仍会在状态发出通知时重新绘制。
+搜索、可用宽度、控件尺寸、分组样式及主题变化会自动刷新受影响的分组。
+
+```rust
+SettingGroup::new()
+    .key(preferences_revision)
+    .title("Editing")
+    .items(editing_items)
+```
+
+此 key 表示内容版本，并非分组标识。移动或替换分组时，应更改对应位置的 key。
+未设置 key 的分组保持原有行为，随所在页面一起重新渲染。
+编辑期间请保持页面和分组顺序稳定，以保留控件的 keyed state。
+
 ## Setting Item
 
 ### 基础设置项

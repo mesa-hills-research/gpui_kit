@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, Entity, InteractiveElement as _, IntoElement, ListAlignment, ListOffset,
-    ListState, ParentElement as _, SharedString, StyleRefinement, Styled, Window, div, list,
-    prelude::FluentBuilder as _, px,
+    ListState, ParentElement as _, Pixels, SharedString, StyleRefinement, Styled, Window, div,
+    list, prelude::FluentBuilder as _, px,
 };
 use rust_i18n::t;
 
@@ -13,7 +13,7 @@ use crate::{
     h_flex,
     label::Label,
     scroll::ScrollableElement,
-    setting::{RenderOptions, SettingGroup, settings::SettingsState},
+    setting::{RenderOptions, SettingGroup, group_view::GroupView, settings::SettingsState},
     v_flex,
 };
 
@@ -124,13 +124,14 @@ impl SettingPage {
 
     pub(super) fn render(
         &self,
-        ix: usize,
         group_indices: &[usize],
         state: &Entity<SettingsState>,
         options: &RenderOptions,
+        width: Pixels,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
+        let ix = options.page_ix();
         let search_input = state.read(cx).search_input.clone();
         let query = search_input.read(cx).value();
         let groups = group_indices
@@ -138,6 +139,8 @@ impl SettingPage {
             .map(|&ix| (ix, self.groups[ix].clone()))
             .collect::<Vec<_>>();
         let groups_count = groups.len();
+        let settings_id = state.entity_id();
+        let width = (width - window.rem_size() * 2.).max(px(0.));
 
         let page_state = window.use_keyed_state(
             SharedString::from(format!("list-state:{}", ix)),
@@ -237,15 +240,33 @@ impl SettingPage {
                             let options = *options;
                             move |visible_ix, window, cx| {
                                 let (group_ix, group) = groups[visible_ix].clone();
-                                group
-                                    .py_4()
-                                    .render(
-                                        &query,
-                                        &options.with_page_ix(ix).with_group_ix(group_ix),
-                                        window,
-                                        cx,
-                                    )
-                                    .into_any_element()
+                                let options = options.with_page_ix(ix).with_group_ix(group_ix);
+                                if group.key.is_none() {
+                                    return group
+                                        .py_4()
+                                        .render(&query, &options, window, cx)
+                                        .into_any_element();
+                                }
+                                let rem = window.rem_size();
+                                let view = window.use_keyed_state(
+                                    SharedString::from(format!(
+                                        "settings-group-{settings_id}-{ix}-{group_ix}"
+                                    )),
+                                    cx,
+                                    |_, _| {
+                                        GroupView::new(
+                                            group.clone(),
+                                            query.clone(),
+                                            options,
+                                            width,
+                                            rem,
+                                        )
+                                    },
+                                );
+                                view.update(cx, |view, cx| {
+                                    view.update(group, query.clone(), options, width, rem, cx);
+                                });
+                                GroupView::element(view, window, cx)
                             }
                         })
                         .size_full(),

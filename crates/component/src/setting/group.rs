@@ -19,6 +19,7 @@ pub struct SettingGroup {
     style: StyleRefinement,
     footer: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>>,
     variant: Option<GroupBoxVariant>,
+    pub(super) key: Option<u64>,
 
     pub(super) title: Option<SharedString>,
     pub(super) description: Option<SharedString>,
@@ -38,10 +39,25 @@ impl SettingGroup {
             style: StyleRefinement::default(),
             footer: None,
             variant: None,
+            key: None,
             title: None,
             description: None,
             items: Vec::new(),
         }
+    }
+
+    /// Cache this group's rendered content until the supplied revision changes.
+    ///
+    /// Include every application value that affects the group's content, style or
+    /// callbacks in the key. Entity-backed controls still redraw when they notify.
+    /// Search, layout and theme changes invalidate the cache automatically.
+    /// Groups without a key keep rendering with their containing page.
+    ///
+    /// The key is a revision, not an identity. When reordering or replacing groups,
+    /// change the keys at the affected positions, even if their values look alike.
+    pub fn key(mut self, key: u64) -> Self {
+        self.key = Some(key);
+        self
     }
 
     /// Set the label of the setting group, default is None.

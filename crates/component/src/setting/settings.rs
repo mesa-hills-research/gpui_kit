@@ -114,6 +114,7 @@ impl Settings {
         state: &Entity<SettingsState>,
         filter: &SettingsFilter,
         options: &RenderOptions,
+        width: Pixels,
         window: &mut Window,
         cx: &mut App,
     ) -> gpui::AnyElement {
@@ -122,7 +123,14 @@ impl Settings {
             && !filter.groups[page_ix].is_empty()
         {
             return page
-                .render(page_ix, &filter.groups[page_ix], state, options, window, cx)
+                .render(
+                    &filter.groups[page_ix],
+                    state,
+                    &options.with_page_ix(page_ix),
+                    width,
+                    window,
+                    cx,
+                )
                 .into_any_element();
         }
 
@@ -279,7 +287,7 @@ pub(super) struct SettingsState {
 /// ```ignore
 /// item.render_item(&options.with_item_ix(item_ix), window, cx)
 /// ```
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RenderOptions {
     page_ix: usize,
     group_ix: usize,
@@ -427,7 +435,7 @@ impl RenderOnce for Settings {
                     } else {
                         Axis::Horizontal
                     });
-                    self.render_active_page(&state, &filter, &options, window, cx)
+                    self.render_active_page(&state, &filter, &options, size.width, window, cx)
                 })),
             )
     }
@@ -436,3 +444,11 @@ impl RenderOnce for Settings {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "performance_tests.rs"]
+mod performance_tests;
+
+#[cfg(test)]
+#[path = "cache_tests.rs"]
+mod cache_tests;
