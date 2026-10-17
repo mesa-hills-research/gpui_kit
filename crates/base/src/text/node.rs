@@ -1828,8 +1828,8 @@ struct CappedCode {
     /// The [`CodeBlockHighlights::id`] of the highlights of the whole code,
     /// and those highlights cut to the lines.
     highlights: Option<(u64, CodeBlockHighlights)>,
-    /// The code highlighted for the lines: them and a few after, so that
-    /// what follows the cut can't change how they read.
+    /// The code highlighted for the lines, which is them and a few after, so
+    /// that what follows the cut can't change how they read.
     highlighted: CodeBlock,
 }
 
@@ -1852,16 +1852,16 @@ struct CachedCodeBlockHighlights {
 /// highlighter again.
 static HIGHLIGHTS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// Has every code block ask its highlighter again, and repaints the windows:
-/// for a highlighter whose highlights changed although it's the same
+/// Has every code block ask its highlighter again, and repaints the windows.
+/// Call it when a highlighter's highlights changed although it's the same
 /// highlighter, such as one that can now highlight a language it couldn't.
 pub fn refresh_code_block_highlights(cx: &mut App) {
     HIGHLIGHTS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     cx.refresh_windows();
 }
 
-/// The syntax highlights of a [`CodeBlock`]: byte ranges of
-/// [`CodeBlock::code`] in order, with their styles.
+/// The syntax highlights of a [`CodeBlock`], byte ranges of
+/// [`CodeBlock::code`] in order with their styles.
 ///
 /// Cloning shares the ranges rather than copying them, so a highlighter can
 /// keep the highlights it hands out and extend them as a block streams in,
@@ -1899,7 +1899,7 @@ impl CodeBlockHighlights {
 
     /// Highlights that share `ranges` with the highlighter that made them.
     ///
-    /// The highlighter can change them later through [`Arc::make_mut`]: the
+    /// The highlighter can change them later through [`Arc::make_mut`]. The
     /// highlights of a code block are dropped with the block, so the ranges
     /// are usually its alone again by the time the block has grown.
     pub fn shared(ranges: Arc<Vec<(Range<usize>, HighlightStyle)>>) -> Self {
@@ -1913,7 +1913,7 @@ impl CodeBlockHighlights {
     }
 
     /// Marks these highlights as what a highlighter has while it works on
-    /// newer ones, in the background: `ready` completes when they can be
+    /// newer ones in the background, and `ready` completes when they can be
     /// had. A code block shows these meanwhile, then asks its highlighter
     /// again and repaints. A highlighter that hands these out must not
     /// block, and should cover the part of the code it has highlighted.
@@ -2009,10 +2009,11 @@ impl CodeBlock {
             .unwrap_or_default()
     }
 
-    /// Whether text appended to the document can no longer change the code:
-    /// its fence closed, something follows it, or the document was marked
-    /// finished. A highlighter can highlight a complete block once more, from
-    /// scratch, where it highlighted it bit by bit as it streamed in.
+    /// Whether text appended to the document can no longer change the code,
+    /// because its fence closed, something follows it, or the document was
+    /// marked finished. A highlighter can highlight a complete block once
+    /// more, from scratch, where it highlighted it bit by bit as it streamed
+    /// in.
     pub fn is_complete(&self) -> bool {
         self.complete
     }
@@ -2115,7 +2116,7 @@ impl CodeBlock {
     }
 
     /// For `styles` the highlighter is still working on, kept until it says
-    /// newer ones can be had: drops them then, and has the view of `window`
+    /// newer ones can be had, drops them then and has the view of `window`
     /// that showed them repaint and ask again.
     fn ask_again_when_ready(&self, styles: &CodeBlockHighlights, window: &Window, cx: &mut App) {
         if let Some(ready) = styles.take_ready() {
@@ -2221,8 +2222,8 @@ impl CodeBlock {
         cut
     }
 
-    /// The styles the code renders with this frame: the highlights as they
-    /// are kept, unless streamed text is fading in.
+    /// The styles the code renders with this frame, which are the highlights
+    /// as they are kept unless streamed text is fading in.
     fn inline_styles(
         &self,
         node_cx: &NodeContext,
@@ -2274,9 +2275,10 @@ impl CodeBlock {
         text
     }
 
-    /// Where a selection of `code` that ends at `end` is copied to: the end
-    /// of the code when only its first lines are shown and the selection
-    /// reaches past the last of them, as the reader can't select the rest.
+    /// Where a selection of `code` that ends at `end` is copied to. That's
+    /// the end of the code when only its first lines are shown and the
+    /// selection reaches past the last of them, as the reader can't select
+    /// the rest.
     fn copied_end(&self, code: &SharedString, end: usize) -> usize {
         let capped_len = self.capped.lock().ok().and_then(|capped| {
             capped
@@ -4563,8 +4565,9 @@ mod tests {
         assert!(!highlighted.is_complete());
     }
 
-    /// A long block's highlighting costs what its shown lines cost: a view
-    /// that caps it asks its highlighter for the first lines and the margin.
+    /// A long block's highlighting costs what its shown lines cost, because
+    /// a view that caps it asks its highlighter for the first lines and the
+    /// margin.
     #[gpui::test]
     fn a_capped_code_block_asks_for_the_highlights_of_its_first_lines(
         cx: &mut gpui::TestAppContext,

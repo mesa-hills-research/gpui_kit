@@ -929,7 +929,7 @@ fn new_span(pos: Option<markdown::unist::Position>, cx: &NodeContext) -> Option<
 }
 
 /// Whether text appended to `source` can no longer change the code block at
-/// `position`: its fence closed, or text follows it.
+/// `position`, because its fence closed or text follows it.
 fn code_is_complete(source: &str, position: &markdown::unist::Position) -> bool {
     let block = &source[position.start.offset..position.end.offset];
     if !source[position.end.offset..].trim().is_empty() {

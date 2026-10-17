@@ -111,7 +111,7 @@ pub(super) fn combine_highlights(
 /// The highlights of a node lie past those of the nodes before it, so they
 /// are combined among themselves and appended. Combining every node's with
 /// all of the paragraph's so far took time in proportion to the square of
-/// the paragraph's length: tens of milliseconds a frame for a long one.
+/// the paragraph's length, tens of milliseconds a frame for a long one.
 pub(super) fn append_highlights(
     highlights: &mut Vec<(Range<usize>, InlineHighlight)>,
     next: Vec<(Range<usize>, InlineHighlight)>,
@@ -220,7 +220,7 @@ fn runs_from<'a>(
     runs
 }
 
-/// `plain` with `style` over it, `len` bytes long: the run of
+/// `plain` with `style` over it, `len` bytes long. This is the run of
 /// `TextStyle::highlight(style).to_run(len)` for the text style `plain` was
 /// made of, without copying the whole text style for every highlight.
 fn highlighted_run(plain: &TextRun, style: &HighlightStyle, len: usize) -> TextRun {
@@ -380,8 +380,8 @@ struct RetainedLayout {
     runs: Vec<TextRun>,
     text_style: TextStyle,
     /// The [`CodeBlockHighlights::id`] the runs were built from, when they
-    /// were built from a code block's highlights: those are recognized by it
-    /// next frame, without building the runs again to compare them.
+    /// were built from a code block's highlights. Next frame those are
+    /// recognized by it, without building the runs again to compare them.
     code_highlights: Option<u64>,
 }
 
@@ -2722,7 +2722,7 @@ mod retained_layout_tests {
 
     /// A streamed block is a new state with every chunk, so each chunk left
     /// the layout of the whole block before it behind, until four thousand
-    /// had piled up: gigabytes for a long code block.
+    /// had piled up, gigabytes for a long code block.
     #[gpui::test]
     fn a_streamed_block_does_not_keep_a_layout_per_chunk(cx: &mut TestAppContext) {
         cx.update(crate::init);

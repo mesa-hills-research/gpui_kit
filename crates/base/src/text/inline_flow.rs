@@ -1317,7 +1317,7 @@ fn next_wrap(
 ///
 /// A line is wrapped from the fragments that follow its start, and copying
 /// all of them for every line took time in proportion to the number of lines
-/// times the number of fragments: most of a long paragraph's layout.
+/// times the number of fragments, most of a long paragraph's layout.
 struct FragmentCursor<'f, 'a> {
     fragments: &'f [WrapLineFragment<'a>],
     /// The fragment the last line started in, and the bytes before it.
@@ -1704,8 +1704,9 @@ fn centered_baseline(shaped_line: &ShapedLine, line_height: Pixels) -> Pixels {
 }
 
 /// [`slice_ranges`] for ranges in order and apart from one another, as an
-/// item's highlights and links are: it starts at the first one that reaches
-/// `start` and stops at `end`, where `slice_ranges` looks at every one.
+/// item's highlights and links are. It starts at the first one that
+/// reaches `start` and stops at `end`, where `slice_ranges` looks at every
+/// one.
 fn slice_sorted_ranges<T, U>(
     ranges: &[(Range<usize>, T)],
     start: usize,

@@ -353,7 +353,7 @@ impl TextView {
     /// Show at most `lines` lines of each code block.
     ///
     /// For long code blocks shown in part until the reader asks for all of
-    /// them, such as in a chat transcript: the lines past the cap are neither
+    /// them, such as in a chat transcript. The lines past the cap are neither
     /// laid out nor highlighted on screen, so a long block costs what its
     /// shown lines cost. [`CodeBlock::code`] stays the whole code, for a copy
     /// button or a line count.
@@ -365,7 +365,7 @@ impl TextView {
     /// A selection that reaches past the last line shown copies the whole
     /// code, and one that ends within the shown lines copies to where it ends.
     /// Range highlights and reveals in the lines past the cap don't show.
-    /// To reveal a find result there, expand the block first: its line in
+    /// To reveal a find result there, expand the block first. Its line in
     /// the block is the number of newlines before it in the block's text.
     pub fn code_block_max_lines(mut self, lines: usize) -> Self {
         self.code_block_max_lines = Some(lines);

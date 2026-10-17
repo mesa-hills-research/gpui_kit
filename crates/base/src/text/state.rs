@@ -206,7 +206,7 @@ struct BlockRange {
     /// The document's `full_update_revision` and `committed_revision` the
     /// view last took its blocks at, and whether those blocks were complete.
     synced: Option<(usize, usize, bool)>,
-    /// The document's source length then: where text it appended starts.
+    /// The document's source length then, where text it appended starts.
     synced_len: usize,
     _observe: Subscription,
 }
@@ -245,7 +245,7 @@ pub enum TextBlockContent {
     Other,
 }
 
-/// A top-level block of a document: what a long document is split into to
+/// A top-level block of a document. A long document is split into these to
 /// show it as rows of a list, each a [`TextViewState::block_range`] view.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextBlock {
@@ -280,7 +280,7 @@ impl TextBlock {
     }
 
     /// Whether appending text to the document can no longer change the
-    /// block: true of every block but the last.
+    /// block, which is true of every block but the last.
     pub fn is_complete(&self) -> bool {
         self.is_complete
     }
@@ -382,8 +382,8 @@ impl TextViewState {
     }
 
     /// A view of the top-level blocks `blocks` of `document` (by index, see
-    /// [`Self::blocks`]), which keeps parsing the text: one row of a long
-    /// document shown as a list of rows.
+    /// [`Self::blocks`]), which keeps parsing the text. Such a view is one
+    /// row of a long document shown as a list of rows.
     ///
     /// Only the rows a list lays out are built, so a long streamed answer
     /// costs what its visible rows cost. Each view selects on its own, and a
@@ -440,7 +440,7 @@ impl TextViewState {
     }
 
     /// The top-level blocks the view shows from the document's block
-    /// `index` on: [`Self::blocks`] without the ones before it.
+    /// `index` on, which is [`Self::blocks`] without the ones before it.
     pub fn blocks_from(&self, index: usize) -> Vec<TextBlock> {
         let blocks = &self.parsed_content.document.blocks;
         let first = self.block_range_start();
@@ -475,13 +475,14 @@ impl TextViewState {
         self.parsed_content.document.blocks.len()
     }
 
-    /// Marks the text finished: nothing more will be appended, so the last
+    /// Marks the text finished. Nothing more will be appended, so the last
     /// block is complete too, and a [`Self::block_range`] view of it is left
     /// alone from then on like the others. Appending text, or setting text
     /// that replaces it, opens it again.
     ///
     /// Text given just before, in the same frame or the same update, is
-    /// parsed first: the last block counts as complete once that parse lands.
+    /// parsed first, and the last block counts as complete once that parse
+    /// lands.
     pub fn finish(&mut self, cx: &mut Context<Self>) {
         if self.finished.is_some() {
             return;
@@ -498,8 +499,8 @@ impl TextViewState {
             .is_some_and(|revision| self.landed_revision >= revision)
     }
 
-    /// Marks the code blocks of the last block complete, once the text is
-    /// finished and parsed: a code block left open can't grow either.
+    /// Marks the code blocks of the last block complete once the text is
+    /// finished and parsed, as a code block left open can't grow either.
     fn mark_last_block_complete(&mut self) {
         if self.is_finished_and_parsed()
             && self.block_range.is_none()
@@ -699,7 +700,7 @@ impl TextViewState {
     ///
     /// Text that differs from the current text only in the spaces, tabs and
     /// line breaks before its first line or after its last, such as the
-    /// current text trimmed, shows the same and leaves the view as it is: the
+    /// current text trimmed, shows the same and leaves the view as it is. The
     /// blocks keep their [`TextBlockId`]s, views of them aren't touched, and
     /// the selection stays. The view keeps the current text, so a code block
     /// left open at its end keeps the blank lines it ends with.
@@ -755,8 +756,9 @@ impl TextViewState {
 
     /// Append partial text content to the existing text.
     ///
-    /// Push text to the document of a [`Self::block_range`] view, not to the
-    /// view: the view stops following its document and shows the text.
+    /// Push text to the document of a [`Self::block_range`] view rather than
+    /// to the view, which would stop following its document and show the
+    /// text.
     pub fn push_str(&mut self, new_text: &str, cx: &mut Context<Self>) {
         if new_text.is_empty() {
             return;
@@ -788,8 +790,8 @@ impl TextViewState {
     ///
     /// A [`TextView`](crate::text::TextView) given extensions or plugins sets
     /// its state's every frame. For a document shown as
-    /// [`Self::block_range`] views, set them on the document: the views parse
-    /// nothing and render with their document's.
+    /// [`Self::block_range`] views, set them on the document, as the views
+    /// parse nothing and render with their document's.
     pub fn markdown_extensions(mut self, extensions: impl Into<Arc<MarkdownExtensions>>) -> Self {
         let extensions = extensions.into();
         if self.block_range.is_some()
@@ -881,7 +883,7 @@ impl TextViewState {
         self.parsed_content.document.selected_source_range()
     }
 
-    /// The copy group of a [`Self::block_range`] view: the views of one
+    /// The copy group of a [`Self::block_range`] view. The views of one
     /// document copy as one view of it would, their blocks apart as blocks
     /// are within a view.
     pub(super) fn copy_group(&self) -> Option<crate::TextSelectionCopyGroup> {
@@ -912,8 +914,8 @@ impl TextViewState {
         }
     }
 
-    /// The range of the source the view shows: all of it, or the blocks of a
-    /// [`Self::block_range`] view.
+    /// The range of the source the view shows, which is all of it, or the
+    /// blocks of a [`Self::block_range`] view.
     fn shown_source_range(&self) -> Range<usize> {
         let source = self.source();
         if self.block_range.is_none() {
@@ -1755,8 +1757,8 @@ enum ParseMode {
 }
 
 /// Whether `new` is `old` with other whitespace before its first line or
-/// after its last, which shows the same. The first line's indentation counts:
-/// four spaces make it code.
+/// after its last, which shows the same. The first line's indentation
+/// counts, as four spaces make it code.
 ///
 /// Only spaces, tabs and line endings count, as in a Markdown blank line.
 /// Another space, such as an ideographic or a no-break space, makes a line
@@ -3169,8 +3171,8 @@ mod tests {
         }
 
         /// A chat feed often ends a reply in the frame its last chunk arrives,
-        /// before that chunk is parsed: the last chunk, the reply's text
-        /// trimmed, and the end, in one update or in three.
+        /// before that chunk is parsed. It hands over the last chunk, the
+        /// reply's text trimmed and the end, in one update or in three.
         #[gpui::test]
         fn finishing_before_the_last_chunk_is_parsed_keeps_the_chunk(cx: &mut TestAppContext) {
             let answer = "Here is the plan.\n\n- one\n- two\n\nDone, and the last words.\n";
@@ -3335,8 +3337,8 @@ mod tests {
             }
         }
 
-        /// A message shown as one view, then two answers shown as rows:
-        /// copied as Markdown, each stays apart from the next as a paragraph.
+        /// A message shown as one view, then two answers shown as rows. Copied
+        /// as Markdown, each stays apart from the next as a paragraph.
         #[gpui::test]
         fn rows_copy_apart_from_the_text_around_them(cx: &mut TestAppContext) {
             let message = document("What is the plan?", cx);
