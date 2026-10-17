@@ -2594,7 +2594,7 @@
       "source": "story",
       "name": "writing",
       "classification": "infrastructure",
-      "explanation": "The Writing story drives gpui-kit-writing's dictionary and learned word suggestions through a TextEditor; the crate supplies a SpellChecker and a SuggestionProvider, not a catalog constructor."
+      "explanation": "The Writing story drives gpui-kit-writing's dictionary and learned word suggestions through a TextEditor. The crate supplies a SpellChecker and a SuggestionProvider rather than a catalog constructor."
     },
     {
       "source": "ui",
