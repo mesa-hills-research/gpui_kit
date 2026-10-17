@@ -97,7 +97,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Loading indicators at 30 frames a second** (`gpui-component`). Spinner, Skeleton, the loading
   Progress and ProgressCircle, ShimmerText and loading Markers draw at most
   `LOADING_ANIMATION_MAX_FPS` (30) frames a second, so an indicator left up through a long request
-  does not keep the window drawing at the display's full rate.
+  does not keep the window drawing at the display's full rate. Several indicators draw in the same
+  frames, so a window showing three draws 30 frames a second, not 90.
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.

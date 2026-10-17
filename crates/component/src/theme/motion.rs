@@ -162,6 +162,17 @@ mod tests {
             let renders = renders_in_a_second(1, Duration::ZERO, cx);
             assert!((29..=31).contains(&renders), "{renders} frames in a second");
         }
+
+        /// Indicators started at different times draw in the same frames, so
+        /// the window draws 30 frames a second however many it shows.
+        #[gpui::test]
+        fn loading_indicators_started_apart_draw_in_the_same_frames(cx: &mut TestAppContext) {
+            let renders = renders_in_a_second(3, Duration::from_millis(13), cx);
+            assert!(
+                (29..=31).contains(&renders),
+                "{renders} frames in a second for three spinners"
+            );
+        }
     }
 
     #[test]
