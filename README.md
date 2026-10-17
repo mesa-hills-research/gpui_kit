@@ -41,6 +41,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   operators, text objects, registers and command line. See
   [Textarea: keybindings](website/component/textarea.md#keybindings), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
+- **Inline reference tooltips** (`gpui-component`). `InputToken::tooltip` shows extra context
+  on hover, with the same delay and dismissal as other component tooltips. See
+  [Input](website/component/input.md#show-a-tooltip-or-preview-on-hover).
 - **Selectable highlights** (`gpui-base`). `SelectableText::highlights` styles byte ranges
   while keeping the text selectable and copyable. See
   [Text Selection](website/base/text-selection.md#selectable-highlighted-text).

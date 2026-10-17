@@ -1,8 +1,11 @@
 use super::InlineTokenContext;
-use crate::{ActiveTheme as _, Icon, StyledExt as _};
+use crate::{
+    ActiveTheme as _, Icon, StyledExt as _,
+    tooltip::{ManagedTooltipExt as _, Tooltip},
+};
 use gpui::{
-    App, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce, StyleRefinement,
-    Styled, Window, div, prelude::FluentBuilder as _,
+    App, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce, SharedString,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
 };
 
 /// The element an [`InlineToken`](super::InlineToken) renders as by default. Editing
@@ -11,6 +14,7 @@ use gpui::{
 pub struct InputToken {
     context: InlineTokenContext,
     icon: Option<Icon>,
+    tooltip: Option<SharedString>,
     style: StyleRefinement,
 }
 impl InputToken {
@@ -18,11 +22,19 @@ impl InputToken {
         Self {
             context: context.clone(),
             icon: None,
+            tooltip: None,
             style: Default::default(),
         }
     }
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.icon = Some(icon.into());
+        self
+    }
+
+    /// Shows extra context on hover, such as a reference's full path.
+    /// Disabled tokens do not show tooltips. Readonly tokens do.
+    pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.tooltip = Some(tooltip.into());
         self
     }
 }
@@ -65,5 +77,85 @@ impl RenderOnce for InputToken {
                     .child(self.context.token().label().clone()),
             )
             .refine_style(&self.style)
+            .when_some(
+                self.tooltip.filter(|_| !self.context.is_disabled()),
+                |this, tooltip| {
+                    this.managed_tooltip(move |window, cx| {
+                        Tooltip::new(tooltip.clone()).build(window, cx)
+                    })
+                },
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::{InlineToken, Input, InputState};
+    use gpui::{AppContext as _, Context, Entity, Modifiers, Render, TestAppContext, px};
+    use std::time::Duration;
+
+    struct TokenField {
+        input: Entity<InputState>,
+        disabled: bool,
+        readonly: bool,
+    }
+
+    impl Render for TokenField {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().p_4().child(
+                Input::new(&self.input)
+                    .disabled(self.disabled)
+                    .readonly(self.readonly)
+                    .token(|context, _, _| {
+                        let token = InputToken::new(context);
+                        assert!(token.tooltip.is_none());
+                        let token = token.tooltip("Open the project notes");
+                        assert_eq!(token.tooltip.as_deref(), Some("Open the project notes"));
+                        div().debug_selector(|| "reference".into()).child(token)
+                    }),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn token_tooltips_follow_hover_and_disabled_state(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        for (disabled, readonly) in [(false, false), (false, true), (true, false)] {
+            let (_, cx) = cx.add_window_view(|window, cx| {
+                let input = cx.new(|cx| {
+                    let mut input = InputState::new(window, cx);
+                    input
+                        .replace_with_token(InlineToken::new("notes", "notes.md"), window, cx)
+                        .unwrap();
+                    input
+                });
+                let content = cx.new(|_| TokenField {
+                    input,
+                    disabled,
+                    readonly,
+                });
+                crate::Root::new(content, window, cx)
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            let bounds = cx.debug_bounds("reference").expect("the token is drawn");
+            cx.simulate_mouse_move(bounds.center(), None, Modifiers::default());
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_secs(2));
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            assert_eq!(cx.debug_bounds("tooltip").is_some(), !disabled);
+
+            cx.simulate_mouse_move(gpui::point(px(0.), px(0.)), None, Modifiers::default());
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_secs(2));
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            assert!(cx.debug_bounds("tooltip").is_none());
+        }
     }
 }

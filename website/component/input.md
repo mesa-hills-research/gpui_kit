@@ -440,6 +440,18 @@ for the reference, such as "Open file".
 
 ### Show a tooltip or preview on hover
 
+For a short explanation, set `InputToken::tooltip` in the token renderer. It uses
+the standard delayed tooltip and dismisses when the pointer leaves or the token
+disappears. Readonly tokens show it, while disabled tokens keep it hidden.
+
+```rust
+Input::new(&input).token(|token, _, _| {
+    InputToken::new(token)
+        .icon(IconName::File)
+        .tooltip("Project notes in docs/notes.md")
+});
+```
+
 Use `on_token_hover` to react to pointer presence without changing the document.
 Hover never selects or edits; it reports entry and exit so the application can
 show a tooltip, preview, or status detail:

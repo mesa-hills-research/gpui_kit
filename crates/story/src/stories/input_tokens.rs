@@ -219,7 +219,12 @@ impl TokenExample {
     fn token(token: &InlineTokenContext) -> InputToken {
         let reference = Reference::of(token.token());
         InputToken::new(token).when_some(reference, |element, reference| {
-            element.icon(reference.icon())
+            element.icon(reference.icon()).tooltip(match reference {
+                Reference::Command => "Commit changes and open a pull request",
+                Reference::Image => "Open the attached image",
+                Reference::Skill => "GPUI Kit component guidance",
+                Reference::Person => "Alice from the design team",
+            })
         })
     }
 

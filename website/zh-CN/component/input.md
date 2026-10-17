@@ -370,6 +370,17 @@ Input::new(&input)
 
 ### 悬停显示提示或预览
 
+简短说明可以在 token renderer 中通过 `InputToken::tooltip` 设置。它使用标准的延迟提示，
+指针离开或 token 消失时自动关闭。只读 token 会显示提示，禁用 token 则隐藏提示。
+
+```rust
+Input::new(&input).token(|token, _, _| {
+    InputToken::new(token)
+        .icon(IconName::File)
+        .tooltip("docs/notes.md 中的项目笔记")
+});
+```
+
 使用 `on_token_hover` 响应指针悬停，不改变文档内容。悬停不会选中或编辑，只报告进入与离开，应用据此显示 tooltip、预览或状态详情：
 
 ```rust

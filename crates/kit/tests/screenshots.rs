@@ -8,8 +8,8 @@ use std::{borrow::Cow, cell::RefCell, rc::Rc, time::Duration};
 
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, FontWeight,
-    InputEvent as _, IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
-    ParentElement as _, Render, Result, SharedString, Styled as _, Task, Window,
+    InputEvent as _, InteractiveElement as _, IntoElement, Modifiers, MouseButton, MouseDownEvent,
+    MouseUpEvent, ParentElement as _, Render, Result, SharedString, Styled as _, Task, Window,
     assets::Assets,
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Sizable as _, Theme, ThemeMode,
@@ -79,6 +79,57 @@ fn page(cx: &App) -> gpui_kit::Div {
         .flex()
         .flex_col()
         .gap_3()
+}
+
+struct TokenTooltip(Entity<InputState>);
+
+impl Render for TokenTooltip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(Input::new(&self.0).token(|context, _, _| {
+            div().id("reference").child(
+                gpui_kit::component::input::InputToken::new(context)
+                    .icon(IconName::File)
+                    .tooltip("Project notes in docs/notes.md"),
+            )
+        }))
+    }
+}
+
+#[test]
+fn input_token_tooltip() {
+    for (mode, name) in [
+        (ThemeMode::Light, "input-token-tooltip"),
+        (ThemeMode::Dark, "input-token-tooltip-dark"),
+    ] {
+        let mut app = app(mode);
+        app.update(|cx| cx.set_reduce_motion(true));
+        let window = open(&mut app, (360., 150.), SCALE, |window, cx| {
+            TokenTooltip(cx.new(|cx| {
+                let mut input = InputState::new(window, cx);
+                input
+                    .replace_with_token(
+                        gpui_kit::component::input::InlineToken::new("notes", "notes.md"),
+                        window,
+                        cx,
+                    )
+                    .unwrap();
+                input
+            }))
+        });
+        act(&mut app, window, |window, cx| {
+            window.dispatch_event(
+                gpui_kit::MouseMoveEvent {
+                    position: gpui_kit::point(px(60.), px(30.)),
+                    pressed_button: None,
+                    modifiers: Modifiers::default(),
+                }
+                .to_platform_input(),
+                cx,
+            );
+        });
+        app.advance_clock(Duration::from_secs(2));
+        goldens().assert(name, &app.capture(window).unwrap());
+    }
 }
 
 struct SelectableHighlights;
