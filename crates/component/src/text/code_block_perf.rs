@@ -341,3 +341,33 @@ fn memory_of_kept_blocks() {
         resident_mb()
     );
 }
+
+/// What a theme switch costs a 200 KB block highlighted in the background:
+/// the call that asks for its highlights in the new theme.
+#[gpui::test]
+#[ignore = "timing harness, run by hand in release"]
+fn theme_change_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{Waiter, highlight_code_block};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let (light, dark) = (
+        HighlightTheme::default_light(),
+        HighlightTheme::default_dark(),
+    );
+    println!("| language | block | spans | switch |");
+    println!("|---|---:|---:|---:|");
+    for lang in STREAMED {
+        let code = SharedString::from(prefix(&generated_code(lang, 200), 200 * 1024).to_string());
+        // The language and those it injects compile, then the code is
+        // highlighted.
+        for _ in 0..4 {
+            highlight_code_block(lang, &code, true, &light, Some(&waiter));
+            cx.run_until_parked();
+        }
+        let start = Instant::now();
+        let styles = highlight_code_block(lang, &code, true, &dark, Some(&waiter));
+        let switched = start.elapsed();
+        assert!(!styles.is_pending());
+        println!("| {lang} | 200 KB | {} | {switched:.2?} |", styles.len());
+    }
+}

@@ -865,6 +865,36 @@ fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
     );
 }
 
+/// A theme switch recolors a block highlighted in the background in the
+/// frame it's asked for, rather than showing the previous theme's colors on
+/// the new background until a task is done.
+#[gpui::test]
+fn a_theme_switch_recolors_a_block_at_once(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let (dark, light) = (
+        HighlightTheme::default_dark(),
+        HighlightTheme::default_light(),
+    );
+    compiled_language("json").unwrap();
+    let code = SharedString::from("{\"theme\": [1, true, \"two\"]}\n");
+    highlight_code_block("json", &code, true, &dark, Some(&waiter));
+    cx.run_until_parked();
+    let in_dark = highlight_code_block("json", &code, true, &dark, Some(&waiter));
+    assert!(!in_dark.is_pending());
+
+    let in_light = highlight_code_block("json", &code, true, &light, Some(&waiter));
+    assert!(!in_light.is_pending());
+    assert_ne!(in_light.to_vec(), in_dark.to_vec());
+    assert_eq!(
+        per_byte(code.len(), &in_light),
+        from_scratch("json", &code, &light)
+    );
+    let job = background_job(&code);
+    assert_eq!(job.lock().unwrap().highlighter.as_ref().unwrap().parses, 1);
+}
+
 /// An application can register a language at any time, such as when it
 /// loads a grammar the first time a block needs it.
 #[gpui::test]

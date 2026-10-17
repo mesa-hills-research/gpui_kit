@@ -1173,16 +1173,40 @@ struct Done {
 }
 
 impl BlockJob {
-    /// Whether the highlights made last are the ones asked for.
-    fn is_up_to_date(&self) -> bool {
+    /// Whether the highlights made last are of the code asked for, in
+    /// whichever theme.
+    fn is_current(&self) -> bool {
         self.done.as_ref().is_some_and(|done| {
             done.code == self.wanted
-                && Arc::ptr_eq(&done.theme, &self.theme)
                 && (done.from_scratch || !self.complete)
                 && done
                     .layers_pending
                     .is_none_or(|pending_at| pending_at == ready_generation())
         })
+    }
+
+    /// Whether the highlights made last are the ones asked for.
+    fn is_up_to_date(&self) -> bool {
+        self.is_current()
+            && self
+                .done
+                .as_ref()
+                .is_some_and(|done| Arc::ptr_eq(&done.theme, &self.theme))
+    }
+
+    /// The highlights made last in the theme asked for, when only the theme
+    /// changed since and no task has the highlighter. That takes a lookup
+    /// of each stretch's colors, where a task would show the previous
+    /// theme's colors until it's done.
+    fn recolored(&mut self) -> Option<CodeBlockHighlights> {
+        if !self.is_current() {
+            return None;
+        }
+        let highlighter = self.highlighter.as_mut()?;
+        let done = self.done.as_mut()?;
+        done.styles = highlighter.styles(&self.theme);
+        done.theme = self.theme.clone();
+        Some(done.styles.clone())
     }
 }
 
@@ -1316,6 +1340,9 @@ fn highlight_in_background(
             && let Some(done) = &job.done
         {
             return done.styles.clone();
+        }
+        if let Some(styles) = job.recolored() {
+            return styles;
         }
         if !job.running {
             job.running = true;
