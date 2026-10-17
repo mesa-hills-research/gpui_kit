@@ -41,8 +41,20 @@ pub(crate) struct WindowState {
     /// its release something other than a tap: no pointer press or wheel,
     /// no loss of focus. GPUI's lone-Alt keystroke already rules out keys.
     alt_tap_pending: bool,
+    /// Whether the window gained focus moments ago: an Alt reported down
+    /// now was held from before, as in Alt+Tab, or a tiling compositor's
+    /// Alt+key to switch windows.
+    focus_just_gained: bool,
+    /// Whether the Alt down now was held when the window gained focus, so
+    /// its release is no tap. Cleared once every modifier is let go.
+    alt_held_from_before: bool,
+    _focus_just_gained: Option<gpui::Task<()>>,
     _window_activation: gpui::Subscription,
 }
+
+/// How soon after a window gains focus an Alt reported down counts as held
+/// from before.
+const ALT_HELD_FROM_BEFORE: std::time::Duration = std::time::Duration::from_millis(250);
 
 #[derive(Clone)]
 pub(crate) struct ActiveImageViewer {
@@ -105,10 +117,21 @@ impl WindowState {
             active_image_viewer: None,
             app_menu_bar: None,
             alt_tap_pending: false,
+            focus_just_gained: false,
+            alt_held_from_before: false,
+            _focus_just_gained: None,
             // Alt pressed before the window lost focus (Alt+Tab, say) is no
-            // tap when it is let go after the window gets focus back.
-            _window_activation: cx.observe_window_activation(window, |state, _, _| {
+            // tap when it is let go after the window gets focus back, nor is
+            // an Alt already held when the window gains focus.
+            _window_activation: cx.observe_window_activation(window, |state, window, cx| {
                 state.alt_tap_pending = false;
+                state.focus_just_gained = window.is_window_active();
+                state._focus_just_gained = state.focus_just_gained.then(|| {
+                    cx.spawn(async move |state, cx| {
+                        cx.background_executor().timer(ALT_HELD_FROM_BEFORE).await;
+                        _ = state.update(cx, |state, _| state.focus_just_gained = false);
+                    })
+                });
             }),
         }
     }
@@ -432,10 +455,19 @@ impl WindowState {
             || self.active_image_viewer.is_some()
     }
 
-    /// Note whether Alt alone is down; a later release of it is a tap only
-    /// while this holds.
-    fn set_alt_tap_pending(window: &mut Window, cx: &mut App, pending: bool) {
-        Self::try_update(window, cx, |state, _, _| state.alt_tap_pending = pending);
+    /// Note whether Alt alone is down. A later release of it is a tap only
+    /// while this holds, and never for an Alt held when the window gained
+    /// focus.
+    fn set_alt_tap_pending(window: &mut Window, cx: &mut App, modifiers: gpui::Modifiers) {
+        let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
+        Self::try_update(window, cx, |state, _, _| {
+            if modifiers.number_of_modifiers() == 0 {
+                state.alt_held_from_before = false;
+            } else if alt_only && !state.alt_tap_pending && state.focus_just_gained {
+                state.alt_held_from_before = true;
+            }
+            state.alt_tap_pending = alt_only && !state.alt_held_from_before;
+        });
     }
 
     pub fn open_image_viewer(
@@ -587,6 +619,10 @@ impl gpui_base::RootPlugin for WindowState {
                 if pending && let Some(bar) = Self::app_menu_bar(window, cx) {
                     bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
                 }
+                // The tap is also Alt let go: the modifier listeners, this
+                // root's and the content's, must see it (access keys stop
+                // being underlined, a text area's column cursor goes).
+                cx.propagate();
             });
             interactivity.on_key_down(|event, window, cx| {
                 let keystroke = &event.keystroke;
@@ -611,7 +647,7 @@ impl gpui_base::RootPlugin for WindowState {
             interactivity.on_modifiers_changed(|event, window, cx| {
                 let modifiers = event.modifiers;
                 let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
-                Self::set_alt_tap_pending(window, cx, alt_only);
+                Self::set_alt_tap_pending(window, cx, modifiers);
                 if let Some(bar) = Self::app_menu_bar(window, cx) {
                     bar.update(cx, |bar, cx| bar.set_alt_held(alt_only, cx));
                 }
@@ -659,9 +695,10 @@ impl RenderOnce for WindowStateLayers {
             .absolute()
             .inset_0()
             .debug_selector(|| "root-layers".to_string())
-            // A pointer press or a wheel while Alt is down (Alt+click adds a
-            // caret, Alt+drag selects a column) makes Alt's release no tap.
-            // Window listeners see these before any element can stop them.
+            // A pointer press or release or a wheel while Alt is down
+            // (Alt+click adds a caret, Alt+drag selects a column, even one
+            // begun before Alt) makes Alt's release no tap. Window listeners
+            // see these before any element can stop them.
             .when(!cfg!(target_os = "macos"), |this| {
                 let root = root.clone();
                 this.child(
@@ -678,6 +715,12 @@ impl RenderOnce for WindowStateLayers {
                             window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, cx| {
                                 if phase == gpui::DispatchPhase::Capture {
                                     on_press(cx);
+                                }
+                            });
+                            let on_release = clear.clone();
+                            window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
+                                if phase == gpui::DispatchPhase::Capture {
+                                    on_release(cx);
                                 }
                             });
                             window.on_mouse_event(

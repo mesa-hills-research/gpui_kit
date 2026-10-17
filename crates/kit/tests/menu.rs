@@ -211,12 +211,18 @@ struct MenuBarWindow {
     menu_bar: gpui_kit::Entity<gpui_kit::component::menu::AppMenuBar>,
     doc: gpui_kit::FocusHandle,
     notes: gpui_kit::Entity<gpui_kit::component::input::InputState>,
+    /// Whether Alt was down, at each modifier change the content saw.
+    alt_seen: std::rc::Rc<std::cell::RefCell<Vec<bool>>>,
 }
 
 impl Render for MenuBarWindow {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let alt_seen = self.alt_seen.clone();
         div()
             .size_full()
+            .on_modifiers_changed(move |event, _, _| {
+                alt_seen.borrow_mut().push(event.modifiers.alt)
+            })
             .child(div().h(px(32.)).child(self.menu_bar.clone()))
             .child(gpui_kit::component::input::Input::new(&self.notes).id("notes"))
             .child(
@@ -232,14 +238,25 @@ impl Render for MenuBarWindow {
 #[cfg(not(target_os = "macos"))]
 mod menu_bar_keys {
     use super::*;
+    use std::{cell::RefCell, rc::Rc, time::Duration};
+
     use gpui_kit::{
         AnyWindowHandle, Capslock, Entity, Modifiers, ModifiersChangedEvent, MouseButton,
-        MouseDownEvent, MouseUpEvent, PlatformInput, VisualTestContext,
+        MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput, VisualTestContext,
         component::{GlobalState, WindowExt as _, menu::AppMenuBar},
     };
 
     /// A window with File and Edit menus, the document focused.
     fn open(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<AppMenuBar>) {
+        let (handle, bar, _) = open_watching_alt(cx);
+        (handle, bar)
+    }
+
+    /// The same, and whether Alt was down at each modifier change the
+    /// content saw.
+    fn open_watching_alt(
+        cx: &mut TestAppContext,
+    ) -> (AnyWindowHandle, Entity<AppMenuBar>, Rc<RefCell<Vec<bool>>>) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             GlobalState::global_mut(cx).set_app_menus(vec![
@@ -260,10 +277,12 @@ mod menu_bar_keys {
                         menu_bar: AppMenuBar::new(cx),
                         doc,
                         notes: cx.new(|cx| gpui_kit::component::input::InputState::new(window, cx)),
+                        alt_seen: Rc::default(),
                     }
                 })
             });
-        let menu_bar = view.read_with(cx, |view, _| view.menu_bar.clone());
+        let (menu_bar, alt_seen) =
+            view.read_with(cx, |view, _| (view.menu_bar.clone(), view.alt_seen.clone()));
         let handle: AnyWindowHandle = handle.into();
         // Active, as an app's window is: GPUI reports focus changes and
         // activation only for an active window.
@@ -272,8 +291,15 @@ mod menu_bar_keys {
             window.render_frame(cx);
         })
         .unwrap();
+        settle_after_focus(cx);
+        (handle, menu_bar, alt_seen)
+    }
+
+    /// Let the moment after the window gained focus pass, in which an Alt
+    /// reported down counts as held from before.
+    fn settle_after_focus(cx: &mut TestAppContext) {
+        cx.background_executor.advance_clock(Duration::from_secs(1));
         cx.run_until_parked();
-        (handle, menu_bar)
     }
 
     fn state(bar: &Entity<AppMenuBar>, cx: &mut TestAppContext) -> (Option<usize>, Option<usize>) {
@@ -464,6 +490,123 @@ mod menu_bar_keys {
         tap_alt(cx, handle);
         assert_eq!(state(&bar, cx), (Some(0), None));
         tap_alt(cx, handle);
+        assert_eq!(focused(cx, handle, "notes"), Some(true));
+    }
+
+    /// A tap of Alt, and Alt let go after Alt+click, both reach the window's
+    /// modifier listeners as Alt let go, so access keys stop being
+    /// underlined and nothing is left thinking Alt is down.
+    #[gpui_kit::test]
+    fn alt_let_go_reaches_the_window_after_a_tap_or_not(cx: &mut TestAppContext) {
+        let (handle, bar, alt_seen) = open_watching_alt(cx);
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (Some(0), None), "a tap");
+        assert_eq!(alt_seen.borrow().last(), Some(&false), "and Alt let go");
+        press(cx, handle, "escape");
+
+        let position = cx
+            .update_window(handle, |_, window, cx| {
+                window.click("notes", cx);
+                window.find("notes").bounds().center()
+            })
+            .unwrap();
+        alt_seen.borrow_mut().clear();
+        act(cx, handle, |window, cx| {
+            modifiers(window, cx, Modifiers::alt());
+            for down in [true, false] {
+                let (button, modifiers) = (MouseButton::Left, Modifiers::alt());
+                window.dispatch_event(
+                    if down {
+                        PlatformInput::MouseDown(MouseDownEvent {
+                            button,
+                            position,
+                            modifiers,
+                            click_count: 1,
+                            first_mouse: false,
+                        })
+                    } else {
+                        PlatformInput::MouseUp(MouseUpEvent {
+                            button,
+                            position,
+                            modifiers,
+                            click_count: 1,
+                        })
+                    },
+                    cx,
+                );
+            }
+            modifiers(window, cx, Modifiers::default());
+        });
+        assert_eq!(state(&bar, cx), (None, None), "no tap");
+        assert_eq!(*alt_seen.borrow(), vec![true, false], "Alt let go");
+    }
+
+    /// The window gains focus with Alt already held, as after Alt+Tab or a
+    /// tiling compositor's Alt+key, and Alt is let go: no tap. A tap a moment
+    /// later still is one.
+    #[gpui_kit::test]
+    fn alt_held_when_the_window_gains_focus_is_no_tap(cx: &mut TestAppContext) {
+        let (handle, bar) = open(cx);
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        visual.deactivate_window();
+        act(cx, handle, |window, _| window.activate_window());
+        cx.run_until_parked();
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (None, None));
+        assert_eq!(focused(cx, handle, "doc"), Some(true));
+
+        settle_after_focus(cx);
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (Some(0), None));
+    }
+
+    /// A drag begun before Alt went down and let go with Alt held (Alt pressed
+    /// mid-drag for a column selection) makes Alt's release no tap.
+    #[gpui_kit::test]
+    fn a_drag_finished_with_alt_is_no_tap(cx: &mut TestAppContext) {
+        let (handle, bar) = open(cx);
+        let bounds = cx
+            .update_window(handle, |_, window, cx| {
+                window.click("notes", cx);
+                window.find("notes").bounds()
+            })
+            .unwrap();
+        let (start, end) = (
+            bounds.origin + gpui_kit::point(px(4.), px(4.)),
+            bounds.center(),
+        );
+        act(cx, handle, |window, cx| {
+            window.dispatch_event(
+                PlatformInput::MouseDown(MouseDownEvent {
+                    button: MouseButton::Left,
+                    position: start,
+                    modifiers: Modifiers::default(),
+                    click_count: 1,
+                    first_mouse: false,
+                }),
+                cx,
+            );
+            modifiers(window, cx, Modifiers::alt());
+            window.dispatch_event(
+                PlatformInput::MouseMove(MouseMoveEvent {
+                    position: end,
+                    pressed_button: Some(MouseButton::Left),
+                    modifiers: Modifiers::alt(),
+                }),
+                cx,
+            );
+            window.dispatch_event(
+                PlatformInput::MouseUp(MouseUpEvent {
+                    button: MouseButton::Left,
+                    position: end,
+                    modifiers: Modifiers::alt(),
+                    click_count: 1,
+                }),
+                cx,
+            );
+            modifiers(window, cx, Modifiers::default());
+        });
+        assert_eq!(state(&bar, cx), (None, None));
         assert_eq!(focused(cx, handle, "notes"), Some(true));
     }
 }
