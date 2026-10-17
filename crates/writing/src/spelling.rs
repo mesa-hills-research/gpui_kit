@@ -255,10 +255,10 @@ impl Dictionary {
         if loaded {
             log::info!("Spell dictionary loaded ({count} words)");
         } else if count == 0 {
-            log::info!("No spell dictionary found; spell checking is inactive");
+            log::info!("No spell dictionary found, so spell checking is inactive");
         } else {
             log::warn!(
-                "Wordlist too small to act as a dictionary ({count} words); spell checking is inactive"
+                "Wordlist too small to act as a dictionary ({count} words), so spell checking is inactive"
             );
         }
         self.loaded.set(loaded);
