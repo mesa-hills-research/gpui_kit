@@ -145,6 +145,19 @@ fn owner_only(options: &mut std::fs::OpenOptions) {
 #[cfg(not(unix))]
 fn owner_only(_: &mut std::fs::OpenOptions) {}
 
+/// Makes the file at `path` readable and writable by its owner alone, on
+/// Unix, whatever mode it had: for a file this process didn't create.
+#[cfg(unix)]
+pub(crate) fn make_private(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+pub(crate) fn make_private(_: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Words a dictionary accepts: one per line, with blank lines and lines
 /// starting with `#` skipped. Hunspell affix flags (`word/MS`) are stripped
 /// but not expanded, so a Hunspell `.dic` gives only its stems.

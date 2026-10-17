@@ -73,7 +73,7 @@ use super::{
     FIRST_NGRAM_VERSION, MODEL_VERSION, NON_DICTIONARY_MIN_LOCAL_FREQ,
     NON_DICTIONARY_MIN_SHARED_FREQ, VOCAB_MAX_BYTES, canonical_prediction_word, sentence_runs,
 };
-use crate::options::private_file;
+use crate::options::{make_private, private_file};
 use crate::spelling::Dictionary;
 use crate::text::hash_str;
 use gpui::{App, BackgroundExecutor, Task};
@@ -670,6 +670,9 @@ fn set_aside(path: &Path) -> io::Result<PathBuf> {
         let kept = path.with_file_name(name);
         if !kept.exists() {
             std::fs::rename(path, &kept)?;
+            // It holds what the user wrote, whatever mode an older version
+            // gave it. Failing to change that doesn't undo the move.
+            let _ = make_private(&kept);
             return Ok(kept);
         }
     }
@@ -688,6 +691,8 @@ fn write_whole(path: &Path, data: &[u8]) -> io::Result<()> {
             .create(true)
             .truncate(true)
             .open(&temporary)?;
+        // One left by a crashed process keeps the mode it was created with.
+        make_private(&temporary)?;
         file.write_all(data)?;
         file.sync_all()?;
         drop(file);
@@ -1834,6 +1839,33 @@ mod tests {
         vocabulary.save();
         assert!(scratch.file().is_dir());
         assert_eq!(scratch.names(), ["vocabulary.json"]);
+    }
+
+    /// The vocabulary comes out readable by the user alone over a temporary
+    /// file a crashed process left with another mode, and so does a damaged
+    /// file it moves aside.
+    #[cfg(unix)]
+    #[test]
+    fn files_left_by_others_become_the_users_alone() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let open_to_all = |path: &Path| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap()
+        };
+        let scratch = Scratch::new("modes");
+        let mut temporary = scratch.file().into_os_string();
+        temporary.push(format!(".{}.tmp", std::process::id()));
+        std::fs::write(&temporary, "left by a crash").unwrap();
+        open_to_all(Path::new(&temporary));
+        let mut vocabulary = scratch.load();
+        vocabulary.learn_sentence("Ferns grow slowly");
+        vocabulary.save();
+        assert_eq!(mode(&scratch.file()), 0o600);
+
+        std::fs::write(scratch.file(), "not a vocabulary").unwrap();
+        open_to_all(&scratch.file());
+        scratch.load();
+        assert_eq!(mode(&scratch.0.join("vocabulary.damaged.json")), 0o600);
     }
 
     /// Past its cap, a vocabulary drops its rarest entries, trigrams first,
