@@ -5363,4 +5363,97 @@ mod tests {
             "foobaz bar"
         );
     }
+
+    /// A suggestion provider that keeps each edit it hears, with its origin.
+    #[derive(Default)]
+    struct HeardEdits(std::cell::RefCell<Vec<(String, EditOrigin)>>);
+
+    impl crate::input::SuggestionProvider for HeardEdits {
+        fn suggestions(
+            &self,
+            _: &crate::input::SuggestionRequest,
+            _: &mut Window,
+            _: &mut App,
+        ) -> gpui::Task<anyhow::Result<Vec<crate::input::Suggestion>>> {
+            gpui::Task::ready(Ok(Vec::new()))
+        }
+
+        fn did_change(&self, change: &crate::input::TextChange, _: &mut App) {
+            self.0.borrow_mut().extend(
+                change
+                    .edits()
+                    .iter()
+                    .map(|edit| (edit.text().to_string(), edit.origin())),
+            );
+        }
+    }
+
+    struct TextareaHarness(Entity<crate::input::TextareaState>);
+
+    impl Render for TextareaHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(self.0.clone())
+        }
+    }
+
+    /// A textarea that tells `heard` of its edits, and the input handler the
+    /// platform types into it through.
+    fn heard_textarea(
+        cx: &mut TestAppContext,
+        heard: Rc<HeardEdits>,
+    ) -> (
+        Entity<crate::input::TextareaState>,
+        TypedTextHandler<crate::input::TextareaMode>,
+        VisualTestContext,
+    ) {
+        cx.update(crate::init);
+        let mut textarea = None;
+        let window = cx.open_window(size(px(300.), px(120.)), |window, cx| {
+            let state = cx
+                .new(|cx| crate::input::TextareaState::new(window, cx).suggestion_provider(heard));
+            textarea = Some(state.clone());
+            TextareaHarness(state)
+        });
+        let textarea = textarea.unwrap();
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let handler = TypedTextHandler {
+            inner: ElementInputHandler::new(Bounds::default(), textarea.clone()),
+            state: textarea.clone(),
+        };
+        (textarea, handler, cx)
+    }
+
+    /// What an input method composes and commits is typed, and the origin
+    /// goes back to the program's once it is done.
+    #[gpui::test]
+    fn a_composition_is_typed(cx: &mut TestAppContext) {
+        use gpui::InputHandler as _;
+        let heard = Rc::new(HeardEdits::default());
+        let (textarea, mut handler, mut cx) = heard_textarea(cx, heard.clone());
+        cx.update(|window, cx| {
+            handler.replace_and_mark_text_in_range(None, "に", None, window, cx);
+            handler.replace_and_mark_text_in_range(None, "にほ", None, window, cx);
+            handler.replace_text_in_range(None, "日本", window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(textarea.read_with(&cx, |state, _| state.value()), "日本");
+        let edits = heard.0.take();
+        assert!(!edits.is_empty());
+        assert!(
+            edits.iter().all(|(_, origin)| *origin == EditOrigin::Typed),
+            "{edits:?}"
+        );
+        assert_eq!(edits.last().map(|(text, _)| text.as_str()), Some("日本"));
+
+        cx.update(|window, cx| textarea.update(cx, |state, cx| state.set_value("set", window, cx)));
+        cx.run_until_parked();
+        assert!(
+            heard
+                .0
+                .take()
+                .iter()
+                .all(|(_, origin)| *origin == EditOrigin::Program)
+        );
+    }
 }
