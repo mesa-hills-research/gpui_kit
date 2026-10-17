@@ -486,7 +486,7 @@ fn two_blocks_with_one_prefix_and_an_edited_block() {
     let a = "fn a() {\n    let s = \"a\";\n}\n";
     let b_full = format!("{a}fn b() {{\n    /* open comment\n    let t = 1;\n}}\n");
     let mut failures = Vec::new();
-    // A is complete and drawn every frame; B streams and starts with A.
+    // A is complete and drawn every frame, and B streams and starts with A.
     for end in random_ends(&b_full, 3, 6) {
         for code in [a, &b_full[..end]] {
             if let Some(f) = check_call("rust", code) {
@@ -531,7 +531,7 @@ fn eviction_keeps_the_block_in_use_and_results_stay_right() {
     let n = KEPT_BLOCKS.with(|k| k.borrow().blocks.len());
     println!("kept after 80 blocks: {n}");
     assert!(n <= 64);
-    // The first is gone; drawing it again is right, from scratch.
+    // The first is gone, and drawing it again is right, from scratch.
     if let Some(f) = check_call("rust", "fn f0() { let s = \"0\"; }\n") {
         failures.push(f);
     }
