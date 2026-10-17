@@ -1693,6 +1693,25 @@
     },
     {
       "source": "story",
+      "name": "font_picker",
+      "classification": "component",
+      "registration": {
+        "status": "registered",
+        "descriptor": "FontPicker",
+        "exports": [
+          "FontPicker"
+        ],
+        "states": [
+          {
+            "export": "FontPickerState",
+            "kind": "FontPickerState",
+            "role": "retained-control-state"
+          }
+        ]
+      }
+    },
+    {
+      "source": "story",
       "name": "form",
       "classification": "component",
       "registration": {
