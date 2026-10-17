@@ -52,6 +52,16 @@ export const stories = [
     api: "DescriptionList",
   }),
   pendingStory({
+    id: "diff-view",
+    title: "DiffView",
+    group: "Content",
+    rustStory: "DiffViewStory",
+    description: "Changes to files, from two texts or a unified diff.",
+    states: ["computed", "parsed", "unfolded"],
+    availability: "infrastructure",
+    api: "DiffView",
+  }),
+  pendingStory({
     id: "empty",
     title: "Empty",
     group: "Content",

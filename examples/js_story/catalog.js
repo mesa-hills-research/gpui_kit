@@ -52,6 +52,7 @@ const RUST_STORY_ORDER = [
   "DatePickerStory",
   "DescriptionListStory",
   "DialogStory",
+  "DiffViewStory",
   "DockStory",
   "DropdownButtonStory",
   "EditorStory",
@@ -61,6 +62,7 @@ const RUST_STORY_ORDER = [
   "HoverCardStory",
   "IconStory",
   "ImageStory",
+  "ImageViewerStory",
   "InputStory",
   "InputGroupStory",
   "KbdStory",
@@ -106,6 +108,7 @@ const RUST_STORY_ORDER = [
   "TooltipStory",
   "TreeStory",
   "VirtualListStory",
+  "WritingStory",
 ];
 
 /** The complete JavaScript Story route manifest, in Rust Story display order. */

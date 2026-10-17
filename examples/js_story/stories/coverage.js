@@ -24,6 +24,7 @@ export const coveredBy = [
   { route: "date-picker", registrations: ["DatePicker"] },
   { route: "description-list", registrations: ["DescriptionList"] },
   { route: "dialog", registrations: ["Dialog"] },
+  { route: "diff-view", registrations: [] },
   { route: "dock", registrations: [] },
   { route: "dropdown-button", registrations: ["DropdownButton"] },
   { route: "editor", registrations: ["Editor", "Text"] },
@@ -33,6 +34,7 @@ export const coveredBy = [
   { route: "hover-card", registrations: ["HoverCard"] },
   { route: "icon", registrations: ["Icon"] },
   { route: "image", registrations: ["Image"] },
+  { route: "image-viewer", registrations: [] },
   { route: "input", registrations: ["Input"] },
   { route: "input-group", registrations: ["InputGroup"] },
   { route: "kbd", registrations: ["Kbd"] },
@@ -78,6 +80,7 @@ export const coveredBy = [
   { route: "tooltip", registrations: ["Tooltip"] },
   { route: "tree", registrations: ["Tree"] },
   { route: "virtual-list", registrations: [] },
+  { route: "writing", registrations: [] },
 ];
 
 /** @param {string} route */

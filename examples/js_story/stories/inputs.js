@@ -151,4 +151,14 @@ export const stories = [
     availability: "pending",
     api: "Rating",
   }),
+  pendingStory({
+    id: "writing",
+    title: "Writing",
+    group: "Inputs",
+    rustStory: "WritingStory",
+    description: "Spell checking and word suggestions learned from typing.",
+    states: ["misspelled", "suggesting", "learned"],
+    availability: "infrastructure",
+    api: "Writing",
+  }),
 ];

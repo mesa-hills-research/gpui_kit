@@ -22,6 +22,16 @@ export const stories = [
     api: "Dialog",
   }),
   pendingStory({
+    id: "image-viewer",
+    title: "ImageViewer",
+    group: "Overlays",
+    rustStory: "ImageViewerStory",
+    description: "A set of images browsed over the window.",
+    states: ["fitted", "actual size", "browsing"],
+    availability: "infrastructure",
+    api: "ImageViewer",
+  }),
+  pendingStory({
     id: "hover-card",
     title: "HoverCard",
     group: "Overlays",
