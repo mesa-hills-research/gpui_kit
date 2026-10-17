@@ -43,7 +43,7 @@ lsp-types.workspace = true
 markdown = { version = "1.0.0", features = ["serde"] }
 html5ever = "0.27"
 # Reading image headers, decoding GIFs within a budget and scaling
-# thumbnails; the same `image` GPUI decodes with, and its formats.
+# thumbnails, with the `image` version and formats GPUI decodes with.
 image = { version = "0.25", default-features = false, features = [
     "bmp",
     "gif",

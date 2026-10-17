@@ -4,9 +4,9 @@
 //! budget, then unloads the ones drawn longest ago. It serves the two kinds
 //! of image an application shows:
 //!
-//! - files, URLs and embedded assets (`img(path)` inside
-//!   `image_cache(cache)`), through GPUI's [`ImageCache`] trait;
-//! - images held in memory, such as screenshots a tool returned
+//! - Files, URLs and embedded assets (`img(path)` inside
+//!   `image_cache(cache)`), through GPUI's [`ImageCache`] trait.
+//! - Images held in memory, such as screenshots the app took
 //!   ([`Arc<Image>`]), through [`LruImageCache::source`]. These are decoded
 //!   on a background thread and can be scaled down to fit a thumbnail there,
 //!   so a list of thumbnails never keeps the full-resolution pixels. GPUI
@@ -193,8 +193,8 @@ impl LruImageCache {
     }
 
     /// Decode `image` (scaled to fit `fit`, if given) or return it from the
-    /// cache. Returns `None` while it is decoding; the current view is
-    /// notified when it is ready. Only for [`Self::source`]: it must run
+    /// cache. Returns `None` while it is decoding, and notifies the current
+    /// view when it is ready. Only for [`Self::source`]: it must run
     /// while an element is drawn.
     fn load_image(
         &mut self,
@@ -388,7 +388,7 @@ impl ImageHeader {
     }
 }
 
-/// The dimensions and frame count of `image`, from its header; `None` for
+/// The dimensions and frame count of `image`, from its header, or `None` for
 /// an SVG, whose size shows only once it is parsed.
 fn probe(image: &Image) -> Result<Option<ImageHeader>, ImageCacheError> {
     let format = match image.format() {
@@ -444,7 +444,7 @@ fn gif_header(bytes: &[u8]) -> Result<ImageHeader, ImageCacheError> {
             0
         }
     };
-    // Skips a run of data sub-blocks; `None` once the bytes run out.
+    // Skips a run of data sub-blocks, or `None` once the bytes run out.
     let skip_sub_blocks = |mut pos: usize| -> Option<usize> {
         loop {
             let len = *bytes.get(pos)? as usize;
@@ -624,7 +624,7 @@ fn thumbnail(image: image::DynamicImage, fit: Size<DevicePixels>) -> Arc<RenderI
 }
 
 /// The size `image` takes when scaled down, keeping its aspect ratio, to fit
-/// within `fit`; `None` when it already fits.
+/// within `fit`, or `None` when it already fits.
 fn fitted_size(image: Size<DevicePixels>, fit: Size<DevicePixels>) -> Option<(u32, u32)> {
     let (width, height) = (image.width.0.max(1) as f64, image.height.0.max(1) as f64);
     let scale = (fit.width.0.max(1) as f64 / width).min(fit.height.0.max(1) as f64 / height);
@@ -647,7 +647,7 @@ fn scale_to_fit(image: &RenderImage, fit: Size<DevicePixels>) -> Option<Arc<Rend
         size.height.0 as u32,
         image.as_bytes(0)?,
     )?;
-    // The bytes are BGRA; scaling treats every channel alike.
+    // The bytes are BGRA, and scaling treats every channel alike.
     let scaled = image::imageops::resize(
         &buffer,
         width,
@@ -664,7 +664,7 @@ fn scale_to_fit(image: &RenderImage, fit: Size<DevicePixels>) -> Option<Arc<Rend
 struct Ledger {
     max_bytes: usize,
     used_bytes: usize,
-    /// Advances at each trim step; an entry drawn since the last step has
+    /// Advances at each trim step. An entry drawn since the last step has
     /// this generation.
     generation: u64,
     /// Advances at each draw, ordering entries from least to most recently
@@ -928,7 +928,7 @@ mod tests {
             assert!(steps < 10, "the trim should end");
             let step = ledger.step();
             assert!(step.unloaded.is_empty(), "both are on screen");
-            // The notified views redraw their image; the other replays.
+            // The notified views redraw their image, and the other replays.
             for (key, id) in [(1, view(1)), (2, view(2))] {
                 if step.notify.contains(&id) {
                     ledger.touch(key, id);
@@ -941,7 +941,7 @@ mod tests {
         }
         assert_eq!(notified, vec![view(1), view(2)], "each redrawn once");
 
-        // Drawing one again starts no trim; a new image does, in which the
+        // Drawing one again starts no trim. A new image does, and in it the
         // ones kept may be marked again: here the other, drawn least
         // recently.
         ledger.touch(1, view(1));
@@ -1157,7 +1157,7 @@ mod tests {
         }
     }
 
-    /// Cached child views side by side, like the rows of a transcript.
+    /// Cached child views side by side, like the rows of a list.
     struct Rows {
         rows: Vec<Entity<Thumb>>,
         visible: usize,
@@ -1275,8 +1275,8 @@ mod tests {
         });
     }
 
-    /// A window closes while a trim step waits for its next frame; the other
-    /// windows go on trimming.
+    /// A window closes while a trim step waits for its next frame, and the
+    /// other windows go on trimming.
     #[gpui::test]
     fn a_window_closed_mid_trim_leaves_trimming_to_the_others(cx: &mut TestAppContext) {
         let cache = cx.update(|cx| LruImageCache::new(80_000, cx));
@@ -1288,7 +1288,7 @@ mod tests {
             )
         });
         // Decode, then draw the decoded images, which pass the budget and
-        // schedule a trim step on the window's next frame; close it first.
+        // schedule a trim step on the window's next frame. Close it first.
         for _ in 0..3 {
             cx.update_window(closing.into(), |_, window, cx| window.draw(cx).clear(cx))
                 .unwrap();
@@ -1348,7 +1348,7 @@ mod tests {
         }
         frame(window, cx);
 
-        // Rows 2-5 leave the screen; row 1 stays, replaying its frame.
+        // Rows 2-5 leave the screen, and row 1 stays, replaying its frame.
         window
             .update(cx, |rows, _, cx| {
                 rows.rows.swap(1, 5);
