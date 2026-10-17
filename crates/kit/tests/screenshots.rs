@@ -31,6 +31,9 @@ use gpui_kit::{
 };
 use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
+#[path = "screenshots/settings.rs"]
+mod settings;
+
 /// A typical phone's scale factor. Each golden is this many device pixels per logical pixel.
 const SCALE: f32 = 2.;
 

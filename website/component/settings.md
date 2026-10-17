@@ -94,6 +94,14 @@ Clearing the search keeps the current page rather than restoring an earlier
 selection. When no settings match, no page content is shown and the selection
 is retained for when results return.
 
+### Narrow Widths
+
+When Settings is narrower than 480 px, the search field and a page picker take
+the sidebar's place above the active page, and every item uses the vertical
+layout. The picker lists the pages that match the search. Choosing one opens
+that page, and Tab moves from the search field to the picker and on into the
+page. Widening Settings brings the sidebar back with the same page selected.
+
 ### Group Variants
 
 ```rust

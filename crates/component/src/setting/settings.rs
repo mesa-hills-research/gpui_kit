@@ -1,18 +1,20 @@
 use std::ops::Range;
 
 use crate::{
-    IconName, Sizable, Size, StyledExt,
+    ActiveTheme as _, IconName, IndexPath, Sizable, Size, StyledExt,
     group_box::GroupBoxVariant,
     h_resizable,
     input::{Input, InputState},
     resizable_panel,
+    select::{Select, SelectEvent, SelectItem, SelectState},
     setting::SettingPage,
     sidebar::{Sidebar, SidebarMenu, SidebarMenuItem},
+    v_flex,
 };
 use gpui::{
     App, AppContext as _, Axis, ElementId, Entity, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, StyleRefinement, Styled, Window, container_query, div, prelude::FluentBuilder as _,
-    px, relative,
+    RenderOnce, SharedString, StyleRefinement, Styled, Subscription, Window, container_query, div,
+    prelude::FluentBuilder as _, px, relative,
 };
 use rust_i18n::t;
 
@@ -135,6 +137,32 @@ impl Settings {
         }
 
         div().into_any_element()
+    }
+
+    fn render_navigation(&self, state: &Entity<SettingsState>, cx: &App) -> impl IntoElement {
+        let state = state.read(cx);
+        v_flex()
+            .w_full()
+            .flex_shrink_0()
+            .p_4()
+            .gap_2()
+            .bg(cx.theme().tokens.sidebar)
+            .text_color(cx.theme().sidebar_foreground)
+            .border_b_1()
+            .border_color(cx.theme().sidebar_border)
+            .refine_style(&self.sidebar_style)
+            .child(
+                div()
+                    .refine_style(&self.header_style)
+                    .child(Input::new(&state.search_input).prefix(IconName::Search)),
+            )
+            .when(!state.choices.is_empty(), |this| {
+                this.child(
+                    Select::new(&state.page_select)
+                        .w_full()
+                        .accessibility_label(t!("Settings.page")),
+                )
+            })
     }
 
     fn render_sidebar(
@@ -271,7 +299,28 @@ impl SettingsFilter {
     }
 }
 
+#[derive(Clone, PartialEq)]
+struct PageChoice {
+    page_ix: usize,
+    title: SharedString,
+}
+
+impl SelectItem for PageChoice {
+    type Value = usize;
+
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+
+    fn value(&self) -> &usize {
+        &self.page_ix
+    }
+}
+
 pub(super) struct SettingsState {
+    page_select: Entity<SelectState<Vec<PageChoice>>>,
+    choices: Vec<PageChoice>,
+    _selection_subscription: Subscription,
     pub(super) selected_index: SelectIndex,
     /// If set, defer scrolling to this group index after rendering.
     pub(super) deferred_scroll_group_ix: Option<usize>,
@@ -396,7 +445,25 @@ impl RenderOnce for Settings {
                     .default_value("")
             });
 
+            let page_select =
+                cx.new(|cx| SelectState::new(Vec::<PageChoice>::new(), None, window, cx));
+            let selection_subscription =
+                cx.subscribe(&page_select, |state: &mut SettingsState, _, event, cx| {
+                    let SelectEvent::Confirm(Some(page_ix)) = event else {
+                        return;
+                    };
+                    state.selected_index = SelectIndex {
+                        page_ix: *page_ix,
+                        group_ix: None,
+                    };
+                    state.deferred_scroll_group_ix = None;
+                    cx.notify();
+                });
+
             SettingsState {
+                page_select,
+                choices: Vec::new(),
+                _selection_subscription: selection_subscription,
                 search_input,
                 selected_index: self.default_selected_index,
                 deferred_scroll_group_ix: None,
@@ -413,31 +480,74 @@ impl RenderOnce for Settings {
                 state.deferred_scroll_group_ix = None;
             });
         }
+        let choices = filter
+            .visible_pages()
+            .map(|page_ix| PageChoice {
+                page_ix,
+                title: self.pages[page_ix].title.clone(),
+            })
+            .collect::<Vec<_>>();
+        let selected_choice = choices
+            .iter()
+            .position(|choice| choice.page_ix == selected.page_ix)
+            .map(|ix| IndexPath::default().row(ix));
+        state.update(cx, |state, cx| {
+            let changed = state.choices != choices;
+            if changed
+                || state.page_select.read(cx).selected_value().copied()
+                    != selected_choice.map(|_| selected.page_ix)
+            {
+                state.page_select.update(cx, |select, cx| {
+                    if changed {
+                        select.set_items(choices.clone(), window, cx);
+                    }
+                    select.set_selected_index(selected_choice, window, cx);
+                });
+                state.choices = choices;
+            }
+        });
         let options = RenderOptions::new()
             .with_size(self.size)
             .with_group_variant(self.group_variant);
-        let sidebar_size_range = self.sidebar_size_range.clone();
-        let sidebar = self
-            .render_sidebar(&state, &filter, window, cx)
-            .into_any_element();
+        container_query(move |size, window, cx| {
+            if size.width < STACKED_LAYOUT_MAX_WIDTH {
+                return v_flex()
+                    .size_full()
+                    .child(self.render_navigation(&state, cx))
+                    .child(div().flex_1().min_h_0().child(self.render_active_page(
+                        &state,
+                        &filter,
+                        &options.with_layout(Axis::Vertical),
+                        size.width,
+                        window,
+                        cx,
+                    )))
+                    .into_any_element();
+            }
 
-        h_resizable(self.id.clone())
-            .child(
-                resizable_panel()
-                    .size(self.sidebar_width)
-                    .size_range(sidebar_size_range)
-                    .child(sidebar),
-            )
-            .child(
-                resizable_panel().child(container_query(move |size, window, cx| {
-                    let options = options.with_layout(if size.width <= STACKED_LAYOUT_MAX_WIDTH {
-                        Axis::Vertical
-                    } else {
-                        Axis::Horizontal
-                    });
-                    self.render_active_page(&state, &filter, &options, size.width, window, cx)
-                })),
-            )
+            let sidebar = self
+                .render_sidebar(&state, &filter, window, cx)
+                .into_any_element();
+            h_resizable(self.id.clone())
+                .child(
+                    resizable_panel()
+                        .size(self.sidebar_width)
+                        .size_range(self.sidebar_size_range.clone())
+                        .child(sidebar),
+                )
+                .child(
+                    resizable_panel().child(container_query(move |size, window, cx| {
+                        let options =
+                            options.with_layout(if size.width <= STACKED_LAYOUT_MAX_WIDTH {
+                                Axis::Vertical
+                            } else {
+                                Axis::Horizontal
+                            });
+                        self.render_active_page(&state, &filter, &options, size.width, window, cx)
+                    })),
+                )
+                .into_any_element()
+        })
     }
 }
 

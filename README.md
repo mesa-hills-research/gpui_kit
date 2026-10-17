@@ -13,6 +13,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Cached Settings groups** (`gpui-component`). `SettingGroup::key` reuses unchanged groups
   while editable controls keep their own redraws. Groups without a key keep the existing
   behavior. See [Settings](website/component/settings.md#cache-independent-groups).
+- **Settings in narrow windows** (`gpui-component`). Below 480 px, `Settings` shows its search
+  field and a page picker above the page instead of the sidebar. See
+  [Settings](website/component/settings.md#narrow-widths).
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.

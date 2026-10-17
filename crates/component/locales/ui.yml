@@ -547,6 +547,11 @@ Input:
     zh-HK: 沒有建議
     zh-TW: 沒有建議
 Settings:
+  page:
+    en: Settings page
+    zh-CN: 设置页面
+    zh-HK: 設定頁面
+    zh-TW: 設定頁面
   search_placeholder:
     en: Search...
     zh-CN: 搜索...

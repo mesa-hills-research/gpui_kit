@@ -331,3 +331,6 @@ fn selecting_a_group_from_another_page_scrolls_to_it(cx: &mut TestAppContext) {
     let target = cx.debug_bounds("setting-1-2-1").unwrap();
     assert!(target.top() >= px(0.) && target.bottom() <= px(700.));
 }
+
+#[path = "narrow_tests.rs"]
+mod narrow;
