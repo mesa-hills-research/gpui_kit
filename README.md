@@ -81,14 +81,14 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   `zsh`, `console`, `jsx`, `patch`, `ps1`, `tf`, `golang` and more).
 - **Languages prepared off the UI thread** (`gpui-component`). A grammar is decoded only when
   something highlights its language, where enabling `tree-sitter-languages` decoded all 35 at the
-  first highlight: about a second and 75 MB. A code block whose language is not ready shows plain
-  code while the language compiles on a background thread, and `LanguageRegistry::warm_up`
-  prepares languages ahead of time. See
+  first highlight, which took about a second and 75 MB. A code block whose language is not ready
+  shows plain code while the language compiles on a background thread, and
+  `LanguageRegistry::warm_up` prepares languages ahead of time. See
   [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
 - **Long answers as list rows** (`gpui-base`). `TextViewState::block_range` shows some top-level
   blocks of a document that another `TextViewState` parses, and `TextViewState::blocks` lists them
   with stable ids, so a chat transcript can show a long answer as rows of a list and lay out only
-  the rows on screen: 0.9 ms a frame instead of 12.5 ms while a 20,000-token answer streams.
+  the rows on screen, 0.9 ms a frame instead of 12.5 ms while a 20,000-token answer streams.
   Selection runs across the rows. `TextViewState::markdown_extensions` gives the document its
   Markdown extensions and plugins, which its rows render with, and a `TextView` given none leaves
   its state's as they are. `TextView::code_block_max_lines` shows the first lines of each code
