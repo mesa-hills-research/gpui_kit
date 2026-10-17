@@ -121,7 +121,7 @@ enum Slot<T> {
 
 #[derive(Default)]
 struct Cache {
-    /// The [`LanguageRegistry::generation`] the entries were compiled at.
+    /// The [`LanguageRegistry::generation`] of the last [`Self::sync`].
     generation: u64,
     /// By canonical language name.
     languages: HashMap<SharedString, Slot<Arc<CompiledLanguage>>>,
@@ -134,15 +134,20 @@ struct Cache {
 }
 
 impl Cache {
-    /// Empties the cache when a language was registered since it was filled.
+    /// Drops the entries of the languages registered since the last sync.
+    /// The others stay, so the code blocks of a language keep their
+    /// highlighting while another one is registered.
     fn sync(&mut self) {
-        let generation = LanguageRegistry::singleton().generation();
-        if self.generation == generation {
+        let registry = LanguageRegistry::singleton();
+        if self.generation == registry.generation() {
             return;
         }
+        let (generation, registered) = registry.changes_since(self.generation);
         self.generation = generation;
-        self.languages.clear();
-        self.layers.clear();
+        for name in &registered {
+            self.languages.remove(name);
+            self.layers.remove(name);
+        }
     }
 }
 
@@ -191,8 +196,8 @@ impl Waiter {
     }
 }
 
-/// Stores what a background task of `domain` compiled and tells the
-/// domain's waiters.
+/// Stores what a background task of `domain`, started at the registry's
+/// `generation`, compiled and tells the domain's waiters.
 fn finish<T>(
     name: &SharedString,
     domain: u64,
@@ -203,7 +208,7 @@ fn finish<T>(
     let waiters = {
         let mut cache = CACHE.lock().unwrap();
         cache.sync();
-        if cache.generation == generation
+        if !LanguageRegistry::singleton().changed_since(name, generation)
             && let Some(slot @ Slot::Compiling(_)) = map(&mut cache).get_mut(name)
         {
             *slot = Slot::Done(compiled);
@@ -235,11 +240,12 @@ fn cached<T: Clone>(
         }
     }
 
-    let generation = LanguageRegistry::singleton().generation();
+    let registry = LanguageRegistry::singleton();
+    let generation = registry.generation();
     let compiled = compile();
     let mut cache = CACHE.lock().unwrap();
     cache.sync();
-    if cache.generation == generation {
+    if !registry.changed_since(name, generation) {
         // Tasks compiling it still tell their waiters when they are done.
         map(&mut cache).insert(name.clone(), Slot::Done(compiled.clone()));
     }
@@ -495,20 +501,47 @@ mod tests {
 
     #[test]
     fn a_language_is_compiled_once_and_shared() {
-        let generation = LanguageRegistry::singleton().generation();
         let first = compiled_language("json").expect("json has a grammar");
         let again = compiled_language("jsonc").expect("an alias finds the same language");
-        // Tests running in parallel can register languages, which drops the
-        // compiled ones. When none did, both lookups share one compilation.
-        if LanguageRegistry::singleton().generation() == generation {
-            assert!(Arc::ptr_eq(&first, &again));
-        }
+        assert!(Arc::ptr_eq(&first, &again));
         assert_eq!(first.name.as_ref(), "json");
         assert!(
             compiled_language("text").is_none(),
             "plain text has no grammar"
         );
         assert!(compiled_language("no-such-language").is_none());
+    }
+
+    #[test]
+    fn registering_a_language_recompiles_only_that_language() {
+        use crate::highlighter::LanguageConfig;
+
+        let register = |highlights: &str| {
+            LanguageRegistry::singleton().register(
+                "json-registered-twice",
+                &LanguageConfig::new(
+                    "json-registered-twice",
+                    tree_sitter_json::LANGUAGE.into(),
+                    vec![],
+                    highlights,
+                    "",
+                    "",
+                ),
+            );
+        };
+        let json = compiled_language("json").expect("json has a grammar");
+        register("(number) @number");
+        let first = compiled_language("json-registered-twice").expect("a grammar");
+        assert!(
+            Arc::ptr_eq(&compiled_language("json").unwrap(), &json),
+            "another language stays compiled"
+        );
+
+        register("(string) @string");
+        let second = compiled_language("json-registered-twice").expect("a grammar");
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert!(second.highlights_source.contains("@string"));
+        assert!(Arc::ptr_eq(&compiled_language("json").unwrap(), &json));
     }
 
     #[test]

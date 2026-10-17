@@ -424,6 +424,9 @@ pub struct LanguageRegistry {
     parser_factories: Mutex<HashMap<SharedString, LanguageParserFactory>>,
     /// Bumped by every registration; see [`Self::generation`].
     generation: AtomicU64,
+    /// The generation at which each language name was last registered, by
+    /// name: see [`Self::changes_since`].
+    changes: Mutex<HashMap<SharedString, u64>>,
 }
 
 impl LanguageRegistry {
@@ -437,17 +440,24 @@ impl LanguageRegistry {
             ),
             parser_factories: Mutex::new(HashMap::new()),
             generation: AtomicU64::new(0),
+            changes: Mutex::new(HashMap::new()),
         });
         &INSTANCE
     }
 
     /// Registers a new language configuration to the registry.
+    ///
+    /// The languages already prepared for highlighting stay prepared, apart
+    /// from the one the configuration replaces, which is prepared again from
+    /// it when next needed.
     pub fn register(&self, lang: &str, config: &GrammarConfig) {
+        let lang = SharedString::from(lang.to_string());
+        let replaced = self.canonical_name(&lang);
         self.languages
             .lock()
             .unwrap()
-            .insert(lang.to_string().into(), Grammar::Config(config.clone()));
-        self.generation.fetch_add(1, Ordering::Relaxed);
+            .insert(lang.clone(), Grammar::Config(config.clone()));
+        self.changed([Some(lang), Some(config.name.clone()), replaced]);
     }
 
     /// Registers a parser factory for a dynamically loaded language.
@@ -455,11 +465,43 @@ impl LanguageRegistry {
     /// The factory takes precedence over the language's statically linked grammar
     /// whenever a buffer in that language is parsed.
     pub fn register_parser_factory(&self, lang: &str, factory: LanguageParserFactory) {
+        let lang = SharedString::from(lang.to_string());
         self.parser_factories
             .lock()
             .unwrap()
-            .insert(lang.to_string().into(), factory);
-        self.generation.fetch_add(1, Ordering::Relaxed);
+            .insert(lang.clone(), factory);
+        self.changed([Some(lang)]);
+    }
+
+    /// Moves the generation on, and records that the languages `names`
+    /// changed at it.
+    fn changed(&self, names: impl IntoIterator<Item = Option<SharedString>>) {
+        let mut changes = self.changes.lock().unwrap();
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        for name in names.into_iter().flatten() {
+            changes.insert(name, generation);
+        }
+    }
+
+    /// The current generation, and the names of the languages registered
+    /// since `generation`, whose compiled queries may be out of date.
+    pub(crate) fn changes_since(&self, generation: u64) -> (u64, Vec<SharedString>) {
+        let changes = self.changes.lock().unwrap();
+        let names = changes
+            .iter()
+            .filter(|(_, changed_at)| **changed_at > generation)
+            .map(|(name, _)| name.clone())
+            .collect();
+        (self.generation.load(Ordering::Relaxed), names)
+    }
+
+    /// Whether the language `name` was registered since `generation`.
+    pub(crate) fn changed_since(&self, name: &str, generation: u64) -> bool {
+        self.changes
+            .lock()
+            .unwrap()
+            .get(name)
+            .is_some_and(|changed_at| *changed_at > generation)
     }
 
     /// Prepares `languages` for highlighting on a background thread: decodes
@@ -612,6 +654,7 @@ mod tests {
             languages: std::sync::Mutex::new(std::collections::HashMap::new()),
             parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
             generation: std::sync::atomic::AtomicU64::new(0),
+            changes: std::sync::Mutex::new(std::collections::HashMap::new()),
         };
         registry.register("json", &GrammarConfig::plain("canonical"));
         assert_eq!(registry.language("jsonc").unwrap().name, "canonical");
@@ -636,6 +679,7 @@ mod tests {
             languages: std::sync::Mutex::new(std::collections::HashMap::new()),
             parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
             generation: std::sync::atomic::AtomicU64::new(0),
+            changes: std::sync::Mutex::new(std::collections::HashMap::new()),
         };
         registry.register("typescript", &GrammarConfig::plain("typescript"));
         assert!(registry.language("ts").is_none());
@@ -668,6 +712,7 @@ mod tests {
             ),
             parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
             generation: std::sync::atomic::AtomicU64::new(0),
+            changes: std::sync::Mutex::new(std::collections::HashMap::new()),
         };
         let decoded = |name: &str| {
             matches!(

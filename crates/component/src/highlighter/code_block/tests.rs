@@ -865,6 +865,30 @@ fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
     );
 }
 
+/// An application can register a language at any time, such as when it
+/// loads a grammar the first time a block needs it.
+#[gpui::test]
+fn a_block_keeps_its_highlights_while_another_language_is_registered(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("json").unwrap();
+    let code = SharedString::from("[1, \"two\"]");
+    highlight_code_block("json", &code, true, &theme, Some(&waiter));
+    cx.run_until_parked();
+    let made = highlight_code_block("json", &code, true, &theme, Some(&waiter));
+    assert!(!made.is_pending());
+    assert!(!made.is_empty());
+
+    register_fresh_json("registered-beside-test");
+    let shown = highlight_code_block("json", &code, true, &theme, Some(&waiter));
+    assert!(!shown.is_pending(), "nothing is highlighted again");
+    assert_eq!(shown.to_vec(), made.to_vec());
+}
+
 /// A pattern can capture a node by what a later line looks like, which a
 /// chunk can miss. A block that streamed in is highlighted from scratch
 /// once more when it is complete.
