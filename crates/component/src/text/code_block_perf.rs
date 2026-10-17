@@ -7,7 +7,7 @@
 //!     code_block_perf -- --ignored --nocapture --test-threads 1
 //! ```
 //!
-//! The input is this repository's own Rust source, so the numbers can be
+//! The input is generated the same way every time, so the numbers can be
 //! compared across commits.
 
 use std::time::{Duration, Instant};
@@ -17,14 +17,73 @@ use gpui_base::text::CodeBlock;
 
 use crate::highlighter::HighlightTheme;
 
-/// About 500 KB of Rust from this repository.
+/// About 500 KB of Rust.
 fn rust_source() -> String {
-    [
-        include_str!("../../../base/src/text/node.rs"),
-        include_str!("../../../base/src/text/state.rs"),
-        include_str!("../../../base/src/text/text_view.rs"),
-    ]
-    .concat()
+    generated_code("rust", 500)
+}
+
+/// At least `kb` kilobytes of code in `lang`, generated the same way every
+/// time: Rust items with nested bodies, and flat Python, TypeScript, JSON,
+/// YAML, diff and Markdown, whose roots hold thousands of nodes.
+pub(crate) fn generated_code(lang: &str, kb: usize) -> String {
+    let mut code = String::new();
+    match lang {
+        "json" => code.push_str("[\n"),
+        "rust" => code.push_str("//! Generated records.\nuse std::collections::HashMap;\n\n"),
+        _ => {}
+    }
+    let mut i = 0;
+    while code.len() < kb * 1024 + 8192 {
+        let item = match lang {
+            "rust" => format!(
+                r#"/// A record of kind {i}.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Record{i} {{
+    id: usize,
+    name: String,
+    tags: Vec<&'static str>,
+}}
+
+impl Record{i} {{
+    /// The record, or `None` when `id` is out of range.
+    pub fn new(id: usize, name: impl Into<String>) -> Option<Self> {{
+        if id > {limit} {{
+            return None;
+        }}
+        let tags = match id % 3 {{
+            0 => vec!["zero", "first"],
+            1 => vec!["one"],
+            _ => Vec::new(),
+        }};
+        Some(Self {{ id, name: name.into(), tags }})
+    }}
+
+    pub fn describe(&self, cache: &mut HashMap<usize, String>) -> &str {{
+        cache
+            .entry(self.id)
+            .or_insert_with(|| format!("{{}} #{{}} ({{:?}})", self.name, self.id, self.tags))
+    }}
+}}
+
+"#,
+                limit = i * 7 + 3
+            ),
+            "python" => format!("value_{i} = compute({i}, \"label {i}\")  # note\n"),
+            "typescript" => format!("export const v{i}: number = compute({i}, `t${{{i}}}`);\n"),
+            "json" => {
+                format!("  {{\"id\": {i}, \"name\": \"item {i}\", \"tags\": [\"a\", \"b\"]}},\n")
+            }
+            "yaml" => format!("- id: {i}\n  name: \"item {i}\"\n  tags: [a, b]\n"),
+            "diff" => format!("+line {i} added\n-line {i} removed\n context {i}\n"),
+            "markdown" => format!(
+                "## Section {i}\n\nSome *text* with `code {i}` and a [link](http://x/{i}).\n\n- item **{i}**\n\n"
+            ),
+            _ => panic!("no generated {lang}"),
+        };
+        code.push_str(&item);
+        i += 1;
+    }
+    code
 }
 
 /// Cut `text` to at most `len` bytes, on a char boundary.
@@ -82,12 +141,12 @@ fn first_highlight_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
     let theme = HighlightTheme::default_light();
     let code = SharedString::from("fn main() {}\n");
     let start = Instant::now();
-    let plain = highlight_code_block("rust", &code, &theme, Some(&waiter));
+    let plain = highlight_code_block("rust", &code, true, &theme, Some(&waiter));
     let call = start.elapsed();
     let start = Instant::now();
     cx.run_until_parked();
     let compile = start.elapsed();
-    let styles = highlight_code_block("rust", &code, &theme, Some(&waiter));
+    let styles = highlight_code_block("rust", &code, true, &theme, Some(&waiter));
     println!(
         "first rust highlight: the call took {call:.2?} ({} spans), compiling in the background {compile:.2?}, then {} spans",
         plain.len(),
@@ -163,5 +222,115 @@ fn theme_change_of_a_long_block() {
     println!(
         "200 KB block: first highlight {first:.2?} ({} spans), in another theme {switched:.2?}",
         styles.len()
+    );
+}
+
+/// The languages and block sizes of the streaming tables.
+const STREAMED: [&str; 7] = [
+    "rust",
+    "python",
+    "typescript",
+    "json",
+    "yaml",
+    "diff",
+    "markdown",
+];
+
+/// Average, 95th percentile and worst of `times`, in milliseconds.
+fn summary(mut times: Vec<Duration>) -> (f64, f64, f64) {
+    times.sort();
+    let ms = |time: Duration| time.as_secs_f64() * 1000.;
+    let average = times.iter().map(|time| ms(*time)).sum::<f64>() / times.len() as f64;
+    (
+        average,
+        ms(times[times.len() * 95 / 100]),
+        ms(times[times.len() - 1]),
+    )
+}
+
+/// The work of every 4-byte chunk of a block that streams in, where it's
+/// done for a code block of a text view: in the background.
+#[gpui::test]
+#[ignore = "timing harness, run by hand in release"]
+fn background_work_per_chunk(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{Waiter, time_streamed_chunks};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    println!("| language | block | avg | p95 | worst |");
+    println!("|---|---:|---:|---:|---:|");
+    for lang in STREAMED {
+        for kb in [100usize, 200] {
+            let code = generated_code(lang, kb);
+            let from = kb * 1024;
+            let times = time_streamed_chunks(lang, &code, from, from + 3000, 4, Some(&waiter));
+            let (average, p95, worst) = summary(times);
+            println!("| {lang} | {kb} KB | {average:.2} ms | {p95:.2} ms | {worst:.2} ms |");
+        }
+    }
+}
+
+/// What a chunk of a streamed block costs the UI thread: asking for its
+/// highlights, while the background catches up.
+#[gpui::test]
+#[ignore = "timing harness, run by hand in release"]
+fn ui_thread_work_per_chunk(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{Waiter, highlight_code_block};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_light();
+    println!("| language | block | avg | p95 | worst |");
+    println!("|---|---:|---:|---:|---:|");
+    for lang in STREAMED {
+        let code = generated_code(lang, 200);
+        let mut end = 200 * 1024;
+        let first = SharedString::from(prefix(&code, end).to_string());
+        highlight_code_block(lang, &first, false, &theme, Some(&waiter));
+        cx.run_until_parked();
+        let mut times = Vec::new();
+        for chunk in 0..750 {
+            end += 4;
+            let block = SharedString::from(prefix(&code, end).to_string());
+            let start = Instant::now();
+            let styles = highlight_code_block(lang, &block, false, &theme, Some(&waiter));
+            let elapsed = start.elapsed();
+            times.push(elapsed);
+            if elapsed > Duration::from_millis(1) {
+                println!("  {lang}: chunk {chunk} took {elapsed:.2?}");
+            }
+            std::hint::black_box(styles);
+            // The background takes a chunk now and then, as it can.
+            if chunk % 8 == 7 {
+                cx.run_until_parked();
+            }
+        }
+        let (average, p95, worst) = summary(times);
+        println!(
+            "| {lang} | 200 KB | {:.1} µs | {:.1} µs | {:.1} µs |",
+            average * 1000.,
+            p95 * 1000.,
+            worst * 1000.
+        );
+    }
+}
+
+/// The memory the kept highlighting of many long blocks takes: 40 blocks of
+/// 200 KB, each highlighted once.
+#[test]
+#[ignore = "memory harness, run by hand in release"]
+fn memory_of_kept_blocks() {
+    let highlighter =
+        super::component_code_block_highlighter(HighlightTheme::default_light(), None);
+    let lang = Some(SharedString::from("rust"));
+    let _ = highlighter(&CodeBlock::from_code("fn main() {}", lang.clone()));
+    let source = rust_source();
+    let before = resident_mb();
+    for block in 0..40 {
+        // Each block differs from the start, so none extends another.
+        let code = format!("// block {block}\n{}", prefix(&source, 200 * 1024));
+        std::hint::black_box(highlighter(&CodeBlock::from_code(code, lang.clone())));
+    }
+    println!(
+        "40 blocks of 200 KB: resident memory {before:.0} MB -> {:.0} MB",
+        resident_mb()
     );
 }

@@ -174,8 +174,8 @@ pub(crate) enum Readiness<T> {
 /// this one.
 #[derive(Clone)]
 pub(crate) struct Waiter {
-    domain: u64,
-    executor: BackgroundExecutor,
+    pub(crate) domain: u64,
+    pub(crate) executor: BackgroundExecutor,
     ready: Option<Sender<()>>,
 }
 

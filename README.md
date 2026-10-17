@@ -66,11 +66,14 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   a pure Rust port, so they build without a C compiler and cross-compile to Windows without
   MinGW headers. Kotlin and Svelte use the tree-sitter-kotlin-ng and tree-sitter-svelte-ng
   grammars. See [Editor: basic usage](website/component/editor.md#basic-usage).
-- **Code highlighting that keeps up with a stream** (`gpui-base`, `gpui-component`). Each fenced
-  code block keeps its parse and highlights, and a block that streams in is parsed and highlighted
-  again only where it changed: a chunk of a 200 KB Rust block takes about 0.4 ms where it took
-  about 60 ms. Highlights are shared with the block rather than copied every frame, and a theme
-  change recolors them without parsing. See
+- **Code highlighting that keeps up with a stream** (`gpui-base`, `gpui-component`). Fenced code
+  blocks are highlighted on a background thread, and a frame spends about 20 µs on a block's
+  highlights, where a chunk of a 200 KB block of flat code such as Python, JSON or Markdown took 12
+  to 32 ms on the UI thread. Each block keeps its parse and highlights, a block that streams in
+  is parsed and highlighted again from where it changed, and it's highlighted once more from
+  scratch when its fence closes. A block shown in part is highlighted as far as its shown lines.
+  Highlights are shared with the block rather than copied every frame, and a theme change
+  recolors them without parsing. See
   [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
 - **More code languages** (`gpui-component`). Dart, Elm, Erlang, F#, GLSL, Haskell, HCL, Julia,
   Objective-C, OCaml, Perl, PowerShell, R and XML highlight with Mesquite's grammars and their

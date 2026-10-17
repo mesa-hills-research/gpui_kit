@@ -307,7 +307,7 @@ indoc = "2"
 [[bench]]
 name = "code_block_stream"
 harness = false
-required-features = ["tree-sitter-rust"]
+required-features = ["tree-sitter-rust", "tree-sitter-python"]
 
 [[bench]]
 name = "transcript_stream"

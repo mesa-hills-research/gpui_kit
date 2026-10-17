@@ -24,10 +24,16 @@
 //! they are asked for, so a theme change is a lookup per stretch, not a
 //! parse.
 
-use std::{cell::RefCell, collections::HashMap, ops::Range, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
 
 use gpui::{HighlightStyle, SharedString};
 use gpui_base::{
+    async_util::Sender,
     input::{HighlightStyleResolver, RopeExt as _},
     text::CodeBlockHighlights,
 };
@@ -53,9 +59,12 @@ use super::{
 
 /// The most code blocks whose highlighting is kept, per thread.
 const MAX_KEPT_BLOCKS: usize = 64;
-/// The most source bytes of kept code blocks, per thread. Past it the least
-/// recently highlighted blocks are dropped, down to the block in use.
-const MAX_KEPT_BYTES: usize = 8 * 1024 * 1024;
+/// The most memory the highlighting of kept code blocks takes, as
+/// [`CodeBlockHighlighter::memory`] estimates it, per thread. Past it the
+/// least recently highlighted blocks are dropped, down to the block in use.
+const MAX_KEPT_MEMORY: usize = 64 * 1024 * 1024;
+/// About how many bytes the syntax trees of a byte of code take.
+const TREE_BYTES_PER_SOURCE_BYTE: usize = 60;
 /// How far before the appended text highlighting starts again at least: the
 /// start of the line it continues, but never more than this many bytes back.
 /// [`first_change`] finds what the reparse changed, and this keeps a margin
@@ -112,6 +121,9 @@ pub(crate) struct CodeBlockHighlighter {
     /// Whether an injected language was not ready when the layers were last
     /// found, as of [`ready_generation`] then.
     layers_pending: Option<u64>,
+    /// Whether text was appended since the code was highlighted from
+    /// scratch.
+    incremental: bool,
     #[cfg(test)]
     parses: usize,
 }
@@ -141,6 +153,7 @@ impl CodeBlockHighlighter {
             resolved: None,
             waiter: waiter.cloned(),
             layers_pending: None,
+            incremental: false,
             #[cfg(test)]
             parses: 0,
         };
@@ -150,6 +163,20 @@ impl CodeBlockHighlighter {
 
     fn len(&self) -> usize {
         self.text.len()
+    }
+
+    /// About how much memory the highlighting takes: the trees, the text,
+    /// the highlights and their styles.
+    fn memory(&self) -> usize {
+        let styles = self
+            .resolved
+            .as_ref()
+            .map_or(0, |resolved| resolved.styles.len());
+        let layers: usize = self.layers.iter().map(|layer| layer.byte_range.len()).sum();
+        (self.len() + layers) * TREE_BYTES_PER_SOURCE_BYTE
+            + self.len()
+            + self.segments.len() * std::mem::size_of::<Segment>()
+            + styles * std::mem::size_of::<(Range<usize>, HighlightStyle)>()
     }
 
     /// Brings the highlighting up to date with `code`.
@@ -175,6 +202,7 @@ impl CodeBlockHighlighter {
 
     /// Highlights `code` from scratch.
     fn reset(&mut self, code: &SharedString) {
+        self.incremental = false;
         self.source = code.clone();
         self.text = Rope::from_str(code);
         self.layers_pending = None;
@@ -189,6 +217,7 @@ impl CodeBlockHighlighter {
 
     /// Highlights `code`, which extends the current source.
     fn append(&mut self, code: &SharedString) {
+        self.incremental = true;
         let old_len = self.len();
         let start_position = ts_point(self.text.offset_to_point(old_len));
         self.text.insert(old_len, &code[old_len..]);
@@ -840,7 +869,7 @@ fn ts_point(point: gpui_base::input::Point) -> Point {
 struct KeptBlocks {
     blocks: Vec<CodeBlockHighlighter>,
     max_blocks: usize,
-    max_bytes: usize,
+    max_memory: usize,
 }
 
 impl Default for KeptBlocks {
@@ -848,7 +877,7 @@ impl Default for KeptBlocks {
         Self {
             blocks: Vec::new(),
             max_blocks: MAX_KEPT_BLOCKS,
-            max_bytes: MAX_KEPT_BYTES,
+            max_memory: MAX_KEPT_MEMORY,
         }
     }
 }
@@ -883,11 +912,11 @@ impl KeptBlocks {
 
     fn put(&mut self, block: CodeBlockHighlighter) {
         self.blocks.push(block);
-        let mut bytes: usize = self.blocks.iter().map(CodeBlockHighlighter::len).sum();
+        let mut memory: usize = self.blocks.iter().map(CodeBlockHighlighter::memory).sum();
         while self.blocks.len() > 1
-            && (self.blocks.len() > self.max_blocks || bytes > self.max_bytes)
+            && (self.blocks.len() > self.max_blocks || memory > self.max_memory)
         {
-            bytes -= self.blocks.remove(0).len();
+            memory -= self.blocks.remove(0).memory();
         }
     }
 }
@@ -896,15 +925,20 @@ thread_local! {
     static KEPT_BLOCKS: RefCell<KeptBlocks> = RefCell::default();
 }
 
-/// The highlight styles of a code block in `lang`, in `theme`.
+/// The highlight styles of a code block in `lang`, in `theme`. `complete`
+/// is whether the code can still grow (see [`CodeBlock::is_complete`]).
 ///
-/// Empty for a language without a grammar. With a `waiter`, a language that
-/// is not compiled yet is compiled in the background, the code is plain until
-/// then, and `waiter` tells the application when it is ready. Without one,
-/// it is compiled here.
+/// Empty for a language without a grammar. With a `waiter`, nothing is
+/// parsed or highlighted here: a language that is not compiled yet is
+/// compiled in the background, and the code is plain until then, and the
+/// code is highlighted in the background too (see [`highlight_in_background`]).
+/// Without one, it is all done here.
+///
+/// [`CodeBlock::is_complete`]: gpui_base::text::CodeBlock::is_complete
 pub(crate) fn highlight_code_block(
     lang: &str,
     code: &SharedString,
+    complete: bool,
     theme: &Arc<super::HighlightTheme>,
     waiter: Option<&Waiter>,
 ) -> CodeBlockHighlights {
@@ -918,6 +952,9 @@ pub(crate) fn highlight_code_block(
     let Some(language) = language else {
         return CodeBlockHighlights::default();
     };
+    if let Some(waiter) = waiter {
+        return highlight_in_background(language, code, complete, theme, waiter);
+    }
     KEPT_BLOCKS.with(|kept| {
         let mut kept = kept.borrow_mut();
         let mut block = match kept.take(&language, code) {
@@ -939,8 +976,312 @@ pub(crate) fn highlight_code_block(
     })
 }
 
+/// The highlighting of a code block kept by [`highlight_in_background`],
+/// shared with the task that brings it up to date.
+struct BlockJob {
+    /// The [`Waiter`] domain whose executor the task runs on: an
+    /// application's blocks are its own.
+    domain: u64,
+    language: Arc<CompiledLanguage>,
+    /// The code asked for last, in the theme asked for, and whether it was
+    /// complete then.
+    wanted: SharedString,
+    theme: Arc<super::HighlightTheme>,
+    complete: bool,
+    /// The highlighter, while no task has it.
+    highlighter: Option<CodeBlockHighlighter>,
+    /// Whether a task is bringing the highlighting up to date.
+    running: bool,
+    /// The highlights the task made last.
+    done: Option<Done>,
+    /// Told when the task makes highlights.
+    waiting: Vec<Sender<()>>,
+    /// The memory the highlighter took when the task last let it go.
+    memory: usize,
+}
+
+/// Highlights a task made.
+struct Done {
+    code: SharedString,
+    theme: Arc<super::HighlightTheme>,
+    /// Whether the code was highlighted from scratch, rather than bit by bit
+    /// as it streamed in.
+    from_scratch: bool,
+    /// The [`ready_generation`] at which an injected language was not ready,
+    /// if one wasn't.
+    layers_pending: Option<u64>,
+    styles: CodeBlockHighlights,
+}
+
+impl BlockJob {
+    /// Whether the highlights made last are the ones asked for.
+    fn is_up_to_date(&self) -> bool {
+        self.done.as_ref().is_some_and(|done| {
+            done.code == self.wanted
+                && Arc::ptr_eq(&done.theme, &self.theme)
+                && (done.from_scratch || !self.complete)
+                && done
+                    .layers_pending
+                    .is_none_or(|pending_at| pending_at == ready_generation())
+        })
+    }
+}
+
+/// The code blocks [`highlight_in_background`] keeps, the most recently
+/// used last.
+struct BackgroundBlocks {
+    blocks: Vec<Arc<Mutex<BlockJob>>>,
+    max_blocks: usize,
+    max_memory: usize,
+}
+
+impl Default for BackgroundBlocks {
+    fn default() -> Self {
+        Self {
+            blocks: Vec::new(),
+            max_blocks: MAX_KEPT_BLOCKS,
+            max_memory: MAX_KEPT_MEMORY,
+        }
+    }
+}
+
+impl BackgroundBlocks {
+    /// The block of `code`, or of the longest code it extends, made the most
+    /// recently used.
+    fn find(
+        &mut self,
+        domain: u64,
+        language: &Arc<CompiledLanguage>,
+        code: &SharedString,
+    ) -> Option<Arc<Mutex<BlockJob>>> {
+        let mut best: Option<(usize, usize)> = None;
+        for (ix, block) in self.blocks.iter().enumerate().rev() {
+            let block = block.lock().unwrap();
+            if block.domain != domain
+                || !Arc::ptr_eq(&block.language, language)
+                || block.wanted.len() > code.len()
+            {
+                continue;
+            }
+            if block.wanted.len() == code.len()
+                && (block.wanted.as_ptr() == code.as_ptr() || block.wanted == *code)
+            {
+                best = Some((ix, code.len()));
+                break;
+            }
+            if best.is_none_or(|(_, len)| len < block.wanted.len())
+                && code.starts_with(block.wanted.as_ref())
+            {
+                best = Some((ix, block.wanted.len()));
+            }
+        }
+        let block = self.blocks.remove(best?.0);
+        self.blocks.push(block.clone());
+        Some(block)
+    }
+
+    /// Keeps `block`, and returns the least recently used blocks past the
+    /// budget, down to it.
+    fn put(&mut self, block: Arc<Mutex<BlockJob>>) -> Vec<Arc<Mutex<BlockJob>>> {
+        self.blocks.push(block);
+        let mut memory: usize = self
+            .blocks
+            .iter()
+            .map(|block| block.lock().unwrap().memory)
+            .sum();
+        let mut evicted = Vec::new();
+        while self.blocks.len() > 1
+            && (self.blocks.len() > self.max_blocks || memory > self.max_memory)
+        {
+            let block = self.blocks.remove(0);
+            memory -= block.lock().unwrap().memory;
+            evicted.push(block);
+        }
+        evicted
+    }
+}
+
+thread_local! {
+    static BACKGROUND_BLOCKS: RefCell<BackgroundBlocks> = RefCell::default();
+}
+
+/// [`highlight_code_block`] off the calling thread.
+///
+/// A block's highlighting is kept and brought up to date by a task on
+/// `waiter`'s executor, as [`highlight_code_block`] does on the calling
+/// thread. The highlights the task made last are handed out meanwhile,
+/// pending until the task makes newer ones: those of the code before the
+/// latest chunk while a block streams in, which leave the chunk plain, and
+/// none for a block highlighted the first time. Chunks that arrive while the
+/// task works are taken in one go when it's done.
+///
+/// A block that streamed in is highlighted once more from scratch when it's
+/// complete, so it ends up highlighted as if it arrived whole.
+fn highlight_in_background(
+    language: Arc<CompiledLanguage>,
+    code: &SharedString,
+    complete: bool,
+    theme: &Arc<super::HighlightTheme>,
+    waiter: &Waiter,
+) -> CodeBlockHighlights {
+    BACKGROUND_BLOCKS.with(|blocks| {
+        let mut blocks = blocks.borrow_mut();
+        let block = match blocks.find(waiter.domain, &language, code) {
+            Some(block) => block,
+            None => {
+                let block = Arc::new(Mutex::new(BlockJob {
+                    domain: waiter.domain,
+                    language,
+                    wanted: code.clone(),
+                    theme: theme.clone(),
+                    complete,
+                    highlighter: None,
+                    running: false,
+                    done: None,
+                    waiting: Vec::new(),
+                    memory: 0,
+                }));
+                let evicted = blocks.put(block.clone());
+                // Freeing a long block's trees takes milliseconds.
+                if !evicted.is_empty() {
+                    waiter.executor.spawn(async move { drop(evicted) }).detach();
+                }
+                block
+            }
+        };
+        let mut job = block.lock().unwrap();
+        job.wanted = code.clone();
+        job.theme = theme.clone();
+        job.complete = complete;
+        if job.is_up_to_date()
+            && let Some(done) = &job.done
+        {
+            return done.styles.clone();
+        }
+        if !job.running {
+            job.running = true;
+            waiter
+                .executor
+                .spawn(bring_up_to_date(block.clone(), waiter.clone()))
+                .detach();
+        }
+        let (ready, ready_rx) = gpui_base::async_util::unbounded::<()>();
+        job.waiting.push(ready);
+        let shown = job
+            .done
+            .as_ref()
+            .map(|done| done.styles.clone())
+            .unwrap_or_default();
+        shown.pending_until(async move {
+            _ = ready_rx.recv().await;
+        })
+    })
+}
+
+/// Highlights the code `job` asks for, until the highlights are the ones it
+/// asks for.
+async fn bring_up_to_date(job: Arc<Mutex<BlockJob>>, waiter: Waiter) {
+    loop {
+        let (language, code, theme, complete, highlighter) = {
+            let mut job = job.lock().unwrap();
+            (
+                job.language.clone(),
+                job.wanted.clone(),
+                job.theme.clone(),
+                job.complete,
+                job.highlighter.take(),
+            )
+        };
+        let highlighter = match highlighter {
+            Some(mut highlighter) => {
+                if complete && highlighter.incremental {
+                    highlighter.reset(&code);
+                } else {
+                    highlighter.update(&code);
+                }
+                Some(highlighter)
+            }
+            None => CodeBlockHighlighter::new(language, &code, Some(&waiter)),
+        };
+        let mut highlighter = match highlighter {
+            Some(highlighter) => highlighter,
+            None => {
+                // No parser: the code stays plain.
+                let mut job = job.lock().unwrap();
+                job.done = Some(Done {
+                    code,
+                    theme,
+                    from_scratch: true,
+                    layers_pending: None,
+                    styles: CodeBlockHighlights::default(),
+                });
+                job.running = false;
+                for ready in job.waiting.drain(..) {
+                    _ = ready.try_send(());
+                }
+                return;
+            }
+        };
+        let styles = highlighter.styles(&theme);
+        let mut job = job.lock().unwrap();
+        job.done = Some(Done {
+            code,
+            theme,
+            from_scratch: !highlighter.incremental,
+            layers_pending: highlighter.layers_pending,
+            styles,
+        });
+        job.memory = highlighter.memory();
+        job.highlighter = Some(highlighter);
+        for ready in job.waiting.drain(..) {
+            _ = ready.try_send(());
+        }
+        if job.is_up_to_date() {
+            job.running = false;
+            return;
+        }
+    }
+}
+
+/// The time each `chunk`-byte chunk of `code[from..to]` takes to highlight,
+/// streamed into the highlighting of `code[..from]`, with a waiter as in the
+/// background or without one as on the calling thread.
+#[cfg(test)]
+pub(crate) fn time_streamed_chunks(
+    lang: &str,
+    code: &str,
+    from: usize,
+    to: usize,
+    chunk: usize,
+    waiter: Option<&Waiter>,
+) -> Vec<std::time::Duration> {
+    let theme = super::HighlightTheme::default_dark();
+    let language = compiled_language(lang).expect("a grammar");
+    let mut end = from;
+    while !code.is_char_boundary(end) {
+        end += 1;
+    }
+    let mut highlighter =
+        CodeBlockHighlighter::new(language, &code[..end].to_string().into(), waiter)
+            .expect("a parser");
+    highlighter.styles(&theme);
+    let mut times = Vec::new();
+    while end < to {
+        end = (end + chunk).min(code.len());
+        while !code.is_char_boundary(end) {
+            end += 1;
+        }
+        let prefix = SharedString::from(code[..end].to_string());
+        let start = std::time::Instant::now();
+        highlighter.update(&prefix);
+        std::hint::black_box(highlighter.styles(&theme));
+        times.push(start.elapsed());
+    }
+    times
+}
+
 /// Compiles the languages an application's code blocks wait for in the
-/// background, and repaints its windows when one is ready.
+/// background, and has them highlighted again when one is ready.
 struct LanguageReady {
     waiter: Waiter,
     _repaint: gpui::Task<()>,
@@ -956,14 +1297,9 @@ pub(crate) fn init(cx: &mut gpui::App) {
         while ready.recv().await.is_ok() {
             // One repaint for every language that is ready by now.
             while ready.try_recv().is_ok() {}
-            _ = cx.update(|cx| {
-                // A new highlighter, so code blocks highlighted while their
-                // language was not ready are highlighted again.
-                if let Some(theme) = cx.try_global::<crate::Theme>().cloned() {
-                    crate::text::install_text_view_defaults(&theme, cx);
-                }
-                cx.refresh_windows();
-            });
+            // Code blocks highlighted while their language was not ready
+            // are highlighted again.
+            _ = cx.update(gpui_base::text::refresh_code_block_highlights);
         }
     });
     let waiter = Waiter::new(cx.background_executor().clone(), Some(sender));

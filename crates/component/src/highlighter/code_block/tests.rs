@@ -534,7 +534,7 @@ fn interleaved_blocks_each_keep_their_highlighting() {
             let code = SharedString::from(code.clone());
             let actual = per_byte(
                 code.len(),
-                &highlight_code_block("rust", &code, &theme, None),
+                &highlight_code_block("rust", &code, true, &theme, None),
             );
             assert_same_styles("rust", &code, &from_scratch("rust", &code, &theme), &actual);
         }
@@ -567,7 +567,7 @@ fn kept_blocks_stay_within_their_budget() {
     let language = compiled_language("json").unwrap();
     let mut kept = KeptBlocks {
         max_blocks: 4,
-        max_bytes: 64,
+        max_memory: 2048,
         ..KeptBlocks::default()
     };
     for ix in 0..8 {
@@ -584,7 +584,7 @@ fn kept_blocks_stay_within_their_budget() {
         "the oldest is gone"
     );
 
-    // A block over the byte budget on its own is kept while it is in use.
+    // A block over the memory budget on its own is kept while it is in use.
     let huge = SharedString::from(format!("[{}1]", "1,".repeat(64)));
     kept.put(CodeBlockHighlighter::new(language.clone(), &huge, None).unwrap());
     assert_eq!(kept.blocks.len(), 1);
@@ -717,13 +717,19 @@ fn a_code_block_is_plain_until_its_language_is_ready(cx: &mut gpui::TestAppConte
     };
 
     assert!(
-        highlight_code_block(&lang, &code, &theme, Some(&waiter)).is_empty(),
+        highlight_code_block(&lang, &code, true, &theme, Some(&waiter)).is_empty(),
         "plain while the language compiles"
     );
     cx.run_until_parked();
     assert!(told.try_recv().is_ok(), "the waiter hears when it is ready");
+    // Then the code is highlighted in the background.
+    let pending = highlight_code_block(&lang, &code, true, &theme, Some(&waiter));
+    assert!(pending.is_pending());
+    cx.run_until_parked();
+    let styles = highlight_code_block(&lang, &code, true, &theme, Some(&waiter));
+    assert!(!styles.is_pending());
     assert_eq!(
-        number(&highlight_code_block(&lang, &code, &theme, Some(&waiter))),
+        number(&styles),
         theme.style("number").and_then(|style| style.color)
     );
 }
@@ -747,11 +753,11 @@ fn warming_a_language_up_compiles_it_in_the_background(cx: &mut gpui::TestAppCon
 }
 
 #[gpui::test]
-fn a_ready_language_installs_a_new_code_block_highlighter(cx: &mut gpui::TestAppContext) {
+fn a_ready_language_leaves_the_installed_defaults_alone(cx: &mut gpui::TestAppContext) {
     use std::{cell::Cell, rc::Rc};
 
     cx.update(crate::init);
-    let lang = register_fresh_json("reinstall-test");
+    let lang = register_fresh_json("ready-test");
     let installs = Rc::new(Cell::new(0));
     cx.update(|cx| {
         let installs = installs.clone();
@@ -761,11 +767,158 @@ fn a_ready_language_installs_a_new_code_block_highlighter(cx: &mut gpui::TestApp
         .detach();
         let waiter = super::language_ready_waiter(cx).expect("init installs the waiter");
         let theme = HighlightTheme::default_dark();
-        assert!(highlight_code_block(&lang, &"[1]".into(), &theme, Some(&waiter)).is_empty());
+        assert!(highlight_code_block(&lang, &"[1]".into(), true, &theme, Some(&waiter)).is_empty());
     });
     cx.run_until_parked();
 
-    // Code blocks highlighted while the language was not ready are cached
-    // for the old highlighter, so a new one has them highlighted again.
-    assert_eq!(installs.get(), 1);
+    // Code blocks ask their highlighter again (see
+    // `refresh_code_block_highlights`), and the defaults the application
+    // installed stay as they are.
+    assert_eq!(installs.get(), 0);
+}
+
+/// The job of the block of `code`, as `highlight_in_background` keeps it.
+fn background_job(code: &str) -> std::sync::Arc<std::sync::Mutex<super::BlockJob>> {
+    super::BACKGROUND_BLOCKS.with(|blocks| {
+        blocks
+            .borrow()
+            .blocks
+            .iter()
+            .find(|job| job.lock().unwrap().wanted.as_ref() == code)
+            .cloned()
+            .expect("a job for the code")
+    })
+}
+
+#[gpui::test]
+fn a_block_is_highlighted_off_the_calling_thread(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    let language = compiled_language("json").unwrap();
+    let chunks = ["[1, ", "2, \"three\"", ", {\"four\": 4}]\n"];
+
+    // Chunks that arrive while nothing ran yet are taken in one go.
+    let mut code = String::new();
+    for chunk in chunks {
+        code.push_str(chunk);
+        let styles =
+            highlight_code_block("json", &code.clone().into(), false, &theme, Some(&waiter));
+        assert!(styles.is_pending());
+        assert!(styles.is_empty(), "nothing is highlighted yet");
+    }
+    let job = background_job(&code);
+    assert!(
+        job.lock().unwrap().highlighter.is_none(),
+        "nothing parsed here"
+    );
+
+    cx.run_until_parked();
+    let styles = highlight_code_block("json", &code.clone().into(), false, &theme, Some(&waiter));
+    assert!(!styles.is_pending());
+    assert_eq!(
+        per_byte(code.len(), &styles),
+        from_scratch("json", &code, &theme)
+    );
+    let job = job.lock().unwrap();
+    assert_eq!(job.highlighter.as_ref().unwrap().parses, 1);
+    assert!(std::sync::Arc::ptr_eq(&job.language, &language));
+}
+
+#[gpui::test]
+fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("json").unwrap();
+    let first = SharedString::from("[1, 2");
+    highlight_code_block("json", &first, false, &theme, Some(&waiter));
+    cx.run_until_parked();
+    let made = highlight_code_block("json", &first, false, &theme, Some(&waiter));
+    assert!(!made.is_pending());
+
+    let longer = SharedString::from("[1, 2, 3");
+    let shown = highlight_code_block("json", &longer, false, &theme, Some(&waiter));
+    assert!(shown.is_pending());
+    assert_eq!(
+        shown.to_vec(),
+        made.to_vec(),
+        "the chunk is plain meanwhile"
+    );
+    cx.run_until_parked();
+    let styles = highlight_code_block("json", &longer, false, &theme, Some(&waiter));
+    assert_eq!(
+        per_byte(longer.len(), &styles),
+        from_scratch("json", &longer, &theme)
+    );
+}
+
+/// A pattern can capture a node by what a later line looks like, which a
+/// chunk can miss. A block that streamed in is highlighted from scratch
+/// once more when it is complete.
+#[cfg(feature = "tree-sitter-languages")]
+#[gpui::test]
+fn a_complete_block_is_highlighted_as_if_it_arrived_whole(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    let cases = [
+        (
+            "elixir",
+            "defmodule A do\n  defp helper(\n         a,\n         b\n       ),\n       do: a + b\n  def map, do: %{a: 1, \"b\" => :atom}\nend\n",
+            3,
+        ),
+        (
+            "haskell",
+            "module Main where\nf ::\n  Int\n  -> Int\nf x =\n  x + 1\nmain = print (f 1)\n",
+            12,
+        ),
+    ];
+    for (lang, code, chunk) in cases {
+        compiled_language(lang).unwrap();
+        let mut end = 0;
+        while end < code.len() {
+            end = (end + chunk).min(code.len());
+            let prefix = SharedString::from(code[..end].to_string());
+            highlight_code_block(lang, &prefix, false, &theme, Some(&waiter));
+            cx.run_until_parked();
+        }
+        let code = SharedString::from(code);
+        let streamed = highlight_code_block(lang, &code, false, &theme, Some(&waiter));
+        assert!(!streamed.is_pending());
+        assert!(
+            background_job(&code)
+                .lock()
+                .unwrap()
+                .highlighter
+                .as_ref()
+                .unwrap()
+                .incremental
+        );
+
+        let complete = highlight_code_block(lang, &code, true, &theme, Some(&waiter));
+        assert!(complete.is_pending(), "{lang}: highlighted once more");
+        cx.run_until_parked();
+        let complete = highlight_code_block(lang, &code, true, &theme, Some(&waiter));
+        assert!(!complete.is_pending());
+        assert_eq!(
+            per_byte(code.len(), &complete),
+            from_scratch(lang, &code, &theme),
+            "{lang}"
+        );
+        assert!(
+            !background_job(&code)
+                .lock()
+                .unwrap()
+                .highlighter
+                .as_ref()
+                .unwrap()
+                .incremental
+        );
+    }
 }

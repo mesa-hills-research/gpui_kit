@@ -94,6 +94,7 @@ pub(crate) fn component_code_block_highlighter(
         crate::highlighter::highlight_code_block(
             lang.as_ref(),
             &block.code(),
+            block.is_complete(),
             &highlight_theme,
             waiter.as_ref(),
         )

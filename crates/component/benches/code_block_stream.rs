@@ -7,8 +7,12 @@
 //! benchmark draws the finished block again, as every frame of a window
 //! that shows it does.
 //!
-//! Run with
-//! `cargo bench -p gpui-component --features tree-sitter-rust --bench code_block_stream`.
+//! The code is generated the same way every time, so the numbers can be
+//! compared across commits: Rust items with nested bodies, and flat Python,
+//! whose root holds a node for every line.
+//!
+//! Run with `cargo bench -p gpui-component --features
+//! tree-sitter-rust,tree-sitter-python --bench code_block_stream`.
 
 use gpui::{
     AppContext as _, BenchAppContext, Context, Entity, IntoElement, ParentElement as _, Render,
@@ -16,14 +20,54 @@ use gpui::{
 };
 use gpui_component::text::{TextView, TextViewState};
 
-/// About 450 KB of Rust from this repository.
-fn rust_source() -> String {
-    [
-        include_str!("../../base/src/text/node.rs"),
-        include_str!("../../base/src/text/state.rs"),
-        include_str!("../../base/src/text/text_view.rs"),
-    ]
-    .concat()
+/// About 450 KB of code in `lang`, Rust or Python.
+fn source(lang: &str) -> String {
+    let mut code = String::new();
+    if lang == "rust" {
+        code.push_str("//! Generated records.\nuse std::collections::HashMap;\n\n");
+    }
+    let mut i = 0;
+    while code.len() < 450 * 1024 {
+        let item = match lang {
+            "rust" => format!(
+                r#"/// A record of kind {i}.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Record{i} {{
+    id: usize,
+    name: String,
+    tags: Vec<&'static str>,
+}}
+
+impl Record{i} {{
+    /// The record, or `None` when `id` is out of range.
+    pub fn new(id: usize, name: impl Into<String>) -> Option<Self> {{
+        if id > {limit} {{
+            return None;
+        }}
+        let tags = match id % 3 {{
+            0 => vec!["zero", "first"],
+            1 => vec!["one"],
+            _ => Vec::new(),
+        }};
+        Some(Self {{ id, name: name.into(), tags }})
+    }}
+
+    pub fn describe(&self, cache: &mut HashMap<usize, String>) -> &str {{
+        cache
+            .entry(self.id)
+            .or_insert_with(|| format!("{{}} #{{}} ({{:?}})", self.name, self.id, self.tags))
+    }}
+}}
+
+"#,
+                limit = i * 7 + 3
+            ),
+            _ => format!("value_{i} = compute({i}, \"label {i}\")  # note\n"),
+        };
+        code.push_str(&item);
+        i += 1;
+    }
+    code
 }
 
 const CHUNK: usize = 40;
@@ -45,15 +89,15 @@ impl Render for Answer {
     }
 }
 
-/// Streams a fenced Rust block that starts at `size_kb` KB.
-fn stream_rust_block(size_kb: usize, max_lines: Option<usize>, cx: &mut BenchAppContext) {
+/// Streams a fenced block in `lang` that starts at `size_kb` KB.
+fn stream_block(lang: &str, size_kb: usize, max_lines: Option<usize>, cx: &mut BenchAppContext) {
     cx.update(gpui_component::init);
-    let source = rust_source();
+    let source = source(lang);
     let mut end = size_kb * 1024;
     while !source.is_char_boundary(end) {
         end += 1;
     }
-    let markdown = format!("Here is the file:\n\n```rust\n{}", &source[..end]);
+    let markdown = format!("Here is the file:\n\n```{lang}\n{}", &source[..end]);
     let mut window = cx.add_empty_window();
     let answer = window.update(|window, cx| {
         window.replace_root(cx, |_, cx| Answer {
@@ -81,7 +125,7 @@ fn stream_rust_block(size_kb: usize, max_lines: Option<usize>, cx: &mut BenchApp
 #[gpui::bench]
 fn redraw_rust_block_200kb(cx: &mut BenchAppContext) {
     cx.update(gpui_component::init);
-    let source = rust_source();
+    let source = source("rust");
     let mut end = 200 * 1024;
     while !source.is_char_boundary(end) {
         end += 1;
@@ -101,18 +145,29 @@ fn redraw_rust_block_200kb(cx: &mut BenchAppContext) {
 
 #[gpui::bench]
 fn stream_rust_block_50kb(cx: &mut BenchAppContext) {
-    stream_rust_block(50, None, cx);
+    stream_block("rust", 50, None, cx);
 }
 
 #[gpui::bench]
 fn stream_rust_block_200kb(cx: &mut BenchAppContext) {
-    stream_rust_block(200, None, cx);
+    stream_block("rust", 200, None, cx);
 }
 
 /// The 200 KB block showing its first 40 lines.
 #[gpui::bench]
 fn stream_rust_block_200kb_capped(cx: &mut BenchAppContext) {
-    stream_rust_block(200, Some(40), cx);
+    stream_block("rust", 200, Some(40), cx);
+}
+
+#[gpui::bench]
+fn stream_python_block_200kb(cx: &mut BenchAppContext) {
+    stream_block("python", 200, None, cx);
+}
+
+/// The 200 KB block showing its first 40 lines.
+#[gpui::bench]
+fn stream_python_block_200kb_capped(cx: &mut BenchAppContext) {
+    stream_block("python", 200, Some(40), cx);
 }
 
 gpui::bench_group!(
@@ -120,6 +175,8 @@ gpui::bench_group!(
     redraw_rust_block_200kb,
     stream_rust_block_50kb,
     stream_rust_block_200kb,
-    stream_rust_block_200kb_capped
+    stream_rust_block_200kb_capped,
+    stream_python_block_200kb,
+    stream_python_block_200kb_capped
 );
 gpui::bench_main!(benches);

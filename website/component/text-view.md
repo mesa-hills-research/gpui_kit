@@ -118,13 +118,20 @@ Lua, Make, Markdown, Objective-C, OCaml, Perl, PHP, PowerShell, Protocol
 Buffers, Python, R, Ruby, Rust, Scala, SQL, Svelte, Swift, TOML, TSX,
 TypeScript, XML, YAML and Zig. A fence can name its language the usual
 ways, such as `shell`, `zsh` or `console` for Bash, `jsx`, `patch` for a
-diff, `ps1` for PowerShell, `tf` for HCL or `yml`. The highlighter keeps each block's parse and
-highlights, and recognizes a block that comes back with more code. A streamed
+diff, `ps1` for PowerShell, `tf` for HCL or `yml`.
+
+Code blocks are highlighted on a background thread. A block shows the
+highlights made so far, with the code that arrived since in plain text, until
+the next ones are ready, so a frame spends about 20 µs on a block's highlights
+whatever its language and size. The highlighter keeps each block's parse and
+highlights and recognizes a block that comes back with more code: a streamed
 block is parsed again only where it changed and highlighted again from the
-first line that can differ, so a chunk of a 200 KB Rust block takes well
-under a millisecond. The highlights are kept as highlight names and take the
-theme's colors when the block is drawn, so a theme change recolors code
-without parsing it.
+first line that can differ, and chunks that arrive while it works are taken in
+one go. A block that streamed in is highlighted once more from scratch when
+its fence closes. A block shown in part with `code_block_max_lines` is
+highlighted only as far as its shown lines. The highlights are kept as
+highlight names and take the theme's colors when the block is drawn, so a
+theme change recolors code without parsing it.
 
 A language is prepared the first time a block needs it: its grammar is
 decoded and its queries are compiled on a background thread, which takes
@@ -198,7 +205,7 @@ per block where the answer as one row took 12.5 ms
 
 `code_block_max_lines` shows the first lines of each code block, for blocks a
 reader expands on request. The lines past the cap are neither laid out nor
-highlighted on screen, so a long block costs what its shown lines cost.
+highlighted, so a long block costs what its shown lines cost.
 `CodeBlock::code` and the block's source range still hold all of it, for a
 copy button or a line count:
 

@@ -32,6 +32,8 @@ mod languages;
 #[cfg(feature = "tree-sitter")]
 mod registry;
 
+#[cfg(all(test, feature = "tree-sitter"))]
+pub(crate) use code_block::time_streamed_chunks;
 #[cfg(feature = "tree-sitter")]
 pub(crate) use code_block::{highlight_code_block, init, language_ready_waiter};
 #[cfg(feature = "tree-sitter")]
