@@ -139,6 +139,23 @@ impl BlockNode {
         self.text_by_kind(BlockTextKind::All)
     }
 
+    /// Marks the code blocks in this block complete, as the document was
+    /// marked finished.
+    pub(crate) fn mark_code_complete(&mut self) {
+        match self {
+            BlockNode::CodeBlock(code_block) => code_block.mark_complete(),
+            BlockNode::Root { children, .. }
+            | BlockNode::Blockquote { children, .. }
+            | BlockNode::List { children, .. }
+            | BlockNode::ListItem { children, .. } => {
+                for child in children {
+                    child.mark_code_complete();
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// The selected text within this block, in `format`.
     ///
     /// [`SelectionFormat::Source`] reconstructs the Markdown source of the
@@ -1784,6 +1801,8 @@ impl Paragraph {
 pub struct CodeBlock {
     lang: Option<SharedString>,
     state: Arc<Mutex<InlineState>>,
+    /// Whether text appended to the document can no longer change the code.
+    complete: bool,
     highlight_cache: Arc<Mutex<Option<CachedCodeBlockHighlights>>>,
     /// The first lines of the code, when a view shows only those.
     capped: Arc<Mutex<Option<CappedCode>>>,
@@ -1792,6 +1811,11 @@ pub struct CodeBlock {
     pub(crate) source_segments: Vec<SourceSegment>,
     pub span: Option<Span>,
 }
+
+/// How many lines past the lines a view shows of a code block are
+/// highlighted with them, so that what follows the cut, such as the rest of
+/// a string or comment, colors them as the whole code would.
+const CAPPED_HIGHLIGHT_MARGIN_LINES: usize = 20;
 
 /// The first lines of a code block, shown in its place.
 struct CappedCode {
@@ -1804,6 +1828,9 @@ struct CappedCode {
     /// The [`CodeBlockHighlights::id`] of the highlights of the whole code,
     /// and those highlights cut to the lines.
     highlights: Option<(u64, CodeBlockHighlights)>,
+    /// The code highlighted for the lines: them and a few after, so that
+    /// what follows the cut can't change how they read.
+    highlighted: CodeBlock,
 }
 
 impl std::fmt::Debug for CappedCode {
@@ -1816,7 +1843,21 @@ impl std::fmt::Debug for CappedCode {
 
 struct CachedCodeBlockHighlights {
     highlighter: Arc<CodeBlockHighlighterFn>,
+    /// The [`HIGHLIGHTS_GENERATION`] the highlights were asked for at.
+    generation: u64,
     styles: CodeBlockHighlights,
+}
+
+/// Moves when [`refresh_code_block_highlights`] has every code block ask its
+/// highlighter again.
+static HIGHLIGHTS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Has every code block ask its highlighter again, and repaints the windows:
+/// for a highlighter whose highlights changed although it's the same
+/// highlighter, such as one that can now highlight a language it couldn't.
+pub fn refresh_code_block_highlights(cx: &mut App) {
+    HIGHLIGHTS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    cx.refresh_windows();
 }
 
 /// The syntax highlights of a [`CodeBlock`]: byte ranges of
@@ -1828,10 +1869,26 @@ struct CachedCodeBlockHighlights {
 /// [`Self::new`] or [`Self::shared`] is told apart from every other, even
 /// one sharing the same ranges, so a highlighter that changes its ranges in
 /// place hands out a new value for them.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CodeBlockHighlights {
     id: u64,
     ranges: Arc<Vec<(Range<usize>, HighlightStyle)>>,
+    /// Completes when newer highlights can be had, for highlights a
+    /// highlighter is still working on. Taken by the first block that shows
+    /// them.
+    ready: Option<Arc<Mutex<Option<HighlightsReady>>>>,
+}
+
+type HighlightsReady = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+
+impl std::fmt::Debug for CodeBlockHighlights {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodeBlockHighlights")
+            .field("id", &self.id)
+            .field("ranges", &self.ranges)
+            .field("pending", &self.is_pending())
+            .finish()
+    }
 }
 
 impl CodeBlockHighlights {
@@ -1851,7 +1908,33 @@ impl CodeBlockHighlights {
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             ranges,
+            ready: None,
         }
+    }
+
+    /// Marks these highlights as what a highlighter has while it works on
+    /// newer ones, in the background: `ready` completes when they can be
+    /// had. A code block shows these meanwhile, then asks its highlighter
+    /// again and repaints. A highlighter that hands these out must not
+    /// block, and should cover the part of the code it has highlighted.
+    pub fn pending_until(
+        mut self,
+        ready: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> Self {
+        self.ready = Some(Arc::new(Mutex::new(Some(Box::pin(ready)))));
+        self
+    }
+
+    /// Whether a highlighter is still working on newer highlights; see
+    /// [`Self::pending_until`].
+    pub fn is_pending(&self) -> bool {
+        self.ready.is_some()
+    }
+
+    /// The future that completes when newer highlights can be had, unless
+    /// another block took it.
+    fn take_ready(&self) -> Option<HighlightsReady> {
+        self.ready.as_ref()?.lock().ok()?.take()
     }
 
     /// Identifies these highlights among all others, for as long as the
@@ -1868,7 +1951,10 @@ impl CodeBlockHighlights {
         if self.ranges.iter().all(|range| fits(&range)) {
             return self;
         }
-        Self::new(self.ranges.iter().filter(fits).cloned().collect())
+        Self {
+            ready: self.ready.clone(),
+            ..Self::new(self.ranges.iter().filter(fits).cloned().collect())
+        }
     }
 }
 
@@ -1902,7 +1988,10 @@ impl std::fmt::Debug for CachedCodeBlockHighlights {
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.code() == other.code() && self.span == other.span
+        self.lang == other.lang
+            && self.code() == other.code()
+            && self.span == other.span
+            && self.complete == other.complete
     }
 }
 
@@ -1920,13 +2009,38 @@ impl CodeBlock {
             .unwrap_or_default()
     }
 
-    /// Builds a code block that is not tied to a parsed document.
+    /// Whether text appended to the document can no longer change the code:
+    /// its fence closed, something follows it, or the document was marked
+    /// finished. A highlighter can highlight a complete block once more, from
+    /// scratch, where it highlighted it bit by bit as it streamed in.
+    pub fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    /// Builds a complete code block that is not tied to a parsed document.
     ///
     /// [`crate::TextView::code_block_highlighter`] hands a `&CodeBlock` to the
     /// highlighter it is given, so anyone writing one needs a way to build a
     /// block to exercise it against.
     pub fn from_code(code: impl Into<SharedString>, lang: Option<impl Into<SharedString>>) -> Self {
-        Self::new(code.into(), lang.map(Into::into), None::<Span>)
+        Self::new(code.into(), lang.map(Into::into), None::<Span>).complete(true)
+    }
+
+    /// Sets whether the code is complete; see [`Self::is_complete`].
+    pub(crate) fn complete(mut self, complete: bool) -> Self {
+        self.complete = complete;
+        self
+    }
+
+    /// Marks the code complete, as the document was marked finished.
+    pub(crate) fn mark_complete(&mut self) {
+        if self.complete {
+            return;
+        }
+        self.complete = true;
+        // Shared with the clones of this block, which aren't complete.
+        self.highlight_cache = Arc::new(Mutex::new(None));
+        self.capped = Arc::new(Mutex::new(None));
     }
 
     pub(crate) fn new(
@@ -1942,6 +2056,7 @@ impl CodeBlock {
         Self {
             lang,
             state,
+            complete: false,
             highlight_cache: Arc::new(Mutex::new(None)),
             capped: Arc::new(Mutex::new(None)),
             source_segments: vec![],
@@ -1977,10 +2092,13 @@ impl CodeBlock {
             .unwrap_or(SourceRangeSelection::Unmapped)
     }
 
+    /// The highlights `highlighter` gives the code, kept for the next frame.
     fn highlighted_styles(&self, highlighter: &Arc<CodeBlockHighlighterFn>) -> CodeBlockHighlights {
+        let generation = HIGHLIGHTS_GENERATION.load(std::sync::atomic::Ordering::Acquire);
         if let Ok(cache) = self.highlight_cache.lock()
             && let Some(cache) = cache.as_ref()
             && Arc::ptr_eq(&cache.highlighter, highlighter)
+            && cache.generation == generation
         {
             return cache.styles.clone();
         }
@@ -1989,10 +2107,36 @@ impl CodeBlock {
         if let Ok(mut cache) = self.highlight_cache.lock() {
             *cache = Some(CachedCodeBlockHighlights {
                 highlighter: highlighter.clone(),
+                generation,
                 styles: styles.clone(),
             });
         }
         styles
+    }
+
+    /// For `styles` the highlighter is still working on, kept until it says
+    /// newer ones can be had: drops them then, and has the view of `window`
+    /// that showed them repaint and ask again.
+    fn ask_again_when_ready(&self, styles: &CodeBlockHighlights, window: &Window, cx: &mut App) {
+        if let Some(ready) = styles.take_ready() {
+            let cache = Arc::downgrade(&self.highlight_cache);
+            let id = styles.id();
+            let view = window.current_view();
+            window
+                .spawn(cx, async move |cx| {
+                    ready.await;
+                    let Some(cache) = cache.upgrade() else {
+                        return;
+                    };
+                    if let Ok(mut cache) = cache.lock()
+                        && cache.as_ref().is_some_and(|cache| cache.styles.id() == id)
+                    {
+                        *cache = None;
+                    }
+                    _ = cx.update(|_, cx| cx.notify(view));
+                })
+                .detach();
+        }
     }
 
     /// The state and length of the first `lines` lines of the code, when the
@@ -2020,14 +2164,32 @@ impl CodeBlock {
         if let Ok(mut state) = state.lock() {
             state.set_text(code[..end].to_string().into());
         }
+        let highlighted_end = code
+            .match_indices('\n')
+            .nth(lines + CAPPED_HIGHLIGHT_MARGIN_LINES - 1)
+            .map_or(code.len(), |(ix, _)| ix + 1);
+        let highlighted = Self::new(
+            code[..highlighted_end].to_string().into(),
+            self.lang.clone(),
+            None::<Span>,
+        )
+        .complete(self.complete || highlighted_end < code.len());
         *capped = Some(CappedCode {
             lines,
             code,
             len: end,
             state: state.clone(),
             highlights: None,
+            highlighted,
         });
         Some((state, end))
+    }
+
+    /// The code highlighted for the first lines a view shows; see
+    /// [`CappedCode::highlighted`].
+    fn capped_highlighted(&self) -> Option<CodeBlock> {
+        let capped = self.capped.lock().ok()?;
+        capped.as_ref().map(|capped| capped.highlighted.clone())
     }
 
     /// `highlights` of the whole code cut to its first `len` bytes, kept
@@ -2066,11 +2228,21 @@ impl CodeBlock {
         node_cx: &NodeContext,
         leaf_key: Option<TextLeafKey>,
         capped_len: Option<usize>,
+        window: &Window,
+        cx: &mut App,
     ) -> InlineStyles {
+        // Code past the lines shown, and the few after them, is not
+        // highlighted.
+        let highlighted = capped_len.and_then(|_| self.capped_highlighted());
         let mut highlights = node_cx
             .code_block_highlighter
             .as_ref()
-            .map(|highlighter| self.highlighted_styles(highlighter))
+            .map(|highlighter| {
+                let block = highlighted.as_ref().unwrap_or(self);
+                let styles = block.highlighted_styles(highlighter);
+                block.ask_again_when_ready(&styles, window, cx);
+                styles
+            })
             .unwrap_or_default();
         let mut fades = node_cx.stream_fades(leaf_key);
         let cut_fades;
@@ -2190,7 +2362,13 @@ impl CodeBlock {
                 let inline = Inline::new(
                     state,
                     vec![],
-                    self.inline_styles(node_cx, leaf_key, capped.as_ref().map(|(_, len)| *len)),
+                    self.inline_styles(
+                        node_cx,
+                        leaf_key,
+                        capped.as_ref().map(|(_, len)| *len),
+                        window,
+                        cx,
+                    ),
                     node_cx.link_click_handler.clone(),
                 )
                 .range_backgrounds(slice_backgrounds(
@@ -4281,6 +4459,108 @@ mod tests {
         assert_eq!(light_styles[0].1.color, Some(gpui::rgb(0x0000ff).into()));
         assert_eq!(dark_styles[0].1.color, Some(gpui::rgb(0xffff00).into()));
         assert_eq!(block.code(), "42", "the document must survive the swap");
+    }
+
+    #[gpui::test]
+    fn refreshed_highlights_are_asked_for_again(cx: &mut gpui::TestAppContext) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new({
+            let calls = calls.clone();
+            move |_| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                CodeBlockHighlights::default()
+            }
+        });
+        let block = CodeBlock::from_code("42", Some("json"));
+        block.highlighted_styles(&highlighter);
+        block.highlighted_styles(&highlighter);
+        assert_eq!(calls.load(Ordering::Relaxed), 1, "kept for the next frame");
+
+        cx.update(refresh_code_block_highlights);
+        block.highlighted_styles(&highlighter);
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+    }
+
+    /// A highlighter that works in the background hands out what it has,
+    /// and the view repaints and asks again when it has more.
+    #[gpui::test]
+    fn pending_highlights_are_asked_for_again_when_newer_ones_are_ready(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::{AppContext as _, Context, IntoElement, Render};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use crate::text::{TextView, TextViewState};
+
+        struct Shown(gpui::Entity<TextViewState>, Arc<CodeBlockHighlighterFn>);
+
+        impl Render for Shown {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                TextView::new(&self.0).shared_code_block_highlighter(self.1.clone())
+            }
+        }
+
+        cx.update(crate::init);
+        let (ready, ready_rx) = crate::async_util::unbounded::<()>();
+        let ready_rx = Arc::new(Mutex::new(Some(ready_rx)));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new({
+            let calls = calls.clone();
+            move |_| {
+                let style = HighlightStyle {
+                    color: Some(gpui::rgb(0x0000ff).into()),
+                    ..Default::default()
+                };
+                let styles = CodeBlockHighlights::new(vec![(0..2, style)]);
+                calls.fetch_add(1, Ordering::Relaxed);
+                match ready_rx.lock().unwrap().take() {
+                    Some(ready_rx) => styles.pending_until(async move {
+                        _ = ready_rx.recv().await;
+                    }),
+                    None => styles,
+                }
+            }
+        });
+        let state = cx.new(|cx| TextViewState::markdown("```json\n42\n```\n", cx));
+        let (_, cx) = cx.add_window_view(|_, _| Shown(state, highlighter));
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(calls.load(Ordering::Relaxed), 1, "pending until told");
+
+        ready.try_send(()).unwrap();
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(calls.load(Ordering::Relaxed), 2, "asked again once ready");
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        assert_eq!(calls.load(Ordering::Relaxed), 2, "kept once not pending");
+    }
+
+    /// The lines past the cap are not highlighted, apart from a margin.
+    #[test]
+    fn a_capped_code_block_highlights_the_lines_it_shows() {
+        let code = (0..200)
+            .map(|ix| format!("line {ix}\n"))
+            .collect::<String>();
+        let block = CodeBlock::new(code.clone().into(), Some("rust".into()), None::<Span>);
+        let (_, len) = block.capped_state(5).unwrap();
+        let highlighted = block.capped_highlighted().unwrap();
+        let shown = highlighted.code();
+        assert!(shown.len() > len && shown.len() < code.len());
+        assert_eq!(shown.lines().count(), 5 + CAPPED_HIGHLIGHT_MARGIN_LINES);
+        assert!(code.starts_with(shown.as_ref()));
+        assert!(highlighted.is_complete(), "the lines no longer change");
+        assert!(!block.is_complete());
+
+        // A block whose lines fit in the cap and the margin is the whole code.
+        let short = (0..10).map(|ix| format!("line {ix}\n")).collect::<String>();
+        let block = CodeBlock::new(short.clone().into(), None, None::<Span>);
+        block.capped_state(5).unwrap();
+        let highlighted = block.capped_highlighted().unwrap();
+        assert_eq!(highlighted.code().as_ref(), short);
+        assert!(!highlighted.is_complete());
     }
 
     #[test]

@@ -476,9 +476,22 @@ impl TextViewState {
     /// alone from then on like the others. Appending text, or setting text
     /// that replaces it, opens it again.
     pub fn finish(&mut self, cx: &mut Context<Self>) {
-        if !self.finished {
-            self.finished = true;
-            cx.notify();
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        self.mark_last_block_complete();
+        cx.notify();
+    }
+
+    /// Marks the code blocks of the last block complete, once the text is
+    /// finished: a code block left open can't grow either.
+    fn mark_last_block_complete(&mut self) {
+        if self.finished
+            && self.block_range.is_none()
+            && let Some(last) = Arc::make_mut(&mut self.parsed_content.document.blocks).last_mut()
+        {
+            last.mark_code_complete();
         }
     }
 
@@ -1071,6 +1084,7 @@ impl TextViewState {
                     self.stream_fade.note_extend(content.document.source.len());
                 }
                 self.parsed_content = content;
+                self.mark_last_block_complete();
                 self.parsed_error = None;
                 self.compatible_layout_update = parsed_update.selection_compatible;
                 if parsed_update.full_parse {
@@ -3089,6 +3103,27 @@ mod tests {
             assert_eq!(complete(&document, cx), [true, true, false]);
             assert_eq!(rendered(&last, cx), "three and four\n");
             assert_eq!(complete(&last, cx), [false]);
+        }
+
+        #[gpui::test]
+        fn finishing_marks_an_open_code_block_complete(cx: &mut TestAppContext) {
+            use crate::text::node::BlockNode;
+
+            let document = document("Intro\n\n```rust\nfn a() {}\n", cx);
+            let row = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
+            let code_complete = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
+                state.read_with(cx, |state, _| {
+                    match state.parsed_content.document.blocks.last() {
+                        Some(BlockNode::CodeBlock(code)) => code.is_complete(),
+                        _ => panic!("a code block last"),
+                    }
+                })
+            };
+            assert!(!code_complete(&document, cx));
+            document.update(cx, |document, cx| document.finish(cx));
+            cx.run_until_parked();
+            assert!(code_complete(&document, cx));
+            assert!(code_complete(&row, cx), "the row takes the complete block");
         }
 
         #[gpui::test]

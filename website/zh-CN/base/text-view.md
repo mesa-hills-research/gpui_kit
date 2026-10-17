@@ -118,6 +118,10 @@ TextView::markdown("highlighted", source).code_block_highlighter(|block| {
 
 流式输出的代码块每收到一段内容都会成为一个新的 `CodeBlock`，因此每次都重新生成范围列表的高亮器，每段内容都要复制整份列表。会保留结果的高亮器可以改为共享结果：用 `TextViewDefaults::with_shared_code_block_highlighter` 安装它，并返回 `CodeBlockHighlights`，由它自己保留的 `Arc<Vec<_>>` 通过 `CodeBlockHighlights::shared` 构造。代码块变长时，通过 `Arc::make_mut` 修改这个 `Vec`，再为它返回新的 `CodeBlockHighlights`。此时显示旧范围的代码块通常已被释放，所以范围会原地扩展。GPUI Component 的高亮器就是这样实现的。
 
+高亮器也可以在 UI 线程之外工作。它立即返回手头已有的结果（例如最新一段内容之前那部分代码的高亮），并用 `CodeBlockHighlights::pending_until(ready)` 标记，其中 `ready` 是一个在更新的高亮可用时完成的 future。代码块先显示这些待定的高亮，等 `ready` 完成后再向高亮器请求一次并重绘。`CodeBlock::is_complete` 表示代码块是否还会变长：流式输出的围栏未闭合时为 false，围栏闭合、代码块之后出现其他文字，或 `TextViewState::finish` 把文档标记为结束后为 true。逐段高亮代码块的高亮器，可以在代码块完成后再从头完整高亮一次。`refresh_code_block_highlights` 让所有代码块重新向高亮器请求高亮，适用于高亮器现在能处理之前无法处理的内容，例如某种语言刚加载完成。
+
+设置了 `TextView::code_block_max_lines` 时，在代码块完整显示之前，交给高亮器的只是显示的行及其后 20 行，而不是全部代码。
+
 ## Markdown 扩展
 
 `MarkdownExtensions` 默认使用兼容 CommonMark/GFM 的解析方式。YAML

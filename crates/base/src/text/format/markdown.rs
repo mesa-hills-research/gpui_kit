@@ -928,6 +928,29 @@ fn new_span(pos: Option<markdown::unist::Position>, cx: &NodeContext) -> Option<
     })
 }
 
+/// Whether text appended to `source` can no longer change the code block at
+/// `position`: its fence closed, or text follows it.
+fn code_is_complete(source: &str, position: &markdown::unist::Position) -> bool {
+    let block = &source[position.start.offset..position.end.offset];
+    if !source[position.end.offset..].trim().is_empty() {
+        return true;
+    }
+    let mut lines = block.lines();
+    let Some(opening) = lines.next().map(str::trim_start) else {
+        return false;
+    };
+    let fence = opening.chars().next().filter(|c| *c == '`' || *c == '~');
+    let Some(fence) = fence else {
+        // Indented code goes on with the next indented line.
+        return false;
+    };
+    let fence_len = opening.chars().take_while(|c| *c == fence).count();
+    lines.next_back().is_some_and(|closing| {
+        let closing = closing.trim();
+        closing.len() >= fence_len && closing.chars().all(|c| c == fence)
+    })
+}
+
 fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockNode {
     let span = new_span(value.position().cloned(), cx);
     let parse_cx = MarkdownParseContext::new(source, cx.offset);
@@ -986,11 +1009,16 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
             span: new_span(val.position, cx),
         },
         Node::Code(raw) => {
+            let complete = raw
+                .position
+                .as_ref()
+                .is_some_and(|position| code_is_complete(source, position));
             let span = new_span(raw.position, cx);
             let segments = code_source_segments(source, &raw.value, span, cx.offset);
             BlockNode::CodeBlock(
                 CodeBlock::new(raw.value.into(), raw.lang.map(Into::into), span)
-                    .source_segments(segments),
+                    .source_segments(segments)
+                    .complete(complete),
             )
         }
         Node::Heading(val) => {
@@ -1120,6 +1148,28 @@ mod tests {
     use gpui::ParentElement;
 
     use crate::text::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
+
+    #[test]
+    fn a_code_block_is_complete_once_its_fence_closes_or_text_follows_it() {
+        let complete = |source: &str| -> Vec<bool> {
+            let document = parse(source, &mut NodeContext::default()).unwrap();
+            document
+                .blocks
+                .iter()
+                .filter_map(|block| match block {
+                    BlockNode::CodeBlock(code) => Some(code.is_complete()),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(complete("```rust\nfn a() {}\n```\n"), [true]);
+        assert_eq!(complete("```rust\nfn a() {}\n``"), [false]);
+        assert_eq!(complete("```rust\nfn a() {}\n"), [false]);
+        assert_eq!(complete("~~~~\na\n~~~\n"), [false], "a shorter fence");
+        assert_eq!(complete("    indented\n"), [false]);
+        assert_eq!(complete("    indented\n\nthen text\n"), [true]);
+        assert_eq!(complete("```\na\n```\n\n```\nb\n"), [true, false]);
+    }
 
     fn first_paragraph(block: &BlockNode) -> Option<&Paragraph> {
         match block {

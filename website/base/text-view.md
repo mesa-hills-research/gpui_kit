@@ -137,6 +137,10 @@ Ranges are UTF-8 byte ranges relative to `CodeBlock::code()`. Invalid ranges are
 
 A streamed code block is a new `CodeBlock` with every chunk, so a highlighter that builds a fresh list of ranges each time copies the whole list per chunk. A highlighter that keeps its results can share them instead: install it with `TextViewDefaults::with_shared_code_block_highlighter` and return `CodeBlockHighlights`, made with `CodeBlockHighlights::shared` from an `Arc<Vec<_>>` it keeps. When the block grows, change that `Vec` through `Arc::make_mut` and hand out a new `CodeBlockHighlights` for it. The block that showed the old ranges has usually been dropped by then, so the ranges are extended in place. GPUI Component's highlighter works this way.
 
+A highlighter can also do its work off the UI thread. It returns what it has at once, such as the highlights of the code before the latest chunk, marked with `CodeBlockHighlights::pending_until(ready)`, where `ready` is a future that completes when newer highlights can be had. The block shows the pending highlights, and when `ready` completes it asks the highlighter again and repaints. `CodeBlock::is_complete` tells whether a block can still grow: it's false while a streamed fence is open, and true once the fence closes, text follows the block, or `TextViewState::finish` marks the document finished. A highlighter that highlighted a block bit by bit can highlight it once more from scratch when it's complete. `refresh_code_block_highlights` has every code block ask its highlighter again, for a highlighter that can now highlight something it couldn't, such as a language that finished loading.
+
+With `TextView::code_block_max_lines`, a block's highlighter is handed the lines shown and 20 more, not the whole code, until the block is shown whole.
+
 ## Markdown extensions
 
 `MarkdownExtensions` starts with CommonMark/GFM-compatible parsing. YAML
