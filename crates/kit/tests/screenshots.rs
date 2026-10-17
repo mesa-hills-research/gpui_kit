@@ -929,7 +929,7 @@ impl Render for Meters {
                             .with_label("Tool results")
                             .with_value_text("about 200k"),
                     ])
-                    .description("Hands over at 950k"),
+                    .description("Compacts at 950k"),
             )
             .child(
                 UsageBar::new("plan", "5-hour limit")

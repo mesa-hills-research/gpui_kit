@@ -138,7 +138,7 @@ Color alone can't tell a reader what a segment is. Show each label as text next 
 Progress::new("context").value(62.0).tick(95.0)
 ```
 
-The mark is a 2 px core edged with a pixel of the theme's background on each side, so the core or its edges stand out on both the fill and the track in every bundled theme, before and after the value passes it. Assistive technology doesn't see the tick: say the limit in the accessible value, e.g. "142k of 1M tokens, hands over at 950k".
+The mark is a 2 px core edged with a pixel of the theme's background on each side, so the core or its edges stand out on both the fill and the track in every bundled theme, before and after the value passes it. Assistive technology doesn't see the tick: say the limit in the accessible value, e.g. "142k of 1M tokens, compacts at 950k".
 
 ### Accessible Value
 
@@ -259,7 +259,7 @@ A context meter needs to show where a limit sits. `tick` draws a short mark acro
 ```rust
 ProgressCircle::new("context")
     .value(used_percent)
-    .tick(95.0) // where the session hands over
+    .tick(95.0) // where the conversation compacts
     .stroke_width(rems(0.125))
     .track_color(cx.theme().muted)
 ```
@@ -326,7 +326,7 @@ UsageBar::new("context-split", "Context")
             .with_label("Conversation")
             .with_value_text("about 124k"),
     ])
-    .description("Hands over at 950k")
+    .description("Compacts at 950k")
 
 UsageBar::new("plan", "5-hour limit")
     .small()

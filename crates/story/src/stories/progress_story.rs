@@ -297,7 +297,7 @@ impl ProgressStory {
                                     .with_label("Tool results")
                                     .with_value_text(format!("about {}", tokens(used * 0.25))),
                             ])
-                            .description("Hands over at 950k"),
+                            .description("Compacts at 950k"),
                     )
                     .child(
                         UsageBar::new("plan-usage", "5-hour limit")

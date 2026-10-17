@@ -14,7 +14,7 @@ use crate::{ActiveTheme as _, Sizable, Size, StyledExt as _, h_flex, v_flex};
 /// ██████▌▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░
 /// ■ System and tools          about 18k
 /// ■ Conversation             about 124k
-/// Hands over at 950k
+/// Compacts at 950k
 /// ```
 ///
 /// The bar is a [`Progress`] named after the label, whose accessible value
@@ -201,7 +201,7 @@ mod tests {
         let color = hsla(0.1, 0.8, 0.5, 1.);
         let bar = UsageBar::new("context", "Context")
             .value_text("142k / 1M")
-            .description("Hands over at 950k")
+            .description("Compacts at 950k")
             .value(14.2)
             .color(color)
             .tick(95.)
@@ -212,7 +212,7 @@ mod tests {
             .small();
         assert_eq!(bar.label.as_ref(), "Context");
         assert_eq!(bar.value_text.as_deref(), Some("142k / 1M"));
-        assert_eq!(bar.description.as_deref(), Some("Hands over at 950k"));
+        assert_eq!(bar.description.as_deref(), Some("Compacts at 950k"));
         assert_eq!(bar.value, 14.2);
         assert_eq!(bar.color, Some(color));
         assert_eq!(bar.tick, Some(95.));

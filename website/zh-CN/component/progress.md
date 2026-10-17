@@ -136,7 +136,7 @@ Progress::new("context-split").segments([
 Progress::new("context").value(62.0).tick(95.0)
 ```
 
-刻度是一条 2 px 的芯线，两侧各有一像素主题背景色的边，因此无论数值是否超过刻度，在所有内置主题中，芯线或其边缘都能在填充部分和轨道上清楚显示。辅助技术看不到刻度：请把上限写进无障碍数值，例如 “142k of 1M tokens, hands over at 950k”。
+刻度是一条 2 px 的芯线，两侧各有一像素主题背景色的边，因此无论数值是否超过刻度，在所有内置主题中，芯线或其边缘都能在填充部分和轨道上清楚显示。辅助技术看不到刻度：请把上限写进无障碍数值，例如 “142k of 1M tokens, compacts at 950k”。
 
 ### 无障碍数值
 
@@ -255,7 +255,7 @@ h_flex()
 ```rust
 ProgressCircle::new("context")
     .value(used_percent)
-    .tick(95.0) // 会话交接的位置
+    .tick(95.0) // 对话压缩的位置
     .stroke_width(rems(0.125))
     .track_color(cx.theme().muted)
 ```
@@ -322,7 +322,7 @@ UsageBar::new("context-split", "Context")
             .with_label("Conversation")
             .with_value_text("about 124k"),
     ])
-    .description("Hands over at 950k")
+    .description("Compacts at 950k")
 
 UsageBar::new("plan", "5-hour limit")
     .small()
