@@ -672,7 +672,7 @@ fn an_append_under_an_error_root_keeps_the_complete_items_before_it() {
             .then_some((old_len, old, new))
         })
         .expect("an append that changes an ERROR root");
-    let start = super::first_change(&old, &new, |_| false);
+    let start = super::first_change(&old, &new, old_len, |_| false);
     // The complete items before the unfinished one are kept.
     assert!(
         start > 0 && start < old_len,
@@ -776,6 +776,9 @@ fn a_ready_language_leaves_the_installed_defaults_alone(cx: &mut gpui::TestAppCo
     // installed stay as they are.
     assert_eq!(installs.get(), 0);
 }
+
+#[cfg(feature = "tree-sitter-languages")]
+mod differential;
 
 /// The job of the block of `code`, as `highlight_in_background` keeps it.
 fn background_job(code: &str) -> std::sync::Arc<std::sync::Mutex<super::BlockJob>> {
@@ -921,4 +924,71 @@ fn a_complete_block_is_highlighted_as_if_it_arrived_whole(cx: &mut gpui::TestApp
                 .incremental
         );
     }
+}
+
+/// Markdown's inline text over a long block is parsed in groups in the
+/// background, where it used to be parsed again as a whole with every chunk
+/// and dropped when that took too long.
+#[cfg(feature = "tree-sitter-languages")]
+#[gpui::test]
+fn a_long_markdown_block_keeps_its_inline_highlights_in_the_background(
+    cx: &mut gpui::TestAppContext,
+) {
+    use crate::highlighter::compiled::{Waiter, layer_query};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("markdown").unwrap();
+    layer_query("markdown_inline").unwrap();
+    let section = |ix: usize| {
+        format!("## Section {ix}\n\nSome *text* with `code {ix}` and a [link](http://x/{ix}).\n\n")
+    };
+    let mut code = (0..400).map(section).collect::<String>();
+    highlight_code_block(
+        "markdown",
+        &code.clone().into(),
+        false,
+        &theme,
+        Some(&waiter),
+    );
+    cx.run_until_parked();
+    for ix in 400..404 {
+        code.push_str(&section(ix));
+        highlight_code_block(
+            "markdown",
+            &code.clone().into(),
+            false,
+            &theme,
+            Some(&waiter),
+        );
+        cx.run_until_parked();
+    }
+    let styles = highlight_code_block(
+        "markdown",
+        &code.clone().into(),
+        false,
+        &theme,
+        Some(&waiter),
+    );
+    assert!(!styles.is_pending());
+    let bytes = per_byte(code.len(), &styles);
+    let first_code = code.find("`code 0`").unwrap() + 1;
+    let last_code = code.rfind("`code 403`").unwrap() + 1;
+    assert_ne!(bytes[first_code], HighlightStyle::default());
+    assert_eq!(
+        bytes[last_code], bytes[first_code],
+        "the last code span too"
+    );
+
+    let job = background_job(&code);
+    let job = job.lock().unwrap();
+    let inline_layers = job
+        .highlighter
+        .as_ref()
+        .unwrap()
+        .layers
+        .iter()
+        .filter(|layer| layer.language_name.as_ref() == "markdown_inline")
+        .count();
+    assert!(inline_layers > 4, "{inline_layers} inline layers");
 }

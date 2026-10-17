@@ -49,7 +49,7 @@ use super::{
         compiled_language_now, layer_query, layer_query_now, ready_generation,
     },
     highlighter::{
-        InjectionLayer, MAX_INJECTION_BYTES, MAX_INJECTION_RANGES,
+        INJECTION_PARSE_TIMEOUT, InjectionLayer, MAX_INJECTION_BYTES, MAX_INJECTION_RANGES,
         MAX_NON_COMBINED_INJECTION_PARSES, TextProvider, bounding_byte_range,
         captured_injection_language, edit_range, injection_range_len,
         injection_ranges_within_limits, merge_highlight_style, normalize_combined_injection_ranges,
@@ -65,6 +65,11 @@ const MAX_KEPT_BLOCKS: usize = 64;
 const MAX_KEPT_MEMORY: usize = 64 * 1024 * 1024;
 /// About how many bytes the syntax trees of a byte of code take.
 const TREE_BYTES_PER_SOURCE_BYTE: usize = 60;
+/// How long an injected layer of a block highlighted in the background is
+/// parsed before it's given up, where [`INJECTION_PARSE_TIMEOUT`] keeps a
+/// parse on the UI thread short.
+const BACKGROUND_INJECTION_PARSE_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_millis(250);
 /// How far before the appended text highlighting starts again at least: the
 /// start of the line it continues, but never more than this many bytes back.
 /// [`first_change`] finds what the reparse changed, and this keeps a margin
@@ -126,6 +131,10 @@ pub(crate) struct CodeBlockHighlighter {
     incremental: bool,
     #[cfg(test)]
     parses: usize,
+    /// The time the last append spent parsing, finding what changed,
+    /// updating the injected layers and highlighting.
+    #[cfg(test)]
+    phases: [std::time::Duration; 4],
 }
 
 impl CodeBlockHighlighter {
@@ -156,6 +165,8 @@ impl CodeBlockHighlighter {
             incremental: false,
             #[cfg(test)]
             parses: 0,
+            #[cfg(test)]
+            phases: Default::default(),
         };
         this.reset(code);
         Some(this)
@@ -239,17 +250,32 @@ impl CodeBlockHighlighter {
         if let Some(tree) = old_tree.as_mut() {
             tree.edit(&edit);
         }
+        #[cfg(test)]
+        let mut phase = std::time::Instant::now();
+        #[cfg(test)]
+        let mut lap = |phases: &mut [std::time::Duration; 4], ix: usize| {
+            phases[ix] = phase.elapsed();
+            phase = std::time::Instant::now();
+        };
         self.tree = self.parse(old_tree.as_ref());
+        #[cfg(test)]
+        lap(&mut self.phases, 0);
         match (&old_tree, &self.tree) {
             (Some(old_tree), Some(tree)) => {
                 let query = &self.language.highlights_source;
                 let named = |kind: &str| query.contains(&format!("({kind}"));
-                start = start.min(first_change(old_tree, tree, named));
+                start = start.min(first_change(old_tree, tree, old_len, named));
             }
             _ => start = 0,
         }
+        #[cfg(test)]
+        lap(&mut self.phases, 1);
         let start = self.update_layers(start, Some(&edit));
+        #[cfg(test)]
+        lap(&mut self.phases, 2);
         self.highlight_from(start);
+        #[cfg(test)]
+        lap(&mut self.phases, 3);
     }
 
     fn parse(&mut self, old_tree: Option<&Tree>) -> Option<Tree> {
@@ -309,16 +335,28 @@ impl CodeBlockHighlighter {
             }
             from = next;
         }
-        let (mut kept, mut replaced): (Vec<_>, Vec<_>) = std::mem::take(&mut self.layers)
+        let (mut kept, replaced): (Vec<_>, Vec<_>) = std::mem::take(&mut self.layers)
             .into_iter()
             .partition(|layer| !layer.combined && layer.byte_range.end <= from);
+        // The layers of combined injections, with the ranges they were
+        // parsed over: the edit stretches a range that ends where it starts.
+        let (old_combined, mut replaced): (Vec<_>, Vec<_>) =
+            replaced.into_iter().partition(|layer| layer.combined);
+        let mut old_combined = old_combined
+            .into_iter()
+            .map(|layer| (layer.ranges.clone(), layer))
+            .collect::<Vec<_>>();
         // The replaced layers move to the edited text, so their trees can be
         // reparsed from and compared with the new ones.
         if let Some(edit) = edit {
-            for layer in &mut replaced {
+            for layer in replaced
+                .iter_mut()
+                .chain(old_combined.iter_mut().map(|(_, layer)| layer))
+            {
                 edit_layer(layer, edit);
             }
         }
+        let edit_start = edit.map(|edit| edit.start_byte);
         self.attempts.retain(|(_, end)| *end <= from);
         for (_, _, ranges) in &mut self.combined {
             ranges.retain(|range| range.end_byte <= from);
@@ -326,6 +364,13 @@ impl CodeBlockHighlighter {
 
         let ready_at = ready_generation();
         let waiter = self.waiter.clone();
+        // A highlighter with a waiter works in the background.
+        let background = waiter.is_some();
+        let injection_timeout = if background {
+            BACKGROUND_INJECTION_PARSE_TIMEOUT
+        } else {
+            INJECTION_PARSE_TIMEOUT
+        };
         let mut layers_pending = false;
         let text = &self.text;
         let mut cursor = QueryCursor::new();
@@ -463,35 +508,64 @@ impl CodeBlockHighlighter {
                 old_tree,
                 false,
                 text,
+                injection_timeout,
             ) {
                 new_layers.push(layer);
             }
         }
 
+        // Layers of combined injections parsed over the same ranges as
+        // before, kept as they are.
+        let mut unchanged = Vec::new();
         for (language_name, highlight_query, collected) in &mut self.combined {
             collected.sort_unstable_by_key(|range| (range.start_byte, range.end_byte));
             limit_combined_ranges(collected);
-            let ranges = normalize_combined_injection_ranges(language_name, collected.clone());
-            if ranges.is_empty() {
-                continue;
-            }
-            // Parsed from scratch: reparsing a combined layer from its old
-            // tree, over included ranges that changed, can recover from the
-            // errors of unfinished code differently than a parse from
-            // scratch, and the highlights then depend on how the code
-            // arrived. Its old tree still bounds what changed, below.
-            if let Some(layer) = SyntaxHighlighter::parse_injection_layer(
-                language_name,
-                highlight_query.clone(),
-                ranges,
-                None,
-                true,
-                text,
-            ) {
-                new_layers.push(layer);
+            // Parsed in groups in the background, see `grouped_ranges`.
+            let groups = if background && GROUPED_INJECTIONS.contains(&language_name.as_ref()) {
+                grouped_ranges(collected)
+            } else {
+                vec![collected.clone()]
+            };
+            for group in groups {
+                let ranges = normalize_combined_injection_ranges(language_name, group);
+                if ranges.is_empty() {
+                    continue;
+                }
+                // A layer over the same ranges, all before the edit, parsed
+                // the same text. The edit stretches the nodes that end where
+                // it starts, so those don't count.
+                let before_edit = ranges
+                    .last()
+                    .zip(edit_start)
+                    .is_some_and(|(range, edit_start)| range.end_byte < edit_start);
+                if before_edit
+                    && let Some(ix) = old_combined.iter().position(|(parsed_over, layer)| {
+                        layer.language_name == *language_name && *parsed_over == ranges
+                    })
+                {
+                    unchanged.push(old_combined.swap_remove(ix).1);
+                    continue;
+                }
+                // Parsed from scratch: reparsing a combined layer from its
+                // old tree, over included ranges that changed, can recover
+                // from the errors of unfinished code differently than a parse
+                // from scratch, and the highlights then depend on how the
+                // code arrived. Its old tree still bounds what changed, below.
+                if let Some(layer) = SyntaxHighlighter::parse_injection_layer(
+                    language_name,
+                    highlight_query.clone(),
+                    ranges,
+                    None,
+                    true,
+                    text,
+                    injection_timeout,
+                ) {
+                    new_layers.push(layer);
+                }
             }
         }
         self.combined.retain(|(_, _, ranges)| !ranges.is_empty());
+        replaced.extend(old_combined.into_iter().map(|(_, layer)| layer));
 
         // Where the new layers can highlight differently from the old ones.
         let mut start = dirty;
@@ -499,9 +573,8 @@ impl CodeBlockHighlighter {
             let old = replaced.iter().position(|old| {
                 old.combined == layer.combined
                     && old.language_name == layer.language_name
-                    && (layer.combined
-                        || old.ranges.first().map(|range| range.start_byte)
-                            == layer.ranges.first().map(|range| range.start_byte))
+                    && old.ranges.first().map(|range| range.start_byte)
+                        == layer.ranges.first().map(|range| range.start_byte)
             });
             let Some(old) = old.map(|ix| replaced.swap_remove(ix)) else {
                 start = start.min(layer.byte_range.start);
@@ -524,6 +597,7 @@ impl CodeBlockHighlighter {
 
         self.layers = kept;
         self.layers.extend(new_layers);
+        self.layers.extend(unchanged);
         self.layers.sort_by_key(|layer| layer.byte_range.start);
         if layers_pending {
             self.layers_pending.get_or_insert(ready_at);
@@ -742,9 +816,13 @@ fn layer_captures(
 /// query pattern can match a node together with the siblings after it.
 const SIBLING_MARGIN: usize = 2;
 
-/// The first byte where `new`, a reparse of `old` after an edit `old` took,
-/// can be highlighted differently, found by comparing the trees from their
-/// roots down.
+/// How far before the edit the siblings of the nodes [`first_change`]
+/// descends through are highlighted again, at most.
+const LEVEL_MARGIN: usize = 1024;
+
+/// The first byte where `new`, a reparse of `old` after an edit at
+/// `edit_start` that `old` took, can be highlighted differently, found by
+/// comparing the trees from their roots down.
 ///
 /// [`Tree::changed_ranges`] reports an ERROR node as changed as a whole, and
 /// error recovery often wraps the whole of unfinished code in one ERROR root,
@@ -755,54 +833,100 @@ const SIBLING_MARGIN: usize = 2;
 /// build it differently. The first node that does not match, and the
 /// [`SIBLING_MARGIN`] siblings before it, are highlighted again. A node of
 /// the same kind and start is entered instead, to look for the first
-/// difference among its children.
+/// difference among its children, and the siblings before it at every level
+/// entered are highlighted again too, back to [`LEVEL_MARGIN`] before the
+/// edit: a pattern can match a node by what a later sibling's descendant
+/// looks like.
 ///
-/// Error recovery also turns the root into an ERROR node and back as the
-/// code goes in and out of parsing. Children of the root have no fields to
-/// tell them by, so a root of another kind is entered too, unless the query
-/// names one of the two kinds (`named`).
-fn first_change(old: &Tree, new: &Tree, named: impl Fn(&str) -> bool) -> usize {
+/// Error recovery also turns the root, or the only child of the root, into
+/// an ERROR node and back as the code goes in and out of parsing. Those
+/// nodes have no fields to tell them by, so one of another kind is entered
+/// too, unless the query names one of the two kinds (`named`). The ERROR
+/// node holds the items a node of one child, such as a JSON array or a YAML
+/// sequence, holds in that child, so that child is entered for the
+/// comparison.
+fn first_change(old: &Tree, new: &Tree, edit_start: usize, named: impl Fn(&str) -> bool) -> usize {
+    /// The only child of `node`, when `other` has several.
+    fn single_child<'tree>(
+        node: tree_sitter::Node<'tree>,
+        other: tree_sitter::Node<'_>,
+        named: &dyn Fn(&str) -> bool,
+    ) -> Option<tree_sitter::Node<'tree>> {
+        (node.child_count() == 1 && other.child_count() > 1)
+            .then(|| node.child(0))
+            .flatten()
+            .filter(|child| child.child_count() > 0 && !named(child.kind()))
+    }
+
     let mut old = old.root_node();
     let mut new = new.root_node();
-    if old.kind_id() != new.kind_id() && (named(old.kind()) || named(new.kind())) {
-        return 0;
-    }
-    let mut is_root = true;
+    let floor = edit_start.saturating_sub(LEVEL_MARGIN);
+    let mut levels_margin = usize::MAX;
+    // Whether `old` and `new` can be of different kinds and still be
+    // compared: the roots, and the only children of nodes that matched.
+    let mut kinds_can_differ = true;
     loop {
-        if (!is_root && old.kind_id() != new.kind_id()) || old.start_byte() != new.start_byte() {
-            return old.start_byte().min(new.start_byte());
+        if old.kind_id() != new.kind_id() {
+            if !kinds_can_differ || named(old.kind()) || named(new.kind()) {
+                return old.start_byte().min(new.start_byte()).min(levels_margin);
+            }
+            loop {
+                if let Some(child) = single_child(old, new, &named) {
+                    old = child;
+                } else if let Some(child) = single_child(new, old, &named) {
+                    new = child;
+                } else {
+                    break;
+                }
+            }
         }
-        is_root = false;
-        let count = old.child_count().min(new.child_count());
-        let ix = (0..count)
-            .find(|ix| match (old.child(*ix), new.child(*ix)) {
-                (Some(old), Some(new)) => !same_node(old, new),
-                _ => true,
-            })
-            .unwrap_or(count);
-        let margin = ix
-            .checked_sub(SIBLING_MARGIN)
-            .and_then(|ix| old.child(ix))
-            .map_or(old.start_byte(), |sibling| sibling.start_byte());
-        if ix == count {
-            return if old.child_count() == new.child_count() {
-                // The children match, so whatever differs comes after them.
-                old.end_byte().min(new.end_byte())
-            } else {
-                margin
-            };
+        if old.start_byte() != new.start_byte() {
+            return old.start_byte().min(new.start_byte()).min(levels_margin);
         }
-        match (old.child(ix), new.child(ix)) {
-            (Some(old_child), Some(new_child))
-                if old_child.kind_id() == new_child.kind_id()
+
+        // The first children that differ, stepping through the siblings
+        // with cursors: `Node::child` walks from the first child every time.
+        let mut old_cursor = old.walk();
+        let mut new_cursor = new.walk();
+        let mut old_children = old.children(&mut old_cursor);
+        let mut new_children = new.children(&mut new_cursor);
+        // The starts of the last SIBLING_MARGIN children that matched.
+        let mut recent = [old.start_byte(); SIBLING_MARGIN];
+        let mut matched = 0;
+        // The first pair of children that differ, or `Err` when one has
+        // more children than the other.
+        let differing = loop {
+            match (old_children.next(), new_children.next()) {
+                (Some(old_child), Some(new_child)) if same_node(old_child, new_child) => {
+                    recent[matched % SIBLING_MARGIN] = old_child.start_byte();
+                    matched += 1;
+                }
+                (Some(old_child), Some(new_child)) => break Some(Ok((old_child, new_child))),
+                (None, None) => break None,
+                _ => break Some(Err(())),
+            }
+        };
+        let margin = if matched >= SIBLING_MARGIN {
+            recent[matched % SIBLING_MARGIN]
+        } else {
+            old.start_byte()
+        };
+        let only_children = old.child_count() == 1 && new.child_count() == 1;
+        match differing {
+            // The children match, so whatever differs comes after them.
+            None => return old.end_byte().min(new.end_byte()).min(levels_margin),
+            Some(Ok((old_child, new_child)))
+                if (old_child.kind_id() == new_child.kind_id() || only_children)
                     && old_child.start_byte() == new_child.start_byte()
                     && old_child.child_count() > 0
                     && new_child.child_count() > 0 =>
             {
+                kinds_can_differ = only_children;
+                levels_margin = levels_margin.min(margin.max(floor));
                 old = old_child;
                 new = new_child;
             }
-            _ => return margin,
+            Some(_) => return margin.min(levels_margin),
         }
     }
 }
@@ -820,12 +944,12 @@ fn same_node(old: tree_sitter::Node, new: tree_sitter::Node) -> bool {
             return false;
         }
         if old.has_error() || new.has_error() {
-            for ix in 0..old.child_count() {
-                match (old.child(ix), new.child(ix)) {
-                    (Some(old), Some(new)) => pending.push((old, new)),
-                    _ => return false,
-                }
-            }
+            let mut old_cursor = old.walk();
+            let mut new_cursor = new.walk();
+            pending.extend(
+                old.children(&mut old_cursor)
+                    .zip(new.children(&mut new_cursor)),
+            );
         }
     }
     true
@@ -840,6 +964,41 @@ fn edit_layer(layer: &mut InjectionLayer, edit: &InputEdit) {
     if let Some(byte_range) = bounding_byte_range(&layer.ranges) {
         layer.byte_range = byte_range;
     }
+}
+
+/// Combined injections whose ranges are parsed in groups in the background:
+/// Markdown's inline text, whose paragraphs, headings and list items parse
+/// apart from one another.
+const GROUPED_INJECTIONS: [&str; 1] = ["markdown_inline"];
+
+/// About how many bytes of ranges a group of [`grouped_ranges`] takes.
+const RANGE_GROUP_BYTES: usize = 4096;
+
+/// `ranges` in groups of about [`RANGE_GROUP_BYTES`], each parsed as a layer
+/// of its own.
+///
+/// Markdown's inline text is one combined layer over every paragraph of a
+/// block, and its included ranges change with every chunk, so it was parsed
+/// again as a whole every time: 190 ms for a 200 KB block. Groups are made
+/// from the first range on, so the groups before the last stay the same as
+/// text is appended, and their layers are kept.
+fn grouped_ranges(ranges: &[tree_sitter::Range]) -> Vec<Vec<tree_sitter::Range>> {
+    let mut groups = Vec::new();
+    let mut group = Vec::new();
+    let mut bytes = 0;
+    for range in ranges {
+        let len = injection_range_len(range);
+        if !group.is_empty() && bytes + len > RANGE_GROUP_BYTES {
+            groups.push(std::mem::take(&mut group));
+            bytes = 0;
+        }
+        bytes += len;
+        group.push(*range);
+    }
+    if !group.is_empty() {
+        groups.push(group);
+    }
+    groups
 }
 
 /// Drops the ranges past the combined-layer limits, as
@@ -1254,9 +1413,13 @@ pub(crate) fn time_streamed_chunks(
     to: usize,
     chunk: usize,
     waiter: Option<&Waiter>,
-) -> Vec<std::time::Duration> {
+) -> (Vec<std::time::Duration>, [std::time::Duration; 4]) {
     let theme = super::HighlightTheme::default_dark();
     let language = compiled_language(lang).expect("a grammar");
+    // The layers the code injects are compiled here, not in the background.
+    for injected in ["markdown_inline", "javascript", "css"] {
+        layer_query(injected);
+    }
     let mut end = from;
     while !code.is_char_boundary(end) {
         end += 1;
@@ -1266,6 +1429,7 @@ pub(crate) fn time_streamed_chunks(
             .expect("a parser");
     highlighter.styles(&theme);
     let mut times = Vec::new();
+    let mut phases = [std::time::Duration::ZERO; 4];
     while end < to {
         end = (end + chunk).min(code.len());
         while !code.is_char_boundary(end) {
@@ -1276,8 +1440,12 @@ pub(crate) fn time_streamed_chunks(
         highlighter.update(&prefix);
         std::hint::black_box(highlighter.styles(&theme));
         times.push(start.elapsed());
+        for (total, phase) in phases.iter_mut().zip(highlighter.phases) {
+            *total += phase;
+        }
     }
-    times
+    let chunks = times.len().max(1) as u32;
+    (times, phases.map(|total| total / chunks))
 }
 
 /// Compiles the languages an application's code blocks wait for in the

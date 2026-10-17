@@ -26,7 +26,7 @@ const MAX_INJECTION_LANGUAGE_BYTES: usize = 64;
 /// Parse attempts, not resulting layers: a failed parse still spends budget.
 /// Matches past it keep host highlighting but get no injected tokens.
 pub(super) const MAX_NON_COMBINED_INJECTION_PARSES: usize = 512;
-const INJECTION_PARSE_TIMEOUT: Duration = Duration::from_millis(20);
+pub(super) const INJECTION_PARSE_TIMEOUT: Duration = Duration::from_millis(20);
 
 /// A syntax highlighter that supports incremental parsing, multiline text,
 /// and caching of highlight results.
@@ -834,6 +834,7 @@ impl SyntaxHighlighter {
                     old_tree,
                     false,
                     text,
+                    INJECTION_PARSE_TIMEOUT,
                 ) {
                     new_layers.push(layer);
                 }
@@ -861,6 +862,7 @@ impl SyntaxHighlighter {
                 old_tree,
                 true,
                 text,
+                INJECTION_PARSE_TIMEOUT,
             ) {
                 new_layers.push(layer);
             }
@@ -871,6 +873,8 @@ impl SyntaxHighlighter {
 
     /// Parse one injection layer over the given included ranges.
     /// `old_tree`, when given, has been edited to match `text`.
+    /// Parses an injected layer, or gives up after `timeout`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn parse_injection_layer(
         language_name: &SharedString,
         highlight_query: Arc<HighlightQuery>,
@@ -878,6 +882,7 @@ impl SyntaxHighlighter {
         old_tree: Option<&Tree>,
         combined: bool,
         text: &Rope,
+        timeout: Duration,
     ) -> Option<InjectionLayer> {
         let (mut parser, grammar) = LanguageRegistry::singleton().parser(language_name).ok()?;
         parser.set_language(&grammar).ok()?;
@@ -886,7 +891,7 @@ impl SyntaxHighlighter {
         let mut timed_out = false;
         // Returning `true` cancels the parse.
         let mut progress = |_: &tree_sitter::ParseState| -> bool {
-            if parse_start.elapsed() > INJECTION_PARSE_TIMEOUT {
+            if parse_start.elapsed() > timeout {
                 timed_out = true;
                 true
             } else {

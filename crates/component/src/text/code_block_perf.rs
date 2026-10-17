@@ -256,15 +256,22 @@ fn background_work_per_chunk(cx: &mut gpui::TestAppContext) {
     use crate::highlighter::{Waiter, time_streamed_chunks};
 
     let waiter = Waiter::new(cx.background_executor.clone(), None);
-    println!("| language | block | avg | p95 | worst |");
-    println!("|---|---:|---:|---:|---:|");
+    println!(
+        "| language | block | avg | p95 | worst | parse | first change | layers | highlight |"
+    );
+    println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
     for lang in STREAMED {
         for kb in [100usize, 200] {
             let code = generated_code(lang, kb);
             let from = kb * 1024;
-            let times = time_streamed_chunks(lang, &code, from, from + 3000, 4, Some(&waiter));
+            let (times, phases) =
+                time_streamed_chunks(lang, &code, from, from + 3000, 4, Some(&waiter));
             let (average, p95, worst) = summary(times);
-            println!("| {lang} | {kb} KB | {average:.2} ms | {p95:.2} ms | {worst:.2} ms |");
+            let [parse, change, layers, highlight] =
+                phases.map(|phase| phase.as_secs_f64() * 1000.);
+            println!(
+                "| {lang} | {kb} KB | {average:.2} ms | {p95:.2} ms | {worst:.2} ms | {parse:.2} | {change:.2} | {layers:.2} | {highlight:.2} |"
+            );
         }
     }
 }
