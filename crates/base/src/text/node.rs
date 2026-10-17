@@ -4563,6 +4563,52 @@ mod tests {
         assert!(!highlighted.is_complete());
     }
 
+    /// A long block's highlighting costs what its shown lines cost: a view
+    /// that caps it asks its highlighter for the first lines and the margin.
+    #[gpui::test]
+    fn a_capped_code_block_asks_for_the_highlights_of_its_first_lines(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::{AppContext as _, Context, IntoElement, Render};
+
+        use crate::text::{TextView, TextViewState};
+
+        struct Shown(gpui::Entity<TextViewState>, Arc<CodeBlockHighlighterFn>);
+
+        impl Render for Shown {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                TextView::new(&self.0)
+                    .code_block_max_lines(3)
+                    .shared_code_block_highlighter(self.1.clone())
+            }
+        }
+
+        cx.update(crate::init);
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new({
+            let asked = asked.clone();
+            move |block| {
+                asked.lock().unwrap().push(block.code().len());
+                CodeBlockHighlights::default()
+            }
+        });
+        let line = |ix: usize| format!("let line_{ix} = {ix};\n");
+        let code = (0..200).map(line).collect::<String>();
+        let markdown = format!("```rust\n{code}```\n");
+        let state = cx.new(|cx| TextViewState::markdown(&markdown, cx));
+        let (_, cx) = cx.add_window_view(|_, _| Shown(state, highlighter));
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+
+        let highlighted = (0..3 + CAPPED_HIGHLIGHT_MARGIN_LINES)
+            .map(line)
+            .collect::<String>()
+            .len();
+        let asked = asked.lock().unwrap();
+        assert!(!asked.is_empty());
+        assert!(asked.iter().all(|len| *len == highlighted), "{asked:?}");
+    }
+
     #[test]
     fn a_code_block_is_cut_to_its_first_lines() {
         let block = CodeBlock::from_code("one\ntwo\nthree\nfour\n", None::<SharedString>);
