@@ -42,6 +42,16 @@ export const stories = [
     api: "Textarea",
   }),
   pendingStory({
+    id: "font-picker",
+    title: "FontPicker",
+    group: "Inputs",
+    rustStory: "FontPickerStory",
+    description: "A font family picker with its size, preview and OpenType features.",
+    states: ["loading", "monospace only", "compact"],
+    availability: "pending",
+    api: "FontPicker",
+  }),
+  pendingStory({
     id: "text-editor",
     title: "Text Editor",
     group: "Inputs",

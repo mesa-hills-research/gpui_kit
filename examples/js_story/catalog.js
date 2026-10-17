@@ -57,6 +57,7 @@ const RUST_STORY_ORDER = [
   "DropdownButtonStory",
   "EditorStory",
   "EmptyStory",
+  "FontPickerStory",
   "FormStory",
   "GroupBoxStory",
   "HoverCardStory",
