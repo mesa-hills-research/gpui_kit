@@ -51,14 +51,6 @@ fn writing(vocabulary: Vocabulary) -> Writing {
 }
 
 /// Keys that differ on macOS, where Home and End scroll.
-fn line_start() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "cmd-left"
-    } else {
-        "home"
-    }
-}
-
 fn line_end() -> &'static str {
     if cfg!(target_os = "macos") {
         "cmd-right"
@@ -942,8 +934,10 @@ fn shown_ghost(typist: &Typist) -> Option<String> {
 
 /// The next-word key takes the next word of a suggestion and leaves the
 /// rest of it offered, in every keymap. With nothing offered it does what
-/// the keymap does: Standard and Emacs move along the line, Vim's insert
-/// mode has nothing on it.
+/// the keymap binds it to. Ctrl+Right moves by a word in the standard
+/// keymap and Emacs. Cmd+Right, on macOS, goes to the end of the line in the
+/// standard keymap, while Emacs and Vim keep Cmd for the clipboard and
+/// history. Vim's insert mode binds neither.
 #[gpui::test]
 fn the_next_word_key_takes_one_word(cx: &mut TestAppContext) {
     let key = if cfg!(target_os = "macos") {
@@ -982,12 +976,24 @@ fn the_next_word_key_takes_one_word(cx: &mut TestAppContext) {
         typist.type_text(". So");
         assert_eq!(count(&typist, "hello"), 41, "{keymap:?}");
 
-        typist.cx.simulate_keystrokes(line_start());
+        // At the start of the line, where nothing is offered. The keys to
+        // get there differ from keymap to keymap.
+        typist.cx.update(|_, cx| {
+            typist
+                .textarea
+                .update(cx, |state, cx| state.set_selected_range(0..0, cx))
+        });
+        assert_eq!(shown_ghost(&typist), None, "{keymap:?}");
         typist.cx.simulate_keystrokes(key);
         let caret = typist
             .textarea
             .read_with(&typist.cx, |state, _| state.cursor());
-        assert_eq!(caret > 0, keymap != Keymap::Vim, "{keymap:?}");
+        let moves = match keymap {
+            Keymap::Cua => true,
+            Keymap::Emacs => !cfg!(target_os = "macos"),
+            _ => false,
+        };
+        assert_eq!(caret > 0, moves, "{keymap:?}");
         assert_eq!(typist.value(), "hello world. So", "{keymap:?}");
     }
 }
