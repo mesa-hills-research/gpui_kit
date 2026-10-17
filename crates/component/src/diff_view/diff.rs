@@ -237,7 +237,7 @@ impl DiffFile {
         }
         out.push_str(&format!("--- {old}\n+++ {new}\n"));
         for hunk in &self.hunks {
-            out.push_str(&hunk.header);
+            out.push_str(&self.hunk_header(hunk));
             out.push('\n');
             for line in &self.lines[hunk.lines.clone()] {
                 out.push(match line.change {
@@ -256,6 +256,28 @@ impl DiffFile {
                     }
                 }
             }
+        }
+    }
+
+    /// A hunk's header, its counts made to match its lines: a hand-written
+    /// hunk may hold more or fewer lines than its header said, and a patch
+    /// tool rejects a header that doesn't match.
+    fn hunk_header(&self, hunk: &DiffHunk) -> SharedString {
+        let lines = &self.lines[hunk.lines.clone()];
+        let old_count = lines.iter().filter(|l| l.old_line.is_some()).count() as u32;
+        let new_count = lines.iter().filter(|l| l.new_line.is_some()).count() as u32;
+        match hunk_header(&hunk.header) {
+            Some((_, old, _, new)) if (old, new) == (old_count, new_count) => hunk.header.clone(),
+            Some((old_start, _, new_start, _)) => {
+                // Whatever follows the closing `@@`, such as a function name.
+                let section = hunk
+                    .header
+                    .trim_start_matches('@')
+                    .split_once("@@")
+                    .map_or("", |(_, section)| section);
+                format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@{section}").into()
+            }
+            None => hunk.header.clone(),
         }
     }
 
@@ -1386,5 +1408,20 @@ mod tests {
             unquote("\"a/say \\\"hi\\\".txt\"").map(|(path, _)| path),
             Some("a/say \"hi\".txt".to_string())
         );
+    }
+
+    /// A hunk that holds more lines than its header said (hand-written
+    /// diffs often miscount) is copied with counts that match its lines,
+    /// and with whatever followed its header.
+    #[test]
+    fn a_miscounted_hunk_is_copied_with_counts_that_match() {
+        let diff = Diff::parse("--- a/f\n+++ b/f\n@@ -1,1 +1,1 @@ fn main\n-a\n+b\n+c\n");
+        assert_eq!(
+            diff.to_unified(),
+            "--- a/f\n+++ b/f\n@@ -1,1 +1,2 @@ fn main\n-a\n+b\n+c\n"
+        );
+        // A header that matches is copied as it was, count left out and all.
+        let exact = "--- a/f\n+++ b/f\n@@ -3 +3 @@\n-a\n+b\n";
+        assert_eq!(Diff::parse(exact).to_unified(), exact);
     }
 }

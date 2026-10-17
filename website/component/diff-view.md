@@ -61,7 +61,7 @@ The highlight names (`string`, `comment` and so on) are found once, on a backgro
 
 ## Copying
 
-Each file's Copy button copies that file's changes as unified diff text, built only when clicked. `Diff::to_unified` gives the whole diff.
+Each file's Copy button copies that file's changes as unified diff text, built only when clicked. A parsed hunk whose header miscounted its lines is copied with counts that match them, so patch tools accept it. `Diff::to_unified` gives the whole diff.
 
 ## API Reference
 
