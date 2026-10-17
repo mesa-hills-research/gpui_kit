@@ -29,7 +29,7 @@ let items = screenshots.iter().map(|shot| {
 let viewer: Entity<ImageViewerState> = window.open_image_viewer(items, ix, cx);
 ```
 
-An item takes any `ImageSource`: a path, a URL, an `Arc<Image>`, or a source from an image cache. For images held in memory, prefer `LruImageCache::source` (see [Image Cache](../base/image-cache.md)): it decodes off the UI thread and lets a long session unload the images it no longer shows.
+An item takes any `ImageSource`: a path, a URL, an `Arc<Image>`, or a source from an image cache. For images held in memory, prefer `LruImageCache::source` (see [Image Cache](../base/image-cache.md)): it decodes off the UI thread and lets the app unload the images it no longer shows.
 
 The viewer takes focus when it opens. Escape or the close button closes it, and focus goes back to what had it, which is the thumbnail when the user opened it from the keyboard. Opening another viewer replaces the first. `window.has_active_image_viewer(cx)` and `window.close_image_viewer(cx)` query and close it.
 
@@ -55,7 +55,7 @@ A dialog opened while the viewer is up, such as a question the app asks, shows o
 
 ## Thumbnails
 
-The viewer shows full images; the thumbnails that open it should not hold full images too. Scale them on a background thread with an `LruImageCache` source that fits the thumbnail's box:
+The viewer shows full images, and the thumbnails that open it can hold far fewer pixels. Scale them on a background thread with an `LruImageCache` source that fits the thumbnail's box:
 
 ```rust
 let fit = size(rems(12.).to_pixels(window.rem_size()), rems(12.).to_pixels(window.rem_size()));
@@ -78,7 +78,7 @@ The viewer is a dialog named "Image viewer". The image is named by `with_accessi
 
 | Item | Description |
 | --- | --- |
-| `WindowExt::open_image_viewer(items, ix, cx)` | Open a viewer over the window; returns its `Entity<ImageViewerState>` |
+| `WindowExt::open_image_viewer(items, ix, cx)` | Open a viewer over the window, returning its `Entity<ImageViewerState>` |
 | `WindowExt::close_image_viewer(cx)` | Close it, giving focus back |
 | `WindowExt::has_active_image_viewer(cx)` | Whether one is open |
 | `ImageViewerItem::new(source)` | An image from any `ImageSource` |

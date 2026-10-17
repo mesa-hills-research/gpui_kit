@@ -29,7 +29,7 @@ let items = screenshots.iter().map(|shot| {
 let viewer: Entity<ImageViewerState> = window.open_image_viewer(items, ix, cx);
 ```
 
-每一项都接受任意 `ImageSource`：路径、URL、`Arc<Image>`，或图片缓存提供的 source。对于内存中的图片，建议使用 `LruImageCache::source`（见 [Image Cache](../base/image-cache.md)）：它在 UI 线程之外解码，并让长时间运行的会话卸载不再显示的图片。
+每一项都接受任意 `ImageSource`：路径、URL、`Arc<Image>`，或图片缓存提供的 source。对于内存中的图片，建议使用 `LruImageCache::source`（见 [Image Cache](../base/image-cache.md)）：它在 UI 线程之外解码，并让应用卸载不再显示的图片。
 
 查看器打开时会获得焦点。按 Escape 或点击关闭按钮会关闭它，焦点回到之前拥有焦点的元素。用户用键盘打开时，就是那张缩略图。再打开一个查看器会替换前一个。`window.has_active_image_viewer(cx)` 和 `window.close_image_viewer(cx)` 用于查询和关闭它。
 
@@ -55,7 +55,7 @@ let viewer: Entity<ImageViewerState> = window.open_image_viewer(items, ix, cx);
 
 ## 缩略图
 
-查看器显示完整图片；打开它的缩略图不应同时保留完整图片。用适合缩略图尺寸的 `LruImageCache` source 在后台线程缩放：
+查看器显示完整图片，打开它的缩略图只需保留少得多的像素。用适合缩略图尺寸的 `LruImageCache` source 在后台线程缩放：
 
 ```rust
 let fit = size(rems(12.).to_pixels(window.rem_size()), rems(12.).to_pixels(window.rem_size()));
@@ -64,7 +64,7 @@ img(LruImageCache::source(&cache, shot.image.clone(), Some(fit)))
 
 ## 动效
 
-查看器按主题的 fast 时长淡入；开启“减少动态效果”时直接出现。浏览时在原位置切换图片，没有滑动。
+查看器按主题的 fast 时长淡入，开启“减少动态效果”时直接出现。浏览时在原位置切换图片，没有滑动。
 
 ## 无障碍
 
@@ -72,7 +72,7 @@ img(LruImageCache::source(&cache, shot.image.clone(), Some(fit)))
 
 ## 跟随查看器
 
-显示另一张图片时，`ImageViewerState` 会发出 `ImageViewerEvent::Select(ix)`；`selected_index`、`select_next`、`set_selected_index`、`is_actual_size` 和 `set_actual_size` 用于读取和修改状态。
+显示另一张图片时，`ImageViewerState` 会发出 `ImageViewerEvent::Select(ix)`。`selected_index`、`select_next`、`set_selected_index`、`is_actual_size` 和 `set_actual_size` 用于读取和修改状态。
 
 ## API 参考
 

@@ -6,7 +6,7 @@ order: 9
 
 # Image Cache
 
-A long session that shows many images, such as screenshots in a chat transcript, should not keep every decoded image for the life of the app. `LruImageCache` keeps decoded images until their total size passes a budget, then unloads the ones drawn longest ago.
+An app that shows many images, such as screenshots in a chat or photos in a gallery, shouldn't keep every decoded image for the life of the app. `LruImageCache` keeps decoded images until their total size passes a budget, then unloads the ones drawn longest ago.
 
 ```rust
 use gpui_kit::base::image_cache::LruImageCache;
@@ -23,14 +23,14 @@ image_cache(cache.clone()).child(img(path))
 img(path).image_cache(&cache)
 ```
 
-**Images held in memory**, an `Arc<Image>` such as one a tool returned, go through `LruImageCache::source`. GPUI draws a plain `ImageSource::Image` through its asset cache, which keeps every image for the life of the app. This source decodes through the cache instead, on a background thread:
+**Images held in memory**, an `Arc<Image>` such as a screenshot the app took, go through `LruImageCache::source`. GPUI draws a plain `ImageSource::Image` through its asset cache, which keeps every image for the life of the app. This source decodes through the cache instead, on a background thread:
 
 ```rust
 // The full image, for a viewer.
 img(LruImageCache::source(&cache, screenshot.clone(), None))
 
 // A thumbnail: scaled down on the background thread to fit 12 rem, at the
-// window's scale factor, so the transcript never holds the full pixels.
+// window's scale factor, so the list never holds the full pixels.
 let fit = size(rems(12.).to_pixels(window.rem_size()), rems(12.).to_pixels(window.rem_size()));
 img(LruImageCache::source(&cache, screenshot.clone(), Some(fit)))
 ```

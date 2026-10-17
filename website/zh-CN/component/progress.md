@@ -126,7 +126,7 @@ Progress::new("context-split").segments([
 ])
 ```
 
-仅凭颜色，读者无法知道一个分段代表什么。请在进度条旁用文字显示每个标签；[`UsageBar`](#usagebar) 会用图例完成这件事。未设置无障碍数值时，进度条会依次读出每个带标签的分段及其数量（“System and tools 2%, Conversation about 122k”）。
+仅凭颜色，读者无法知道一个分段代表什么。请在进度条旁用文字显示每个标签，[`UsageBar`](#usagebar) 就是用图例这样做的。未设置无障碍数值时，进度条会依次读出每个带标签的分段及其数量（“System and tools 2%, Conversation about 122k”）。
 
 ### 刻度
 
@@ -250,7 +250,7 @@ h_flex()
 
 ### 刻度、描边与轨道
 
-上下文用量指示器需要显示上限所在的位置。`tick` 在某个数值处画一道横跨圆环的短刻度；`stroke_width` 和 `track_color` 设置圆环的粗细和底部轨道的颜色。
+上下文用量指示器需要显示上限所在的位置。`tick` 在某个数值处画一道横跨圆环的短刻度，`stroke_width` 和 `track_color` 设置圆环的粗细和底部轨道的颜色。
 
 ```rust
 ProgressCircle::new("context")
@@ -260,7 +260,7 @@ ProgressCircle::new("context")
     .track_color(cx.theme().muted)
 ```
 
-描边默认是圆形宽度的 15 %，最大 5 px；轨道默认是弧线颜色的 20 % 不透明度；刻度默认使用 `theme.foreground`。
+描边默认是圆形宽度的 15 %，最大 5 px。轨道默认是弧线颜色的 20 % 不透明度，刻度默认使用 `theme.foreground`。
 
 ### 分段
 

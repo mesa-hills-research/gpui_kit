@@ -135,14 +135,15 @@ WindowOptions {
 
 - Windows 11 caption buttons: 46px wide, the full height of the bar, with the Segoe Fluent Icons glyphs (Segoe MDL2 Assets on Windows 10, the kit's icons where neither font is installed)
 - Each answers its system hit-test code through `WindowControlArea`, so Windows runs minimize, maximize and close, and shows the snap layouts flyout on maximize
-- Hover and press fill the button with the foreground at low opacity; close turns Windows' close red with a white glyph
-- Minimize is disabled on windows that can't be minimized, maximize on windows that can't be resized; the glyphs dim while the window is inactive
+- Hover and press fill the button with the foreground at low opacity, and close turns Windows' close red with a white glyph
+- Minimize is disabled on windows that can't be minimized, maximize on windows that can't be resized
+- The glyphs dim while the window is inactive
 - Left padding is 12px
 
 ### Linux
 
 - Window buttons only under client-side decorations, and only those the compositor supports
-- Buttons sit on the sides and in the order of the desktop's button layout (GNOME's `button-layout`, which can put close on the left), and follow it when it changes; `button_layout(...)` overrides it
+- Buttons sit on the sides and in the order of the desktop's button layout (GNOME's `button-layout`, which can put close on the left), and follow it when it changes. `button_layout(...)` overrides it
 - Supports custom close window callback via `on_close_window()`
 - Double-click to maximize/restore window
 - Right-click shows window context menu
@@ -166,13 +167,13 @@ Ship `com.example.App.desktop` (with `StartupWMClass=com.example.App` on X11) an
 
 On Windows and Linux the [AppMenuBar](#appmenubar) in the title bar answers the keyboard as Windows users expect, in any window opened with `gpui_kit::open_window`:
 
-- **F10** or a tap of **Alt** focuses the first menu's title, and again gives focus back;
-- **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was;
+- **F10** or a tap of **Alt** focuses the first menu's title, and again gives focus back.
+- **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was.
 - **Alt** with a menu's underlined letter opens that menu. The letters are underlined while Alt is held or the bar has focus. Each menu takes the first letter of its name not taken by an earlier menu.
 
 A tap of Alt is Alt pressed and released with nothing in between. Alt with a click, a drag or the wheel (Alt+click adds a caret in a text area) is no tap, even a drag begun before Alt. Neither is an Alt held while the window lost focus, as with Alt+Tab away and back, nor one already held when the window gains focus, as with a tiling compositor's Alt+key to switch windows. Either way, the window's modifier listeners see Alt let go. Clicking another control ends keyboard mode there, and the next tap starts it again. None of these keys reach the bar while a dialog, sheet or image viewer is open over the window.
 
-An input that binds Alt with a letter keeps it: the menu bar sees the key only when nothing focused handled it. The bindings have no context: F10 is `FocusAppMenuBar` and the tap is `AltTap`; bind those keys to something else in your keymap to take them over.
+An input that binds Alt with a letter keeps it: the menu bar sees the key only when nothing focused handled it. The bindings have no context: F10 is `FocusAppMenuBar` and the tap is `AltTap`. Bind those keys to something else in your keymap to take them over.
 
 ### AppMenuBar
 
@@ -181,7 +182,7 @@ An input that binds Alt with a letter keeps it: the menu bar sees the key only w
 | `AppMenuBar::new(cx)` | A menu bar of the menus in `GlobalState::app_menus()` |
 | `reload(cx)` | Read the menus again |
 | `toggle_focus(window, cx)` | Focus the first title from the keyboard, or give focus back (F10) |
-| `open_menu_with_key(key, window, cx)` | Open the menu with that access key; returns whether one opened |
+| `open_menu_with_key(key, window, cx)` | Open the menu with that access key, returning whether one opened |
 | `is_active()` | Whether the bar has the keyboard: a title focused or a menu open |
 | `highlighted_index()` / `open_index()` | The focused title, the open menu |
 

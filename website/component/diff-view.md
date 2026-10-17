@@ -34,7 +34,7 @@ Both are plain computations on data you own. For a large input, build the `Diff`
 
 ## Sizing
 
-By default the view fills its parent, or takes the size you give it, and scrolls inside. Inside a list whose items vary in height, such as a tool call's edit in a transcript, let it take the height of its rows with `max_rows`:
+By default the view fills its parent, or takes the size you give it, and scrolls inside. Inside a list whose items vary in height, such as the messages of a chat, let it take the height of its rows with `max_rows`:
 
 ```rust
 DiffView::new(&state).max_rows(24)

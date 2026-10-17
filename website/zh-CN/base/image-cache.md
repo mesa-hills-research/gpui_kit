@@ -6,7 +6,7 @@ order: 9
 
 # Image Cache
 
-长时间运行、显示大量图片的会话（例如聊天记录中的截图）不应在应用的整个生命周期内保留所有解码后的图片。`LruImageCache` 会保留解码后的图片，直到它们的总大小超过预算，然后卸载最久没有绘制的图片。
+显示大量图片的应用（例如聊天中的截图或图库中的照片）不应在应用的整个生命周期内保留所有解码后的图片。`LruImageCache` 会保留解码后的图片，直到它们的总大小超过预算，然后卸载最久没有绘制的图片。
 
 ```rust
 use gpui_kit::base::image_cache::LruImageCache;
@@ -23,14 +23,14 @@ image_cache(cache.clone()).child(img(path))
 img(path).image_cache(&cache)
 ```
 
-**内存中的图片**，即 `Arc<Image>`（例如工具返回的图片），通过 `LruImageCache::source` 加载。GPUI 会通过资源缓存绘制普通的 `ImageSource::Image`，而资源缓存会在应用的整个生命周期内保留每一张图片。这个 source 改为通过本缓存在后台线程解码：
+**内存中的图片**，即 `Arc<Image>`（例如应用截取的屏幕截图），通过 `LruImageCache::source` 加载。GPUI 会通过资源缓存绘制普通的 `ImageSource::Image`，而资源缓存会在应用的整个生命周期内保留每一张图片。这个 source 改为通过本缓存在后台线程解码：
 
 ```rust
 // 完整图片，用于查看器。
 img(LruImageCache::source(&cache, screenshot.clone(), None))
 
 // 缩略图：在后台线程按窗口的缩放比例缩小到 12 rem 以内，
-// 因此聊天记录中不会保留完整的像素。
+// 因此列表中不会保留完整的像素。
 let fit = size(rems(12.).to_pixels(window.rem_size()), rems(12.).to_pixels(window.rem_size()));
 img(LruImageCache::source(&cache, screenshot.clone(), Some(fit)))
 ```

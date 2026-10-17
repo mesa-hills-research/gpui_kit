@@ -92,7 +92,7 @@ window.open_sheet(cx, |sheet, _, _| {
 
 ### 过渡
 
-Sheet 会按主题的 `motion_tokens().duration_normal` 滑入。`transition_duration(Duration::ZERO)` 会让它直接出现在最终位置；开启“减少动态效果”时也是如此。
+Sheet 会按主题的 `motion_tokens().duration_normal` 滑入。`transition_duration(Duration::ZERO)` 会让它直接出现在最终位置，开启“减少动态效果”时也是如此。
 
 ```rust
 window.open_sheet(cx, |sheet, _, _| {

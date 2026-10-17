@@ -86,7 +86,7 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-`apply_config` replaces the whole theme. A setting the file leaves out, such as `radius`, `shadow`, a font or the `highlight` section, gets its default for the file's mode, so nothing of the theme before carries over. An application that sets its own radius on the theme applies it again after switching themes; for fonts, use [font overrides](#font-overrides).
+`apply_config` replaces the whole theme. A setting the file leaves out, such as `radius`, `shadow`, a font or the `highlight` section, gets its default for the file's mode, so nothing of the theme before carries over. An application that sets its own radius on the theme applies it again after switching themes. For fonts, use [font overrides](#font-overrides).
 
 ### Bundled themes and a user folder
 
@@ -105,13 +105,13 @@ for theme in THEMES {
 ThemeRegistry::watch_dir(user_themes_dir, cx, |cx| { /* apply the saved theme */ })?;
 ```
 
-Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. No theme takes the name of one of the kit's two defaults; a folder theme marked `is_default` becomes the default of its mode instead, until its file goes. A copy whose mode differs from the theme it replaces doesn't take over that theme while it is the active light or dark theme. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case; the folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` stay registered, under the names no other theme takes.
+Bundled themes stay registered whenever the folder reloads. A theme in the folder whose name matches a bundled one, ignoring case, replaces it, so a user can adjust a bundled theme by copying its file into the folder and editing it. No theme takes the name of one of the kit's two defaults. A folder theme marked `is_default` becomes the default of its mode instead, until its file goes. A copy whose mode differs from the theme it replaces doesn't take over that theme while it is the active light or dark theme. Look a theme up with `ThemeRegistry::theme(name)`, which matches the exact name first and then ignores case. The folder is read and parsed on a background thread, and a file that fails to parse is skipped and logged. Themes added with `load_themes_from_str` stay registered, under the names no other theme takes.
 
 `ThemeRegistry::load_dir` reads a folder once, the same way, without watching it. Use it where hot reload isn't wanted, and in tests: `watch_dir`'s watcher runs on its own thread, which a `#[gpui::test]`'s deterministic executor rejects. Each `watch_dir` or `load_dir` call replaces the folder before it: an earlier watch stops, and a read of an earlier folder that ends late is dropped, so the folder asked for last is the one registered.
 
 ## Font overrides
 
-A theme file may name its fonts, and one that names none resets them to the system's. So a font the user picked in the application's settings has to survive every theme switch. Set it as a `FontOverrides` once; `apply_config` puts it back over each theme it applies, in the same update:
+A theme file may name its fonts, and one that names none resets them to the system's. So a font the user picked in the application's settings has to survive every theme switch. Set it once as a `FontOverrides`, and `apply_config` puts it back over each theme it applies, in the same update:
 
 ```rs
 use gpui_kit::component::{FontOverrides, Theme};

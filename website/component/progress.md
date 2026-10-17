@@ -128,11 +128,11 @@ Progress::new("context-split").segments([
 ])
 ```
 
-Color alone can't tell a reader what a segment is. Show each label as text next to the bar; [`UsageBar`](#usagebar) does that with a legend. Without an explicit accessible value, the bar reads out each labelled segment and its amount ("System and tools 2%, Conversation about 122k").
+Color alone can't tell a reader what a segment is. Show each label as text next to the bar, as [`UsageBar`](#usagebar) does with a legend. Without an explicit accessible value, the bar reads out each labelled segment and its amount ("System and tools 2%, Conversation about 122k").
 
 ### Tick
 
-`tick` marks a fixed value on the bar, such as a limit the value is heading for. The mark uses the theme's `foreground`; `tick_color` overrides it.
+`tick` marks a fixed value on the bar, such as a limit the value is heading for. The mark uses the theme's `foreground`, and `tick_color` overrides it.
 
 ```rust
 Progress::new("context").value(62.0).tick(95.0)
@@ -160,7 +160,7 @@ Progress::new("context")
 | `loading(v)` | `bool` | Enable indeterminate loading animation; ignores `value` when `true` |
 | `color(c)` | `impl Into<Hsla>` | Override the fill color (defaults to `theme.progress_bar`) |
 | `track_color(c)` | `impl Into<Hsla>` | Override the track color (defaults to the fill color at 20 % opacity) |
-| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Fill with segments side by side; replaces `value` and `color` |
+| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Fill with segments side by side, in place of `value` and `color` |
 | `tick(v)` | `f32` | Mark a value (0–100) with a tick |
 | `tick_color(c)` | `impl Into<Hsla>` | Override the tick color (defaults to `theme.foreground`) |
 | `accessibility_label(s)` | `impl Into<SharedString>` | Set the accessible name |
@@ -254,7 +254,7 @@ h_flex()
 
 ### Tick, Stroke and Track
 
-A context meter needs to show where a limit sits. `tick` draws a short mark across the ring at a value; `stroke_width` and `track_color` set the ring's thickness and the color it runs over.
+A context meter needs to show where a limit sits. `tick` draws a short mark across the ring at a value, and `stroke_width` and `track_color` set the ring's thickness and the color it runs over.
 
 ```rust
 ProgressCircle::new("context")
@@ -264,7 +264,7 @@ ProgressCircle::new("context")
     .track_color(cx.theme().muted)
 ```
 
-The stroke defaults to 15 % of the circle's width, at most 5 px; the track to the arc's color at 20 % opacity; the tick to `theme.foreground`.
+The stroke defaults to 15 % of the circle's width, at most 5 px, the track to the arc's color at 20 % opacity, and the tick to `theme.foreground`.
 
 ### Segments
 
@@ -299,7 +299,7 @@ ProgressCircle::new("context")
 | `color(c)` | `impl Into<Hsla>` | Override the arc color (defaults to `theme.progress_bar`) |
 | `track_color(c)` | `impl Into<Hsla>` | Override the track color (defaults to the arc color at 20 % opacity) |
 | `stroke_width(w)` | `impl Into<AbsoluteLength>` | Set the ring's thickness (defaults to 15 % of the width, at most 5 px) |
-| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Stack segments along the ring; replaces `value` and `color` |
+| `segments(s)` | `impl IntoIterator<Item = ProgressSegment>` | Stack segments along the ring, in place of `value` and `color` |
 | `tick(v)` | `f32` | Mark a value (0–100) with a tick across the ring |
 | `tick_color(c)` | `impl Into<Hsla>` | Override the tick color (defaults to `theme.foreground`) |
 | `accessibility_label(s)` | `impl Into<SharedString>` | Set the accessible name |

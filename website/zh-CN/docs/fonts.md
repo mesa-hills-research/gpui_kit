@@ -70,7 +70,7 @@ Theme::update(cx, |theme| {
 `font_size` 同时是应用缩放控制——`Root` 会调用
 `window.set_rem_size(cx.theme().font_size)`，因此基于 [`rem` 的间距](./geometry)会跟随缩放。详见[编码指南](./coding-guides.md)。
 
-切换主题时，这些字段会按新的主题文件重新设置；主题没有指定字体时会恢复为系统字体。对于用户选择的字体，请改用[字体覆盖](../component/theme.md#字体覆盖)，每次切换主题都会保留它们。
+切换主题时，这些字段会按新的主题文件重新设置，主题没有指定字体时会恢复为系统字体。对于用户选择的字体，请改用[字体覆盖](../component/theme.md#字体覆盖)，每次切换主题都会保留它们。
 
 ## 元素级覆盖
 
@@ -135,7 +135,7 @@ Theme::update(cx, |theme| {
 });
 ```
 
-`fonts::WORK_SANS`、`WORK_SANS_ITALIC`、`JETBRAINS_MONO` 和 `JETBRAINS_MONO_ITALIC` 各自对应一个字体文件的字节。这四个文件会让二进制增大约 1.3 MiB。两个字体族都采用 SIL Open Font License 1.1；请把 `gpui-kit-assets` crate 中 `fonts` 目录里的许可文本随应用一起分发。
+`fonts::WORK_SANS`、`WORK_SANS_ITALIC`、`JETBRAINS_MONO` 和 `JETBRAINS_MONO_ITALIC` 各自对应一个字体文件的字节。这四个文件会让二进制增大约 1.3 MiB。两个字体族都采用 SIL Open Font License 1.1，请把 `gpui-kit-assets` crate 中 `fonts` 目录里的许可文本随应用一起分发。
 
 [GPUI Kit Web 画廊](https://github.com/longbridge/gpui-kit/blob/main/crates/story-web/src/lib.rs)就这样打包 `Inter Variable`、`JetBrains Mono`、`Noto Sans SC` 子集和 `IBM Plex Sans`。Rust 的 [`include_bytes!`](https://doc.rust-lang.org/std/macro.include_bytes.html) 会把这些字体字节放入 WebAssembly 下载包。画廊所用的 CJK 子集约 42 KB，源字体约 1.2 MB：已知界面文案可以制作子集来控制初始体积，但用户任意输入的文字需要另行安排字体来源。
 

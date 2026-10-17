@@ -63,7 +63,7 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   [Fonts: bundled Work Sans and JetBrains Mono](website/docs/fonts.md#bundled-work-sans-and-jetbrains-mono).
 - **Bundled themes, a user folder, and fonts that stay** (`gpui-component`). `ThemeRegistry`
   keeps themes an app embeds (`add_bundled_themes_from_str`) across reloads of the watched
-  folder, whose themes replace bundled ones of the same name ignoring case; the folder is read
+  folder, whose themes replace bundled ones of the same name ignoring case. The folder is read
   on a background thread (`ThemeRegistry::load_dir` reads a folder once, without a watcher, for
   tests). `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes once, and every
   theme applied after keeps them, in one update. See
@@ -97,8 +97,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   [Diff View](website/component/diff-view.md).
 - **Window chrome per platform** (`gpui-component`). Windows gets Windows 11 caption buttons (46
   px, Segoe Fluent Icons glyphs, the close red, disabled for windows that can't be resized or
-  minimized, dimmed while inactive); Linux buttons follow the desktop's button layout, sides and
-  order; the macOS inset drops in full screen. F10 or an Alt tap focuses the `AppMenuBar`,
+  minimized, dimmed while inactive), Linux buttons follow the desktop's button layout, sides and
+  order, and the macOS inset drops in full screen. F10 or an Alt tap focuses the `AppMenuBar`,
   arrows move, Alt with a menu's underlined letter opens it. See
   [TitleBar: menu bar and the keyboard](website/component/title-bar.md#menu-bar-and-the-keyboard).
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`

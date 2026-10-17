@@ -175,7 +175,7 @@ Theme::update(cx, |theme| {
 `fonts::WORK_SANS`, `WORK_SANS_ITALIC`, `JETBRAINS_MONO` and
 `JETBRAINS_MONO_ITALIC` give the bytes of one file each. The four files add
 about 1.3 MiB to the binary. Both families are under the SIL Open Font
-License 1.1; ship the license texts from the `gpui-kit-assets` crate's
+License 1.1, so ship the license texts from the `gpui-kit-assets` crate's
 `fonts` folder with your application.
 
 The [GPUI Kit web gallery](https://github.com/longbridge/gpui-kit/blob/main/crates/story-web/src/lib.rs) bundles `Inter Variable`, `JetBrains Mono`, a subset of `Noto Sans SC`, and `IBM Plex Sans` this way. Rust's [`include_bytes!`](https://doc.rust-lang.org/std/macro.include_bytes.html) puts those font bytes into the WebAssembly download. The gallery's CJK subset is about 42 KB, compared with about 1.2 MB for its source font: subset known interface copy to limit initial payload, then plan separately for arbitrary text entered by users.
