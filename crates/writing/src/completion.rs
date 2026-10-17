@@ -488,6 +488,9 @@ pub struct WordSuggestions {
     /// The words the document opened with.
     opened: RefCell<WordTally>,
     typed: RefCell<TypedText>,
+    /// The length of the text after the last change they heard, or that it
+    /// opened with.
+    known_len: Cell<Option<usize>>,
     pacer: Pacer,
 }
 
@@ -502,6 +505,7 @@ impl WordSuggestions {
             taught: RefCell::new(WordTally::new()),
             opened: RefCell::new(WordTally::new()),
             typed: RefCell::new(TypedText::default()),
+            known_len: Cell::new(None),
             pacer: Pacer::new(pacing),
         }
     }
@@ -510,9 +514,22 @@ impl WordSuggestions {
     /// disk. It isn't the user's typing in this session, so none of it is
     /// learned.
     pub fn opened_with(&self, text: &str) {
+        self.known_len.set(Some(text.len()));
         self.learned.borrow_mut().opened_with(text);
         *self.opened.borrow_mut() = tally(text);
         self.with_held(|held| self.local_index.borrow_mut().update_all_extra(held));
+    }
+
+    /// Treats the text before a change as not typed, when the change shows
+    /// edits these suggestions never heard of: made while another provider
+    /// was installed, or before these were. With `before` unknown, the
+    /// change didn't fit the text at all, and all of it is treated so once
+    /// the change is applied.
+    fn missed_edits(&self, before: Option<usize>) {
+        if let Some(before) = before {
+            self.typed.borrow_mut().untyped_all(before);
+        }
+        *self.learned.borrow_mut() = LearnedSentences::default();
     }
 
     /// Forgets what the text taught and opened with once it is empty, as a
@@ -815,6 +832,21 @@ impl Excerpt {
     }
 }
 
+/// The length of the text before `change`, worked back from its length
+/// after it and its edits, which apply one after another. `None` when the
+/// edits don't fit any text.
+fn len_before(change: &TextChange) -> Option<usize> {
+    let mut len = change.text().len();
+    for edit in change.edits().iter().rev() {
+        len = len.checked_sub(edit.text().len())?;
+        if edit.range().start > len {
+            return None;
+        }
+        len += edit.range().len();
+    }
+    Some(len)
+}
+
 /// A count of the document's words on another thread, and the edits made
 /// since it began.
 struct Counting {
@@ -931,7 +963,15 @@ impl SuggestionProvider for WordSuggestions {
     fn did_change(&self, change: &TextChange, cx: &mut App) {
         // What is written while suggestions are off is never learned.
         let learning = self.pacer.mode() != SuggestionMode::Off;
+        let before = len_before(change);
+        if before != Some(self.known_len.get().unwrap_or(0)) {
+            self.missed_edits(before);
+        }
+        self.known_len.set(Some(change.text().len()));
         self.typed.borrow_mut().changed(change, learning);
+        if before.is_none() {
+            self.typed.borrow_mut().untyped_all(change.text().len());
+        }
         if change.text().len() == 0 {
             self.forget_cleared_text();
         }

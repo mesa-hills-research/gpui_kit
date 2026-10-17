@@ -677,6 +677,50 @@ fn a_message_sent_again_is_learned_again(cx: &mut TestAppContext) {
     );
 }
 
+/// Edits made while the textarea had no suggestions, or other ones, never
+/// reach these, so they can't tell where a paste moved: the text from
+/// before is treated as not typed, and the paste is still never learned.
+/// So is text a textarea held before its suggestions were installed.
+#[gpui::test]
+fn text_changed_while_the_suggestions_were_out_is_not_learned(cx: &mut TestAppContext) {
+    let provide = |typist: &mut Typist, on: bool| {
+        let suggestions: Option<Rc<dyn gpui_base::input::SuggestionProvider>> =
+            on.then(|| typist.suggestions.clone() as _);
+        typist.cx.update(|_, cx| {
+            typist.textarea.update(cx, |state, cx| {
+                state.set_suggestion_provider(suggestions, cx)
+            })
+        });
+    };
+    let caret_at = |typist: &mut Typist, offset: usize| {
+        typist.cx.update(|_, cx| {
+            typist
+                .textarea
+                .update(cx, |state, cx| state.set_selected_range(offset..offset, cx))
+        });
+    };
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("Hi ");
+        paste(typist, "secret");
+        provide(typist, false);
+        caret_at(typist, 0);
+        typist.type_text("Hello there, my friend. ");
+        provide(typist, true);
+        let end = typist.value().len();
+        caret_at(typist, end);
+        typist.type_text(". Next words. ");
+    });
+    assert_eq!(learned, counts(&[("Next", 1), ("words", 1)]));
+
+    let learned = learned_in_both_modes(cx, |typist| {
+        provide(typist, false);
+        typist.type_text("Hi secret");
+        provide(typist, true);
+        typist.type_text(". Next words. ");
+    });
+    assert_eq!(learned, counts(&[("Next", 1), ("words", 1)]));
+}
+
 /// One word pasted over a selected word looks like a spelling correction,
 /// but the user didn't write it: its sentence teaches nothing.
 #[gpui::test]

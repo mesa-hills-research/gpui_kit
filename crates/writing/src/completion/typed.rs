@@ -86,6 +86,15 @@ impl TypedText {
         self.untyped.insert(index, merged);
     }
 
+    /// Treats the text's first `len` bytes as not typed, in place of what
+    /// it knew: text whose history it missed.
+    pub fn untyped_all(&mut self, len: usize) {
+        self.untyped.clear();
+        if len > 0 {
+            self.untyped.push(0..len);
+        }
+    }
+
     /// Whether any of `range` was inserted without typing.
     pub fn overlaps_untyped(&self, range: Range<usize>) -> bool {
         let index = self

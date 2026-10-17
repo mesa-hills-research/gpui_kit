@@ -78,6 +78,13 @@ A textarea opened with text the user didn't type, such as a document read
 from disk, tells its suggestions with `suggestions.opened_with(&text)`, so
 that text is never learned.
 
+The suggestions learn only from the changes they hear about, so a textarea
+keeps its `WordSuggestions` installed for as long as it lives, and
+`set_suggestion_mode` turns them off. A provider that combines them with
+others, such as slash commands, passes every `did_change` on to them. Text
+they didn't see arrive, held before they were installed or changed while
+another provider was, counts as not typed.
+
 A sentence is learned once the user types on after its `.`, `!`, `?` or line
 break, so the last sentence of a chat message sent with Enter would never be.
 A composer calls `suggestions.learn_rest(state.text())` as it sends, before it
