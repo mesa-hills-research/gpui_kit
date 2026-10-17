@@ -14,10 +14,10 @@
 //!
 //! The word being typed is never marked: a misspelling at the caret right
 //! after typing or deleting, as with Backspace, is held back, and typing or
-//! deleting in a marked word takes its underline away. A word is checked at once when it is finished, when the
-//! user types a space, punctuation or a line break after it or moves the
-//! caret away, so its underline appears or goes without waiting for typing
-//! to pause.
+//! deleting in a marked word takes its underline away. A word is checked at
+//! once when it is finished, when the user types a space, punctuation or a
+//! line break after it or moves the caret away, so its underline appears or
+//! goes without waiting for typing to pause.
 //!
 //! # Fixes
 //!
@@ -1165,8 +1165,8 @@ mod tests {
         assert_eq!(checker.requested(), [["Teh cat sat\non teh mat"]]);
         assert_eq!(test.misspellings(), [0..3, 15..18]);
 
-        // The space finishes a word, so the typed line is checked at once;
-        // the other line's underline moved with the edit.
+        // The space finishes a word, so the typed line is checked at once.
+        // The other line's underline moved with the edit.
         test.type_at(0, "A ");
         assert_eq!(test.misspellings(), [2..5, 17..20]);
         assert_eq!(test.marked(), ["Teh", "teh"]);

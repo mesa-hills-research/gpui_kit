@@ -126,18 +126,18 @@ Radio::new("option")
 A tooltip shown by a component's `tooltip` or `tooltip_with_action` belongs to
 the element it describes. When that element is no longer drawn, the tooltip
 disappears in the same frame, and one still waiting for its show delay never
-appears:
+appears. For example:
 
-- a Close button whose click closes its page;
-- a shortcut that removes a row while the pointer rests on its action button;
-- a list that re-renders and drops a row under the pointer.
+- A Close button whose click closes its page.
+- A shortcut that removes a row while the pointer rests on its action button.
+- A list that re-renders and drops a row under the pointer.
 
 A trigger in a view GPUI reuses from the last frame counts as drawn while the
 pointer rests on it. After the pointer leaves, the tooltip stays for its short
 grace period whatever else redraws the window, so moving on to the next button
-still switches tooltips at once. Nothing needs to be set up for this. Tooltips built with GPUI's own
-`.tooltip()` on a `div` are not managed by the overlay and keep GPUI's
-behavior.
+still switches tooltips at once. Nothing needs to be set up for this. Tooltips
+built with GPUI's own `.tooltip()` on a `div` are not managed by the overlay
+and keep GPUI's behavior.
 
 ### Complex Tooltip Content
 

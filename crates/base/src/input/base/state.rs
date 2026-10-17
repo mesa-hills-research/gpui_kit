@@ -1961,8 +1961,8 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// Ends an input method's composition with what it has composed, if one
     /// is open, and returns whether it was. Enter does this, and only this,
     /// during a composition: it neither submits the input nor breaks a line.
-    /// Platforms send Enter to the input method first while it composes;
-    /// this covers one that hands the key on instead.
+    /// Platforms send Enter to the input method first while it composes.
+    /// This covers one that hands the key on instead.
     pub(crate) fn commit_composition(
         &mut self,
         window: &mut Window,

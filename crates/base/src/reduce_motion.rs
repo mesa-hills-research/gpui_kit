@@ -58,7 +58,7 @@ pub(crate) fn init(cx: &mut App) {
 ///
 /// `gpui_base::init` calls this once, and a window with a Base
 /// [`crate::Root`] calls it again each time it becomes active. Base follows
-/// changes on its own on macOS and on Linux; call this to re-read the
+/// changes on its own on macOS and on Linux. Call this to re-read the
 /// preference at other moments, such as on Windows without a Base root.
 ///
 /// The application wins over the system: when the flag no longer holds what

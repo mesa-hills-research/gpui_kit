@@ -101,6 +101,10 @@ for settings files. The older `submit_on_enter(true)` submits with Enter and
 with Cmd+Enter or Ctrl+Enter, the same as
 `submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])`.
 
+A submit chord also reaches the key bindings around the textarea. A composer
+that sends on `PressEnter` leaves its submit chords unbound around it, or one
+press sends twice.
+
 ## Sizes
 
 ```rust

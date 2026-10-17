@@ -89,6 +89,8 @@ composer.update(cx, |state, cx| {
 
 `SubmitKey` 在设置文件中序列化为 `"enter"`、`"shift_enter"` 和 `"secondary_enter"`。旧的 `submit_on_enter(true)` 用 Enter 以及 Cmd+Enter 或 Ctrl+Enter 发送，等同于 `submit_keys([SubmitKey::Enter, SubmitKey::SecondaryEnter])`。
 
+发送组合键还会继续传到 Textarea 外层的按键绑定。在 `PressEnter` 时发送的聊天输入框，不要在外层再绑定这些发送组合键，否则按一次会发送两次。
+
 ## 尺寸
 
 ```rust

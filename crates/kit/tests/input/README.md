@@ -157,8 +157,8 @@ buttons, and clicking the body of Textarea/Editor before editing. Run it alongsi
 - History: type a prefix, paste from the test clipboard, then type a suffix;
   Undo/Redo should preserve the asserted edit boundaries. See
   `history::paste_is_atomic_and_separate_from_surrounding_typing`.
-- Textarea: set submit keys, press each Enter chord on each platform's keys;
-  check the emitted Enter event and the resulting text separately. See
+- Textarea: set submit keys, press each Enter chord on each platform's keys,
+  and check the emitted Enter event and the resulting text separately. See
   `textarea::submit_keys_submit_and_the_other_enters_break_lines`.
 - Editor: type a completion trigger, inspect the popup, accept with Enter,
   then verify text and Undo boundaries. See `completions.rs`.
