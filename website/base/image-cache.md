@@ -54,7 +54,7 @@ An in-memory image is checked from its header before it's decoded. If its decode
 
 ## Debug builds
 
-Thumbnails are scaled with the `image` crate, which is slow unoptimized: half a second for a screenshot. Optimize it in debug builds too:
+Images are decoded and thumbnails scaled by the `image` crate, which is slow unoptimized. Optimize it in debug builds too, and a thumbnail of a 2560×1600 screenshot takes about 0.13 s instead of half a second:
 
 ```toml
 [profile.dev.package]

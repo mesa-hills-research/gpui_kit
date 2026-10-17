@@ -19,9 +19,9 @@
 //! to unload, and unloads the image only if their next frame doesn't draw it
 //! again, so a view that replays a cached frame is redrawn before its images
 //! go. An image drawn again is kept for the rest of the trim, and the trim
-//! ends at the first step with nothing left to mark. The budget is a target:
-//! images on screen together may pass it, and stay until the next image
-//! loads.
+//! ends at the first step with nothing left to mark, unless images loaded
+//! while it ran: then the next trim begins. The budget is a target: images
+//! on screen together may pass it, and stay until the next image loads.
 //!
 //! In-memory images are checked before they are decoded, from their headers:
 //! one whose decoded pixels would pass the whole budget is refused, and its
@@ -168,15 +168,28 @@ impl LruImageCache {
     }
 
     /// Unload every image now, including any on screen, and forget failed
-    /// loads. They load again when drawn.
+    /// loads. Every view that drew one is asked to draw again, so it loads
+    /// them again rather than replay a frame whose images are gone. Images
+    /// still decoding stay, and reach their views when ready.
     pub fn clear(&mut self, window: &mut Window, cx: &mut App) {
-        for (_, load) in self.images.drain() {
-            if let Some(image) = load.image() {
-                cx.drop_image(image, Some(window));
+        let views = self.ledger.views();
+        for (key, load) in std::mem::take(&mut self.images) {
+            match load {
+                Load::Decoding { .. } => {
+                    self.images.insert(key, load);
+                }
+                load => {
+                    if let Some(image) = load.image() {
+                        cx.drop_image(image, Some(window));
+                    }
+                }
             }
         }
         self.ledger = Ledger::new(self.ledger.max_bytes);
         self.pending = None;
+        for view in views {
+            cx.notify(view);
+        }
     }
 
     /// Decode `image` (scaled to fit `fit`, if given) or return it from the
@@ -306,7 +319,8 @@ impl LruImageCache {
         for view in step.notify {
             cx.notify(view);
         }
-        if step.more {
+        // Images that loaded while this trim ran begin the next one.
+        if step.more || self.ledger.start_trim() {
             self.schedule_step(window);
         }
     }
@@ -379,7 +393,26 @@ impl ImageHeader {
 fn probe(image: &Image) -> Result<Option<ImageHeader>, ImageCacheError> {
     let format = match image.format() {
         ImageFormat::Gif => return gif_header(image.bytes()).map(Some),
-        ImageFormat::Svg => return Ok(None),
+        format => match still_format(format) {
+            Some(format) => format,
+            None => return Ok(None),
+        },
+    };
+    let (width, height) = image::ImageReader::with_format(Cursor::new(image.bytes()), format)
+        .into_dimensions()
+        .map_err(image_error)?;
+    Ok(Some(ImageHeader {
+        width,
+        height,
+        frames: 1,
+    }))
+}
+
+/// The `image` crate's format for a still raster format, `None` for GIF and
+/// SVG.
+fn still_format(format: ImageFormat) -> Option<image::ImageFormat> {
+    Some(match format {
+        ImageFormat::Gif | ImageFormat::Svg => return None,
         ImageFormat::Png => image::ImageFormat::Png,
         ImageFormat::Jpeg => image::ImageFormat::Jpeg,
         ImageFormat::Webp => image::ImageFormat::WebP,
@@ -387,15 +420,11 @@ fn probe(image: &Image) -> Result<Option<ImageHeader>, ImageCacheError> {
         ImageFormat::Tiff => image::ImageFormat::Tiff,
         ImageFormat::Ico => image::ImageFormat::Ico,
         ImageFormat::Pnm => image::ImageFormat::Pnm,
-    };
-    let (width, height) = image::ImageReader::with_format(Cursor::new(image.bytes()), format)
-        .into_dimensions()
-        .map_err(|err| ImageCacheError::Image(Arc::new(err)))?;
-    Ok(Some(ImageHeader {
-        width,
-        height,
-        frames: 1,
-    }))
+    })
+}
+
+fn image_error(err: image::ImageError) -> ImageCacheError {
+    ImageCacheError::Image(Arc::new(err))
 }
 
 /// A GIF's logical screen size and its number of frames, walking its blocks
@@ -487,10 +516,24 @@ fn decode(
             } else {
                 header.frames
             };
-            match image.format() {
-                ImageFormat::Gif => decode_gif(Cursor::new(image.bytes()), frames, limit)?,
-                _ => image.to_image_data(svg_renderer)?,
-            }
+            return match (image.format(), fit) {
+                (ImageFormat::Gif, None) => {
+                    let frames = gif_frames(Cursor::new(image.bytes()), frames, limit)?;
+                    Ok(Arc::new(RenderImage::new(
+                        frames.into_iter().map(into_bgra).collect::<SmallVec<_>>(),
+                    )))
+                }
+                (ImageFormat::Gif, Some(fit)) => {
+                    let mut frames = gif_frames(Cursor::new(image.bytes()), 1, limit)?;
+                    let first = frames.swap_remove(0).into_buffer();
+                    Ok(thumbnail(image::DynamicImage::ImageRgba8(first), fit))
+                }
+                (format, Some(fit)) => {
+                    let format = still_format(format).expect("a still raster format");
+                    Ok(thumbnail(decode_still(image.bytes(), format)?, fit))
+                }
+                (_, None) => Ok(image.to_image_data(svg_renderer)?),
+            };
         }
         // GPUI caps an SVG's rendering at 8192 pixels a side.
         None => {
@@ -514,15 +557,14 @@ fn decode(
     })
 }
 
-/// Up to `max_frames` frames of a GIF, in GPUI's BGRA, with no allocation
-/// past `limit` bytes. Frames that fail to decode are skipped, as GPUI does.
-fn decode_gif(
+/// Up to `max_frames` frames of a GIF, in RGBA, with no allocation past
+/// `limit` bytes. Frames that fail to decode are skipped, as GPUI does.
+fn gif_frames(
     bytes: impl BufRead + Seek,
     max_frames: usize,
     limit: usize,
-) -> Result<Arc<RenderImage>, ImageCacheError> {
+) -> Result<SmallVec<[image::Frame; 1]>, ImageCacheError> {
     use image::{AnimationDecoder as _, ImageDecoder as _};
-    let image_error = |err| ImageCacheError::Image(Arc::new(err));
     let mut decoder = image::codecs::gif::GifDecoder::new(bytes).map_err(image_error)?;
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(limit as u64);
@@ -531,17 +573,54 @@ fn decode_gif(
         .into_frames()
         .take(max_frames)
         .filter_map(Result::ok)
-        .map(|mut frame| {
-            for pixel in frame.buffer_mut().chunks_exact_mut(4) {
-                pixel.swap(0, 2);
-            }
-            frame
-        })
         .collect::<SmallVec<[image::Frame; 1]>>();
     if frames.is_empty() {
         return Err(ImageCacheError::Asset("no frame of the GIF decodes".into()));
     }
-    Ok(Arc::new(RenderImage::new(frames)))
+    Ok(frames)
+}
+
+/// A frame in GPUI's BGRA.
+fn into_bgra(mut frame: image::Frame) -> image::Frame {
+    for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+    }
+    frame
+}
+
+/// A still image, decoded and turned as its EXIF orientation says, as GPUI
+/// decodes it.
+fn decode_still(
+    bytes: &[u8],
+    format: image::ImageFormat,
+) -> Result<image::DynamicImage, ImageCacheError> {
+    use image::ImageDecoder as _;
+    let mut decoder = image::ImageReader::with_format(Cursor::new(bytes), format)
+        .into_decoder()
+        .map_err(image_error)?;
+    let orientation = decoder.orientation().map_err(image_error)?;
+    let mut image = image::DynamicImage::from_decoder(decoder).map_err(image_error)?;
+    image.apply_orientation(orientation);
+    Ok(image)
+}
+
+/// `image` scaled down to fit `fit`, in GPUI's BGRA. It scales in the
+/// decoded pixel format, before the conversion to RGBA, with the `image`
+/// crate's own (non-generic) resize, which an application's profile can
+/// optimize in debug builds.
+fn thumbnail(image: image::DynamicImage, fit: Size<DevicePixels>) -> Arc<RenderImage> {
+    let size = size(
+        DevicePixels(image.width() as i32),
+        DevicePixels(image.height() as i32),
+    );
+    let image = match fitted_size(size, fit) {
+        Some((width, height)) => {
+            image.resize_exact(width, height, image::imageops::FilterType::Triangle)
+        }
+        None => image,
+    };
+    let frame = into_bgra(image::Frame::new(image.into_rgba8()));
+    Arc::new(RenderImage::new(smallvec::smallvec![frame]))
 }
 
 /// The size `image` takes when scaled down, keeping its aspect ratio, to fit
@@ -557,8 +636,9 @@ fn fitted_size(image: Size<DevicePixels>, fit: Size<DevicePixels>) -> Option<(u3
     })
 }
 
-/// The first frame of `image` scaled down to fit `fit`, or `None` when it
-/// already fits. Scales straight from the decoded pixels, without a copy.
+/// The first frame of a rendered SVG scaled down to fit `fit`, or `None`
+/// when it already fits. Scales straight from the rendered pixels, without
+/// a copy.
 fn scale_to_fit(image: &RenderImage, fit: Size<DevicePixels>) -> Option<Arc<RenderImage>> {
     let (width, height) = fitted_size(image.size(0), fit)?;
     let size = image.size(0);
@@ -649,6 +729,17 @@ impl Ledger {
         if !entry.views.contains(&view) {
             entry.views.push(view);
         }
+    }
+
+    /// Every view that drew an entry, each once.
+    fn views(&self) -> Vec<EntityId> {
+        let mut views = Vec::new();
+        for view in self.entries.values().flat_map(|entry| &entry.views) {
+            if !views.contains(view) {
+                views.push(*view);
+            }
+        }
+        views
     }
 
     fn is_accounted(&self, key: u64) -> bool {
@@ -752,7 +843,10 @@ impl Ledger {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     use gpui::{
         AnyView, Context, IntoElement, ParentElement as _, Render, StyleRefinement, Styled as _,
@@ -1008,21 +1102,58 @@ mod tests {
         }
     }
 
+    /// A still image's thumbnail is scaled in its decoded format and comes
+    /// out in GPUI's BGRA.
+    #[gpui::test]
+    fn a_still_image_thumbnail_is_scaled_and_in_bgra(cx: &mut TestAppContext) {
+        let svg = cx.update(|cx| cx.svg_renderer());
+        let mut bytes = Vec::new();
+        image::RgbImage::from_pixel(40, 20, image::Rgb([255, 0, 0]))
+            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        let fit = size(DevicePixels(10), DevicePixels(10));
+        let thumbnail = decode(
+            &Image::from_bytes(ImageFormat::Png, bytes),
+            svg,
+            Some(fit),
+            1 << 20,
+        )
+        .unwrap();
+        assert_eq!(thumbnail.size(0), size(DevicePixels(10), DevicePixels(5)));
+        assert_eq!(
+            &thumbnail.as_bytes(0).unwrap()[..4],
+            &[0, 0, 255, 255],
+            "red, as BGRA"
+        );
+    }
+
     /// One in-memory image, drawn through the cache, counting renders.
     struct Thumb {
         cache: Entity<LruImageCache>,
         image: Option<Arc<Image>>,
         renders: Rc<Cell<usize>>,
+        /// The last image the cache gave this view to draw.
+        drawn: Rc<RefCell<Option<Arc<RenderImage>>>>,
     }
 
     impl Render for Thumb {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             self.renders.set(self.renders.get() + 1);
-            div().size_full().children(
-                self.image
-                    .clone()
-                    .map(|image| img(LruImageCache::source(&self.cache, image, None)).size_8()),
-            )
+            let drawn = self.drawn.clone();
+            div().size_full().children(self.image.clone().map(|image| {
+                let ImageSource::Custom(load) = LruImageCache::source(&self.cache, image, None)
+                else {
+                    unreachable!("an in-memory source")
+                };
+                img(ImageSource::Custom(Arc::new(move |window, cx| {
+                    let result = load(window, cx);
+                    if let Some(Ok(image)) = &result {
+                        *drawn.borrow_mut() = Some(image.clone());
+                    }
+                    result
+                })))
+                .size_8()
+            }))
         }
     }
 
@@ -1055,6 +1186,7 @@ mod tests {
                         cache: cache.clone(),
                         image,
                         renders: Rc::default(),
+                        drawn: Rc::default(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -1117,16 +1249,26 @@ mod tests {
         }
         assert_eq!(renders(window, cx), settled, "idle");
 
-        // Something redraws the first row once (a hover, a streamed line).
-        let first = window
-            .update(cx, |rows, _, _| rows.rows[0].clone())
+        // Something redraws the first row now and then (a hover, a streamed
+        // line). Only that row redraws: drawing images the cache already
+        // holds starts no trim, which would ask the other row to redraw.
+        let [first, second] = window
+            .update(cx, |rows, _, _| {
+                [rows.rows[0].clone(), rows.rows[1].clone()]
+            })
             .unwrap();
-        first.update(cx, |_, cx| cx.notify());
-        for _ in 0..60 {
-            frame(window, cx);
+        let count = |row: &Entity<Thumb>, cx: &mut TestAppContext| {
+            row.read_with(cx, |row, _| row.renders.get())
+        };
+        let (first_before, second_before) = (count(&first, cx), count(&second, cx));
+        for _ in 0..6 {
+            first.update(cx, |_, cx| cx.notify());
+            for _ in 0..10 {
+                frame(window, cx);
+            }
         }
-        let redrawn = renders(window, cx) - settled;
-        assert!(redrawn <= 4, "the rows redrew {redrawn} times in 60 frames");
+        assert_eq!(count(&first, cx) - first_before, 6);
+        assert_eq!(count(&second, cx), second_before, "the other row stays");
         cache.read_with(cx, |cache, _| {
             assert_eq!(cache.len(), 2);
             assert_eq!(cache.used_bytes(), 2 * 51_200, "both shown");
@@ -1233,6 +1375,101 @@ mod tests {
             })
             .unwrap();
         assert!(in_atlas, "the image under the first row stays");
+    }
+
+    /// Rows switch images while trims run. Once nothing else is on screen,
+    /// the next image to load brings the cache within its budget: images
+    /// loaded during a trim begin the next one.
+    #[gpui::test]
+    fn after_a_churn_the_cache_settles_within_its_budget(cx: &mut TestAppContext) {
+        let cache = cx.update(|cx| LruImageCache::new(150_000, cx));
+        let window = cx.add_window(|_, cx| Rows::new(&cache, [None, None, None, None], cx));
+        let rows = window.update(cx, |rows, _, _| rows.rows.clone()).unwrap();
+        let mut seed = 0x1234_5678u64;
+        let mut random = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        for _ in 0..60 {
+            // The sequence of a churn across two windows, here in one.
+            let _window = random(2);
+            let row = &rows[random(4) as usize];
+            let width = 60 + random(40) as u32;
+            row.update(cx, |row, cx| {
+                row.image = Some(svg(width, 40, "teal"));
+                cx.notify();
+            });
+            frame(window, cx);
+        }
+
+        // Nothing on screen, then one new image of 128,000 bytes.
+        window
+            .update(cx, |rows, _, cx| {
+                rows.visible = 1;
+                cx.notify();
+            })
+            .unwrap();
+        rows[0].update(cx, |row, cx| {
+            row.image = None;
+            cx.notify();
+        });
+        frame(window, cx);
+        rows[0].update(cx, |row, cx| {
+            row.image = Some(svg(200, 40, "navy"));
+            cx.notify();
+        });
+        for _ in 0..8 {
+            frame(window, cx);
+        }
+        cache.read_with(cx, |cache, _| {
+            assert_eq!((cache.len(), cache.used_bytes()), (1, 128_000));
+        });
+    }
+
+    /// `clear` asks the views that drew images to draw again, so a cached
+    /// view loads its image anew instead of replaying a frame without it,
+    /// and an image decoding meanwhile still reaches its view.
+    #[gpui::test]
+    fn clearing_redraws_the_views_and_keeps_decodes_in_flight(cx: &mut TestAppContext) {
+        let cache = cx.update(|cx| LruImageCache::new(1_000_000, cx));
+        let window = cx.add_window(|_, cx| Rows::new(&cache, [Some(svg(80, 40, "red")), None], cx));
+        let rows = window.update(cx, |rows, _, _| rows.rows.clone()).unwrap();
+        for _ in 0..3 {
+            frame(window, cx);
+        }
+        let first = rows[0].read_with(cx, |row, _| row.drawn.borrow().clone().expect("drawn"));
+        cx.update_window(window.into(), |_, window, cx| {
+            cache.update(cx, |cache, cx| cache.clear(window, cx))
+        })
+        .unwrap();
+        for _ in 0..4 {
+            frame(window, cx);
+        }
+        let again = rows[0].read_with(cx, |row, _| row.drawn.borrow().clone().expect("drawn"));
+        assert!(!Arc::ptr_eq(&first, &again), "decoded again and drawn");
+        let in_atlas = cx
+            .update_window(window.into(), |_, window, _| {
+                window.has_image_atlas_entry(&again)
+            })
+            .unwrap();
+        assert!(in_atlas);
+
+        // A decode in flight when the cache clears.
+        rows[1].update(cx, |row, cx| {
+            row.image = Some(svg(90, 40, "green"));
+            cx.notify();
+        });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+            cache.update(cx, |cache, cx| cache.clear(window, cx));
+        })
+        .unwrap();
+        for _ in 0..4 {
+            frame(window, cx);
+        }
+        assert!(rows[1].read_with(cx, |row, _| row.drawn.borrow().is_some()));
     }
 
     /// In-memory images decode off the UI thread, scaled to fit, and the

@@ -54,7 +54,7 @@ img(LruImageCache::source(&cache, screenshot.clone(), Some(fit)))
 
 ## 调试构建
 
-缩略图由 `image` crate 缩放，未优化时很慢：一张截图需要半秒。在调试构建中也优化它：
+图片的解码和缩略图的缩放都由 `image` crate 完成，未优化时很慢。在调试构建中也优化它，一张 2560×1600 截图的缩略图只需约 0.13 秒，而不是半秒：
 
 ```toml
 [profile.dev.package]
