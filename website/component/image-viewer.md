@@ -51,7 +51,7 @@ Fitted is the default and each image starts fitted. Fitting shrinks an image to 
 
 While an image decodes, the viewer shows a spinner. An image that fails to load shows "Couldn’t load this image.", with the reason when its source gives one, such as an `LruImageCache` refusing an image larger than its budget. A viewer with no images says "No images".
 
-A dialog opened while the viewer is up, such as a question the app asks, shows over the viewer and takes focus. Closing it gives focus back to the viewer. A viewer opened from a dialog covers that dialog, and Escape closes the viewer first.
+A dialog opened while the viewer is up, such as a question the app asks, shows over the viewer and takes focus. Closing it gives focus back to the viewer. A viewer opened from a dialog covers that dialog, and Escape closes the viewer first. If the app closes that dialog while the viewer is up, the viewer keeps focus, and gives it back where the dialog would have.
 
 ## Thumbnails
 

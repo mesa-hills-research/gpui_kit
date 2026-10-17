@@ -6,6 +6,11 @@ use gpui::{
 use instant::Duration;
 
 /// A cycling loading spinner.
+/// How often a spinner redraws: a loading indicator needs no more than 30
+/// frames a second, and drawing at the display's rate costs the frames the
+/// work it waits for may need.
+const MAX_FPS: f32 = 30.;
+
 #[derive(IntoElement)]
 pub struct Spinner {
     size: Size,
@@ -66,7 +71,10 @@ impl RenderOnce for Spinner {
                     .when_some(self.color, |this, color| this.text_color(color))
                     .with_animation(
                         "circle",
-                        Animation::new(self.speed).repeat().with_easing(self.easing),
+                        Animation::new(self.speed)
+                            .repeat()
+                            .with_easing(self.easing)
+                            .with_max_fps(MAX_FPS),
                         |this, delta| this.transform(Transformation::rotate(percentage(delta))),
                     ),
             )
@@ -85,6 +93,44 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
             Spinner::new()
         }
+    }
+
+    /// A spinner redraws at 30 frames a second on a timer, not at every
+    /// frame the display offers.
+    #[gpui::test]
+    fn a_spinner_redraws_at_thirty_frames_a_second(cx: &mut TestAppContext) {
+        let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+        struct Counted(std::rc::Rc<std::cell::Cell<usize>>);
+        impl Render for Counted {
+            fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+                self.0.set(self.0.get() + 1);
+                Spinner::new()
+            }
+        }
+        let window = cx.open_window(size(px(100.), px(100.)), {
+            let renders = renders.clone();
+            move |_, _| Counted(renders)
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            window
+                .update(cx, |_, window, cx| window.simulate_next_frame(cx))
+                .unwrap(),
+            0,
+            "no redraw is asked of every frame"
+        );
+        let before = renders.get();
+        for _ in 0..30 {
+            cx.executor()
+                .advance_clock(std::time::Duration::from_millis(1000 / 30 + 1));
+            // A notified test window redraws once the executor parks.
+            cx.run_until_parked();
+        }
+        let redraws = renders.get() - before;
+        assert!(
+            (25..=31).contains(&redraws),
+            "{redraws} redraws in a second"
+        );
     }
 
     #[gpui::test]

@@ -317,11 +317,27 @@ impl WindowState {
 
     fn close_dialog_internal(&mut self) -> Option<FocusHandle> {
         self.focused_input = None;
-        let closed = self.active_dialogs.pop();
+        let target = self
+            .active_dialogs
+            .pop()
+            .and_then(|d| d.previous_focused_handle);
+        let under_viewer = self.viewer_covers_dialog(self.active_dialogs.len());
         self.keep_viewer_over_closed_dialogs();
-        closed
-            .and_then(|d| d.previous_focused_handle)
-            .and_then(|h| h.upgrade())
+        // A dialog under the image viewer closes without taking focus from
+        // it: the viewer gives focus back where the dialog would have.
+        if under_viewer && let Some(viewer) = self.active_image_viewer.as_mut() {
+            viewer.previous_focused_handle = target;
+            return None;
+        }
+        target.and_then(|h| h.upgrade())
+    }
+
+    /// Whether the image viewer is open over the dialog at `ix`, which was
+    /// open when the viewer opened.
+    fn viewer_covers_dialog(&self, ix: usize) -> bool {
+        self.active_image_viewer
+            .as_ref()
+            .is_some_and(|viewer| ix < viewer.dialogs_below)
     }
 
     /// A dialog the image viewer covered may close while it is open: the
@@ -374,9 +390,16 @@ impl WindowState {
             .active_dialogs
             .first()
             .and_then(|d| d.previous_focused_handle.clone());
+        let under_viewer = self.viewer_covers_dialog(0);
         self.active_dialogs.clear();
         self.keep_viewer_over_closed_dialogs();
-        if let Some(handle) = previous_focused_handle.and_then(|h| h.upgrade()) {
+        if under_viewer && let Some(viewer) = self.active_image_viewer.as_mut() {
+            // The viewer stays, with focus, and gives it back where the
+            // dialogs would have.
+            viewer.previous_focused_handle = previous_focused_handle;
+            let viewer_focus = viewer.state.read(cx).focus_handle(cx);
+            window.focus(&viewer_focus, cx);
+        } else if let Some(handle) = previous_focused_handle.and_then(|h| h.upgrade()) {
             window.focus(&handle, cx);
         }
         gpui_base::TextSelection::clear(window, cx);
@@ -477,11 +500,29 @@ impl WindowState {
         window: &mut Window,
         cx: &mut Context<'_, WindowState>,
     ) -> Entity<ImageViewerState> {
-        let previous_focused_handle = self
-            .active_image_viewer
-            .take()
-            .and_then(|viewer| viewer.previous_focused_handle)
+        let replaced = self.active_image_viewer.take();
+        // A viewer that replaces another over the same dialogs gives focus
+        // back where that one would have. One opened from a dialog since
+        // gives it back into that dialog.
+        let previous_focused_handle = replaced
+            .as_ref()
+            .filter(|old| old.dialogs_below == self.active_dialogs.len())
+            .and_then(|old| old.previous_focused_handle.clone())
             .or_else(|| window.focused(cx).map(|handle| handle.downgrade()));
+        // Dialogs opened over the replaced viewer would give focus back to
+        // it; they give it back where it would have.
+        if let Some(old) = replaced.filter(|old| old.dialogs_below < self.active_dialogs.len()) {
+            let old_focus = old.state.read(cx).focus_handle(cx);
+            for dialog in &mut self.active_dialogs[old.dialogs_below..] {
+                if dialog
+                    .previous_focused_handle
+                    .as_ref()
+                    .is_some_and(|handle| *handle == old_focus)
+                {
+                    dialog.previous_focused_handle = old.previous_focused_handle.clone();
+                }
+            }
+        }
         let state = cx.new(|cx| ImageViewerState::new(items, selected_index, cx));
         let focus_handle = state.read(cx).focus_handle(cx);
         focus_handle.focus(window, cx);

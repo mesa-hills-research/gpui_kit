@@ -101,6 +101,7 @@ The Spinner component features a built-in rotation animation:
 - **Easing**: Ease-in-out transition
 - **Repeat**: Infinite loop
 - **Transform**: 360-degree rotation
+- **Frame rate**: at most 30 frames a second, on a timer, whatever the display's rate
 
 ## Size Reference
 

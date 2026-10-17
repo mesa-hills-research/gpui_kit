@@ -677,3 +677,173 @@ fn an_empty_viewer_says_it_has_no_images(cx: &mut TestAppContext) {
     })
     .unwrap();
 }
+
+/// A window whose thumbnail holds focus, as a gallery's does after a click.
+struct FocusedThumbnail {
+    thumbnail: gpui_kit::FocusHandle,
+}
+
+impl Render for FocusedThumbnail {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .p_4()
+            .child(div().id("thumbnail").track_focus(&self.thumbnail).size_10())
+    }
+}
+
+fn open_focused_thumbnail(
+    cx: &mut TestAppContext,
+) -> (gpui_kit::AnyWindowHandle, gpui_kit::FocusHandle) {
+    cx.update(gpui_kit::init);
+    let (handle, view) = common::open_window(cx, Some(size(px(800.), px(600.))), |_, cx| {
+        cx.new(|cx| FocusedThumbnail {
+            thumbnail: cx.focus_handle(),
+        })
+    });
+    let handle: gpui_kit::AnyWindowHandle = handle.into();
+    let thumbnail = view.read_with(cx, |view, _| view.thumbnail.clone());
+    cx.update_window(handle, |_, window, cx| {
+        window.activate_window();
+        window.render_frame(cx);
+        thumbnail.focus(window, cx);
+        window.render_frame(cx);
+    })
+    .unwrap();
+    (handle, thumbnail)
+}
+
+fn missing_images(count: usize) -> Vec<ImageViewerItem> {
+    (0..count)
+        .map(|ix| ImageViewerItem::new(format!("missing-{ix}.png")))
+        .collect()
+}
+
+/// A dialog of attachments, whose button opens them in the viewer.
+fn open_attachments(window: &mut Window, cx: &mut gpui_kit::App) {
+    window.open_dialog(cx, |dialog, _, _| {
+        dialog
+            .title("Attachments")
+            .child(
+                Button::new("open-attachment")
+                    .label("Open")
+                    .on_click(|_, window, cx| {
+                        window.open_image_viewer(missing_images(2), 0, cx);
+                    }),
+            )
+    });
+    window.render_frame(cx);
+}
+
+/// Let dialog animations and their focus restoring finish.
+fn settle(cx: &mut TestAppContext) {
+    cx.background_executor.advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+}
+
+/// A dialog, the viewer opened from it, then a second dialog: the second
+/// shows over the viewer and takes the pointer, and Escape closes the
+/// second dialog, the viewer and the first dialog in turn.
+#[gpui_kit::test]
+async fn a_dialog_over_a_viewer_over_a_dialog(cx: &mut TestAppContext) {
+    let (handle, _) = open_focused_thumbnail(cx);
+    let answered = std::rc::Rc::new(std::cell::Cell::new(0));
+    cx.update_window(handle, |_, window, cx| open_attachments(window, cx))
+        .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("open-attachment", cx);
+        window.render_frame(cx);
+        let answered = answered.clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let answered = answered.clone();
+            dialog.title("A question").child(
+                Button::new("answer")
+                    .label("OK")
+                    .on_click(move |_, _, _| answered.set(answered.get() + 1)),
+            )
+        });
+    })
+    .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("answer", cx);
+    })
+    .unwrap();
+    assert_eq!(answered.get(), 1, "the second dialog is on top");
+
+    let mut open = Vec::new();
+    for _ in 0..3 {
+        cx.update_window(handle, |_, window, cx| {
+            window.press("escape", cx);
+            open.push((
+                window.has_active_image_viewer(cx),
+                window.has_active_dialog(cx),
+            ));
+        })
+        .unwrap();
+        settle(cx);
+    }
+    assert_eq!(open, vec![(true, true), (false, true), (false, false)]);
+}
+
+/// A viewer, a dialog over it, and a viewer opened from that dialog: Escape
+/// closes that viewer with focus back in the dialog, and closing the dialog
+/// gives focus back to the thumbnail the first viewer opened from.
+#[gpui_kit::test]
+async fn a_viewer_from_a_dialog_over_a_viewer_gives_focus_back_in_turn(cx: &mut TestAppContext) {
+    let (handle, thumbnail) = open_focused_thumbnail(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.open_image_viewer(missing_images(3), 0, cx);
+        window.render_frame(cx);
+        open_attachments(window, cx);
+    })
+    .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("open-attachment", cx);
+        window.press("escape", cx);
+        assert!(!window.has_active_image_viewer(cx));
+        assert!(window.has_active_dialog(cx));
+        assert!(!thumbnail.is_focused(window), "focus stays in the dialog");
+        window.press("escape", cx);
+        assert!(!window.has_active_dialog(cx), "and Escape closes it");
+    })
+    .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, _| {
+        assert!(thumbnail.is_focused(window));
+    })
+    .unwrap();
+}
+
+/// The app closes the dialog a viewer was opened from: the viewer keeps
+/// focus and its keys, and gives focus back to the thumbnail when it
+/// closes.
+#[gpui_kit::test]
+async fn a_dialog_closed_under_the_viewer_leaves_it_focused(cx: &mut TestAppContext) {
+    let (handle, thumbnail) = open_focused_thumbnail(cx);
+    cx.update_window(handle, |_, window, cx| open_attachments(window, cx))
+        .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        window.click("open-attachment", cx);
+        window.render_frame(cx);
+        window.close_dialog(cx);
+    })
+    .unwrap();
+    settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        window.render_frame(cx);
+        assert_eq!(window.find("image-viewer").focused(), Some(true));
+        assert!(!thumbnail.is_focused(window));
+        window.press("escape", cx);
+        assert!(!window.has_active_image_viewer(cx));
+        assert!(thumbnail.is_focused(window));
+    })
+    .unwrap();
+}
