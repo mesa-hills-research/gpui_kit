@@ -1210,6 +1210,10 @@ impl BlockJob {
     }
 }
 
+/// The most bytes of a closing fence [`BackgroundBlocks::find`] looks past:
+/// its line break, indentation and backticks or tildes.
+const MAX_FENCE_START: usize = 16;
+
 /// The code blocks [`highlight_in_background`] keeps, the most recently
 /// used last.
 struct BackgroundBlocks {
@@ -1231,6 +1235,11 @@ impl Default for BackgroundBlocks {
 impl BackgroundBlocks {
     /// The block of `code`, or of the longest code it extends, made the most
     /// recently used.
+    ///
+    /// Failing those, the block of `code` followed by the start of a closing
+    /// fence: a fence that arrives in pieces shows in the code until it's
+    /// whole, and the block keeps its highlights while the shorter code is
+    /// highlighted.
     fn find(
         &mut self,
         domain: u64,
@@ -1238,12 +1247,22 @@ impl BackgroundBlocks {
         code: &SharedString,
     ) -> Option<Arc<Mutex<BlockJob>>> {
         let mut best: Option<(usize, usize)> = None;
+        let mut fenced: Option<usize> = None;
         for (ix, block) in self.blocks.iter().enumerate().rev() {
             let block = block.lock().unwrap();
-            if block.domain != domain
-                || !Arc::ptr_eq(&block.language, language)
-                || block.wanted.len() > code.len()
-            {
+            if block.domain != domain || !Arc::ptr_eq(&block.language, language) {
+                continue;
+            }
+            if block.wanted.len() > code.len() {
+                if fenced.is_none()
+                    && block.wanted.len() - code.len() <= MAX_FENCE_START
+                    && block.wanted.starts_with(code.as_ref())
+                    && block.wanted[code.len()..]
+                        .chars()
+                        .all(|char| matches!(char, '`' | '~' | ' ' | '\t' | '\r' | '\n'))
+                {
+                    fenced = Some(ix);
+                }
                 continue;
             }
             if block.wanted.len() == code.len()
@@ -1258,7 +1277,7 @@ impl BackgroundBlocks {
                 best = Some((ix, block.wanted.len()));
             }
         }
-        let block = self.blocks.remove(best?.0);
+        let block = self.blocks.remove(best.map(|(ix, _)| ix).or(fenced)?);
         self.blocks.push(block.clone());
         Some(block)
     }

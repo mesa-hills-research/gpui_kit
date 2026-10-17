@@ -1000,6 +1000,38 @@ fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
     );
 }
 
+/// A closing fence that arrives in pieces shows in the code until it's
+/// whole: the code grows by a backtick or two, then shrinks back.
+#[gpui::test]
+fn a_block_keeps_its_highlights_while_its_fence_closes(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("json").unwrap();
+    let code = "[1, \"two\", {\"three\": 3}]\n";
+    for step in ["\n", "\n`", "\n``"] {
+        let streamed = SharedString::from(format!("{code}{step}"));
+        highlight_code_block("json", &streamed, false, &theme, Some(&waiter));
+        cx.run_until_parked();
+    }
+    let streamed = SharedString::from(format!("{code}\n``"));
+    let made = highlight_code_block("json", &streamed, false, &theme, Some(&waiter));
+    assert!(!made.is_pending());
+
+    let code = SharedString::from(code);
+    let shown = highlight_code_block("json", &code, true, &theme, Some(&waiter));
+    assert!(shown.is_pending());
+    assert_eq!(shown.to_vec(), made.to_vec(), "not plain meanwhile");
+    cx.run_until_parked();
+    let styles = highlight_code_block("json", &code, true, &theme, Some(&waiter));
+    assert!(!styles.is_pending());
+    assert_eq!(
+        per_byte(code.len(), &styles),
+        from_scratch("json", &code, &theme)
+    );
+}
+
 /// A capped block shown whole: its first lines were highlighted complete,
 /// and the whole code extends them.
 #[gpui::test]
