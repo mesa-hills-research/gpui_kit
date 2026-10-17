@@ -4400,10 +4400,22 @@ mod tests {
         );
     }
 
+    /// Held by the tests that count how often a code block asks its
+    /// highlighter, and by the one that has every code block of the process
+    /// ask again, which would count an ask more in the others.
+    static HIGHLIGHT_REFRESH: Mutex<()> = Mutex::new(());
+
+    fn hold_highlight_refresh() -> std::sync::MutexGuard<'static, ()> {
+        HIGHLIGHT_REFRESH
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn code_block_highlights_are_cached_by_highlighter_identity() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
+        let _refresh = hold_highlight_refresh();
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_highlighter = calls.clone();
         let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new(move |_| {
@@ -4467,6 +4479,7 @@ mod tests {
     fn refreshed_highlights_are_asked_for_again(cx: &mut gpui::TestAppContext) {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
+        let _refresh = hold_highlight_refresh();
         let calls = Arc::new(AtomicUsize::new(0));
         let highlighter: Arc<CodeBlockHighlighterFn> = Arc::new({
             let calls = calls.clone();
@@ -4504,6 +4517,7 @@ mod tests {
             }
         }
 
+        let _refresh = hold_highlight_refresh();
         cx.update(crate::init);
         let (ready, ready_rx) = crate::async_util::unbounded::<()>();
         let ready_rx = Arc::new(Mutex::new(Some(ready_rx)));
