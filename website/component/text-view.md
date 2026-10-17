@@ -192,11 +192,12 @@ the blocks from `ix` on. The last block stays incomplete until
 it is parsed, and its row is then left alone like the others.
 A selection runs across rows as it runs across separate text views, and each
 view selects its own blocks. Copied, the rows of one document join as the
-blocks of one view of it do, apart by a blank line in Markdown source. A
-selection covers the rows the list lays out: rows scrolled well out of view
-drop out of it until they're back, so a copy then takes the rows still laid
-out. A copy button for a whole answer can take the document's text instead. Show either the document or views of
-its blocks, as they share the parsed blocks.
+blocks of one view of it do, apart by a blank line in Markdown source, and a
+blank line sets them apart from the text around them too. A selection covers
+the rows the list lays out: rows scrolled well out of view drop out of it
+until they're back, so a copy then takes the rows still laid out. A copy
+button for a whole answer can take the document's text instead. Show either
+the document or views of its blocks, as they share the parsed blocks.
 
 The document parses, so Markdown extensions and plugins go on the document,
 not on the rows' `TextView`s, and the rows render with the document's:

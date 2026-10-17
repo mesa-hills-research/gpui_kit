@@ -3335,6 +3335,28 @@ mod tests {
             }
         }
 
+        /// A message shown as one view, then two answers shown as rows:
+        /// copied as Markdown, each stays apart from the next as a paragraph.
+        #[gpui::test]
+        fn rows_copy_apart_from_the_text_around_them(cx: &mut TestAppContext) {
+            let message = document("What is the plan?", cx);
+            let mut views = vec![message];
+            for answer in ["Here it is.\n\nStep one.", "And then:\n\nStep two."] {
+                let parsed = document(answer, cx);
+                views.extend(
+                    (0..2).map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx))),
+                );
+            }
+            assert_eq!(
+                drag_and_copy(views.clone(), SelectionFormat::Source, cx),
+                "What is the plan?\n\nHere it is.\n\nStep one.\n\nAnd then:\n\nStep two."
+            );
+            assert_eq!(
+                drag_and_copy(views, SelectionFormat::Plain, cx),
+                "What is the plan?\n\nHere it is.\nStep one.\n\nAnd then:\nStep two.\n"
+            );
+        }
+
         #[gpui::test]
         fn select_all_in_a_view_copies_its_own_blocks(cx: &mut TestAppContext) {
             let document = document("**first**\n\nsecond\n\nthird", cx);

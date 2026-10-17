@@ -66,6 +66,10 @@ impl TextSelectionContentKey {
 /// The copied texts of participants join with a line break. Two that follow
 /// each other in document order and belong to the same group join with the
 /// group's separator instead, after the trailing line breaks of the first.
+/// A text of a group and the text next to it, of another group or of none,
+/// join with the longer of their separators when it's longer than a line
+/// break, so the Markdown source of one document's rows stays apart from
+/// the text around them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextSelectionCopyGroup {
     id: u64,
@@ -647,7 +651,7 @@ struct CopyItem {
 fn resolve_copy_items(mut items: Vec<CopyItem>, cx: &mut App) -> String {
     items.sort_by_key(|item| item.document_order);
     let mut copied = String::new();
-    let mut last_group = None;
+    let mut last_group: Option<TextSelectionCopyGroup> = None;
     for item in items {
         let text = item
             .callback
@@ -658,16 +662,25 @@ fn resolve_copy_items(mut items: Vec<CopyItem>, cx: &mut App) -> String {
         }
         let group = item.group.and_then(|group| group(cx));
         if !copied.is_empty() {
-            match &group {
-                Some(group) if last_group == Some(group.id) => {
+            let separator = match (&last_group, &group) {
+                (Some(last), Some(group)) if last.id == group.id => Some(&group.separator),
+                _ => last_group
+                    .iter()
+                    .chain(&group)
+                    .map(|group| &group.separator)
+                    .max_by_key(|separator| separator.len())
+                    .filter(|separator| separator.len() > 1),
+            };
+            match separator {
+                Some(separator) => {
                     copied.truncate(copied.trim_end_matches('\n').len());
-                    copied.push_str(&group.separator);
+                    copied.push_str(separator);
                 }
-                _ => copied.push('\n'),
+                None => copied.push('\n'),
             }
         }
         copied.push_str(&text);
-        last_group = group.map(|group| group.id);
+        last_group = group;
     }
     copied
 }
