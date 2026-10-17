@@ -203,38 +203,6 @@ async fn submenu_opens_unclipped_from_a_scrollable_menu(cx: &mut TestAppContext)
     .await;
 }
 
-actions!(menu_bar_test, [NewFile, Undo]);
-
-/// A window with a menu bar in its title bar, a focusable document and a
-/// text field.
-struct MenuBarWindow {
-    menu_bar: gpui_kit::Entity<gpui_kit::component::menu::AppMenuBar>,
-    doc: gpui_kit::FocusHandle,
-    notes: gpui_kit::Entity<gpui_kit::component::input::InputState>,
-    /// Whether Alt was down, at each modifier change the content saw.
-    alt_seen: std::rc::Rc<std::cell::RefCell<Vec<bool>>>,
-}
-
-impl Render for MenuBarWindow {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let alt_seen = self.alt_seen.clone();
-        div()
-            .size_full()
-            .on_modifiers_changed(move |event, _, _| {
-                alt_seen.borrow_mut().push(event.modifiers.alt)
-            })
-            .child(div().h(px(32.)).child(self.menu_bar.clone()))
-            .child(gpui_kit::component::input::Input::new(&self.notes).id("notes"))
-            .child(
-                div()
-                    .id("doc")
-                    .test_support()
-                    .track_focus(&self.doc)
-                    .size_full(),
-            )
-    }
-}
-
 #[cfg(not(target_os = "macos"))]
 mod menu_bar_keys {
     use super::*;
@@ -245,6 +213,38 @@ mod menu_bar_keys {
         MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput, VisualTestContext,
         component::{GlobalState, WindowExt as _, menu::AppMenuBar},
     };
+
+    actions!(menu_bar_test, [NewFile, Undo]);
+
+    /// A window with a menu bar in its title bar, a focusable document and a
+    /// text field.
+    struct MenuBarWindow {
+        menu_bar: gpui_kit::Entity<gpui_kit::component::menu::AppMenuBar>,
+        doc: gpui_kit::FocusHandle,
+        notes: gpui_kit::Entity<gpui_kit::component::input::InputState>,
+        /// Whether Alt was down, at each modifier change the content saw.
+        alt_seen: std::rc::Rc<std::cell::RefCell<Vec<bool>>>,
+    }
+
+    impl Render for MenuBarWindow {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let alt_seen = self.alt_seen.clone();
+            div()
+                .size_full()
+                .on_modifiers_changed(move |event, _, _| {
+                    alt_seen.borrow_mut().push(event.modifiers.alt)
+                })
+                .child(div().h(px(32.)).child(self.menu_bar.clone()))
+                .child(gpui_kit::component::input::Input::new(&self.notes).id("notes"))
+                .child(
+                    div()
+                        .id("doc")
+                        .test_support()
+                        .track_focus(&self.doc)
+                        .size_full(),
+                )
+        }
+    }
 
     /// A window with File and Edit menus, the document focused.
     fn open(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<AppMenuBar>) {
