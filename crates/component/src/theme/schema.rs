@@ -577,6 +577,12 @@ pub struct ThemeConfigColors {
     /// Hover secondary background color.
     #[serde(rename = "secondary.hover.background")]
     pub secondary_hover: Option<SharedString>,
+    /// Search-match background color, defaulting to yellow at 25% opacity.
+    #[serde(rename = "search.match.background")]
+    pub search_match: Option<SharedString>,
+    /// Current search-match background color, defaulting to yellow at 55% opacity.
+    #[serde(rename = "search.match.active.background")]
+    pub search_match_active: Option<SharedString>,
     /// Input selection background color.
     #[serde(rename = "selection.background")]
     pub selection: Option<SharedString>,
@@ -1050,6 +1056,8 @@ impl ThemeColor {
         apply_background_color!(scrollbar, fallback = tokens.background);
         apply_background_color!(scrollbar_thumb, fallback = tokens.accent);
         apply_background_color!(scrollbar_thumb_hover, fallback = tokens.scrollbar_thumb);
+        apply_background_color!(search_match, fallback = self.yellow.alpha(0.25));
+        apply_background_color!(search_match_active, fallback = self.yellow.alpha(0.55));
         apply_background_color!(selection, fallback = tokens.primary);
         apply_background_color!(
             sidebar,
@@ -1212,6 +1220,47 @@ mod tests {
     use gpui::{linear_color_stop, linear_gradient, px};
 
     use crate::{Colorize as _, Theme, ThemeConfig, ThemeMode, ThemeSet, try_parse_color};
+
+    #[test]
+    fn search_match_tokens_default_and_accept_theme_overrides() {
+        for mode in ["light", "dark"] {
+            let config: std::rc::Rc<ThemeConfig> = serde_json::from_value(serde_json::json!({
+                "name": "Search",
+                "mode": mode,
+                "colors": { "base.yellow": "#eab308" }
+            }))
+            .unwrap();
+            let mut theme = Theme::default();
+            theme.apply_config(&config);
+            assert_eq!(theme.search_match, theme.yellow.alpha(0.25));
+            assert_eq!(theme.search_match_active, theme.yellow.alpha(0.55));
+            assert_eq!(theme.tokens.search_match.color, theme.search_match);
+            assert_eq!(
+                theme.tokens.search_match_active.color,
+                theme.search_match_active
+            );
+
+            let custom: std::rc::Rc<ThemeConfig> = serde_json::from_value(serde_json::json!({
+                "name": "Search overrides",
+                "mode": mode,
+                "colors": {
+                    "search.match.background": "#33669940",
+                    "search.match.active.background": "linear-gradient(#ff000080, #00ff0080)"
+                }
+            }))
+            .unwrap();
+            theme.apply_config(&custom);
+            assert_eq!(theme.search_match, try_parse_color("#33669940").unwrap());
+            assert_ne!(
+                theme.tokens.search_match_active.background,
+                gpui::Background::from(theme.search_match_active)
+            );
+            let serialized = serde_json::to_value(&custom).unwrap();
+            assert_eq!(serialized["colors"]["search.match.background"], "#33669940");
+            theme.apply_config(&config);
+            assert_eq!(theme.search_match_active, theme.yellow.alpha(0.55));
+        }
+    }
 
     #[test]
     fn test_semantic_theme_config_parses_and_roundtrips() {

@@ -498,6 +498,14 @@
           "description": "Hover secondary background color.",
           "type": ["string", "null"]
         },
+        "search.match.background": {
+          "description": "Search-match background color, defaulting to yellow at 25% opacity.",
+          "type": ["string", "null"]
+        },
+        "search.match.active.background": {
+          "description": "Current search-match background color, defaulting to yellow at 55% opacity.",
+          "type": ["string", "null"]
+        },
         "selection.background": {
           "description": "Input selection background color.",
           "type": ["string", "null"]

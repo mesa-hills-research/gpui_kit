@@ -41,6 +41,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   operators, text objects, registers and command line. See
   [Textarea: keybindings](website/component/textarea.md#keybindings), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
+- **Search-match colors** (`gpui-component`). `search_match` and `search_match_active` theme
+  tokens distinguish matches from the current result, with yellow defaults at 25% and 55%
+  opacity. See [Theme](website/component/theme.md#search-matches).
 - **Inline reference tooltips** (`gpui-component`). `InputToken::tooltip` shows extra context
   on hover, with the same delay and dismissal as other component tooltips. See
   [Input](website/component/input.md#show-a-tooltip-or-preview-on-hover).

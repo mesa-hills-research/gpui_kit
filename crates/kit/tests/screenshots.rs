@@ -139,16 +139,25 @@ impl Render for SelectableHighlights {
         page(cx).child(
             gpui_kit::base::SelectableText::new(
                 "highlighted-text",
-                "Find matches stay selectable. Drag across this text to copy it.",
+                "Find matches. The active match stays selectable.",
             )
-            .highlights([(
-                5..12,
-                gpui_kit::HighlightStyle {
-                    background_color: Some(cx.theme().selection),
-                    font_weight: Some(FontWeight::BOLD),
-                    ..Default::default()
-                },
-            )]),
+            .highlights([
+                (
+                    5..12,
+                    gpui_kit::HighlightStyle {
+                        background_color: Some(cx.theme().search_match),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    25..30,
+                    gpui_kit::HighlightStyle {
+                        background_color: Some(cx.theme().search_match_active),
+                        font_weight: Some(FontWeight::BOLD),
+                        ..Default::default()
+                    },
+                ),
+            ]),
         )
     }
 }

@@ -48,6 +48,28 @@ Top-level theme fields, such as `cx.theme().button_primary`, remain solid `Hsla`
 
 A few keys also go by the names Zed themes use, such as `link.foreground` for `link` and `comment.doc` for `comment_doc`. [`.theme-schema.json`](https://github.com/longbridge/gpui-kit/blob/main/.theme-schema.json) lists them all. When a theme sets both names, the kit's own name wins.
 
+## Search matches
+
+Use `cx.theme().search_match` for a matching text range and
+`cx.theme().search_match_active` for the current result. They default to the
+theme's yellow at 25% and 55% opacity. Keep text in the foreground color so both
+highlights work in light and dark themes.
+
+Theme files can override them with `search.match.background` and
+`search.match.active.background` in `colors`. Both accept a solid color or a
+gradient, with full backgrounds available through the corresponding
+`cx.theme().tokens` fields. `HighlightStyle::background_color` takes the solid
+color, as shown with `SelectableText` in the Label story.
+
+```json
+{
+  "colors": {
+    "search.match.background": "#eab30840",
+    "search.match.active.background": "#eab3088c"
+  }
+}
+```
+
 ## Editor colors
 
 In a theme's `highlight` section, `editor.background` is the background of a code editor and a text editor, the input background by default. `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.

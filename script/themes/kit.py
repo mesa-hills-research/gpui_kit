@@ -46,7 +46,8 @@ COLOR_KEYS = [
     "primary.foreground", "primary.hover.background", "progress.bar.background", "ring",
     "scrollbar.background", "scrollbar.thumb.background", "scrollbar.thumb.hover.background",
     "secondary.background", "secondary.active.background", "secondary.foreground",
-    "secondary.hover.background", "selection.background", "sidebar.background",
+    "secondary.hover.background", "search.match.background", "search.match.active.background",
+    "selection.background", "sidebar.background",
     "sidebar.accent.background", "sidebar.accent.foreground", "sidebar.border", "sidebar.foreground",
     "sidebar.primary.background", "sidebar.primary.foreground", "skeleton.background",
     "slider.background", "slider.thumb.background", "success.background", "success.foreground",
@@ -411,6 +412,8 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     bg("scrollbar.background", t["background"])
     bg("scrollbar.thumb.background", t["accent.background"])
     bg("scrollbar.thumb.hover.background", t["scrollbar.thumb.background"])
+    bg("search.match.background", C.with_alpha(t["base.yellow"].color, 0.25))
+    bg("search.match.active.background", C.with_alpha(t["base.yellow"].color, 0.55))
     bg("selection.background", t["primary.background"])
     bg("sidebar.background", C.blend(background, C.opacity(border, 0.15)))
     bg("sidebar.accent.background", t["accent.background"])

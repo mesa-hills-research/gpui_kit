@@ -181,16 +181,25 @@ impl Render for LabelStory {
                     .child(
                         gpui_kit::base::SelectableText::new(
                             "selectable-highlights",
-                            "Find matches stay selectable, including 中文 text.",
+                            "Find matches. The active match stays selectable.",
                         )
-                        .highlights([(
-                            5..12,
-                            HighlightStyle {
-                                background_color: Some(cx.theme().selection),
-                                font_weight: Some(FontWeight::BOLD),
-                                ..Default::default()
-                            },
-                        )]),
+                        .highlights([
+                            (
+                                5..12,
+                                HighlightStyle {
+                                    background_color: Some(cx.theme().search_match),
+                                    ..Default::default()
+                                },
+                            ),
+                            (
+                                25..30,
+                                HighlightStyle {
+                                    background_color: Some(cx.theme().search_match_active),
+                                    font_weight: Some(FontWeight::BOLD),
+                                    ..Default::default()
+                                },
+                            ),
+                        ]),
                     ),
             )
             .child(

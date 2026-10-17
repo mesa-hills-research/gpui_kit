@@ -225,6 +225,10 @@ pub struct ThemeColor {
     pub secondary_foreground: Hsla,
     /// Hover secondary background color.
     pub secondary_hover: Hsla,
+    /// Background for a search match, defaulting to yellow at 25% opacity.
+    pub search_match: Hsla,
+    /// Background for the current search match, defaulting to yellow at 55% opacity.
+    pub search_match_active: Hsla,
     /// Input selection background color.
     pub selection: Hsla,
     /// Sidebar background color.
@@ -487,6 +491,8 @@ define_theme_tokens! {
     secondary_active,
     secondary_foreground,
     secondary_hover,
+    search_match,
+    search_match_active,
     selection,
     sidebar,
     sidebar_accent,

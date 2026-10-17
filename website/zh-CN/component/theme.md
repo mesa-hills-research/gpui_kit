@@ -48,6 +48,26 @@ cx.theme().foreground
 
 少数键也可以使用 Zed 主题的写法，例如用 `link.foreground` 表示 `link`、用 `comment.doc` 表示 `comment_doc`。完整列表见 [`.theme-schema.json`](https://github.com/longbridge/gpui-kit/blob/main/.theme-schema.json)。两种写法同时出现时，以 GPUI Kit 自己的键名为准。
 
+## 搜索匹配
+
+使用 `cx.theme().search_match` 标记匹配的文本范围，使用
+`cx.theme().search_match_active` 标记当前结果。默认值来自主题的黄色，
+不透明度分别为 25% 和 55%。文字保留前景色，便于在浅色和深色主题中阅读。
+
+主题文件可以在 `colors` 中设置 `search.match.background` 和
+`search.match.active.background`。两者都接受纯色或渐变，对应
+`cx.theme().tokens` 字段保留完整背景。`HighlightStyle::background_color`
+使用纯色值，Label story 展示了它与 `SelectableText` 的组合。
+
+```json
+{
+  "colors": {
+    "search.match.background": "#eab30840",
+    "search.match.active.background": "#eab3088c"
+  }
+}
+```
+
 ## 编辑器颜色
 
 主题 `highlight` 部分中的 `editor.background` 设置代码编辑器和文本编辑器的背景，默认使用输入框背景。`editor.foreground` 设置代码编辑器的文本颜色，`editor.line_number` 和 `editor.active_line_number` 分别设置行号和光标所在行行号的颜色，默认分别使用 `foreground`、`muted.foreground` 和编辑器的文本颜色。
