@@ -111,7 +111,7 @@ easing yourself, or to reveal each chunk word by word; see
 
 With the `tree-sitter` feature, fenced code blocks are highlighted with the
 grammar their fence names. Each language has a Cargo feature, such as
-`tree-sitter-rust`, and `tree-sitter-languages` enables all of them: Astro,
+`tree-sitter-rust`, and `tree-sitter-languages` enables every one of Astro,
 Bash, C, C#, C++, CMake, CSS, Dart, Diff, EJS, Elixir, Elm, ERB, Erlang, F#,
 GLSL, Go, GraphQL, Haskell, HCL, HTML, Java, JavaScript, JSON, Julia, Kotlin,
 Lua, Make, Markdown, Objective-C, OCaml, Perl, PHP, PowerShell, Protocol
@@ -119,15 +119,15 @@ Buffers, Python, R, Ruby, Rust, Scala, SQL, Svelte, Swift, TOML, TSX,
 TypeScript, XML, YAML and Zig. A fence can name its language the usual
 ways, such as `shell`, `zsh` or `console` for Bash, `jsx`, `patch` for a
 diff, `ps1` for PowerShell, `tf` for HCL or `yml`. A short name that more than
-one language uses goes to the more common one: `pl` is Perl, `ps` PowerShell,
-`h` C and `fs` F#, and `console` highlights a shell session as Bash, its output
-included.
+one language uses goes to the more common one, so `pl` is Perl, `ps`
+PowerShell, `h` C and `fs` F#, and `console` highlights a shell session as
+Bash, its output included.
 
 Code blocks are highlighted on a background thread. A block shows the
 highlights made so far, with the code that arrived since in plain text, until
 the next ones are ready, so a frame spends about 20 µs on a block's highlights
 whatever its language and size. The highlighter keeps each block's parse and
-highlights and recognizes a block that comes back with more code: a streamed
+highlights and recognizes a block that comes back with more code. A streamed
 block is parsed again only where it changed and highlighted again from the
 first line that can differ, and chunks that arrive while it works are taken in
 one go. A block that streamed in is highlighted once more from scratch when
@@ -136,11 +136,11 @@ highlighted only as far as its shown lines. The highlights are kept as
 highlight names and take the theme's colors when the block is drawn, so a
 theme change recolors code without parsing it.
 
-A language is prepared the first time a block needs it: its grammar is
+A language is prepared the first time a block needs it. Its grammar is
 decoded and its queries are compiled on a background thread, which takes from
 a millisecond to about a second depending on the grammar (Swift and F# take
-longest), and its blocks show plain code until then. An application that knows which
-languages it will show can prepare them at startup:
+longest), and its blocks show plain code until then. An application that
+knows which languages it will show can prepare them at startup:
 
 ```rust
 use gpui_kit::component::highlighter::LanguageRegistry;
@@ -178,13 +178,13 @@ TextView::new(&row)
 A view takes its blocks from the document whenever the document's parse
 lands, and a view whose blocks are all complete is left alone from then on. A
 range open at the end, such as `ix..`, takes in the blocks appended later.
-`blocks()` lists the document's top-level blocks: what each one is (a
+For each of the document's top-level blocks, `blocks()` tells what it is (a
 paragraph, a heading, a list, a code block and its language, a table…), its
 range of the source, whether appended text can still change it, and an id
 that stays the same while text is appended. Group blocks into rows by what
 they are, and tell from the ids which rows to keep when the text was replaced.
 Setting text that differs only in the whitespace around it, such as the answer
-trimmed once it is done, is no replacement: the ids, the rows and their
+trimmed once it is done, is no replacement, so the ids, the rows and their
 selection stay. `block_count()` tells, without building the list, whether the
 document gained blocks since the last look, and `blocks_from(ix)` lists only
 the blocks from `ix` on. The last block stays incomplete until
@@ -194,7 +194,7 @@ A selection runs across rows as it runs across separate text views, and each
 view selects its own blocks. Copied, the rows of one document join as the
 blocks of one view of it do, apart by a blank line in Markdown source, and a
 blank line sets them apart from the text around them too. A selection covers
-the rows the list lays out: rows scrolled well out of view drop out of it
+the rows the list lays out. Rows scrolled well out of view drop out of it
 until they're back, so a copy then takes the rows still laid out. A copy
 button for a whole answer can take the document's text instead. Show either
 the document or views of its blocks, as they share the parsed blocks.
@@ -224,8 +224,8 @@ TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
 A selection that reaches past the last line shown copies the whole block, as
 the reader can't select the hidden lines. Any block longer than the cap is cut,
 however few lines that hides, so leave the cap off a block of only a few more
-lines than it. Range highlights and reveals don't show in the hidden lines: to
-take a find result there, expand the block first. The result's line in the
+lines than it. Range highlights and reveals don't show in the hidden lines,
+so to take a find result there, expand the block first. The result's line in the
 block is the number of newlines before it in the block's part of
 `rendered_text()`.
 

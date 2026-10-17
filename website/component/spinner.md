@@ -101,8 +101,10 @@ The Spinner component features a built-in rotation animation:
 - **Easing**: Ease-in-out transition
 - **Repeat**: Infinite loop
 - **Transform**: 360-degree rotation
-- **Frame rate**: at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), on a timer, so a spinner that stays up through a long
-  request draws far less often than the display refreshes
+
+A spinner draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), on a
+timer, so one that stays up through a long request draws far less often than
+the display refreshes.
 
 ## Size Reference
 

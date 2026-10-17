@@ -116,9 +116,9 @@ TextView::markdown("highlighted", source).code_block_highlighter(|block| {
 
 范围相对于 `CodeBlock::code()`；无效范围会被丢弃。高亮器实现和语言注册完全由应用管理。
 
-流式输出的代码块每收到一段内容都会成为一个新的 `CodeBlock`，因此每次都重新生成范围列表的高亮器，每段内容都要复制整份列表。会保留结果的高亮器可以改为共享结果：用 `TextViewDefaults::with_shared_code_block_highlighter` 安装它，并返回 `CodeBlockHighlights`，由它自己保留的 `Arc<Vec<_>>` 通过 `CodeBlockHighlights::shared` 构造。代码块变长时，通过 `Arc::make_mut` 修改这个 `Vec`，再为它返回新的 `CodeBlockHighlights`。此时显示旧范围的代码块通常已被释放，所以范围会原地扩展。GPUI Component 的高亮器就是这样实现的。
+流式输出的代码块每收到一段内容都会成为一个新的 `CodeBlock`，因此每次都重新生成范围列表的高亮器，每段内容都要复制整份列表。会保留结果的高亮器可以改为共享结果。用 `TextViewDefaults::with_shared_code_block_highlighter` 安装它，并返回 `CodeBlockHighlights`，由它自己保留的 `Arc<Vec<_>>` 通过 `CodeBlockHighlights::shared` 构造。代码块变长时，通过 `Arc::make_mut` 修改这个 `Vec`，再为它返回新的 `CodeBlockHighlights`。此时显示旧范围的代码块通常已被释放，所以范围会原地扩展。GPUI Component 的高亮器就是这样实现的。
 
-高亮器也可以在 UI 线程之外工作。它立即返回手头已有的结果（例如最新一段内容之前那部分代码的高亮），并用 `CodeBlockHighlights::pending_until(ready)` 标记，其中 `ready` 是一个在更新的高亮可用时完成的 future。代码块先显示这些待定的高亮，等 `ready` 完成后再向高亮器请求一次并重绘。`CodeBlock::is_complete` 表示代码块是否还会变长：流式输出的围栏未闭合时为 false，围栏闭合、代码块之后出现其他文字，或 `TextViewState::finish` 把文档标记为结束后为 true。逐段高亮代码块的高亮器，可以在代码块完成后再从头完整高亮一次。`refresh_code_block_highlights` 让所有代码块重新向高亮器请求高亮，适用于高亮器现在能处理之前无法处理的内容，例如某种语言刚加载完成。
+高亮器也可以在 UI 线程之外工作。它立即返回手头已有的结果（例如最新一段内容之前那部分代码的高亮），并用 `CodeBlockHighlights::pending_until(ready)` 标记，其中 `ready` 是一个在更新的高亮可用时完成的 future。代码块先显示这些待定的高亮，等 `ready` 完成后再向高亮器请求一次并重绘。`CodeBlock::is_complete` 表示代码块是否还会变长。流式输出的围栏未闭合时为 false，围栏闭合、代码块之后出现其他文字，或 `TextViewState::finish` 把文档标记为结束后为 true。逐段高亮代码块的高亮器，可以在代码块完成后再从头完整高亮一次。`refresh_code_block_highlights` 让所有代码块重新向高亮器请求高亮，适用于高亮器现在能处理之前无法处理的内容，例如某种语言刚加载完成。
 
 设置了 `TextView::code_block_max_lines` 时，在代码块完整显示之前，交给高亮器的只是显示的行及其后 20 行，而不是全部代码。
 
@@ -237,7 +237,7 @@ TextView::new(&document).motion(
 
 不设错位时每次更新整块一起淡入。设了错位时，追加的文字按词拆分（词带上其后的空白），中日韩文字按字拆分；一次追加很长时会压缩错位，保证最后一个词在一个淡入时长内开始。追踪器比较的是渲染后的文字而不是源码字节，因此 `set_text` 传入以当前文本为前缀的更长文本会被视为追加；流式过程中被补齐的 Markdown 标记（`**bo` 变成粗体 `bold`）只让发生变化的字形重新淡入，不会整段闪烁。每次只比较更新触及的块，并且只在还有文字在淡入时才请求下一帧。系统开启减少动态效果时跳过淡入。
 
-长文档可以拆成多个视图显示，每个视图显示其中部分顶层块：`TextViewState::block_range(&document, blocks, cx)` 创建一个显示 `document` 中第 `blocks` 个块（按序号）的视图，解析仍由文档负责。`TextViewState::blocks` 列出文档的顶层块，包括 id、块的类型、在源文本中的范围，以及追加文字后是否还会变化。`set_block_range` 把视图移到其他块。`TextView::code_block_max_lines` 只布局每个代码块的前几行。详见 [把长文档显示为多行](../component/text-view.md#把长文档显示为多行)。
+长文档可以拆成多个视图显示，每个视图显示其中部分顶层块。`TextViewState::block_range(&document, blocks, cx)` 创建一个显示 `document` 中第 `blocks` 个块（按序号）的视图，解析仍由文档负责。`TextViewState::blocks` 列出文档的顶层块，包括 id、块的类型、在源文本中的范围，以及追加文字后是否还会变化。`set_block_range` 把视图移到其他块。`TextView::code_block_max_lines` 只布局每个代码块的前几行。详见 [把长文档显示为多行](../component/text-view.md#把长文档显示为多行)。
 
 `TextViewState::set_range_highlights` 在 `rendered_text()`（与纯文本复制得到的文字一致）的指定范围后面绘制背景，应用可以借此显示搜索结果或引用位置，无需重新解析或修改文档样式。这些范围只参与绘制、不参与排版，因此不会改变布局。Markdown 源码里的范围（例如 `selected_source_range()` 返回的范围）可以用 `rendered_text().range_for_source(range)` 转换过来。`reveal_range` 通过视图自身的列表、外层 `gpui::list`，或者其他容器上的 `TextView::on_reveal`，把范围起点所在的行滚动到可见区域内；规则详见[高亮文本范围](../component/text-view.md#高亮文本范围)和[滚动到范围](../component/text-view.md#滚动到范围)。
 

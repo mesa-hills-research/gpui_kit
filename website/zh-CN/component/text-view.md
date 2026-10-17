@@ -68,11 +68,11 @@ TextView::new(&self.reply).stream_fade(true)
 
 ### 流式输出时的代码高亮
 
-启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。每种语言都有对应的 Cargo feature，例如 `tree-sitter-rust`，`tree-sitter-languages` 会启用全部语言：Astro、Bash、C、C#、C++、CMake、CSS、Dart、Diff、EJS、Elixir、Elm、ERB、Erlang、F#、GLSL、Go、GraphQL、Haskell、HCL、HTML、Java、JavaScript、JSON、Julia、Kotlin、Lua、Make、Markdown、Objective-C、OCaml、Perl、PHP、PowerShell、Protocol Buffers、Python、R、Ruby、Rust、Scala、SQL、Svelte、Swift、TOML、TSX、TypeScript、XML、YAML 和 Zig。围栏可以用常见的写法标注语言，例如用 `shell`、`zsh` 或 `console` 表示 Bash，`jsx`，用 `patch` 表示 diff，用 `ps1` 表示 PowerShell，用 `tf` 表示 HCL，或者 `yml`。多种语言共用的简称归给更常见的那种：`pl` 是 Perl，`ps` 是 PowerShell，`h` 是 C，`fs` 是 F#，`console` 会把 shell 会话（包括其中的输出）按 Bash 高亮。
+启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。每种语言都有对应的 Cargo feature，例如 `tree-sitter-rust`，`tree-sitter-languages` 会启用全部语言，即 Astro、Bash、C、C#、C++、CMake、CSS、Dart、Diff、EJS、Elixir、Elm、ERB、Erlang、F#、GLSL、Go、GraphQL、Haskell、HCL、HTML、Java、JavaScript、JSON、Julia、Kotlin、Lua、Make、Markdown、Objective-C、OCaml、Perl、PHP、PowerShell、Protocol Buffers、Python、R、Ruby、Rust、Scala、SQL、Svelte、Swift、TOML、TSX、TypeScript、XML、YAML 和 Zig。围栏可以用常见的写法标注语言，例如用 `shell`、`zsh` 或 `console` 表示 Bash，`jsx`，用 `patch` 表示 diff，用 `ps1` 表示 PowerShell，用 `tf` 表示 HCL，或者 `yml`。多种语言共用的简称归给更常见的那种，所以 `pl` 是 Perl，`ps` 是 PowerShell，`h` 是 C，`fs` 是 F#，`console` 会把 shell 会话（包括其中的输出）按 Bash 高亮。
 
-代码块在后台线程中高亮。在下一次高亮完成之前，代码块显示已有的高亮，之后到达的代码以纯文本显示，因此无论语言和大小，每帧花在代码块高亮上的时间约为 20 µs。高亮器会保留每个代码块的解析结果和高亮，并能认出带着更多代码重新出现的同一个代码块：流式输出的代码块只在变化处重新解析，只从第一行可能变化的位置重新高亮，工作期间到达的多段内容会合并处理。流式输出的代码块在围栏闭合后会再从头完整高亮一次。用 `code_block_max_lines` 只显示部分行的代码块，只高亮到显示的行为止。高亮以高亮名称保存，绘制时才换成主题颜色，因此切换主题只会重新着色，不会重新解析。
+代码块在后台线程中高亮。在下一次高亮完成之前，代码块显示已有的高亮，之后到达的代码以纯文本显示，因此无论语言和大小，每帧花在代码块高亮上的时间约为 20 µs。高亮器会保留每个代码块的解析结果和高亮，并能认出带着更多代码重新出现的同一个代码块。流式输出的代码块只在变化处重新解析，只从第一行可能变化的位置重新高亮，工作期间到达的多段内容会合并处理。流式输出的代码块在围栏闭合后会再从头完整高亮一次。用 `code_block_max_lines` 只显示部分行的代码块，只高亮到显示的行为止。高亮以高亮名称保存，绘制时才换成主题颜色，因此切换主题只会重新着色，不会重新解析。
 
-某种语言在第一次被代码块用到时才会准备：在后台线程解码语法表并编译查询，视语法不同需要约一毫秒到约一秒（Swift 和 F# 最慢），在此之前它的代码块显示为纯文本。如果应用知道会显示哪些语言，可以在启动时提前准备：
+某种语言在第一次被代码块用到时才会准备。准备时在后台线程解码语法表并编译查询，视语法不同需要约一毫秒到约一秒（Swift 和 F# 最慢），在此之前它的代码块显示为纯文本。如果应用知道会显示哪些语言，可以在启动时提前准备：
 
 ```rust
 use gpui_kit::component::highlighter::LanguageRegistry;
@@ -101,7 +101,7 @@ let row = cx.new(|cx| TextViewState::block_range(&answer, ix..ix + 1, cx));
 TextView::new(&row)
 ```
 
-文档每完成一次解析，视图就从文档取回自己的块，块全部完成的视图此后不再变化。末端开放的范围（例如 `ix..`）会包含之后追加的块。`blocks()` 列出文档的顶层块：每个块是什么（段落、标题、列表、代码块及其语言、表格……）、在源文本中的范围、追加文字后是否还会变化，以及在只追加文字期间保持不变的 id。按块的类型把块分组成行，文本被替换时用 id 判断哪些行可以保留。如果设置的文字只是首尾空白不同（例如回复结束后改为修剪过的文字），就不算替换：id、各行和其中的选区都保持不变。`block_count()` 不用构建列表就能判断文档自上次查看后是否多了块，`blocks_from(ix)` 只列出从 `ix` 起的块。在 `TextViewState::finish` 把回复标记为结束、并且此前推入的文字解析完成之前，最后一个块一直算作未完成。此后，它所在的行也和其他行一样不再变化。选区可以跨行，就像跨多个独立的 TextView 一样，每个视图选择自己的块。复制时，同一文档的各行像同一个视图里的块那样拼接，Markdown 源码之间隔一个空行，与前后的其他文字之间也隔一个空行。选区只覆盖列表正在布局的行：滚出视野较远的行会暂时离开选区，回到视野后恢复，因此这时复制只包含仍在布局的行。整篇回复的复制按钮可以改为复制文档的文本。文档本身和它的块视图只显示其一，因为它们共用解析出的块。
+文档每完成一次解析，视图就从文档取回自己的块，块全部完成的视图此后不再变化。末端开放的范围（例如 `ix..`）会包含之后追加的块。`blocks()` 会为文档的每个顶层块给出它是什么（段落、标题、列表、代码块及其语言、表格……）、在源文本中的范围、追加文字后是否还会变化，以及在只追加文字期间保持不变的 id。按块的类型把块分组成行，文本被替换时用 id 判断哪些行可以保留。如果设置的文字只是首尾空白不同（例如回复结束后改为修剪过的文字），就不算替换，id、各行和其中的选区都保持不变。`block_count()` 不用构建列表就能判断文档自上次查看后是否多了块，`blocks_from(ix)` 只列出从 `ix` 起的块。在 `TextViewState::finish` 把回复标记为结束、并且此前推入的文字解析完成之前，最后一个块一直算作未完成。此后，它所在的行也和其他行一样不再变化。选区可以跨行，就像跨多个独立的 TextView 一样，每个视图选择自己的块。复制时，同一文档的各行像同一个视图里的块那样拼接，Markdown 源码之间隔一个空行，与前后的其他文字之间也隔一个空行。选区只覆盖列表正在布局的行。滚出视野较远的行会暂时离开选区，回到视野后恢复，因此这时复制只包含仍在布局的行。整篇回复的复制按钮可以改为复制文档的文本。文档本身和它的块视图只显示其一，因为它们共用解析出的块。
 
 解析由文档完成，所以 Markdown 扩展和插件要设在文档上，而不是各行的 `TextView` 上，各行按文档的扩展渲染：
 
@@ -118,7 +118,7 @@ let answer = cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(ext
 TextView::new(&row).when(!expanded, |view| view.code_block_max_lines(40))
 ```
 
-读者无法选中被隐藏的行，所以选区一旦越过最后一行显示的内容，复制的就是整个代码块。比上限长的代码块都会被截断，哪怕只隐藏一行。只比上限多几行的代码块，可以不设上限。范围高亮和定位在隐藏的行里不会显示：要定位到那里的查找结果，先展开代码块。结果在块内的行号，就是块在 `rendered_text()` 中的文字里、结果之前的换行数。
+读者无法选中被隐藏的行，所以选区一旦越过最后一行显示的内容，复制的就是整个代码块。比上限长的代码块都会被截断，哪怕只隐藏一行。只比上限多几行的代码块，可以不设上限。范围高亮和定位在隐藏的行里不会显示，所以要定位到那里的查找结果，先展开代码块。结果在块内的行号，就是块在 `rendered_text()` 中的文字里、结果之前的换行数。
 
 流式淡入会在每块文字到达后的 350 ms 内以每秒约 30 次重绘。回复拆成多行后，这些帧只布局屏幕上的行，上面这篇回复每帧大约一毫秒，而且只有文字变化的行会淡入。
 
