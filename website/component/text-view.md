@@ -118,7 +118,10 @@ Lua, Make, Markdown, Objective-C, OCaml, Perl, PHP, PowerShell, Protocol
 Buffers, Python, R, Ruby, Rust, Scala, SQL, Svelte, Swift, TOML, TSX,
 TypeScript, XML, YAML and Zig. A fence can name its language the usual
 ways, such as `shell`, `zsh` or `console` for Bash, `jsx`, `patch` for a
-diff, `ps1` for PowerShell, `tf` for HCL or `yml`.
+diff, `ps1` for PowerShell, `tf` for HCL or `yml`. A short name that more than
+one language uses goes to the more common one: `pl` is Perl, `ps` PowerShell,
+`h` C and `fs` F#, and `console` highlights a shell session as Bash, its output
+included.
 
 Code blocks are highlighted on a background thread. A block shows the
 highlights made so far, with the code that arrived since in plain text, until
@@ -134,9 +137,9 @@ highlight names and take the theme's colors when the block is drawn, so a
 theme change recolors code without parsing it.
 
 A language is prepared the first time a block needs it: its grammar is
-decoded and its queries are compiled on a background thread, which takes
-from about 20 ms to over half a second depending on the grammar, and its
-blocks show plain code until then. An application that knows which
+decoded and its queries are compiled on a background thread, which takes from
+a millisecond to about a second depending on the grammar (Swift and F# take
+longest), and its blocks show plain code until then. An application that knows which
 languages it will show can prepare them at startup:
 
 ```rust
@@ -145,8 +148,9 @@ use gpui_kit::component::highlighter::LanguageRegistry;
 LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], cx);
 ```
 
-A prepared grammar stays in memory, a few megabytes each, so warm up the
-languages an application is likely to show rather than every one it enables.
+A prepared grammar stays in memory, from under a megabyte to about 27 MB for
+F#, so warm up the languages an application is likely to show rather than
+every one it enables.
 
 ### A long document as rows
 

@@ -68,11 +68,11 @@ TextView::new(&self.reply).stream_fade(true)
 
 ### 流式输出时的代码高亮
 
-启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。每种语言都有对应的 Cargo feature，例如 `tree-sitter-rust`，`tree-sitter-languages` 会启用全部语言：Astro、Bash、C、C#、C++、CMake、CSS、Dart、Diff、EJS、Elixir、Elm、ERB、Erlang、F#、GLSL、Go、GraphQL、Haskell、HCL、HTML、Java、JavaScript、JSON、Julia、Kotlin、Lua、Make、Markdown、Objective-C、OCaml、Perl、PHP、PowerShell、Protocol Buffers、Python、R、Ruby、Rust、Scala、SQL、Svelte、Swift、TOML、TSX、TypeScript、XML、YAML 和 Zig。围栏可以用常见的写法标注语言，例如用 `shell`、`zsh` 或 `console` 表示 Bash，`jsx`，用 `patch` 表示 diff，用 `ps1` 表示 PowerShell，用 `tf` 表示 HCL，或者 `yml`。
+启用 `tree-sitter` feature 后，代码块按围栏标注的语言高亮。每种语言都有对应的 Cargo feature，例如 `tree-sitter-rust`，`tree-sitter-languages` 会启用全部语言：Astro、Bash、C、C#、C++、CMake、CSS、Dart、Diff、EJS、Elixir、Elm、ERB、Erlang、F#、GLSL、Go、GraphQL、Haskell、HCL、HTML、Java、JavaScript、JSON、Julia、Kotlin、Lua、Make、Markdown、Objective-C、OCaml、Perl、PHP、PowerShell、Protocol Buffers、Python、R、Ruby、Rust、Scala、SQL、Svelte、Swift、TOML、TSX、TypeScript、XML、YAML 和 Zig。围栏可以用常见的写法标注语言，例如用 `shell`、`zsh` 或 `console` 表示 Bash，`jsx`，用 `patch` 表示 diff，用 `ps1` 表示 PowerShell，用 `tf` 表示 HCL，或者 `yml`。多种语言共用的简称归给更常见的那种：`pl` 是 Perl，`ps` 是 PowerShell，`h` 是 C，`fs` 是 F#，`console` 会把 shell 会话（包括其中的输出）按 Bash 高亮。
 
 代码块在后台线程中高亮。在下一次高亮完成之前，代码块显示已有的高亮，之后到达的代码以纯文本显示，因此无论语言和大小，每帧花在代码块高亮上的时间约为 20 µs。高亮器会保留每个代码块的解析结果和高亮，并能认出带着更多代码重新出现的同一个代码块：流式输出的代码块只在变化处重新解析，只从第一行可能变化的位置重新高亮，工作期间到达的多段内容会合并处理。流式输出的代码块在围栏闭合后会再从头完整高亮一次。用 `code_block_max_lines` 只显示部分行的代码块，只高亮到显示的行为止。高亮以高亮名称保存，绘制时才换成主题颜色，因此切换主题只会重新着色，不会重新解析。
 
-某种语言在第一次被代码块用到时才会准备：在后台线程解码语法表并编译查询，视语法不同大约需要 20 毫秒到半秒以上，在此之前它的代码块显示为纯文本。如果应用知道会显示哪些语言，可以在启动时提前准备：
+某种语言在第一次被代码块用到时才会准备：在后台线程解码语法表并编译查询，视语法不同需要约一毫秒到约一秒（Swift 和 F# 最慢），在此之前它的代码块显示为纯文本。如果应用知道会显示哪些语言，可以在启动时提前准备：
 
 ```rust
 use gpui_kit::component::highlighter::LanguageRegistry;
@@ -80,7 +80,7 @@ use gpui_kit::component::highlighter::LanguageRegistry;
 LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], cx);
 ```
 
-准备好的语法会常驻内存，每种几兆字节，因此只预热应用可能显示的语言，而不是启用的全部语言。
+准备好的语法会常驻内存，从不到 1 MB 到 F# 的约 27 MB 不等，因此只预热应用可能显示的语言，而不是启用的全部语言。
 
 ### 把长文档显示为多行
 

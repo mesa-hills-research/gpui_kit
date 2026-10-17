@@ -738,7 +738,7 @@ fn a_code_block_is_plain_until_its_language_is_ready(cx: &mut gpui::TestAppConte
 fn warming_a_language_up_compiles_it_in_the_background(cx: &mut gpui::TestAppContext) {
     use crate::highlighter::{
         LanguageRegistry,
-        compiled::{Readiness, Waiter, compiled_language_now},
+        compiled::{Readiness, Waiter, compiled_language_now, layer_query_now},
     };
 
     let lang = register_fresh_json("warm-up-test");
@@ -749,6 +749,11 @@ fn warming_a_language_up_compiles_it_in_the_background(cx: &mut gpui::TestAppCon
     assert!(matches!(
         compiled_language_now(&lang, &waiter),
         Readiness::Ready(Some(_))
+    ));
+    // The query of a layer of it is compiled when a layer needs it.
+    assert!(matches!(
+        layer_query_now(&lang, &waiter),
+        Readiness::Pending
     ));
 }
 

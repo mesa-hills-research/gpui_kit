@@ -361,13 +361,12 @@ pub(crate) fn layer_query_now(
     }
 }
 
-/// Compiles `languages` in the background for `waiter`'s domain, with the
-/// highlights query their injected layers use, unless they are compiled
-/// already.
+/// Compiles `languages` in the background for `waiter`'s domain, unless
+/// they are compiled already. The query of a layer one of them is injected
+/// into another language with is compiled when such a layer first needs it.
 pub(crate) fn warm_up(languages: impl IntoIterator<Item = impl AsRef<str>>, waiter: &Waiter) {
     for language in languages {
         _ = compiled_language_now(language.as_ref(), waiter);
-        _ = layer_query_now(language.as_ref(), waiter);
     }
 }
 

@@ -467,10 +467,11 @@ impl LanguageRegistry {
     /// block in one of them is highlighted from its first frame.
     ///
     /// Without this, a language is prepared on that thread the first time a
-    /// code block needs it, and the block shows plain text until it is
-    /// ready. A prepared grammar stays in memory, a few megabytes each, so
-    /// warm up the languages an application is likely to show rather than
-    /// every one it enables.
+    /// code block needs it, which takes from a millisecond to about a second
+    /// (Swift and F# take longest), and the block shows plain text until it
+    /// is ready. A prepared grammar stays in memory, from under a megabyte
+    /// to about 27 MB (F#), so warm up the languages an application is likely
+    /// to show rather than every one it enables.
     ///
     /// ```no_run
     /// # mod gpui_kit { pub extern crate gpui_component as component; }
