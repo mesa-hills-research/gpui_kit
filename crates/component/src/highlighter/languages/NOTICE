@@ -69,7 +69,8 @@ tree-sitter-fsharp 0.3.12 (https://github.com/ionide/tree-sitter-fsharp), MIT
 
 tree-sitter-glsl 0.2.0 (https://github.com/tree-sitter-grammars/tree-sitter-glsl), MIT
   glsl/highlights.scm, adapted: the query it inherits, c/highlights.scm, is put
-  before it rather than named in it
+  before it rather than named in it, and its `gl_` pattern uses `#match?` for
+  nvim-treesitter's `#lua-match?`
   Copyright (c) 2014 Max Brunsfield
   Copyright (c) 2021 Stephan Seitz
 
@@ -90,7 +91,9 @@ tree-sitter-jsdoc 0.23.2 (https://github.com/tree-sitter/tree-sitter-jsdoc), MIT
   Copyright (c) 2018 Max Brunsfeld
 
 tree-sitter-julia 0.23.1 (https://github.com/tree-sitter/tree-sitter-julia), MIT
-  julia/highlights.scm
+  julia/highlights.scm, adapted: its `begin` and `end` pattern without the
+  `#has-ancestor?` predicate, which only nvim-treesitter knows (as identifiers
+  they only occur in indexes)
   Copyright (c) 2018 Max Brunsfeld, GitHub
 
 tree-sitter-lua 0.5.0 (https://github.com/tree-sitter-grammars/tree-sitter-lua), MIT
@@ -103,7 +106,9 @@ tree-sitter-make 1.1.1 (https://github.com/tree-sitter-grammars/tree-sitter-make
 
 tree-sitter-objc 3.0.2 (https://github.com/tree-sitter-grammars/tree-sitter-objc), MIT
   objc/highlights.scm, adapted: the query it inherits, c/highlights.scm, is put
-  before it rather than named in it
+  before it rather than named in it, and without its pattern for the
+  identifiers of struct declarations, whose `#has-ancestor?` predicate only
+  nvim-treesitter knows
   Copyright (c) 2023 Amaan Qureshi <amaanq12@gmail.com>
 
 tree-sitter-ocaml 0.26.0 (https://github.com/tree-sitter/tree-sitter-ocaml), MIT

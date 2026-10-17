@@ -179,8 +179,6 @@
 
 (property_implementation "@synthesize" (identifier) @property)
 
-((identifier) @property
-  (#has-ancestor? @property struct_declaration))
 
 ; Parameters
 

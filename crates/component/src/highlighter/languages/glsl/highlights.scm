@@ -111,4 +111,4 @@
 (extension_storage_class) @keyword.storage
 
 ((identifier) @variable.builtin
-  (#lua-match? @variable.builtin "^gl_"))
+  (#match? @variable.builtin "^gl_"))

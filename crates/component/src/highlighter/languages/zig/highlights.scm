@@ -288,4 +288,4 @@
 (comment) @comment @spell
 
 ((comment) @comment.documentation
-  (#lua-match? @comment.documentation "^//!"))
+  (#match? @comment.documentation "^//!"))

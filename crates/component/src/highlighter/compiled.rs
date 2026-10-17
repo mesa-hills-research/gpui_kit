@@ -463,6 +463,37 @@ fn compile_language(name: &str) -> Result<CompiledLanguage> {
 mod tests {
     use super::*;
 
+    /// A predicate a query doesn't know is kept as a general predicate,
+    /// which the highlighter ignores, so its pattern matched everything the
+    /// rest of it matched: `#lua-match?` and `#has-ancestor?` from
+    /// nvim-treesitter, say.
+    #[cfg(feature = "tree-sitter-languages")]
+    #[test]
+    fn bundled_queries_have_no_predicates_the_highlighter_ignores() {
+        let mut ignored = Vec::new();
+        for name in LanguageRegistry::singleton().languages() {
+            let Some(language) = compiled_language(&name) else {
+                continue;
+            };
+            let queries = [
+                Some(&language.highlights.query),
+                language.injections.as_deref(),
+            ];
+            for query in queries.into_iter().flatten() {
+                for pattern in 0..query.pattern_count() {
+                    for predicate in query.general_predicates(pattern) {
+                        ignored.push(format!(
+                            "{name}: #{} at byte {}",
+                            predicate.operator,
+                            query.start_byte_for_pattern(pattern)
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(ignored.is_empty(), "{ignored:#?}");
+    }
+
     #[test]
     fn a_language_is_compiled_once_and_shared() {
         let generation = LanguageRegistry::singleton().generation();
