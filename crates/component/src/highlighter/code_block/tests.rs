@@ -4,7 +4,10 @@ use gpui::{HighlightStyle, SharedString};
 use ropey::Rope;
 
 use super::{CodeBlockHighlighter, KeptBlocks, highlight_code_block};
-use crate::highlighter::{HighlightTheme, SyntaxHighlighter, compiled::compiled_language};
+use crate::highlighter::{
+    HighlightTheme, SyntaxHighlighter, compiled::compiled_language,
+    highlighter::UnbudgetedInjectionParses,
+};
 
 /// The style of every byte of `len` bytes of code.
 fn per_byte(len: usize, styles: &[(Range<usize>, HighlightStyle)]) -> Vec<HighlightStyle> {
@@ -19,6 +22,7 @@ fn per_byte(len: usize, styles: &[(Range<usize>, HighlightStyle)]) -> Vec<Highli
 
 /// What [`SyntaxHighlighter`] makes of `code` from scratch, the reference.
 fn from_scratch(lang: &str, code: &str, theme: &HighlightTheme) -> Vec<HighlightStyle> {
+    let _budgets = UnbudgetedInjectionParses::new();
     let rope = Rope::from_str(code);
     let mut highlighter = SyntaxHighlighter::new(lang);
     highlighter.update(None, &rope, None);
@@ -66,6 +70,7 @@ fn chunk_lengths(seed: u64) -> impl Iterator<Item = usize> {
 /// Streams `code` into one highlighter in chunks and checks every step
 /// against a highlight of the same text from scratch.
 fn assert_streams_like_from_scratch(lang: &str, code: &str, seed: u64) {
+    let _budgets = UnbudgetedInjectionParses::new();
     let theme = HighlightTheme::default_dark();
     let language = compiled_language(lang).unwrap_or_else(|| panic!("{lang} has a grammar"));
     let mut highlighter: Option<CodeBlockHighlighter> = None;
@@ -429,6 +434,7 @@ fn streamed_code_highlights_like_code_highlighted_from_scratch() {
 #[cfg(feature = "tree-sitter-languages")]
 #[test]
 fn code_streamed_a_character_at_a_time_highlights_like_code_highlighted_from_scratch() {
+    let _budgets = UnbudgetedInjectionParses::new();
     // The smallest chunks put the end of the text inside every token once.
     let theme = HighlightTheme::default_dark();
     for (lang, code) in [("rust", MULTIBYTE), ("html", HTML), ("markdown", MARKDOWN)] {
@@ -461,6 +467,7 @@ fn streamed_json_highlights_like_json_highlighted_from_scratch() {
 #[cfg(feature = "tree-sitter-rust")]
 #[test]
 fn appending_reparses_once_and_a_theme_change_does_not_reparse() {
+    let _budgets = UnbudgetedInjectionParses::new();
     let language = compiled_language("rust").unwrap();
     let code: SharedString = "fn main() {\n    let x = 1;\n".into();
     let mut highlighter = CodeBlockHighlighter::new(language, &code, None).unwrap();
@@ -504,6 +511,7 @@ fn appending_reparses_once_and_a_theme_change_does_not_reparse() {
 #[cfg(feature = "tree-sitter-rust")]
 #[test]
 fn replaced_code_is_highlighted_from_scratch() {
+    let _budgets = UnbudgetedInjectionParses::new();
     let language = compiled_language("rust").unwrap();
     let theme = HighlightTheme::default_dark();
     let mut highlighter =
@@ -522,6 +530,7 @@ fn replaced_code_is_highlighted_from_scratch() {
 #[cfg(feature = "tree-sitter-rust")]
 #[test]
 fn interleaved_blocks_each_keep_their_highlighting() {
+    let _budgets = UnbudgetedInjectionParses::new();
     let theme = HighlightTheme::default_dark();
     let a = "fn a() {\n    let s = \"a\";\n";
     let b = "struct B {\n    field: u8,\n";

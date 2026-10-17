@@ -11,8 +11,9 @@ use ropey::Rope;
 
 use super::super::{CodeBlockHighlighter, KEPT_BLOCKS, highlight_code_block};
 use crate::highlighter::{
-    HighlightTheme, SyntaxHighlighter, compiled::compiled_language,
-    highlighter::merge_highlight_style,
+    HighlightTheme, SyntaxHighlighter,
+    compiled::compiled_language,
+    highlighter::{UnbudgetedInjectionParses, merge_highlight_style},
 };
 
 /// Gives every highlight name its own color, so a different name is a
@@ -114,6 +115,7 @@ fn describe(
 /// with a highlight from scratch, with unique colors per name and with
 /// the dark theme. Returns the first difference.
 fn stream_check(lang: &str, code: &str, ends: &[usize]) -> Result<usize, String> {
+    let _budgets = UnbudgetedInjectionParses::new();
     let unique = Unique::default();
     let dark = HighlightTheme::default_dark();
     let language = compiled_language(lang).ok_or(format!("{lang}: no grammar"))?;
@@ -331,6 +333,26 @@ fn crlf() {
     assert!(failures.is_empty());
 }
 
+/// A loaded machine can hold a thread up while one of the two highlights
+/// compared parses Markdown's inline text, which then runs out of its time
+/// and is left out of that highlight alone. The comparison doesn't depend on
+/// the time a parse takes.
+#[test]
+fn a_thread_held_up_while_a_layer_parses_compares_the_same() {
+    use crate::highlighter::highlighter::{
+        injection_parse_stall_pending, stall_next_injection_parse,
+    };
+
+    let code = super::MARKDOWN.replace('\n', "\r\n");
+    stall_next_injection_parse("markdown_inline", std::time::Duration::from_secs(1));
+    let compared = stream_check("markdown", &code, &char_ends(&code));
+    assert!(
+        !injection_parse_stall_pending(),
+        "a parse of the inline text was held up"
+    );
+    compared.unwrap();
+}
+
 const DENSE_MULTIBYTE_PY: &str = "# 注释 — ünïcödé 👩‍👩‍👧‍👦 é (e\u{301})\ndef 函数(名字: str) -> str:\n    \"\"\"文档 🎉\"\"\"\n    s = f\"你好, {名字}! 🚀 {'ü' * 3}\"\n    return s + '日本語' + r'\\u00e9'\nprint(函数(\"世界\"), b\"bytes\", 'ß', \"\u{2028}sep\u{2029}\")\n";
 const DENSE_MULTIBYTE_MD: &str = "# 标题 🎉\n\n文本 *强调* **粗体** `代码 ü` [链接](https://例子.com/路径).\n\n- 项目 👩‍💻\n- 另一个 _项目_\n\n```python\nprint(\"你好 🚀\")\n```\n\n> 引用 — ünïcödé\n\n| 表 | 头 |\n|---|---|\n| 单元 🎉 | é |\n";
 const DENSE_MULTIBYTE_HTML: &str = "<p title=\"标题 🎉\">文本 &amp; ünïcödé</p>\n<script>const s = \"你好 🚀\"; // 注释 é\nconsole.log(`${s} 日本`);</script>\n<style>.类 { content: \"✓\"; }</style>\n";
@@ -472,6 +494,7 @@ fn clear_kept() {
 }
 
 fn check_call(lang: &str, code: &str) -> Option<String> {
+    let _budgets = UnbudgetedInjectionParses::new();
     let dark = HighlightTheme::default_dark();
     let code_s = SharedString::from(code.to_string());
     let got = highlight_code_block(lang, &code_s, true, &dark, None);
@@ -544,6 +567,7 @@ fn eviction_keeps_the_block_in_use_and_results_stay_right() {
 /// Streams `code` in every chunk size from 1 to 12 bytes and returns the
 /// first step whose highlights differ from a highlight from scratch.
 fn first_stale_step(lang: &str, code: &str) -> Option<String> {
+    let _budgets = UnbudgetedInjectionParses::new();
     let unique = Unique::default();
     let language = compiled_language(lang)?;
     for chunk in 1..=12usize {

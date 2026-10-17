@@ -4,6 +4,8 @@ use crate::highlighter::LanguageRegistry;
 use crate::highlighter::compiled::{
     HighlightQuery, compiled_language, is_highlight_capture, layer_query,
 };
+#[cfg(test)]
+use std::cell::{Cell, RefCell};
 
 use anyhow::{Context, Result, anyhow};
 use gpui::{HighlightStyle, SharedString};
@@ -27,6 +29,66 @@ const MAX_INJECTION_LANGUAGE_BYTES: usize = 64;
 /// Matches past it keep host highlighting but get no injected tokens.
 pub(super) const MAX_NON_COMBINED_INJECTION_PARSES: usize = 512;
 pub(super) const INJECTION_PARSE_TIMEOUT: Duration = Duration::from_millis(20);
+
+#[cfg(test)]
+thread_local! {
+    /// Whether injected layers parse without a time budget on this thread.
+    static INJECTION_PARSES_UNBUDGETED: Cell<bool> = const { Cell::new(false) };
+    /// The language and the time of a stall set by
+    /// [`stall_next_injection_parse`].
+    static INJECTION_PARSE_STALL: RefCell<Option<(SharedString, Duration)>> =
+        const { RefCell::new(None) };
+}
+
+/// Lifts the time budget of injected layers' parses on this thread until it
+/// drops.
+///
+/// A test that compares two highlights of the same code depends on how fast
+/// the machine parses otherwise. A layer whose parse runs out of time in one
+/// highlight and not the other is left out of that one, as a loaded machine
+/// can make happen at any step.
+#[cfg(test)]
+#[must_use]
+pub(crate) struct UnbudgetedInjectionParses(bool);
+
+#[cfg(test)]
+impl UnbudgetedInjectionParses {
+    pub(crate) fn new() -> Self {
+        Self(INJECTION_PARSES_UNBUDGETED.replace(true))
+    }
+}
+
+#[cfg(test)]
+impl Drop for UnbudgetedInjectionParses {
+    fn drop(&mut self) {
+        INJECTION_PARSES_UNBUDGETED.set(self.0);
+    }
+}
+
+/// Makes the next parse of an injected `language` layer on this thread
+/// count `stall` more time than it takes, as if the thread were held up that
+/// long. Only a parse long enough to check the time takes it.
+#[cfg(test)]
+pub(crate) fn stall_next_injection_parse(language: &str, stall: Duration) {
+    INJECTION_PARSE_STALL.set(Some((language.to_string().into(), stall)));
+}
+
+/// Whether a stall set by [`stall_next_injection_parse`] is still to come.
+#[cfg(test)]
+pub(crate) fn injection_parse_stall_pending() -> bool {
+    INJECTION_PARSE_STALL.with_borrow(Option::is_some)
+}
+
+/// The time a stall set for `language` adds, taken once.
+#[cfg(test)]
+fn take_injection_parse_stall(language: &str) -> Duration {
+    INJECTION_PARSE_STALL.with_borrow_mut(|stall| match stall {
+        Some((name, _)) if name.as_ref() == language => {
+            stall.take().map_or(Duration::ZERO, |s| s.1)
+        }
+        _ => Duration::ZERO,
+    })
+}
 
 /// A syntax highlighter that supports incremental parsing, multiline text,
 /// and caching of highlight results.
@@ -887,11 +949,24 @@ impl SyntaxHighlighter {
         let (mut parser, grammar) = LanguageRegistry::singleton().parser(language_name).ok()?;
         parser.set_language(&grammar).ok()?;
         parser.set_included_ranges(&ranges).ok()?;
+        #[cfg(test)]
+        let timeout = if INJECTION_PARSES_UNBUDGETED.get() {
+            Duration::MAX
+        } else {
+            timeout
+        };
         let parse_start = Instant::now();
         let mut timed_out = false;
+        #[cfg(test)]
+        let mut stall = None;
         // Returning `true` cancels the parse.
         let mut progress = |_: &tree_sitter::ParseState| -> bool {
-            if parse_start.elapsed() > timeout {
+            let elapsed = parse_start.elapsed();
+            #[cfg(test)]
+            let elapsed = elapsed.saturating_add(
+                *stall.get_or_insert_with(|| take_injection_parse_stall(language_name)),
+            );
+            if elapsed > timeout {
                 timed_out = true;
                 true
             } else {
@@ -1892,6 +1967,35 @@ $x = 1;
                 .all(|layer| layer.language_name.as_ref() != "markdown_inline"),
             "plain inline ranges should not create markdown_inline injection layers"
         );
+    }
+
+    /// An injected layer whose parse runs out of its time is left out, so a
+    /// slow parse doesn't hold the highlight up.
+    #[test]
+    #[cfg(feature = "tree-sitter-languages")]
+    fn an_injected_layer_that_runs_out_of_time_is_left_out() {
+        let markdown = (0..20)
+            .map(|i| format!("Paragraph {i} with *emphasis* and `code`.\n\n"))
+            .collect::<String>();
+        let rope = Rope::from_str(&markdown);
+        let inline = |highlighter: &SyntaxHighlighter| {
+            highlighter
+                .injection_layers
+                .iter()
+                .any(|layer| layer.language_name.as_ref() == "markdown_inline")
+        };
+
+        let unbudgeted = UnbudgetedInjectionParses::new();
+        let mut highlighter = SyntaxHighlighter::new("markdown");
+        highlighter.update(None, &rope, None);
+        assert!(inline(&highlighter));
+        drop(unbudgeted);
+
+        stall_next_injection_parse("markdown_inline", Duration::from_secs(1));
+        let mut highlighter = SyntaxHighlighter::new("markdown");
+        highlighter.update(None, &rope, None);
+        assert!(!injection_parse_stall_pending());
+        assert!(!inline(&highlighter));
     }
 
     #[test]
