@@ -147,7 +147,7 @@ Theme::update(cx, |theme| {
 });
 ```
 
-JetBrains Mono draws its ligatures through `calt` and some other fonts through `liga`, so the example turns off both. The features apply wherever the components set text in the monospace font: code blocks and inline code in a `TextView`, the `DiffView`, the code `Editor` and key caps (`Kbd`). Text in the UI font around them keeps its own features. Themes leave font features to the application, so without the override the font uses its own defaults. An element of the application's own that uses the monospace font can follow the setting with `.font_features(cx.theme().mono_font_features.clone())` beside its `.font_family(cx.theme().mono_font_family.clone())`.
+JetBrains Mono draws its ligatures through `calt` and some other fonts through `liga`, so the example turns off both. The features apply wherever the components set text in the monospace font, in code blocks and inline code of a `TextView`, the `DiffView`, the code `Editor` and key caps (`Kbd`). Text in the UI font around them keeps its own features. Themes leave font features to the application, so without the override the font uses its own defaults. An element of the application's own that uses the monospace font can follow the setting with `.font_features(cx.theme().mono_font_features.clone())` beside its `.font_family(cx.theme().mono_font_family.clone())`.
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html

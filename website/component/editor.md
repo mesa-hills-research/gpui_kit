@@ -362,9 +362,8 @@ cx.subscribe(&editor, |this, state, event: &InputEvent, cx| {
 The editor paints its code in the theme's monospace font — `mono_font_family` at
 `mono_font_size`, with the OpenType features in `mono_font_features` (see
 [code font features](theme.md#code-font-features)) — with rows 1.5 times the
-font size. That is only the default:
-a text style set on the editor refines over it, and the gutter and row height
-follow the size. The theme's platform default (`Menlo`, `Consolas`, `DejaVu Sans
+font size. That is only the default. A text style set on the editor refines
+over it, and the gutter and row height follow the size. The theme's platform default (`Menlo`, `Consolas`, `DejaVu Sans
 Mono`) is checked against the installed fonts when the theme loads and swapped
 for an installed monospace font, or `.SystemUIFont`, when it is missing; a
 family you set yourself is used as-is.

@@ -145,7 +145,7 @@ Theme::update(cx, |theme| {
 });
 ```
 
-JetBrains Mono 通过 `calt` 绘制连字，另一些字体则通过 `liga`，所以示例把两者都关闭了。组件中所有使用等宽字体的文本都会应用这些特性：`TextView` 里的代码块和行内代码、`DiffView`、代码 `Editor` 以及按键提示（`Kbd`）。它们周围使用界面字体的文本保留自己的特性。字体特性由应用决定，主题不会设置，所以没有这项覆盖时，字体使用自身的默认特性。应用自己用等宽字体绘制的元素，可以在 `.font_family(cx.theme().mono_font_family.clone())` 旁边加上 `.font_features(cx.theme().mono_font_features.clone())`，以跟随这项设置。
+JetBrains Mono 通过 `calt` 绘制连字，另一些字体则通过 `liga`，所以示例把两者都关闭了。组件中所有使用等宽字体的文本都会应用这些特性，包括 `TextView` 里的代码块和行内代码、`DiffView`、代码 `Editor` 以及按键提示（`Kbd`）。它们周围使用界面字体的文本保留自己的特性。字体特性由应用决定，主题不会设置，所以没有这项覆盖时，字体使用自身的默认特性。应用自己用等宽字体绘制的元素，可以在 `.font_family(cx.theme().mono_font_family.clone())` 旁边加上 `.font_features(cx.theme().mono_font_features.clone())`，以跟随这项设置。
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
