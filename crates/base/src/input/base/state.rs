@@ -613,15 +613,12 @@ impl<M: InputModeKind> InputBaseState<M> {
             }),
             // Observe the blink cursor to repaint the view when it changes.
             cx.observe(&blink_cursor, |_, _, cx| cx.notify()),
-            // Blink the cursor when the window is active, pause when it's not.
+            // A window can become inactive without blurring its focused input.
             cx.observe_window_activation(window, |input, window, cx| {
-                if window.is_window_active() {
-                    let focus_handle = input.focus_handle.clone();
-                    if focus_handle.is_focused(window) {
-                        input.blink_cursor.update(cx, |blink_cursor, cx| {
-                            blink_cursor.start(cx);
-                        });
-                    }
+                if window.is_window_active() && input.focus_handle.is_focused(window) {
+                    input.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
+                } else {
+                    input.blink_cursor.update(cx, |cursor, cx| cursor.stop(cx));
                 }
             }),
             cx.on_focus(&focus_handle, window, Self::on_focus),
@@ -1317,9 +1314,9 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// Focus the input field.
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_handle.focus(window, cx);
-        self.blink_cursor.update(cx, |cursor, cx| {
-            cursor.start(cx);
-        });
+        if window.is_window_active() {
+            self.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
+        }
     }
 
     /// Refresh the input, so the next render re-runs syntax highlighting and
@@ -3471,10 +3468,10 @@ impl<M: InputModeKind> InputBaseState<M> {
             && window.is_window_active()
     }
 
-    fn on_focus(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.blink_cursor.update(cx, |cursor, cx| {
-            cursor.start(cx);
-        });
+    fn on_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.is_window_active() {
+            self.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
+        }
         cx.emit(InputEvent::Focus);
     }
 
@@ -5841,6 +5838,50 @@ mod tests {
             settled,
             "an unfocused input is blinking, and every blink repaints the view it is in"
         );
+    }
+
+    #[gpui::test]
+    fn focused_input_stays_quiet_in_an_inactive_window(cx: &mut TestAppContext) {
+        use std::{cell::Cell, rc::Rc, time::Duration};
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| gpui::EmptyView);
+        let input = cx.update(|window, cx| cx.new(|cx| crate::input::InputState::new(window, cx)));
+        cx.deactivate_window();
+        cx.update(|window, cx| {
+            assert!(!window.is_window_active());
+            input.update(cx, |state, cx| state.focus(window, cx));
+        });
+        cx.run_until_parked();
+
+        let notifications = Rc::new(Cell::new(0));
+        let count = notifications.clone();
+        let _subscription =
+            cx.update(|_, cx| cx.observe(&input, move |_, _| count.set(count.get() + 1)));
+        cx.run_until_parked();
+        for _ in 0..6 {
+            cx.executor().advance_clock(Duration::from_millis(500));
+            cx.run_until_parked();
+        }
+        assert_eq!(notifications.get(), 0);
+
+        // Activating resumes blinking for the retained focus.
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        let active = notifications.get();
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert!(notifications.get() > active);
+
+        // Stopping also cancels a blink already scheduled by an active window.
+        cx.deactivate_window();
+        cx.run_until_parked();
+        let settled = notifications.get();
+        for _ in 0..6 {
+            cx.executor().advance_clock(Duration::from_millis(500));
+            cx.run_until_parked();
+        }
+        assert_eq!(notifications.get(), settled);
     }
 
     #[gpui::test]
@@ -8649,10 +8690,30 @@ mod tests {
     }
 
     #[gpui::test]
+    fn caret_shows_when_the_window_activates_after_focus(cx: &mut TestAppContext) {
+        let view = InputView::<EditorMode>::new(cx);
+        let mut cx = VisualTestContext::from_window(view.window_handle.into(), cx);
+        cx.update(|window, cx| {
+            assert!(!window.is_window_active());
+            view.input.update(cx, |state, cx| state.focus(window, cx));
+        });
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.run_until_parked();
+        view.input.read_with(&cx, |state, cx| {
+            assert!(state.blink_cursor.read(cx).visible());
+        });
+    }
+
+    #[gpui::test]
     fn test_consumed_keystrokes_keep_cursor_visible(cx: &mut TestAppContext) {
         let view = InputView::<EditorMode>::new(cx);
         let mut cx = VisualTestContext::from_window(view.window_handle.into(), cx);
         setup_cursors(&mut cx, &view.input, "a|b");
+        // The caret blinks only in an active window.
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
         cx.update(|window, cx| {
             view.input.update(cx, |state, cx| {
                 state.focus(window, cx);

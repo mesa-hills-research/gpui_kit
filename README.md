@@ -41,6 +41,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   operators, text objects, registers and command line. See
   [Textarea: keybindings](website/component/textarea.md#keybindings), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
+- **Quiet inactive inputs** (`gpui-base`). Caret blinking stops when the window becomes
+  inactive and resumes when its focused input becomes active again.
 - **A smooth caret** (`gpui-base`). `smooth_caret(true)` on any input (a single-line input, a
   textarea or the code editor) glides the caret to where it moves. A typed character is
   uncovered by the caret as it passes, and the rest of the line follows it. Off by default. See

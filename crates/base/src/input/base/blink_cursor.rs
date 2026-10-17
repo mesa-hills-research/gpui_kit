@@ -34,8 +34,15 @@ impl BlinkCursor {
         }
     }
 
-    /// Start the blinking
+    /// Start blinking from a visible cursor.
+    ///
+    /// Starting a cursor that is already blinking leaves it as it is. Focusing an
+    /// input, its focus event and the window's activation can each start it, and
+    /// a second start would otherwise hide the cursor until the next blink.
     pub(crate) fn start(&mut self, cx: &mut Context<Self>) {
+        if self.epoch != 0 {
+            return;
+        }
         self.blink(self.epoch, cx);
     }
 
@@ -144,6 +151,18 @@ mod tests {
         cx.executor().advance_clock(INTERVAL);
         cx.run_until_parked();
         assert!(cursor.read_with(cx, |cursor, _| cursor.visible()));
+    }
+
+    #[gpui::test]
+    fn starting_a_blinking_cursor_keeps_it_visible(cx: &mut TestAppContext) {
+        let cursor = cx.new(|_| BlinkCursor::new());
+        cursor.update(cx, |cursor, cx| cursor.start(cx));
+        cursor.update(cx, |cursor, cx| cursor.start(cx));
+        cx.run_until_parked();
+        assert!(cursor.read_with(cx, |cursor, _| cursor.visible()));
+        cx.executor().advance_clock(INTERVAL);
+        cx.run_until_parked();
+        assert!(!cursor.read_with(cx, |cursor, _| cursor.visible()));
     }
 
     #[gpui::test]
