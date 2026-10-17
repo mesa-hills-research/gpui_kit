@@ -574,7 +574,7 @@ mod tests {
     }
 
     /// Moving from one button to the next in a reused view while something
-    /// else redraws the window, such as a streaming transcript: the first
+    /// else redraws the window, such as streaming text: the first
     /// tooltip stays through its grace period, and the second shows at once.
     #[gpui::test]
     fn a_redraw_elsewhere_keeps_a_reused_buttons_tooltip_through_its_grace(
