@@ -4,8 +4,8 @@ use crate::{
     ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt, h_flex,
 };
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Render, RenderOnce, Role, SharedString,
+    AnyElement, App, ClickEvent, Context, Decorations, Div, Hsla, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, Pixels, Render, RenderOnce, Role, SharedString, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
     WindowButton, WindowButtonLayout, WindowControlArea, WindowControls as PlatformWindowControls,
     WindowOptions, div, prelude::FluentBuilder as _, px, rgb,
@@ -47,10 +47,19 @@ fn leading_inset(is_macos: bool, is_fullscreen: bool) -> Pixels {
 /// Windows gets Windows 11 caption buttons, and Linux, under client-side
 /// decorations, gets the buttons the compositor supports, on the sides and
 /// in the order the desktop's button layout gives.
+///
+/// The children fill the bar between the window buttons. A [`center`]
+/// (such as the window's title) sits in the middle of the whole bar instead,
+/// with the children before it and a [`suffix`] after it.
+///
+/// [`center`]: TitleBar::center
+/// [`suffix`]: TitleBar::suffix
 #[derive(IntoElement)]
 pub struct TitleBar {
     style: StyleRefinement,
     children: SmallVec<[AnyElement; 1]>,
+    center: Option<AnyElement>,
+    suffix: Option<AnyElement>,
     on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
     button_layout: Option<WindowButtonLayout>,
 }
@@ -61,9 +70,36 @@ impl TitleBar {
         Self {
             style: StyleRefinement::default(),
             children: SmallVec::new(),
+            center: None,
+            suffix: None,
             on_close_window: None,
             button_layout: None,
         }
+    }
+
+    /// Put `center` in the middle of the title bar, centered on the window's
+    /// width the way a window's title sits, whatever the window buttons and
+    /// the content on either side take.
+    ///
+    /// The content beside it stays uncovered. When one side leaves too little
+    /// room, the center moves toward the other, and when the bar runs out of
+    /// room, it narrows and is clipped. Give it `min_w_0()` so it can narrow,
+    /// and text in it `truncate()` so it ends with an ellipsis.
+    ///
+    /// With a center, the children sit between the start of the bar and the
+    /// center, and the [`suffix`](TitleBar::suffix) after it. The space
+    /// around them all still moves the window.
+    pub fn center(mut self, center: impl IntoElement) -> Self {
+        self.center = Some(center.into_any_element());
+        self
+    }
+
+    /// Put `suffix` at the end of the title bar, just before the window
+    /// buttons, such as the buttons that show or hide an application's
+    /// panels. The children fill the space before it.
+    pub fn suffix(mut self, suffix: impl IntoElement) -> Self {
+        self.suffix = Some(suffix.into_any_element());
+        self
     }
 
     /// Returns the default title bar options for compatible with the [`crate::TitleBar`].
@@ -494,6 +530,29 @@ impl ParentElement for TitleBar {
     }
 }
 
+/// A stretch of the bar that moves the window. It's a drag area, which
+/// Windows answers as its caption, and under client-side decorations on Linux
+/// a right click there opens the window menu. Window buttons stay out of it,
+/// since the first control area hit wins.
+fn drag_region(id: &'static str, is_web: bool, has_window_menu: bool) -> Stateful<Div> {
+    h_flex().id(id).h_full().when(!is_web, |this| {
+        this.window_control_area(WindowControlArea::Drag)
+            .when(has_window_menu, |this| {
+                this.child(
+                    div()
+                        .top_0()
+                        .left_0()
+                        .absolute()
+                        .size_full()
+                        .h_full()
+                        .on_mouse_down(MouseButton::Right, move |ev, window, _| {
+                            window.show_window_menu(ev.position)
+                        }),
+                )
+            })
+    })
+}
+
 struct TitleBarState {
     should_move: bool,
 }
@@ -530,6 +589,28 @@ impl RenderOnce for TitleBar {
                     !start.is_empty()
                 });
 
+        let has_window_menu = is_linux && is_client_decorated;
+        let inset = leading_inset(is_macos, window.is_fullscreen());
+        let start_controls = has_start_buttons.then(|| WindowControls {
+            side: ControlsSide::Start,
+            on_close_window: self.on_close_window.clone(),
+            button_layout: self.button_layout,
+        });
+        let end_controls = WindowControls {
+            side: ControlsSide::End,
+            on_close_window: self.on_close_window,
+            button_layout: self.button_layout,
+        };
+        // The children's stretch, between the start and the center or the
+        // end.
+        let bar = drag_region("bar", is_web, has_window_menu)
+            .justify_between()
+            .flex_shrink_0()
+            .flex_1()
+            .when(has_start_buttons, |this| this.pl_2())
+            .children(self.children);
+        let has_slots = self.center.is_some() || self.suffix.is_some();
+
         div().flex_shrink_0().child(
             div()
                 .id("title-bar")
@@ -538,9 +619,7 @@ impl RenderOnce for TitleBar {
                 .items_center()
                 .justify_between()
                 .h(TITLE_BAR_HEIGHT)
-                .when(!has_start_buttons, |this| {
-                    this.pl(leading_inset(is_macos, window.is_fullscreen()))
-                })
+                .when(!has_slots && !has_start_buttons, |this| this.pl(inset))
                 .border_b_1()
                 .border_color(cx.theme().title_bar_border)
                 .bg(cx.theme().tokens.title_bar)
@@ -572,48 +651,59 @@ impl RenderOnce for TitleBar {
                         window.start_window_move();
                     }
                 }))
-                .when(has_start_buttons, |this| {
-                    this.child(WindowControls {
-                        side: ControlsSide::Start,
-                        on_close_window: self.on_close_window.clone(),
-                        button_layout: self.button_layout,
+                .map(|this| {
+                    if !has_slots {
+                        return this.children(start_controls).child(bar).child(end_controls);
+                    }
+                    // Three columns. The sides share the room the center
+                    // leaves equally, which centers it on the bar, but neither
+                    // gets less than its content, which moves the center
+                    // toward the roomier side. Only the center narrows when
+                    // the sides fill the bar. Padding on a side would count
+                    // toward its share, so the leading inset is a spacer.
+                    let has_center = self.center.is_some();
+                    this.child(
+                        h_flex()
+                            .h_full()
+                            .flex_1()
+                            .when(!has_start_buttons, |this| {
+                                this.child(div().flex_none().w(inset).h_full())
+                            })
+                            .children(start_controls)
+                            .child(bar),
+                    )
+                    .when_some(self.center, |this, center| {
+                        this.child(
+                            drag_region("bar-center", is_web, has_window_menu)
+                                .min_w_0()
+                                // Sets the center apart from the content
+                                // beside it when it moves aside for it, and
+                                // leaves room for a focus ring, which the
+                                // clip would otherwise cut.
+                                .px_4()
+                                .overflow_hidden()
+                                .justify_center()
+                                .child(center),
+                        )
                     })
-                })
-                .child(
-                    h_flex()
-                        .id("bar")
-                        .h_full()
-                        .justify_between()
-                        .flex_shrink_0()
-                        .flex_1()
-                        .when(has_start_buttons, |this| this.pl_2())
-                        .when(!is_web, |this| {
-                            this.window_control_area(WindowControlArea::Drag).when(
-                                is_linux && is_client_decorated,
-                                |this| {
-                                    this.child(
-                                        div()
-                                            .top_0()
-                                            .left_0()
-                                            .absolute()
-                                            .size_full()
-                                            .h_full()
-                                            .on_mouse_down(
-                                                MouseButton::Right,
-                                                move |ev, window, _| {
-                                                    window.show_window_menu(ev.position)
-                                                },
-                                            ),
-                                    )
-                                },
+                    .child(
+                        h_flex()
+                            .h_full()
+                            .map(|this| {
+                                if has_center {
+                                    this.flex_1()
+                                } else {
+                                    this.flex_none()
+                                }
+                            })
+                            .child(
+                                drag_region("bar-end", is_web, has_window_menu)
+                                    .flex_1()
+                                    .justify_end()
+                                    .children(self.suffix),
                             )
-                        })
-                        .children(self.children),
-                )
-                .child(WindowControls {
-                    side: ControlsSide::End,
-                    on_close_window: self.on_close_window,
-                    button_layout: self.button_layout,
+                            .child(end_controls),
+                    )
                 }),
         )
     }
@@ -696,6 +786,151 @@ mod tests {
             element.write_a11y_info(&mut node);
             assert_eq!(node.label(), Some("Close"));
         });
+    }
+
+    /// A title bar with fixed-width content at the start and the end, the end
+    /// as the suffix or as a second child, and a center that may narrow, as a
+    /// title that truncates does.
+    #[derive(Clone, Copy, Default)]
+    struct Slots {
+        start: f32,
+        center: Option<f32>,
+        end: f32,
+        end_as_child: bool,
+    }
+
+    impl Render for Slots {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let item = |name: &'static str, width: f32| {
+                div()
+                    .debug_selector(move || name.into())
+                    .flex_none()
+                    .w(px(width))
+                    .h(px(20.))
+            };
+            let end = item("end", self.end);
+            TitleBar::new()
+                .child(item("start", self.start))
+                .when_some(self.center, |this, width| {
+                    this.center(item("center", width).flex_shrink(1.).min_w_0())
+                })
+                .map(|this| {
+                    if self.end_as_child {
+                        this.child(end)
+                    } else {
+                        this.suffix(end)
+                    }
+                })
+        }
+    }
+
+    /// The width the window buttons take at the end of the bar in a test
+    /// window, which has no client-side decorations.
+    fn end_controls_width() -> Pixels {
+        if cfg!(target_os = "windows") {
+            CAPTION_BUTTON_WIDTH * 3.
+        } else {
+            px(0.)
+        }
+    }
+
+    const WIDTH: Pixels = px(800.);
+
+    fn title_bar_window(
+        cx: &mut gpui::TestAppContext,
+    ) -> (gpui::Entity<Slots>, &mut gpui::VisualTestContext) {
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|_, _| Slots::default());
+        cx.simulate_resize(gpui::size(WIDTH, px(100.)));
+        (view, cx)
+    }
+
+    /// The bounds of the start, the center and the end, laid out for `slots`.
+    fn lay_out(
+        cx: &mut gpui::VisualTestContext,
+        view: &gpui::Entity<Slots>,
+        slots: Slots,
+    ) -> [gpui::Bounds<Pixels>; 3] {
+        cx.update(|window, cx| {
+            view.update(cx, |this, cx| {
+                *this = slots;
+                cx.notify();
+            });
+            window.draw(cx).clear(cx);
+        });
+        ["start", "center", "end"].map(|name| cx.debug_bounds(name).unwrap_or_default())
+    }
+
+    /// The center sits in the middle of the window, moves toward the roomier
+    /// side when one side is wide, and narrows rather than cover either side.
+    #[gpui::test]
+    fn the_center_is_centered_on_the_window_and_never_covers_the_sides(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (view, cx) = title_bar_window(cx);
+        let middle = WIDTH / 2.;
+        let inset = leading_inset(cfg!(target_os = "macos"), false);
+        let slots = |start, center, end| Slots {
+            start,
+            center: Some(center),
+            end,
+            end_as_child: false,
+        };
+
+        // With room on both sides, the center is centered on the window
+        // rather than on the space between the sides.
+        let [start, center, end] = lay_out(cx, &view, slots(220., 160., 60.));
+        assert!((center.center().x - middle).abs() < px(1.), "{center:?}");
+        assert_eq!(center.size.width, px(160.));
+        assert_eq!(start.left(), inset);
+        assert_eq!(end.right(), WIDTH - end_controls_width());
+
+        // A wide start pushes the center toward the end, clear of the start.
+        let [start, center, end] = lay_out(cx, &view, slots(420., 160., 60.));
+        assert_eq!(center.size.width, px(160.));
+        assert!(center.center().x > middle, "{center:?}");
+        assert!(center.left() >= start.right(), "{start:?} {center:?}");
+        assert!(center.right() <= end.left(), "{center:?} {end:?}");
+
+        // A wide end pushes it toward the start.
+        let [start, center, end] = lay_out(cx, &view, slots(60., 160., 420.));
+        assert_eq!(center.size.width, px(160.));
+        assert!(center.center().x < middle, "{center:?}");
+        assert!(center.left() >= start.right(), "{start:?} {center:?}");
+        assert!(center.right() <= end.left(), "{center:?} {end:?}");
+
+        // Without room for all of it, the center narrows between the sides.
+        let [start, center, end] = lay_out(cx, &view, slots(300., 400., 300.));
+        assert!(center.size.width < px(400.), "{center:?}");
+        assert!(center.size.width > px(0.), "{center:?}");
+        assert!(center.left() >= start.right(), "{start:?} {center:?}");
+        assert!(center.right() <= end.left(), "{center:?} {end:?}");
+    }
+
+    /// Without a center, the children fill the bar up to the suffix, as
+    /// children alone fill it up to the window buttons.
+    #[gpui::test]
+    fn without_a_center_the_children_fill_the_bar(cx: &mut gpui::TestAppContext) {
+        let (view, cx) = title_bar_window(cx);
+        let inset = leading_inset(cfg!(target_os = "macos"), false);
+        for end_as_child in [false, true] {
+            let [start, _, end] = lay_out(
+                cx,
+                &view,
+                Slots {
+                    start: 420.,
+                    center: None,
+                    end: 60.,
+                    end_as_child,
+                },
+            );
+            assert_eq!(start.left(), inset, "end_as_child: {end_as_child}");
+            assert_eq!(
+                end.right(),
+                WIDTH - end_controls_width(),
+                "end_as_child: {end_as_child}"
+            );
+        }
     }
 
     #[test]

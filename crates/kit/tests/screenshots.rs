@@ -1277,6 +1277,72 @@ fn title_bar_is_one_flat_color() {
     }
 }
 
+/// A title bar with menus at the start, a button at the end and a document's title in the middle.
+struct Titled;
+
+impl Render for Titled {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let menu = |name: &'static str| Button::new(name).label(name).small().ghost();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(
+                gpui_kit::component::TitleBar::new()
+                    .child(
+                        div()
+                            .flex()
+                            .child(menu("File"))
+                            .child(menu("Edit"))
+                            .child(menu("View")),
+                    )
+                    .center(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_sm()
+                            .child("Quarterly report.md · Documents"),
+                    )
+                    .suffix(
+                        Button::new("sidebar")
+                            .icon(IconName::PanelLeft)
+                            .small()
+                            .ghost()
+                            .compact(),
+                    ),
+            )
+    }
+}
+
+fn title_bar(mode: ThemeMode, width: f32) -> Screenshot {
+    let mut app = app(mode);
+    let window = open(&mut app, (width, 48.), SCALE, |_, _| Titled);
+    app.capture(window).unwrap()
+}
+
+/// The title sits in the middle of the window, not of the space between the menus and the button.
+#[test]
+fn title_bar_center_light() {
+    goldens().assert("title-bar-center", &title_bar(ThemeMode::Light, 560.));
+}
+
+#[test]
+fn title_bar_center_dark() {
+    goldens().assert("title-bar-center-dark", &title_bar(ThemeMode::Dark, 560.));
+}
+
+/// In a narrow window the title moves aside for the menus and ends with an ellipsis before the
+/// button.
+#[test]
+fn title_bar_center_narrow() {
+    goldens().assert(
+        "title-bar-center-narrow",
+        &title_bar(ThemeMode::Light, 300.),
+    );
+}
+
 #[test]
 fn input_and_textarea() {
     goldens().assert("fields", &fields());

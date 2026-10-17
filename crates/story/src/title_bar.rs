@@ -61,22 +61,23 @@ impl Render for AppTitleBar {
         let show_app_menu_bar = AppState::global(cx).show_app_menu_bar;
 
         TitleBar::new()
-            // left side
-            .child(div().flex().items_center().map(|this| {
+            .map(|this| {
                 if show_app_menu_bar {
-                    this.child(self.app_menu_bar.clone())
+                    this.child(div().flex().items_center().child(self.app_menu_bar.clone()))
                 } else {
-                    // The system menu bar owns the menus, so the freed up left
-                    // side names the window the way a Mac app does.
-                    this.child(
+                    // The system menu bar owns the menus, so the bar names the
+                    // window in its middle, the way a Mac app does.
+                    this.center(
                         div()
+                            .min_w_0()
+                            .truncate()
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .child(self.title.clone()),
                     )
                 }
-            }))
-            .child(
+            })
+            .suffix(
                 div()
                     .flex()
                     .items_center()

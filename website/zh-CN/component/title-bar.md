@@ -66,6 +66,25 @@ TitleBar::new()
     )
 ```
 
+### 居中标题
+
+`center(element)` 把内容放在标题栏中间，像窗口标题那样相对整个窗口居中，不受红绿灯按钮、窗口按钮和两侧内容宽度的影响。子元素放在它之前，`suffix(element)` 把内容放在它之后、紧挨窗口按钮：
+
+```rust
+TitleBar::new()
+    .child(AppMenuBar::new(cx))
+    .center(
+        div()
+            .min_w_0()
+            .truncate()
+            .text_sm()
+            .child("Quarterly report.md"),
+    )
+    .suffix(Button::new("sidebar").icon(IconName::PanelLeft).ghost())
+```
+
+一侧内容太宽、标题无法保持居中时，标题会移向另一侧。标题栏空间不够时，标题在两侧内容之间收窄并被裁剪，因此要给它加上 `min_w_0()`，并给其中的文字加上 `truncate()`，让文字以省略号结尾。标题周围的空白仍可拖动窗口，双击的效果与标题栏其他位置相同。
+
 ### Linux 自定义关闭行为
 
 ```rust
@@ -190,7 +209,9 @@ WindowOptions {
 | 方法 | 说明 |
 | --- | --- |
 | `new()` | 创建标题栏 |
-| `child(element)` | 向标题栏中添加子元素 |
+| `child(element)` | 向标题栏中添加子元素，有居中内容时放在它之前 |
+| `center(element)` | 相对窗口居中的内容（如标题），会为两侧内容让出位置 |
+| `suffix(element)` | 标题栏末端、窗口按钮之前的内容 |
 | `on_close_window(fn)` | 自定义关闭行为，仅 Linux 有效 |
 | `button_layout(layout)` | 按 `layout` 而不是桌面设置放置 Linux 窗口按钮，仅 Linux 有效 |
 | `title_bar_options()` | 获取窗口可用的默认标题栏配置 |

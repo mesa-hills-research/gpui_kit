@@ -66,6 +66,25 @@ TitleBar::new()
     )
 ```
 
+### Centered Title
+
+`center(element)` puts content in the middle of the bar, centered on the window the way a window's title is, whatever the traffic lights, the window buttons and the content on either side take. The children sit before it, and `suffix(element)` puts content after it, just before the window buttons:
+
+```rust
+TitleBar::new()
+    .child(AppMenuBar::new(cx))
+    .center(
+        div()
+            .min_w_0()
+            .truncate()
+            .text_sm()
+            .child("Quarterly report.md"),
+    )
+    .suffix(Button::new("sidebar").icon(IconName::PanelLeft).ghost())
+```
+
+When one side is too wide for the title to stay centered, the title moves toward the other side. When the bar runs out of room, it narrows between the two sides and is clipped, so give it `min_w_0()`, and text in it `truncate()` to end with an ellipsis. The space around the title moves the window and answers a double click as the rest of the bar does.
+
 ### Title Bar with Window Controls (Linux only)
 
 ```rust
@@ -193,7 +212,9 @@ An input that binds Alt with a letter keeps it: the menu bar sees the key only w
 | Method                | Description                              |
 | --------------------- | ---------------------------------------- |
 | `new()`               | Create a new title bar                   |
-| `child(element)`      | Add child element to the title bar       |
+| `child(element)`      | Add child element to the title bar, before the center when there is one |
+| `center(element)`     | Content centered on the window, such as the title, moving aside for the content beside it |
+| `suffix(element)`     | Content at the end of the bar, before the window buttons |
 | `on_close_window(fn)` | Custom close window handler (Linux only) |
 | `button_layout(layout)` | Place the Linux window buttons by `layout` instead of the desktop's (Linux only) |
 | `title_bar_options()` | Get default titlebar options for window  |
@@ -345,12 +366,7 @@ TitleBar::new()
 
 ```rust
 TitleBar::new()
-    .child(
-        div()
-            .text_center()
-            .flex_1()
-            .child("Document.txt")
-    )
+    .center(div().min_w_0().truncate().child("Document.txt"))
 ```
 
 ### Title Bar with Search

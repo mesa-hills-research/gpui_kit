@@ -159,6 +159,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   order, and the macOS inset drops in full screen. F10 or an Alt tap focuses the `AppMenuBar`,
   arrows move, Alt with a menu's underlined letter opens it. See
   [TitleBar: menu bar and the keyboard](website/component/title-bar.md#menu-bar-and-the-keyboard).
+  `TitleBar::center` centers a title on the window, moving it aside for the content beside it
+  and narrowing it when the bar runs out of room, and `suffix` puts content just before the
+  window buttons. See [Centered title](website/component/title-bar.md#centered-title) on the
+  TitleBar page.
 - **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
   crates at one commit of the fork on GitHub. To work on both repositories together, see
   [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
