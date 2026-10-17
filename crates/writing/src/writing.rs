@@ -177,7 +177,12 @@ impl Writing {
     /// thread. The task finishes when the save does; detach it, or keep it.
     /// Saves asked for while one runs make one more save after it.
     pub fn save_in_background(&self, cx: &App) -> Task<()> {
-        Vocabulary::save_in_background(&self.vocabulary, cx)
+        let words = self.dictionary.save_added_words_in_background(cx);
+        let vocabulary = Vocabulary::save_in_background(&self.vocabulary, cx);
+        cx.spawn(async move |_| {
+            words.await;
+            vocabulary.await;
+        })
     }
 
     #[cfg(test)]
@@ -260,6 +265,33 @@ mod tests {
                 .dictionary()
                 .is_correct("Wojciech")
         );
+    }
+
+    /// A word whose append failed, as in a folder that couldn't be written,
+    /// is appended by the next save, in the background too.
+    #[cfg(unix)]
+    #[gpui::test]
+    fn a_background_save_appends_the_words_still_waiting(cx: &mut TestAppContext) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let scratch = Scratch::new("waiting-words");
+        let folder = scratch.0.join("app");
+        std::fs::create_dir_all(&folder).unwrap();
+        let options = WritingOptions::new().with_data_dir(folder.clone());
+        let writing = Writing::load_blocking(options.clone());
+        let list = options.user_dictionary_path().unwrap();
+        let set_mode = |mode| {
+            std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+
+        set_mode(0o500);
+        cx.update(|cx| writing.dictionary().add_word("Zbigniewski", cx));
+        cx.run_until_parked();
+        set_mode(0o700);
+        assert!(!list.exists());
+
+        cx.update(|cx| writing.save_in_background(cx)).detach();
+        cx.run_until_parked();
+        assert_eq!(std::fs::read_to_string(&list).unwrap(), "Zbigniewski\n");
     }
 
     /// The vocabulary and the user's word list hold what the user wrote, so

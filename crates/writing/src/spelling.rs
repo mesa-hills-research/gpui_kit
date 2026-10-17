@@ -334,6 +334,19 @@ impl Dictionary {
         }
     }
 
+    /// Appends them as [`Self::save_added_words`] does, on a background
+    /// thread.
+    pub(crate) fn save_added_words_in_background(&self, cx: &App) -> Task<()> {
+        match &self.user_dictionary {
+            Some(list) => {
+                let list = list.clone();
+                cx.background_executor()
+                    .spawn(async move { list.append_pending() })
+            }
+            None => Task::ready(()),
+        }
+    }
+
     /// Accepts `word`, in any case, until the application quits, without
     /// saving it. Bumps the generation like [`Dictionary::add_word`].
     pub fn ignore_word(&self, word: &str) {
