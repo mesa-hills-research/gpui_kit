@@ -1380,7 +1380,10 @@ async fn bring_up_to_date(job: Arc<Mutex<BlockJob>>, waiter: Waiter) {
         };
         let highlighter = match highlighter {
             Some(mut highlighter) => {
-                if complete && highlighter.incremental {
+                // Complete code is highlighted from scratch, once: appending
+                // to it first, as a capped block shown whole would, parses it
+                // twice.
+                if complete && (highlighter.incremental || highlighter.source != code) {
                     highlighter.reset(&code);
                 } else {
                     highlighter.update(&code);

@@ -865,6 +865,44 @@ fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
     );
 }
 
+/// A capped block shown whole: its first lines were highlighted complete,
+/// and the whole code extends them.
+#[gpui::test]
+fn a_complete_block_that_grows_is_parsed_once_more(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("json").unwrap();
+    let items = (0..200)
+        .map(|ix| format!("  {{\"id\": {ix}, \"shown\": true}},\n"))
+        .collect::<String>();
+    let code = format!("[\n{items}  {{}}\n]\n");
+    let first_lines: SharedString = code
+        .split_inclusive('\n')
+        .take(60)
+        .collect::<String>()
+        .into();
+    highlight_code_block("json", &first_lines, true, &theme, Some(&waiter));
+    cx.run_until_parked();
+
+    let whole = SharedString::from(code.clone());
+    highlight_code_block("json", &whole, true, &theme, Some(&waiter));
+    cx.run_until_parked();
+    let styles = highlight_code_block("json", &whole, true, &theme, Some(&waiter));
+    assert!(!styles.is_pending());
+    assert_eq!(
+        per_byte(code.len(), &styles),
+        from_scratch("json", &code, &theme)
+    );
+    let job = background_job(&code);
+    assert_eq!(
+        job.lock().unwrap().highlighter.as_ref().unwrap().parses,
+        2,
+        "the first lines, then the whole code from scratch"
+    );
+}
+
 /// A theme switch recolors a block highlighted in the background in the
 /// frame it's asked for, rather than showing the previous theme's colors on
 /// the new background until a task is done.

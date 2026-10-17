@@ -371,3 +371,37 @@ fn theme_change_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
         println!("| {lang} | 200 KB | {} | {switched:.2?} |", styles.len());
     }
 }
+
+/// The background work of showing a capped 200 KB block whole: its first
+/// 60 lines were highlighted, then the whole code is.
+#[gpui::test]
+#[ignore = "timing harness, run by hand in release"]
+fn showing_a_capped_block_whole(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::{Waiter, highlight_code_block};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_light();
+    println!("| language | block | background work |");
+    println!("|---|---:|---:|");
+    for lang in STREAMED {
+        let code = prefix(&generated_code(lang, 200), 200 * 1024).to_string();
+        let first_lines: SharedString = code
+            .split_inclusive('\n')
+            .take(60)
+            .collect::<String>()
+            .into();
+        // The language and those it injects compile, then the first lines
+        // are highlighted.
+        for _ in 0..4 {
+            highlight_code_block(lang, &first_lines, true, &theme, Some(&waiter));
+            cx.run_until_parked();
+        }
+        let whole = SharedString::from(code);
+        highlight_code_block(lang, &whole, true, &theme, Some(&waiter));
+        let start = Instant::now();
+        cx.run_until_parked();
+        let work = start.elapsed();
+        assert!(!highlight_code_block(lang, &whole, true, &theme, Some(&waiter)).is_pending());
+        println!("| {lang} | 200 KB | {work:.2?} |");
+    }
+}
