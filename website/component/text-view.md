@@ -188,8 +188,8 @@ trimmed once it is done, is no replacement: the ids, the rows and their
 selection stay. `block_count()` tells, without building the list, whether the
 document gained blocks since the last look, and `blocks_from(ix)` lists only
 the blocks from `ix` on. The last block stays incomplete until
-`TextViewState::finish` marks the answer finished, and its row is then left
-alone like the others.
+`TextViewState::finish` marks the answer finished and the text pushed before
+it is parsed, and its row is then left alone like the others.
 A selection runs across rows as it runs across separate text views, and each
 view selects its own blocks. Copied, the rows of one document join as the
 blocks of one view of it do, apart by a blank line in Markdown source. A

@@ -144,6 +144,9 @@ pub struct TextViewState {
     revision: usize,
     /// The revision of the update `parsed_content` was committed from.
     committed_revision: usize,
+    /// The revision of the last update whose parse landed, whether it was
+    /// committed or failed.
+    landed_revision: usize,
     /// The revision of the last update that replaced the text rather than
     /// appending to it.
     full_update_revision: usize,
@@ -161,8 +164,8 @@ pub struct TextViewState {
     /// The document this view shows some blocks of, for a view made by
     /// [`Self::block_range`].
     block_range: Option<BlockRange>,
-    /// Whether [`Self::finish`] marked the text finished.
-    finished: bool,
+    /// The revision [`Self::finish`] marked the text finished at.
+    finished: Option<usize>,
 }
 
 /// The background parse of a [`TextViewState`]'s text, and the task that
@@ -364,6 +367,7 @@ impl TextViewState {
             element_text: None,
             revision: 0,
             committed_revision: 0,
+            landed_revision: 0,
             full_update_revision: 0,
             rendered_index: Arc::default(),
             range_highlights: None,
@@ -373,7 +377,7 @@ impl TextViewState {
             layout_text_style: None,
             parser: None,
             block_range: None,
-            finished: false,
+            finished: None,
         }
     }
 
@@ -440,7 +444,7 @@ impl TextViewState {
     pub fn blocks_from(&self, index: usize) -> Vec<TextBlock> {
         let blocks = &self.parsed_content.document.blocks;
         let first = self.block_range_start();
-        let complete = self.block_range_is_complete() || self.finished;
+        let complete = self.block_range_is_complete() || self.is_finished_and_parsed();
         let document_len = first + blocks.len() + usize::from(complete);
         let replacement = self.block_range_replacement();
         blocks
@@ -475,19 +479,29 @@ impl TextViewState {
     /// block is complete too, and a [`Self::block_range`] view of it is left
     /// alone from then on like the others. Appending text, or setting text
     /// that replaces it, opens it again.
+    ///
+    /// Text given just before, in the same frame or the same update, is
+    /// parsed first: the last block counts as complete once that parse lands.
     pub fn finish(&mut self, cx: &mut Context<Self>) {
-        if self.finished {
+        if self.finished.is_some() {
             return;
         }
-        self.finished = true;
+        self.finished = Some(self.revision);
         self.mark_last_block_complete();
         cx.notify();
     }
 
+    /// Whether the text is finished and the parse of all of it has landed,
+    /// so that no block can change any more.
+    fn is_finished_and_parsed(&self) -> bool {
+        self.finished
+            .is_some_and(|revision| self.landed_revision >= revision)
+    }
+
     /// Marks the code blocks of the last block complete, once the text is
-    /// finished: a code block left open can't grow either.
+    /// finished and parsed: a code block left open can't grow either.
     fn mark_last_block_complete(&mut self) {
-        if self.finished
+        if self.is_finished_and_parsed()
             && self.block_range.is_none()
             && let Some(last) = Arc::make_mut(&mut self.parsed_content.document.blocks).last_mut()
         {
@@ -498,7 +512,7 @@ impl TextViewState {
     /// Whether [`Self::finish`] marked the text finished, and no text was
     /// appended or set since.
     pub fn is_finished(&self) -> bool {
-        self.finished
+        self.finished.is_some()
     }
 
     /// The index of the document's block the view starts with.
@@ -551,7 +565,7 @@ impl TextViewState {
             Bound::Unbounded => all.len(),
         }
         .clamp(start, all.len());
-        let complete = end < all.len() || document.finished;
+        let complete = end < all.len() || document.is_finished_and_parsed();
         // A view of complete blocks has nothing to take while text is only
         // appended.
         if synced.is_some_and(|(synced_replacement, synced_revision, synced_complete)| {
@@ -710,7 +724,7 @@ impl TextViewState {
             return;
         }
         self.stream_fade.note_replace();
-        self.finished = false;
+        self.finished = None;
 
         self.text.clear();
         self.text.push_str(text);
@@ -751,7 +765,7 @@ impl TextViewState {
             self.set_text(new_text, cx);
             return;
         }
-        self.finished = false;
+        self.finished = None;
         self.stream_fade.note_extend(self.text.len());
         self.text.push_str(new_text);
         self.increment_update(new_text, true, cx);
@@ -1026,6 +1040,7 @@ impl TextViewState {
                 Err(err) => {
                     self.stream_fade.discard_pending();
                     self.parsed_error = Some(err);
+                    self.landed_revision = self.revision;
                 }
             }
             // Keep the background parser's accumulated document in sync so a
@@ -1094,6 +1109,7 @@ impl TextViewState {
             Err(err) => {
                 self.stream_fade.discard_pending();
                 self.parsed_error = Some(err);
+                self.landed_revision = parsed_update.revision;
             }
         }
         // Don't interrupt an active drag-selection; the stored
@@ -1208,6 +1224,7 @@ impl TextViewState {
     fn reconcile_range_highlights(&mut self, new: &ParsedDocument, revision: usize, append: bool) {
         let tail_only = append && self.full_update_revision <= self.committed_revision;
         self.committed_revision = revision;
+        self.landed_revision = self.landed_revision.max(revision);
         self.rendered_index = Arc::default();
         if self.range_highlights.is_some() || self.pending_reveal.is_some() {
             let remap = LeafRemap::new(&self.parsed_content.document, new, tail_only);
@@ -3124,6 +3141,57 @@ mod tests {
             cx.run_until_parked();
             assert!(code_complete(&document, cx));
             assert!(code_complete(&row, cx), "the row takes the complete block");
+        }
+
+        /// A chat feed often ends a reply in the frame its last chunk arrives,
+        /// before that chunk is parsed: the last chunk, the reply's text
+        /// trimmed, and the end, in one update or in three.
+        #[gpui::test]
+        fn finishing_before_the_last_chunk_is_parsed_keeps_the_chunk(cx: &mut TestAppContext) {
+            let answer = "Here is the plan.\n\n- one\n- two\n\nDone, and the last words.\n";
+            let (head, tail) = answer.split_at(answer.len() - 11);
+            let complete = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
+                state.read_with(cx, |state, _| {
+                    state
+                        .blocks()
+                        .iter()
+                        .map(TextBlock::is_complete)
+                        .collect::<Vec<_>>()
+                })
+            };
+            for in_one_update in [true, false] {
+                let document = document("", cx);
+                for chunk in head.as_bytes().chunks(7) {
+                    let chunk = std::str::from_utf8(chunk).unwrap();
+                    document.update(cx, |document, cx| document.push_str(chunk, cx));
+                    cx.run_until_parked();
+                }
+                let last = cx.new(|cx| TextViewState::block_range(&document, 2..3, cx));
+                assert_eq!(rendered(&last, cx), "Done, and the l\n");
+
+                if in_one_update {
+                    document.update(cx, |document, cx| {
+                        document.push_str(tail, cx);
+                        document.set_text(answer.trim(), cx);
+                        document.finish(cx);
+                    });
+                } else {
+                    document.update(cx, |document, cx| document.push_str(tail, cx));
+                    document.update(cx, |document, cx| document.set_text(answer.trim(), cx));
+                    document.update(cx, |document, cx| document.finish(cx));
+                }
+                assert!(document.read_with(cx, |document, _| document.is_finished()));
+                assert_eq!(
+                    complete(&document, cx),
+                    [true, true, false],
+                    "the last block can still change until the last chunk is parsed"
+                );
+
+                cx.run_until_parked();
+                assert_eq!(rendered(&last, cx), "Done, and the last words.\n");
+                assert_eq!(complete(&document, cx), [true, true, true]);
+                assert_eq!(complete(&last, cx), [true]);
+            }
         }
 
         #[gpui::test]
