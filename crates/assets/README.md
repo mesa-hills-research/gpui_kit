@@ -137,15 +137,15 @@ Theme::update(cx, |theme| {
 | `jetbrains-mono/JetBrainsMono-Variable.ttf` | JetBrains Mono 2.304 release, `fonts/variable/JetBrainsMono[wght].ttf` | `662a196d…cac016` |
 | `jetbrains-mono/JetBrainsMono-Italic-Variable.ttf` | JetBrains Mono 2.304 release, `fonts/variable/JetBrainsMono-Italic[wght].ttf` | `f115aaa1…1063f2` |
 
-The files are unmodified; only their names drop the `[wght]` suffix. To update
-one, download the new release from the same source, replace the file, and
-update this table.
+The files are unmodified apart from their names, which drop the `[wght]`
+suffix. To update one, download the new release from the same source, replace
+the file, and update this table.
 
 ## License
 
 Crate code: Apache-2.0. Lucide SVGs: ISC, with the upstream Feather-derived icons
 under MIT; see [LICENSE-LUCIDE](LICENSE-LUCIDE) for complete attribution. Work
-Sans and JetBrains Mono: SIL Open Font License 1.1; see
+Sans and JetBrains Mono: SIL Open Font License 1.1, in
 [fonts/work-sans/OFL.txt](fonts/work-sans/OFL.txt) and
 [fonts/jetbrains-mono/OFL.txt](fonts/jetbrains-mono/OFL.txt). An application
 that ships them keeps these license files with it.

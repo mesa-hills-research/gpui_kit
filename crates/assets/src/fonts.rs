@@ -25,10 +25,10 @@
 //! });
 //! ```
 //!
-//! Both fonts are licensed under the SIL Open Font License 1.1; the license
-//! texts ship beside them in the crate's `fonts` folder. Keep them with an
-//! application that redistributes the fonts. The four files add about
-//! 1.3 MiB to a binary.
+//! Both fonts are licensed under the SIL Open Font License 1.1, and the
+//! license texts ship beside them in the crate's `fonts` folder. Keep them
+//! with an application that redistributes the fonts. The four files add
+//! about 1.3 MiB to a binary.
 
 use std::borrow::Cow;
 
