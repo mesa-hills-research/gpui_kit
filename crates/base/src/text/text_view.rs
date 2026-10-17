@@ -363,7 +363,7 @@ impl TextView {
     /// cap off for a block of only a few more lines than it.
     ///
     /// A selection that reaches past the last line shown copies the whole
-    /// code; one that ends within the shown lines copies to where it ends.
+    /// code, and one that ends within the shown lines copies to where it ends.
     /// Range highlights and reveals in the lines past the cap don't show.
     /// To reveal a find result there, expand the block first: its line in
     /// the block is the number of newlines before it in the block's text.

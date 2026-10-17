@@ -193,8 +193,8 @@ fn runs_from<'a>(
         ),
     >,
 ) -> Vec<TextRun> {
-    // Highlights usually leave a few gaps between them, each one more run;
-    // twice their count was a large overestimate for a long code block,
+    // Highlights usually leave a few gaps between them, each one more run.
+    // Twice their count was a large overestimate for a long code block,
     // whose highlights cover all of it.
     let mut runs = Vec::with_capacity(count + count / 8 + 1);
     let plain = default_style.to_run(0);

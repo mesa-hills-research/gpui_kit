@@ -803,7 +803,7 @@ impl TextViewState {
         self
     }
 
-    /// Set the Markdown extensions; see [`Self::markdown_extensions`]. Does
+    /// Set the Markdown extensions. See [`Self::markdown_extensions`]. Does
     /// nothing to a [`Self::block_range`] view.
     pub fn set_markdown_extensions(
         &mut self,

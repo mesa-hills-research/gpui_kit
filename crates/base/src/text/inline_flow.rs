@@ -897,7 +897,7 @@ fn layout_measured_flow(
     let body_line = shape_line(" ".into(), font_size, &body_runs, window);
     let body_baseline = centered_baseline(&body_line, line_height);
     // Like a plain text line, the body line box is the line height even
-    // when the font's glyphs are taller; runs may overflow it as far as
+    // when the font's glyphs are taller, and runs may overflow it as far as
     // body glyphs do.
     let body_overflow_above = (body_line.ascent - body_baseline).max(Pixels::ZERO);
     let body_overflow_below = (body_line.descent - (line_height - body_baseline)).max(Pixels::ZERO);

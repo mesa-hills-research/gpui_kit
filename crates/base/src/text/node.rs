@@ -1925,7 +1925,7 @@ impl CodeBlockHighlights {
         self
     }
 
-    /// Whether a highlighter is still working on newer highlights; see
+    /// Whether a highlighter is still working on newer highlights. See
     /// [`Self::pending_until`].
     pub fn is_pending(&self) -> bool {
         self.ready.is_some()
@@ -2026,7 +2026,7 @@ impl CodeBlock {
         Self::new(code.into(), lang.map(Into::into), None::<Span>).complete(true)
     }
 
-    /// Sets whether the code is complete; see [`Self::is_complete`].
+    /// Sets whether the code is complete. See [`Self::is_complete`].
     pub(crate) fn complete(mut self, complete: bool) -> Self {
         self.complete = complete;
         self
@@ -2185,7 +2185,7 @@ impl CodeBlock {
         Some((state, end))
     }
 
-    /// The code highlighted for the first lines a view shows; see
+    /// The code highlighted for the first lines a view shows. See
     /// [`CappedCode::highlighted`].
     fn capped_highlighted(&self) -> Option<CodeBlock> {
         let capped = self.capped.lock().ok()?;
