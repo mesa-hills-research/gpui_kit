@@ -1,5 +1,5 @@
 //! Timings of the work the engines do on the UI thread, for performance
-//! changes to quote. They are ignored tests that print their numbers; run
+//! changes to quote. They are ignored tests that print their numbers. Run
 //! them in an optimized build, one at a time:
 //!
 //! ```sh

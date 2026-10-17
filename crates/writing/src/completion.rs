@@ -88,7 +88,7 @@ use typed::TypedText;
 use vocabulary::{Counts, Vocabulary};
 
 /// Current persisted model schema and tokenization version. Version 3 adds
-/// the clause ends; its n-grams are version 2's.
+/// the clause ends to version 2's n-grams.
 const MODEL_VERSION: u32 = 3;
 
 /// The first version whose n-grams this one reads. Earlier files keep only
@@ -795,7 +795,7 @@ const EXCERPT_MAX_AFTER_BYTES: usize = 4 * EXCERPT_AFTER_BYTES;
 /// [`EXCERPT_MAX_BEFORE_BYTES`] before the caret and
 /// [`EXCERPT_MAX_AFTER_BYTES`] after it, so a keystroke never copies it
 /// whole. A suggestion and the sentence to learn read less than that back
-/// from the caret; telling prose from code then reads only the part kept.
+/// from the caret. Telling prose from code then reads only the part kept.
 struct Excerpt {
     text: String,
     /// Where `text` starts in the whole text.

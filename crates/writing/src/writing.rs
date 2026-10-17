@@ -60,7 +60,7 @@ impl Writing {
     /// Starts loading the dictionary and the vocabulary `options` name, and
     /// returns at once. They are read on a background thread. Until they
     /// arrive, the spell checkers find no word misspelled and suggestions
-    /// draw on what the user types and the document's own words; then every
+    /// draw on what the user types and the document's own words. Then every
     /// textarea's spelling is checked again.
     ///
     /// Suggestions start in [`SuggestionMode::Quiet`].
@@ -164,7 +164,7 @@ impl Writing {
     /// [`Self::save_in_background`].
     ///
     /// It waits at most a second for a background save, and half a second
-    /// for another process's save; past either, the learning since the last
+    /// for another process's save. Past either, the learning since the last
     /// save stays unsaved. Saving a vocabulary near the default 16 MiB cap
     /// takes a few hundred milliseconds. Where the application can, it closes
     /// its windows, awaits [`Self::save_in_background`] and then quits.
@@ -174,7 +174,7 @@ impl Writing {
     }
 
     /// Saves as [`Self::save`] does, with the file's work on a background
-    /// thread. The task finishes when the save does; detach it, or keep it.
+    /// thread. The task finishes when the save does. Detach it, or keep it.
     /// Saves asked for while one runs make one more save after it.
     pub fn save_in_background(&self, cx: &App) -> Task<()> {
         let words = self.dictionary.save_added_words_in_background(cx);

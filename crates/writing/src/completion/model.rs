@@ -712,7 +712,7 @@ mod tests {
     }
 
     /// "UI/UX design" was written before. After "UI/UX, " the comma ended
-    /// the clause, so nothing learned after "UI/UX" is offered; after
+    /// the clause, so nothing learned after "UI/UX" is offered. After
     /// "UI/UX " it is.
     #[test]
     fn punctuation_ends_the_words_a_prediction_follows() {

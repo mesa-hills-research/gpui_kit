@@ -153,8 +153,8 @@ mod tests {
     }
 
     /// Typing, a taken suggestion and a chosen correction are the user's
-    /// writing; a one-word paste over a selection is not, though it looks
-    /// like a correction.
+    /// writing. A one-word paste over a selection looks like a correction
+    /// but isn't.
     #[test]
     fn what_the_user_wrote_counts_as_typed() {
         let none = Vec::<(usize, usize)>::new();

@@ -41,7 +41,7 @@ impl LearnedSentences {
 
     /// Whether `sentence`, which ends at byte `end` of the text, counts as
     /// learned already. `copies` counts its finished, typed copies in the
-    /// text, up to a limit, as [`typed_copies`] does; it is called only when
+    /// text, up to a limit, as [`typed_copies`] does. It is called only when
     /// the sentence was learned before but last seen elsewhere.
     pub fn is_learned(
         &mut self,

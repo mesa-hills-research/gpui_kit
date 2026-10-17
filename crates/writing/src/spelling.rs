@@ -106,7 +106,8 @@ const CASE_ONLY_COST: f32 = 0.3;
 /// Documents larger than this are not spell checked.
 const MAX_SPELL_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
 
-/// Shortest token worth checking; also silences two-letter jargon (cx, px).
+/// Shortest token worth checking, which also leaves two-letter jargon such
+/// as cx and px alone.
 const MIN_CHECK_TOKEN_CHARS: usize = 3;
 
 /// Longest token worth checking.
@@ -362,7 +363,7 @@ impl Dictionary {
     /// Checks whether a word is spelled correctly.
     ///
     /// Returns `true` when no dictionary is loaded so callers degrade
-    /// gracefully. Curly apostrophes are normalized; if the wordlist has no
+    /// gracefully. Curly apostrophes are normalized. If the word list has no
     /// apostrophe entries at all, contractions are treated as unknowable and
     /// pass. Hyphenated compounds are validated part by part.
     pub fn is_correct(&self, word: &str) -> bool {

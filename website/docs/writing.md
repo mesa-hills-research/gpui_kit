@@ -8,8 +8,8 @@ order: -9.04
 
 A [Textarea](../component/textarea) underlines misspellings it gets from a
 `SpellChecker` and shows the completions a `SuggestionProvider` offers. The
-textarea owns when to ask, the underlines, the fixes and the ghost text; the
-application owns the dictionary and what to suggest. `gpui-kit-writing`
+textarea owns when to ask, the underlines, the fixes and the ghost text, and
+the application owns the dictionary and what to suggest. `gpui-kit-writing`
 supplies both, so a writing surface such as a chat composer or a notes editor
 gets them without writing its own:
 
@@ -24,9 +24,9 @@ gets them without writing its own:
   corrections chosen from the menu. Pasted text, undo and redo and text the
   program inserts teach nothing, however short. A suggestion shows only when
   it is more likely right than wrong, and words the user keeps typing past
-  are offered less. Punctuation
-  between words, such as a comma, a colon or a slash, ends what a prediction
-  follows: after "UI/UX, " nothing learned after "UI/UX" is offered.
+  are offered less. Punctuation between words, such as a comma, a colon or a
+  slash, ends what a prediction follows: after "UI/UX, " nothing learned
+  after "UI/UX" is offered.
 
 Enable the `writing` feature of `gpui-kit`:
 
@@ -66,12 +66,12 @@ let pacing = suggestions.follow(&document, cx);
 `Writing::load` returns at once and reads the word lists and the vocabulary
 on a background thread. Until they arrive, which takes a fraction of a second
 (longer for a large vocabulary), nothing is underlined and suggestions know
-only what the user types; then every textarea's spelling is checked again.
+only what the user types. Then every textarea's spelling is checked again.
 `is_loaded` says whether they have arrived. `Writing::load_blocking` reads
 them on the calling thread, for tests and tools.
 
 Tab takes a whole suggestion. `accept_word_bindings` binds Ctrl+Right, or
-Cmd+Right on macOS, to take its next word; with nothing offered the key moves
+Cmd+Right on macOS, to take its next word. With nothing offered the key moves
 the caret as usual.
 
 A textarea opened with text the user didn't type, such as a document read
@@ -146,7 +146,7 @@ A save that would take the file past its cap drops the rarest entries, those
 seen once first, until it takes seven eighths of the cap. The vocabulary in
 memory takes about six and a half times its file: about 100 MB at the default
 16 MiB. A background save briefly needs about that much again, to read what
-other processes added to the file; `save` skips the reading when the file is
+other processes added to the file. `save` skips the reading when the file is
 as this process last left it. A smaller cap keeps memory down and remembers
 less of what the user wrote.
 
