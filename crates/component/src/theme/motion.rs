@@ -56,9 +56,11 @@ mod tests {
     use super::*;
 
     mod loading_frame_rate {
+        use std::{cell::Cell, rc::Rc, time::Duration};
+
         use gpui::{
-            AnyElement, Context, IntoElement as _, ParentElement as _, Render, Styled as _,
-            TestAppContext, Window, div, px, size,
+            AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
+            Render, Styled as _, TestAppContext, Window, div, px, size,
         };
 
         use crate::{
@@ -107,6 +109,58 @@ mod tests {
                     .unwrap();
                 assert_eq!(per_frame, 0, "{name} redraws on every display frame");
             }
+        }
+
+        /// Spinners shown one after another, as parallel requests start.
+        struct Spinners {
+            shown: usize,
+            renders: Rc<Cell<usize>>,
+        }
+
+        impl Render for Spinners {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
+                self.renders.set(self.renders.get() + 1);
+                div()
+                    .size_full()
+                    .children((0..self.shown).map(|ix| div().id(ix).child(Spinner::new())))
+            }
+        }
+
+        /// How often a window showing `spinners` spinners, each started
+        /// `apart` after the one before, draws in a second.
+        fn renders_in_a_second(spinners: usize, apart: Duration, cx: &mut TestAppContext) -> usize {
+            cx.update(crate::init);
+            let renders = Rc::new(Cell::new(0));
+            let window = cx.open_window(size(px(200.), px(200.)), {
+                let renders = renders.clone();
+                move |_, _| Spinners { shown: 1, renders }
+            });
+            cx.run_until_parked();
+            for _ in 1..spinners {
+                cx.executor().advance_clock(apart);
+                cx.run_until_parked();
+                window
+                    .update(cx, |spinners, _, cx| {
+                        spinners.shown += 1;
+                        cx.notify();
+                    })
+                    .unwrap();
+                cx.run_until_parked();
+            }
+            renders.set(0);
+            for _ in 0..1000 {
+                cx.executor().advance_clock(Duration::from_millis(1));
+                cx.run_until_parked();
+            }
+            renders.get()
+        }
+
+        /// The cap must not stop an indicator: it draws about 30 times a
+        /// second.
+        #[gpui::test]
+        fn a_loading_indicator_draws_about_thirty_times_a_second(cx: &mut TestAppContext) {
+            let renders = renders_in_a_second(1, Duration::ZERO, cx);
+            assert!((29..=31).contains(&renders), "{renders} frames in a second");
         }
     }
 
