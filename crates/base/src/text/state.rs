@@ -697,11 +697,12 @@ impl TextViewState {
     /// With a streamed fade-in enabled, extended text fades in; a replacement
     /// shows at once.
     ///
-    /// Text that differs from the current text only in whitespace before its
-    /// first line or after its last, such as the current text trimmed, shows
-    /// the same and leaves the view as it is: the blocks keep their
-    /// [`TextBlockId`]s, views of them aren't touched, and the selection
-    /// stays. The view keeps the current text.
+    /// Text that differs from the current text only in the spaces, tabs and
+    /// line breaks before its first line or after its last, such as the
+    /// current text trimmed, shows the same and leaves the view as it is: the
+    /// blocks keep their [`TextBlockId`]s, views of them aren't touched, and
+    /// the selection stays. The view keeps the current text, so a code block
+    /// left open at its end keeps the blank lines it ends with.
     ///
     /// A [`Self::block_range`] view stops following its document and shows
     /// the text from then on.
@@ -1756,13 +1757,18 @@ enum ParseMode {
 /// Whether `new` is `old` with other whitespace before its first line or
 /// after its last, which shows the same. The first line's indentation counts:
 /// four spaces make it code.
+///
+/// Only spaces, tabs and line endings count, as in a Markdown blank line.
+/// Another space, such as an ideographic or a no-break space, makes a line
+/// of a paragraph.
 fn differs_only_around(old: &str, new: &str) -> bool {
-    let content = old.trim();
-    if content.is_empty() || content != new.trim() {
+    const BLANK: [char; 4] = [' ', '\t', '\r', '\n'];
+    let content = old.trim_matches(BLANK);
+    if content.is_empty() || content != new.trim_matches(BLANK) {
         return false;
     }
     fn indentation(text: &str) -> &str {
-        let leading = &text[..text.len() - text.trim_start().len()];
+        let leading = &text[..text.len() - text.trim_start_matches(BLANK).len()];
         leading.rsplit(['\n', '\r']).next().unwrap_or(leading)
     }
     indentation(old) == indentation(new)
@@ -3014,6 +3020,25 @@ mod tests {
             let block = document.read_with(cx, |document, _| document.blocks()[0].clone());
             assert_ne!(block.id(), id);
             assert_eq!(block.content(), &TextBlockContent::Paragraph);
+        }
+
+        /// Only spaces, tabs and line breaks are blank in Markdown. A line of
+        /// an ideographic or a no-break space belongs to the paragraph.
+        #[gpui::test]
+        fn text_set_with_other_spaces_around_it_replaces_the_text(cx: &mut TestAppContext) {
+            for (old, new) in [("text", "\u{3000}\ntext"), ("text", "text\n\u{a0}")] {
+                let state = document(old, cx);
+                state.update(cx, |state, cx| state.set_text(new, cx));
+                cx.run_until_parked();
+                let fresh = document(new, cx);
+                assert_eq!(rendered(&state, cx), rendered(&fresh, cx), "{new:?}");
+            }
+
+            let state = document("text\t\r\n", cx);
+            let id = state.read_with(cx, |state, _| state.blocks()[0].id());
+            state.update(cx, |state, cx| state.set_text("text", cx));
+            cx.run_until_parked();
+            assert_eq!(state.read_with(cx, |state, _| state.blocks()[0].id()), id);
         }
 
         /// `$SYMBOL` paragraphs parse as a `ticker` block and render as a
