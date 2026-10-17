@@ -2780,11 +2780,6 @@ impl<M: InputModeKind> InputBaseState<M> {
         }
     }
 
-    /// Inserts the clipboard text the way `Paste` does: one atomic edit,
-    /// newlines dropped on a single-line input, one line per selection when
-    /// the counts match on a multi-line one. A clipboard without text (an
-    /// image, say) is left alone rather than replacing the selection with
-    /// nothing.
     /// Runs `f`, whose edits come from `origin`. See
     /// [`crate::input::TextEdit::origin`].
     pub(crate) fn with_edit_origin<R>(
@@ -2798,6 +2793,10 @@ impl<M: InputModeKind> InputBaseState<M> {
         result
     }
 
+    /// Inserts the clipboard text the way `Paste` does, as a paste: one
+    /// atomic edit, newlines dropped on a single-line input, one line per
+    /// selection when the counts match on a multi-line one. A clipboard
+    /// without text, such as an image, leaves the selection as it is.
     fn insert_clipboard(
         &mut self,
         clipboard: ClipboardItem,
@@ -4020,6 +4019,14 @@ impl<M: InputModeKind> InputBaseState<M> {
 impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
     fn accepts_text_input(&self, _: &mut Window, _: &mut Context<Self>) -> bool {
         self.extras.accepts_text_input()
+    }
+
+    /// A paste the platform delivers, such as a browser's paste event, goes
+    /// where the `Paste` action's would.
+    fn paste(&mut self, item: ClipboardItem, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_editable() {
+            self.insert_clipboard(item, window, cx);
+        }
     }
 
     fn text_for_range(

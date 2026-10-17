@@ -5424,6 +5424,31 @@ mod tests {
         (textarea, handler, cx)
     }
 
+    /// A paste the platform delivers, as a browser's paste event does, is a
+    /// paste, like the `Paste` action's.
+    #[gpui::test]
+    fn a_platform_paste_is_a_paste(cx: &mut TestAppContext) {
+        use gpui::InputHandler as _;
+        let heard = Rc::new(HeardEdits::default());
+        let (textarea, mut handler, mut cx) = heard_textarea(cx, heard.clone());
+        cx.update(|window, cx| {
+            handler.paste(
+                gpui::ClipboardItem::new_string("one\ntwo".into()),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            textarea.read_with(&cx, |state, _| state.value()),
+            "one\ntwo"
+        );
+        assert_eq!(
+            heard.0.take(),
+            [("one\ntwo".to_string(), EditOrigin::Pasted)]
+        );
+    }
+
     /// What an input method composes and commits is typed, and the origin
     /// goes back to the program's once it is done.
     #[gpui::test]
