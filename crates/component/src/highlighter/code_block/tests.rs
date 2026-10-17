@@ -680,6 +680,141 @@ fn an_append_under_an_error_root_keeps_the_complete_items_before_it() {
     );
 }
 
+/// The unfinished JSON array of a stream parses to a document holding the
+/// array, or to an ERROR holding its items, from one chunk to the next. The
+/// array is entered to compare its items, so the items before the append
+/// aren't highlighted again.
+#[test]
+fn an_append_that_turns_a_json_root_into_an_error_keeps_the_items_before_it() {
+    use gpui_base::input::RopeExt as _;
+    use tree_sitter::{InputEdit, Parser, Tree};
+
+    use super::ts_point;
+
+    let items = (0..300)
+        .map(|ix| format!("  {{\"id\": {ix}, \"name\": \"item {ix}\"}},\n"))
+        .collect::<String>();
+    let code = format!("[\n{items}");
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_json::LANGUAGE.into())
+        .unwrap();
+    let shape = |tree: &Tree| {
+        let root = tree.root_node();
+        (root.kind(), root.child(0).map(|child| child.kind()))
+    };
+    let mut flips = 0;
+    for old_len in (code.len() / 2..code.len() - 8).step_by(3) {
+        let new_len = old_len + 8;
+        let mut old = parser.parse(&code[..old_len], None).unwrap();
+        let rope = Rope::from_str(&code[..new_len]);
+        let start_position = ts_point(rope.offset_to_point(old_len));
+        old.edit(&InputEdit {
+            start_byte: old_len,
+            old_end_byte: old_len,
+            new_end_byte: new_len,
+            start_position,
+            old_end_position: start_position,
+            new_end_position: ts_point(rope.offset_to_point(new_len)),
+        });
+        let new = parser.parse(&code[..new_len], Some(&old)).unwrap();
+        if shape(&old) == shape(&new) {
+            continue;
+        }
+        flips += 1;
+        let start = super::first_change(&old, &new, old_len, |_| false);
+        assert!(
+            start + super::LEVEL_MARGIN >= old_len,
+            "highlighting starts again at {start} of {old_len}: {:?} then {:?}",
+            shape(&old),
+            shape(&new)
+        );
+    }
+    assert!(flips > 0, "an append that turns the root into an ERROR");
+}
+
+/// The highlighting of blocks in the background stays within its budget
+/// of blocks and of memory, dropping the least recently used first.
+#[test]
+fn background_blocks_stay_within_their_budget() {
+    use std::sync::{Arc, Mutex};
+
+    let language = compiled_language("json").unwrap();
+    let job = |code: &str, memory: usize| {
+        Arc::new(Mutex::new(super::BlockJob {
+            domain: 0,
+            language: language.clone(),
+            wanted: SharedString::from(code.to_string()),
+            theme: HighlightTheme::default_dark(),
+            complete: true,
+            highlighter: None,
+            running: false,
+            done: None,
+            waiting: Vec::new(),
+            memory,
+        }))
+    };
+    let wanted = |blocks: &super::BackgroundBlocks| {
+        blocks
+            .blocks
+            .iter()
+            .map(|block| block.lock().unwrap().wanted.to_string())
+            .collect::<Vec<_>>()
+    };
+    let mut blocks = super::BackgroundBlocks {
+        max_blocks: 4,
+        max_memory: 1000,
+        ..Default::default()
+    };
+    for ix in 0..6 {
+        blocks.put(job(&format!("[{ix}]"), 100));
+    }
+    assert_eq!(wanted(&blocks), ["[2]", "[3]", "[4]", "[5]"]);
+
+    let evicted = blocks.put(job("[6]", 800));
+    assert_eq!(evicted.len(), 2, "over the memory budget");
+    assert_eq!(wanted(&blocks), ["[4]", "[5]", "[6]"]);
+
+    // A block over the budget on its own is kept while it is in use.
+    blocks.put(job("[7]", 5000));
+    assert_eq!(wanted(&blocks), ["[7]"]);
+}
+
+/// Markdown's inline text is parsed in groups in the background, and an
+/// append parses again only the groups it changes.
+#[cfg(feature = "tree-sitter-languages")]
+#[gpui::test]
+fn an_append_keeps_the_inline_groups_before_it(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::{Waiter, layer_query};
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let language = compiled_language("markdown").unwrap();
+    layer_query("markdown_inline").unwrap();
+    let section = |ix: usize| {
+        format!("## Section {ix}\n\nSome *text* with `code {ix}` and a [link](http://x/{ix}).\n\n")
+    };
+    let mut code = (0..200).map(section).collect::<String>();
+    let mut highlighter =
+        CodeBlockHighlighter::new(language, &code.clone().into(), Some(&waiter)).unwrap();
+    let inline_layers = |highlighter: &CodeBlockHighlighter| {
+        highlighter
+            .layers
+            .iter()
+            .filter(|layer| layer.language_name.as_ref() == "markdown_inline")
+            .map(|layer| (layer.byte_range.clone(), layer.tree.root_node().id()))
+            .collect::<Vec<_>>()
+    };
+    let before = inline_layers(&highlighter);
+    assert!(before.len() > 2, "{} groups", before.len());
+
+    code.push_str(&section(200));
+    highlighter.update(&code.into());
+    let after = inline_layers(&highlighter);
+    for layer in &before[..before.len() - 1] {
+        assert!(after.contains(layer), "the group at {:?} is kept", layer.0);
+    }
+}
+
 /// Registers JSON under a name no other test uses, so it starts out not
 /// compiled.
 fn register_fresh_json(test: &str) -> SharedString {
