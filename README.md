@@ -120,6 +120,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   tests). `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes once, and every
   theme applied after keeps them, in one update. See
   [Theme: font overrides](website/component/theme.md#font-overrides).
+- **Code with or without ligatures** (`gpui-base`, `gpui-component`).
+  `FontOverrides::with_mono_font_features` sets the monospace font's OpenType features, such as
+  `calt` and `liga` turned off, and every theme applied after keeps them. Code blocks and inline
+  code in text views, the diff view, the code editor and key caps use them, and text in the UI
+  font keeps its own. See
+  [Theme: code font features](website/component/theme.md#code-font-features).
 - **Sidebars and sheets that can snap** (`gpui-component`). `Sidebar::transition_duration` and
   `Sheet::transition_duration` set how long collapsing or sliding in takes, `Duration::ZERO`
   snaps, and both default to the theme's normal motion duration instead of fixed 200 ms and

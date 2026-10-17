@@ -127,6 +127,26 @@ Theme::update(cx, |theme| {
 
 未设置的字段跟随主题。`font_size` 同时也是应用的缩放比例，因为 `Root` 会用它设置窗口的 rem 大小。切换主题、切换浅色或深色模式、重新加载主题文件夹，都会保留这些覆盖设置，并且主题的观察者每次切换只会收到一次通知。如果在 `Theme` 的观察者中重新设置字体，每次切换都会再更新一次主题。
 
+### 代码字体特性
+
+`with_mono_font_features` 用来设置等宽字体的 OpenType 特性。如果应用提供了代码连字的设置，可以这样关闭连字：
+
+```rs
+use std::sync::Arc;
+use gpui_kit::FontFeatures;
+
+let no_ligatures = FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]));
+Theme::update(cx, |theme| {
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_mono_font_family("JetBrains Mono")
+            .with_mono_font_features(no_ligatures),
+    )
+});
+```
+
+JetBrains Mono 通过 `calt` 绘制连字，另一些字体则通过 `liga`，所以示例把两者都关闭了。组件中所有使用等宽字体的文本都会应用这些特性：`TextView` 里的代码块和行内代码、`DiffView`、代码 `Editor` 以及按键提示（`Kbd`）。它们周围使用界面字体的文本保留自己的特性。字体特性由应用决定，主题不会设置，所以没有这项覆盖时，字体使用自身的默认特性。应用自己用等宽字体绘制的元素，可以在 `.font_family(cx.theme().mono_font_family.clone())` 旁边加上 `.font_features(cx.theme().mono_font_features.clone())`，以跟随这项设置。
+
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

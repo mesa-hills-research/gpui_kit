@@ -129,6 +129,26 @@ Theme::update(cx, |theme| {
 
 Each field left unset follows the theme. `font_size` is also the application's zoom, since `Root` sets the window's rem size from it. A theme switch, a light or dark change and a reload of the themes folder all keep the overrides, and observers of the theme hear about each switch once. Re-applying fonts from an observer of `Theme` would update the theme a second time on every switch.
 
+### Code font features
+
+`with_mono_font_features` sets the OpenType features of the monospace font. An application with a setting for code ligatures turns them off like this:
+
+```rs
+use std::sync::Arc;
+use gpui_kit::FontFeatures;
+
+let no_ligatures = FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]));
+Theme::update(cx, |theme| {
+    theme.set_font_overrides(
+        FontOverrides::new()
+            .with_mono_font_family("JetBrains Mono")
+            .with_mono_font_features(no_ligatures),
+    )
+});
+```
+
+JetBrains Mono draws its ligatures through `calt` and some other fonts through `liga`, so the example turns off both. The features apply wherever the components set text in the monospace font: code blocks and inline code in a `TextView`, the `DiffView`, the code `Editor` and key caps (`Kbd`). Text in the UI font around them keeps its own features. Themes leave font features to the application, so without the override the font uses its own defaults. An element of the application's own that uses the monospace font can follow the setting with `.font_features(cx.theme().mono_font_features.clone())` beside its `.font_family(cx.theme().mono_font_family.clone())`.
+
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

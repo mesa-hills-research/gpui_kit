@@ -5,11 +5,11 @@ use std::{
 };
 
 use gpui::{
-    AnyElement, App, Axis, DefiniteLength, Div, ElementId, FontStyle, FontWeight, HighlightStyle,
-    Hsla, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement, IsZero as _,
-    Length, ObjectFit, Overflow, ParentElement, Pixels, Rems, ScrollHandle, SharedString,
-    SharedUri, StatefulInteractiveElement, StyleRefinement, Styled, StyledImage as _, WhiteSpace,
-    Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
+    AnyElement, App, Axis, DefiniteLength, Div, ElementId, FontFeatures, FontStyle, FontWeight,
+    HighlightStyle, Hsla, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement,
+    IsZero as _, Length, ObjectFit, Overflow, ParentElement, Pixels, Rems, ScrollHandle,
+    SharedString, SharedUri, StatefulInteractiveElement, StyleRefinement, Styled, StyledImage as _,
+    WhiteSpace, Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
 };
 use markdown::mdast;
 
@@ -1164,6 +1164,7 @@ impl std::fmt::Debug for ParagraphRenderCache {
 struct ParagraphRender {
     style: Arc<TextViewStyle>,
     mono_font: SharedString,
+    mono_features: FontFeatures,
     text: SharedString,
     highlights: Vec<(Range<usize>, InlineHighlight)>,
     /// Links as written, before reference resolution.
@@ -1200,11 +1201,14 @@ impl Paragraph {
         Vec<(Range<usize>, InlineHighlight)>,
         Vec<(Range<usize>, LinkMark)>,
     ) {
-        let mono_font = cx.theme().tokens.typography.mono.clone();
+        let typography = &cx.theme().tokens.typography;
+        let mono_font = typography.mono.clone();
+        let mono_features = typography.mono_features.clone();
         if let Ok(cache) = self.render_cache.0.lock()
             && let Some(cached) = cache.as_ref()
             && (Arc::ptr_eq(&cached.style, &node_cx.style) || *cached.style == *node_cx.style)
             && cached.mono_font == mono_font
+            && cached.mono_features == mono_features
         {
             return (
                 cached.text.clone(),
@@ -1242,6 +1246,7 @@ impl Paragraph {
             *cache = Some(Arc::new(ParagraphRender {
                 style: node_cx.style.clone(),
                 mono_font,
+                mono_features,
                 text: text.clone(),
                 highlights: highlights.clone(),
                 links: links.clone(),
@@ -1590,6 +1595,7 @@ struct TableColumnWidths {
     text_style: gpui::TextStyle,
     rem_size: Pixels,
     mono_family: SharedString,
+    mono_features: FontFeatures,
     inline_code: HighlightStyle,
     /// Maxima from ordinary text only. Custom cells may shrink after an update.
     widths: Vec<f32>,
@@ -2348,6 +2354,7 @@ impl CodeBlock {
             .p_3()
             .bg(style.code_background())
             .font_family(cx.theme().tokens.typography.mono.clone())
+            .font_features(cx.theme().tokens.typography.mono_features.clone())
             .text_size(cx.theme().tokens.typography.mono_md.size)
             .relative()
             .refine_style(&style.code_block())
@@ -2537,9 +2544,12 @@ fn mark_highlight(mark: &TextMark, node_cx: &NodeContext, cx: &App) -> InlineHig
         });
     }
     let mut font_family = None;
+    let mut font_features = None;
     if mark.code {
+        let typography = &cx.theme().tokens.typography;
         highlight = highlight.highlight(node_cx.style.inline_code_highlight());
-        font_family = Some(cx.theme().tokens.typography.mono.clone());
+        font_family = Some(typography.mono.clone());
+        font_features = Some(typography.mono_features.clone());
     }
     if let Some(color) = mark.highlight {
         highlight.background_color = Some(color);
@@ -2547,6 +2557,7 @@ fn mark_highlight(mark: &TextMark, node_cx: &NodeContext, cx: &App) -> InlineHig
     InlineHighlight {
         style: highlight,
         font_family,
+        font_features,
         font_size_scale: mark.code.then_some(0.875),
     }
 }
@@ -3020,6 +3031,7 @@ fn measure_table_columns(
     let text_style = window.text_style();
     let rem_size = window.rem_size();
     let mono_family = cx.theme().tokens.typography.mono.clone();
+    let mono_features = cx.theme().tokens.typography.mono_features.clone();
     let inline_code = node_cx.style.inline_code_highlight();
     let cached = table.column_widths_cache.0.lock().ok().and_then(|cache| {
         cache
@@ -3029,6 +3041,7 @@ fn measure_table_columns(
                     && cached.text_style == text_style
                     && cached.rem_size == rem_size
                     && cached.mono_family == mono_family
+                    && cached.mono_features == mono_features
                     && cached.inline_code == inline_code
                     && cached
                         .text_system
@@ -3045,6 +3058,7 @@ fn measure_table_columns(
             text_style,
             rem_size,
             mono_family,
+            mono_features,
             inline_code,
             widths,
             custom_cells,

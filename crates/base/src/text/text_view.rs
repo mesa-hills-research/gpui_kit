@@ -2643,6 +2643,59 @@ mod tests {
         }
     }
 
+    /// Inline code and code blocks are shaped in the theme's code font with
+    /// its OpenType features, and the prose around them keeps its own.
+    #[test]
+    fn code_is_shaped_with_the_code_font_features() {
+        use crate::text::inline::test_fonts::{MONO, WideMonoTextSystem, record_fonts};
+        use gpui::{FontFeatures, TestApp};
+
+        struct CodeRoot {
+            text_view: Entity<TextViewState>,
+        }
+
+        impl Render for CodeRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(600.)).child(TextView::new(&self.text_view))
+            }
+        }
+
+        let no_ligatures = FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]));
+        for (case, markdown) in [
+            ("inline code", "Prose with `a != b` in it."),
+            ("code block", "Prose.\n\n```\nfn f() -> bool {}\n```\n"),
+        ] {
+            // A new app for each case, since GPUI looks each font up once.
+            let mut app = TestApp::with_text_system(Arc::new(WideMonoTextSystem));
+            app.update(|cx| {
+                crate::init(cx);
+                let typography = &mut crate::Theme::global_mut(cx).tokens.typography;
+                typography.mono = MONO.into();
+                typography.mono_features = no_ligatures.clone();
+            });
+            let ((), fonts) = record_fonts(|| {
+                let mut window = app.open_window(|_, cx| CodeRoot {
+                    text_view: cx.new(|cx| TextViewState::markdown(markdown, cx)),
+                });
+                window.draw();
+                app.run_until_parked();
+                window.draw();
+            });
+            let (code, prose): (Vec<_>, Vec<_>) =
+                fonts.iter().partition(|font| font.family.as_ref() == MONO);
+            assert!(!code.is_empty(), "{case}: shaped in the code font");
+            assert!(!prose.is_empty(), "{case}: prose shaped");
+            assert!(
+                code.iter().all(|font| font.features == no_ligatures),
+                "{case}: {code:?}"
+            );
+            assert!(
+                prose.iter().all(|font| font.features != no_ligatures),
+                "{case}: {prose:?}"
+            );
+        }
+    }
+
     /// The code-bearing list item takes `InlineFlow`; the plain item takes the
     /// ordinary text path. Their first body glyphs must begin at the same row
     /// position relative to their own TextView origins.

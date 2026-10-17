@@ -1951,6 +1951,7 @@ mod tests {
         let code_highlight = InlineHighlight {
             style: HighlightStyle::default(),
             font_family: Some(SharedString::from(MONO)),
+            font_features: None,
             font_size_scale: None,
         };
         let items = vec![

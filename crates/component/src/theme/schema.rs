@@ -1196,10 +1196,14 @@ impl Theme {
         let mono_font_size = overrides
             .mono_font_size()
             .unwrap_or_else(|| config.mono_font_size.map_or(DEFAULT_MONO_FONT_SIZE, px));
+        // Theme files name no font features, so without an override the font
+        // keeps its own.
+        let mono_font_features = overrides.mono_font_features().cloned().unwrap_or_default();
         self.font_size = font_size;
         self.font_family = font_family;
         self.mono_font_family = mono_font_family;
         self.mono_font_size = mono_font_size;
+        self.mono_font_features = mono_font_features;
     }
 }
 

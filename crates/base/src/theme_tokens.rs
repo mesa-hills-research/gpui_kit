@@ -3,7 +3,7 @@
 //! These tokens describe visual roles and scales. They intentionally do not
 //! contain component names such as `button`, `table`, or `sidebar`.
 
-use gpui::{BoxShadow, FontWeight, Hsla, Pixels, SharedString, hsla, point, px, rgb};
+use gpui::{BoxShadow, FontFeatures, FontWeight, Hsla, Pixels, SharedString, hsla, point, px, rgb};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -170,6 +170,11 @@ pub struct TypographyTokens {
     pub lg: TextStyleToken,
     pub xl: TextStyleToken,
     pub mono_md: TextStyleToken,
+    /// The OpenType features code is set with in `mono`, e.g. `calt` and
+    /// `liga` turned off for a code font without ligatures. Empty keeps the
+    /// font's own defaults.
+    #[serde(default)]
+    pub mono_features: FontFeatures,
 }
 
 impl Default for TypographyTokens {
@@ -183,6 +188,7 @@ impl Default for TypographyTokens {
             lg: text_style(18., 28.),
             xl: text_style(20., 28.),
             mono_md: text_style(13., 20.),
+            mono_features: FontFeatures::default(),
         }
     }
 }

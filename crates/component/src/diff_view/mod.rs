@@ -8,11 +8,11 @@ pub use diff::{Diff, DiffFile, DiffLine, LineChange, LineEnding};
 use std::{collections::HashSet, ops::Range, sync::Arc};
 
 use gpui::{
-    App, Context, Entity, FocusHandle, Focusable, HighlightStyle, InteractiveElement as _,
-    IntoElement, KeyBinding, ListHorizontalSizingBehavior, ParentElement as _, Pixels, Render,
-    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    StyledText, Task, UniformListScrollHandle, Window, div, point, prelude::FluentBuilder as _, px,
-    uniform_list,
+    App, Context, Entity, FocusHandle, Focusable, Font, FontFeatures, HighlightStyle,
+    InteractiveElement as _, IntoElement, KeyBinding, ListHorizontalSizingBehavior,
+    ParentElement as _, Pixels, Render, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, StyledText, Task,
+    UniformListScrollHandle, Window, div, point, prelude::FluentBuilder as _, px, uniform_list,
 };
 use gpui_base::{TestSupportExt as _, input::HighlightStyleResolver as _};
 use rust_i18n::t;
@@ -466,6 +466,9 @@ impl Styled for DiffView {
 #[derive(Clone)]
 struct Paint {
     font_family: SharedString,
+    /// The code font's features, for the rows of code. The file rows are set
+    /// in the interface font and keep its own.
+    font_features: FontFeatures,
     font_size: Pixels,
     row_height: Pixels,
     gutter_width: Pixels,
@@ -477,9 +480,10 @@ impl RenderOnce for DiffView {
         let theme = cx.theme();
         let font_size = theme.mono_font_size;
         let digits = (state.max_line.max(1).ilog10() + 1).max(2) as f32;
-        let font_id = window
-            .text_system()
-            .resolve_font(&gpui::font(theme.mono_font_family.clone()));
+        let font_id = window.text_system().resolve_font(&Font {
+            features: theme.mono_font_features.clone(),
+            ..gpui::font(theme.mono_font_family.clone())
+        });
         let char_width = window
             .text_system()
             .em_advance(font_id, font_size)
@@ -487,6 +491,7 @@ impl RenderOnce for DiffView {
         let row_height = Self::row_height(cx);
         let paint = Paint {
             font_family: theme.mono_font_family.clone(),
+            font_features: theme.mono_font_features.clone(),
             font_size,
             row_height,
             // Digits plus `px_2` either side.
@@ -685,6 +690,7 @@ fn render_row(
                 .px_3()
                 .bg(theme.muted.opacity(0.5))
                 .text_color(theme.muted_foreground)
+                .font_features(paint.font_features.clone())
                 .when(*hidden > 0, |this| {
                     this.child(unfold_button(entity, file, gap, *hidden))
                 })
@@ -730,6 +736,7 @@ fn render_row(
                     .when_some(number, |this, number| this.child(number.to_string()))
             };
             row.when_some(background, |this, background| this.bg(background))
+                .font_features(paint.font_features.clone())
                 .child(number(diff_line.old_line()))
                 .child(number(diff_line.new_line()))
                 .child(

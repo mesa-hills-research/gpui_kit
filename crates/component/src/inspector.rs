@@ -438,6 +438,7 @@ impl Render for DivInspector {
                                 .flex_1()
                                 .gap_y_1()
                                 .font_family(cx.theme().mono_font_family.clone())
+                                .font_features(cx.theme().mono_font_features.clone())
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Editor::new(&self.rust_state.state).h(gpui::relative(1.)))
                                 .when_some(self.rust_state.error.clone(), |this, err| {
@@ -466,6 +467,7 @@ impl Render for DivInspector {
                                 .flex_1()
                                 .gap_y_1()
                                 .font_family(cx.theme().mono_font_family.clone())
+                                .font_features(cx.theme().mono_font_features.clone())
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Editor::new(&self.json_state.state).h(gpui::relative(1.)))
                                 .when_some(self.json_state.error.clone(), |this, err| {

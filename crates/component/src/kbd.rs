@@ -301,6 +301,7 @@ impl RenderOnce for Kbd {
             .flex_shrink_0()
             .text_color(theme.muted_foreground)
             .font_family(theme.mono_font_family.clone())
+            .font_features(theme.mono_font_features.clone())
             // A monospace font looks larger than the interface font at the
             // same size, so the cap's text is a step smaller than extra small.
             .text_size(rems(0.6875))

@@ -9,11 +9,11 @@ use std::{
 };
 
 use gpui::{
-    App, BorderStyle, Bounds, ClickEvent, CursorStyle, Edges, Element, ElementId, GlobalElementId,
-    Half, HighlightStyle, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId,
-    MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
-    SharedString, StyledText, TextAlign, TextLayout, TextRun, TextStyle, Window, point, px, quad,
-    size,
+    App, BorderStyle, Bounds, ClickEvent, CursorStyle, Edges, Element, ElementId, FontFeatures,
+    GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
+    IntoElement, LayoutId, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, SharedString, StyledText, TextAlign, TextLayout, TextRun,
+    TextStyle, Window, point, px, quad, size,
 };
 
 use crate::{
@@ -38,6 +38,9 @@ use crate::{
 pub(super) struct InlineHighlight {
     pub(super) style: HighlightStyle,
     pub(super) font_family: Option<SharedString>,
+    /// The OpenType features of `font_family`. `None` keeps the features of
+    /// the enclosing text style.
+    pub(super) font_features: Option<FontFeatures>,
     pub(super) font_size_scale: Option<f32>,
 }
 
@@ -47,6 +50,9 @@ impl InlineHighlight {
         self.style = self.style.highlight(other.style);
         if other.font_family.is_some() {
             self.font_family = other.font_family.clone();
+        }
+        if other.font_features.is_some() {
+            self.font_features = other.font_features.clone();
         }
         if other.font_size_scale.is_some() {
             self.font_size_scale = other.font_size_scale;
@@ -60,6 +66,7 @@ impl From<HighlightStyle> for InlineHighlight {
         Self {
             style,
             font_family: None,
+            font_features: None,
             font_size_scale: None,
         }
     }
@@ -163,7 +170,7 @@ pub(super) fn fade_highlights(
 
 /// Builds the [`TextRun`]s for `text_len` bytes of inline text: each
 /// highlight refines `default_style` over its range, and a highlight that
-/// names a font family shapes its run in that family.
+/// names a font family or features shapes its run with them.
 pub(super) fn text_runs(
     text_len: usize,
     default_style: &TextStyle,
@@ -173,9 +180,14 @@ pub(super) fn text_runs(
         text_len,
         default_style,
         highlights.len(),
-        highlights
-            .iter()
-            .map(|(range, highlight)| (range, &highlight.style, highlight.font_family.as_ref())),
+        highlights.iter().map(|(range, highlight)| {
+            (
+                range,
+                &highlight.style,
+                highlight.font_family.as_ref(),
+                highlight.font_features.as_ref(),
+            )
+        }),
     )
 }
 
@@ -190,6 +202,7 @@ fn runs_from<'a>(
             &'a Range<usize>,
             &'a HighlightStyle,
             Option<&'a SharedString>,
+            Option<&'a FontFeatures>,
         ),
     >,
 ) -> Vec<TextRun> {
@@ -203,13 +216,16 @@ fn runs_from<'a>(
         ..plain.clone()
     };
     let mut ix = 0;
-    for (range, style, font_family) in highlights {
+    for (range, style, font_family, font_features) in highlights {
         if ix < range.start {
             runs.push(plain_run(range.start - ix));
         }
         let mut run = highlighted_run(&plain, style, range.len());
         if let Some(family) = font_family {
             run.font.family = family.clone();
+        }
+        if let Some(features) = font_features {
+            run.font.features = features.clone();
         }
         runs.push(run);
         ix = range.end;
@@ -269,7 +285,9 @@ impl InlineStyles {
                 text_len,
                 default_style,
                 highlights.len(),
-                highlights.iter().map(|(range, style)| (range, style, None)),
+                highlights
+                    .iter()
+                    .map(|(range, style)| (range, style, None, None)),
             ),
         }
     }
@@ -2002,6 +2020,26 @@ pub(super) mod test_fonts {
 
     thread_local! {
         static SHAPED_LINE_RECORDER: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+        static FONT_RECORDER: RefCell<Option<Vec<Font>>> = const { RefCell::new(None) };
+    }
+
+    struct FontRecorderGuard;
+
+    impl Drop for FontRecorderGuard {
+        fn drop(&mut self) {
+            FONT_RECORDER.with(|recorder| recorder.borrow_mut().take());
+        }
+    }
+
+    /// Runs `f` while recording the fonts looked up through
+    /// [`PlatformTextSystem::font_id`]. GPUI remembers each font's id, so only
+    /// fonts the app has not used before are recorded.
+    pub(crate) fn record_fonts<R>(f: impl FnOnce() -> R) -> (R, Vec<Font>) {
+        FONT_RECORDER.with(|recorder| *recorder.borrow_mut() = Some(Vec::new()));
+        let _guard = FontRecorderGuard;
+        let result = f();
+        let fonts = FONT_RECORDER.with(|recorder| recorder.borrow_mut().take().unwrap_or_default());
+        (result, fonts)
     }
 
     struct ShapeRecorderGuard;
@@ -2032,6 +2070,11 @@ pub(super) mod test_fonts {
         }
 
         fn font_id(&self, descriptor: &Font) -> anyhow::Result<FontId> {
+            FONT_RECORDER.with(|recorder| {
+                if let Some(fonts) = recorder.borrow_mut().as_mut() {
+                    fonts.push(descriptor.clone());
+                }
+            });
             Ok(
                 match (
                     descriptor.family.as_ref() == MONO,
@@ -2153,13 +2196,16 @@ mod tests {
         GlyphBox, InlineHighlight, aligned_row_left, append_highlights, combine_highlights,
         point_in_text_selection, range_boxes, text_runs,
     };
-    use gpui::{FontWeight, HighlightStyle, SharedString, TextAlign, TextStyle, point, px};
-    use std::ops::Range;
+    use gpui::{
+        FontFeatures, FontWeight, HighlightStyle, SharedString, TextAlign, TextStyle, point, px,
+    };
+    use std::{ops::Range, sync::Arc};
 
     fn mono(style: HighlightStyle) -> InlineHighlight {
         InlineHighlight {
             style,
             font_family: Some(SharedString::from("Mono")),
+            font_features: None,
             font_size_scale: None,
         }
     }
@@ -2224,6 +2270,44 @@ mod tests {
             .map(|run| (run.len, run.font.family.as_ref()))
             .collect::<Vec<_>>();
         assert_eq!(families, vec![(4, "Body"), (4, "Mono"), (4, "Body")]);
+    }
+
+    #[test]
+    fn text_runs_shape_a_code_highlight_with_its_font_features() {
+        let body_features = FontFeatures(Arc::new(vec![("ss01".into(), 1)]));
+        let code_features = FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]));
+        let style = TextStyle {
+            font_family: SharedString::from("Body"),
+            font_features: body_features.clone(),
+            ..Default::default()
+        };
+        let code = InlineHighlight {
+            font_features: Some(code_features.clone()),
+            ..mono(HighlightStyle::default())
+        };
+        // A bold mark over part of the code span keeps the code's features.
+        let bold = InlineHighlight::from(HighlightStyle {
+            font_weight: Some(FontWeight::BOLD),
+            ..Default::default()
+        });
+        let highlights = combine_highlights(vec![(4..8, code)], vec![(6..10, bold)]);
+
+        let runs = text_runs(12, &style, &highlights);
+
+        let features = runs
+            .iter()
+            .map(|run| (run.len, run.font.features.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            features,
+            vec![
+                (4, body_features.clone()),
+                (2, code_features.clone()),
+                (2, code_features),
+                (2, body_features.clone()),
+                (2, body_features),
+            ]
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@ use crate::{
     scroll::ScrollbarMode, sheet::SheetSettings,
 };
 use gpui::{
-    App, Global, Hsla, IsZero as _, Pixels, SharedString, Window, WindowAppearance,
+    App, FontFeatures, Global, Hsla, IsZero as _, Pixels, SharedString, Window, WindowAppearance,
     prelude::FluentBuilder as _, px,
 };
 pub use gpui_base::{
@@ -183,6 +183,13 @@ pub struct Theme {
     pub mono_font_family: SharedString,
     /// The monospace font size for the application, default is 13px.
     pub mono_font_size: Pixels,
+    /// The OpenType features of the monospace font, e.g. `calt` and `liga`
+    /// turned off to show code without ligatures. Empty, the default, keeps
+    /// the font's own. Set it with
+    /// [`FontOverrides::with_mono_font_features`] to keep it across theme
+    /// changes.
+    #[serde(default)]
+    pub mono_font_features: FontFeatures,
     /// Radius for the general elements.
     pub radius: Pixels,
     /// Radius for the large elements, e.g.: Dialog, Notification border radius.
@@ -644,6 +651,7 @@ impl Theme {
         tokens.mono = self.mono_font_family.clone();
         tokens.md.size = self.font_size;
         tokens.mono_md.size = self.mono_font_size;
+        tokens.mono_features = self.mono_font_features.clone();
         tokens
     }
 
@@ -692,6 +700,7 @@ impl Theme {
         self.mono_font_family = tokens.typography.mono.clone();
         self.font_size = tokens.typography.md.size;
         self.mono_font_size = tokens.typography.mono_md.size;
+        self.mono_font_features = tokens.typography.mono_features.clone();
         self.shadow = !tokens.shadow.sm.is_empty()
             || !tokens.shadow.md.is_empty()
             || !tokens.shadow.lg.is_empty();
@@ -831,6 +840,7 @@ impl From<&ThemeColor> for Theme {
             font_size: DEFAULT_FONT_SIZE,
             mono_font_family: mono_font::default_mono_font_family(),
             mono_font_size: DEFAULT_MONO_FONT_SIZE,
+            mono_font_features: FontFeatures::default(),
             radius: DEFAULT_RADIUS,
             radius_lg: DEFAULT_RADIUS_LG,
             shadow: DEFAULT_SHADOW,
@@ -1169,6 +1179,54 @@ mod update_tests {
             Theme::update(cx, |theme| theme.set_font_overrides(FontOverrides::new()));
             assert_eq!(fonts(cx).2.as_ref(), "Theme Mono");
             assert!(Theme::global(cx).font_overrides.is_empty());
+        });
+    }
+
+    /// The code font's features outlast theme changes the way the families
+    /// do, reach the Base projection that text views read, and go back to
+    /// the font's own once the overrides drop them.
+    #[gpui::test]
+    fn mono_font_features_outlast_theme_changes(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            init(cx);
+            let styled = Rc::new(
+                serde_json::from_value::<ThemeConfig>(serde_json::json!({
+                    "name": "Styled Dark",
+                    "mode": "dark",
+                    "mono_font.family": "Theme Mono"
+                }))
+                .unwrap(),
+            );
+            let no_ligatures = FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]));
+            let features = |cx: &App| {
+                (
+                    Theme::global(cx).mono_font_features.clone(),
+                    gpui_base::Theme::global(cx)
+                        .tokens
+                        .typography
+                        .mono_features
+                        .clone(),
+                )
+            };
+            let chosen = (no_ligatures.clone(), no_ligatures.clone());
+
+            Theme::update(cx, |theme| {
+                theme.set_font_overrides(
+                    FontOverrides::new().with_mono_font_features(no_ligatures.clone()),
+                )
+            });
+            assert_eq!(features(cx), chosen);
+            Theme::update(cx, |theme| theme.apply_config(&styled));
+            assert_eq!(features(cx), chosen);
+            assert_eq!(Theme::global(cx).mono_font_family.as_ref(), "Theme Mono");
+            Theme::change(ThemeMode::Light, None, cx);
+            assert_eq!(features(cx), chosen);
+
+            Theme::update(cx, |theme| theme.set_font_overrides(FontOverrides::new()));
+            assert_eq!(
+                features(cx),
+                (FontFeatures::default(), FontFeatures::default())
+            );
         });
     }
 

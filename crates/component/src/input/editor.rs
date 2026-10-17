@@ -141,6 +141,7 @@ impl RenderOnce for Editor {
             // this editor refines over them: `.text_sm()` and `.font_family()`
             // keep working.
             .font_family(cx.theme().mono_font_family.clone())
+            .font_features(cx.theme().mono_font_features.clone())
             .text_size(cx.theme().mono_font_size)
             .line_height(relative(EDITOR_LINE_HEIGHT))
             .appearance(self.appearance)

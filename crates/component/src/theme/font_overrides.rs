@@ -1,4 +1,4 @@
-use gpui::{Pixels, SharedString};
+use gpui::{FontFeatures, Pixels, SharedString};
 
 /// The application's own font choices, applied over every theme.
 ///
@@ -11,9 +11,10 @@ use gpui::{Pixels, SharedString};
 /// dark change and a reload of the themes folder all keep them, without a
 /// second update from an observer.
 ///
-/// Each field left unset follows the theme. `font_size` is also the
-/// application's zoom: [`Root`](crate::Root) sets the window's rem size from
-/// it.
+/// Each field left unset follows the theme, and unset monospace font
+/// features, which themes leave to the application, keep the font's own.
+/// `font_size` is also the application's zoom: [`Root`](crate::Root) sets
+/// the window's rem size from it.
 ///
 /// ```ignore
 /// Theme::update(cx, |theme| {
@@ -21,7 +22,11 @@ use gpui::{Pixels, SharedString};
 ///         FontOverrides::new()
 ///             .with_font_family("Work Sans")
 ///             .with_font_size(px(16.) * zoom)
-///             .with_mono_font_family("JetBrains Mono"),
+///             .with_mono_font_family("JetBrains Mono")
+///             .with_mono_font_features(FontFeatures(Arc::new(vec![
+///                 ("calt".into(), 0),
+///                 ("liga".into(), 0),
+///             ]))),
 ///     )
 /// });
 /// ```
@@ -31,6 +36,7 @@ pub struct FontOverrides {
     font_size: Option<Pixels>,
     mono_font_family: Option<SharedString>,
     mono_font_size: Option<Pixels>,
+    mono_font_features: Option<FontFeatures>,
 }
 
 impl FontOverrides {
@@ -65,6 +71,15 @@ impl FontOverrides {
         self
     }
 
+    /// The OpenType features of the monospace font, e.g. `calt` and `liga`
+    /// set to 0 to show code without ligatures. They apply wherever the
+    /// components set text in the monospace font: code blocks and inline code
+    /// in text views, diffs, code editors and key caps.
+    pub fn with_mono_font_features(mut self, features: FontFeatures) -> Self {
+        self.mono_font_features = Some(features);
+        self
+    }
+
     /// The UI font family, when overridden.
     pub fn font_family(&self) -> Option<&SharedString> {
         self.font_family.as_ref()
@@ -83,6 +98,11 @@ impl FontOverrides {
     /// The monospace font size, when overridden.
     pub fn mono_font_size(&self) -> Option<Pixels> {
         self.mono_font_size
+    }
+
+    /// The monospace font's OpenType features, when overridden.
+    pub fn mono_font_features(&self) -> Option<&FontFeatures> {
+        self.mono_font_features.as_ref()
     }
 
     /// Whether every font follows the theme.
