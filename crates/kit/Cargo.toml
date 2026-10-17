@@ -98,6 +98,10 @@ serde_json.workspace = true
 # driver, on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "3ee85e86ba0c3cffb4275f459de36a47b0b5a6ea" }
+# The Rust grammar, so the diff view's goldens color their Rust the same way whether the build
+# enables only the kit's default features or every grammar, as a workspace build with the story
+# crate does.
+gpui-component = { workspace = true, features = ["tree-sitter-rust"] }
 
 [[test]]
 name = "window"

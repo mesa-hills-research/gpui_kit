@@ -1192,7 +1192,8 @@ fn diff_view(mode: ThemeMode) -> Screenshot {
 }
 
 /// A computed diff: the file row with its counts, hunk headers, the fold between the hunks,
-/// numbered added and removed lines.
+/// numbered added and removed lines, and Rust's syntax colors. They are found on a background
+/// thread, which the capture waits for, with the Rust grammar this crate's Linux tests enable.
 #[test]
 fn diff_view_light() {
     goldens().assert("diff-view", &diff_view(ThemeMode::Light));
