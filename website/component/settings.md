@@ -295,6 +295,10 @@ SettingItem::new(
 .description("This item uses vertical layout.")
 ```
 
+In the horizontal layout the title keeps at least two fifths of the row. A
+field that doesn't fit beside it moves below the title, and a dropdown label
+wider than the row is truncated.
+
 ### With Markdown Description
 
 ```rust
@@ -482,6 +486,21 @@ SettingItem::new(
                 cx.open_url("https://github.com/example/repo");
             })
     })
+)
+```
+
+The field is as wide as its content. A control that fills its container, such
+as an Input, needs a width of its own. Read `options.layout()` to let it fill
+the row in the vertical layout:
+
+```rust
+SettingItem::new(
+    "Instructions",
+    SettingField::render(move |options, _, _| {
+        Input::new(&instructions)
+            .w_64()
+            .when(options.layout() == Axis::Vertical, |this| this.w_full())
+    }),
 )
 ```
 

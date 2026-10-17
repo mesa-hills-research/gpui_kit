@@ -16,6 +16,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Settings in narrow windows** (`gpui-component`). Below 480 px, `Settings` shows its search
   field and a page picker above the page instead of the sidebar. See
   [Settings](website/component/settings.md#narrow-widths).
+- **Long Settings fields stay in their rows** (`gpui-component`). A field too wide to sit beside
+  its title moves below it, and a dropdown label wider than the row is truncated.
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
   vertical scroll offset before laying out text, so the frame of each keystroke paints the text
   where the next frame does.

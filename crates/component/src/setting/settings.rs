@@ -562,3 +562,7 @@ mod performance_tests;
 #[cfg(test)]
 #[path = "cache_tests.rs"]
 mod cache_tests;
+
+#[cfg(test)]
+#[path = "row_layout_tests.rs"]
+mod row_layout_tests;

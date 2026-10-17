@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, App, Axis, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
-    Stateful, Styled, Window, div, prelude::FluentBuilder as _,
+    Stateful, Styled, Window, div, prelude::FluentBuilder as _, relative,
 };
 use std::{any::TypeId, ops::Deref, rc::Rc};
 
@@ -269,13 +269,24 @@ impl SettingItem {
                     } else {
                         layout
                     };
+                    let selector = |part: &str| {
+                        format!(
+                            "setting-{part}-{}-{}-{}",
+                            options.page_ix(),
+                            options.group_ix(),
+                            options.item_ix()
+                        )
+                    };
 
                     div()
                         .w_full()
                         .when(disabled, |this| this.opacity(0.5))
+                        .when(cfg!(test), |this| this.debug_selector(|| selector("row")))
                         .map(|this| {
                             if layout.is_horizontal() {
-                                this.h_flex().justify_between().items_center()
+                                // A field that doesn't fit beside two fifths of the row
+                                // wraps below the title instead of leaving the row.
+                                this.h_flex().flex_wrap().justify_between().items_center()
                             } else {
                                 this.v_flex()
                             }
@@ -285,11 +296,15 @@ impl SettingItem {
                             v_flex()
                                 .map(|this| {
                                     if layout.is_horizontal() {
-                                        this.flex_1().max_w_3_5()
+                                        this.flex_1()
+                                            .flex_basis(relative(2. / 5.))
+                                            .min_w_0()
+                                            .max_w_3_5()
                                     } else {
                                         this.w_full()
                                     }
                                 })
+                                .when(cfg!(test), |this| this.debug_selector(|| selector("title")))
                                 .child(Label::new(title).text_sm())
                                 .when_some(description, |this, description| {
                                     this.child(
@@ -301,12 +316,19 @@ impl SettingItem {
                                     )
                                 }),
                         )
-                        .child(div().id("field").child(Self::render_field(
-                            field,
-                            options.with_layout(layout).with_disabled(disabled),
-                            window,
-                            cx,
-                        )))
+                        .child(
+                            div()
+                                .id("field")
+                                .flex_none()
+                                .max_w_full()
+                                .when(cfg!(test), |this| this.debug_selector(|| selector("field")))
+                                .child(Self::render_field(
+                                    field,
+                                    options.with_layout(layout).with_disabled(disabled),
+                                    window,
+                                    cx,
+                                )),
+                        )
                         .into_any_element()
                 }
                 SettingItem::Element {

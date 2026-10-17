@@ -278,6 +278,8 @@ SettingItem::new(
 .description("This item uses vertical layout.")
 ```
 
+横向布局中，标题至少保留整行宽度的五分之二。放不下的字段会移到标题下方，下拉框文字超出整行宽度时会被截断。
+
 ### Markdown 描述
 
 ```rust
@@ -453,6 +455,20 @@ SettingItem::new(
                 cx.open_url("https://github.com/example/repo");
             })
     })
+)
+```
+
+字段的宽度取决于其内容，因此 Input 这类会填满容器的控件需要自行指定宽度。
+读取 `options.layout()`，即可在纵向布局中让控件占满整行：
+
+```rust
+SettingItem::new(
+    "Instructions",
+    SettingField::render(move |options, _, _| {
+        Input::new(&instructions)
+            .w_64()
+            .when(options.layout() == Axis::Vertical, |this| this.w_full())
+    }),
 )
 ```
 
