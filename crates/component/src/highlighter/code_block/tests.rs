@@ -1032,6 +1032,35 @@ fn a_block_keeps_its_highlights_while_its_fence_closes(cx: &mut gpui::TestAppCon
     );
 }
 
+/// A block streams in whose code starts with a complete block's code: it
+/// takes up its own highlighting, and leaves the complete block's alone.
+#[gpui::test]
+fn a_streamed_block_leaves_a_complete_block_it_passes_alone(cx: &mut gpui::TestAppContext) {
+    use crate::highlighter::compiled::Waiter;
+
+    let waiter = Waiter::new(cx.background_executor.clone(), None);
+    let theme = HighlightTheme::default_dark();
+    compiled_language("json").unwrap();
+    let complete = SharedString::from("[{\"a\": 1}, {\"b\": [2, \"two\"]}, {\"c\": true}]\n");
+    highlight_code_block("json", &complete, true, &theme, Some(&waiter));
+    cx.run_until_parked();
+    let made = highlight_code_block("json", &complete, true, &theme, Some(&waiter));
+    assert!(!made.is_pending());
+
+    // The other block streams past the complete block's code in a chunk.
+    let streamed = [
+        complete[..complete.len() / 2].to_string(),
+        format!("{complete}[\"more\"]\n"),
+    ];
+    for code in streamed {
+        highlight_code_block("json", &code.into(), false, &theme, Some(&waiter));
+        cx.run_until_parked();
+    }
+    let again = highlight_code_block("json", &complete, true, &theme, Some(&waiter));
+    assert!(!again.is_pending());
+    assert_eq!(again.to_vec(), made.to_vec());
+}
+
 /// A capped block shown whole: its first lines were highlighted complete,
 /// and the whole code extends them.
 #[gpui::test]

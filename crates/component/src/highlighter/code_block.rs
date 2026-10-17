@@ -1234,7 +1234,9 @@ impl Default for BackgroundBlocks {
 
 impl BackgroundBlocks {
     /// The block of `code`, or of the longest code it extends, made the most
-    /// recently used.
+    /// recently used. The code of a complete block doesn't grow, so longer
+    /// code is most likely another block's: a block that streams is taken
+    /// before a complete one.
     ///
     /// Failing those, the block of `code` followed by the start of a closing
     /// fence: a fence that arrives in pieces shows in the code until it's
@@ -1246,7 +1248,8 @@ impl BackgroundBlocks {
         language: &Arc<CompiledLanguage>,
         code: &SharedString,
     ) -> Option<Arc<Mutex<BlockJob>>> {
-        let mut best: Option<(usize, usize)> = None;
+        // The index of the best block, whether it streams, and its length.
+        let mut best: Option<(usize, (bool, usize))> = None;
         let mut fenced: Option<usize> = None;
         for (ix, block) in self.blocks.iter().enumerate().rev() {
             let block = block.lock().unwrap();
@@ -1268,13 +1271,12 @@ impl BackgroundBlocks {
             if block.wanted.len() == code.len()
                 && (block.wanted.as_ptr() == code.as_ptr() || block.wanted == *code)
             {
-                best = Some((ix, code.len()));
+                best = Some((ix, (true, code.len())));
                 break;
             }
-            if best.is_none_or(|(_, len)| len < block.wanted.len())
-                && code.starts_with(block.wanted.as_ref())
-            {
-                best = Some((ix, block.wanted.len()));
+            let rank = (!block.complete, block.wanted.len());
+            if best.is_none_or(|(_, best)| best < rank) && code.starts_with(block.wanted.as_ref()) {
+                best = Some((ix, rank));
             }
         }
         let block = self.blocks.remove(best.map(|(ix, _)| ix).or(fenced)?);
