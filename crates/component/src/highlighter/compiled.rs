@@ -9,7 +9,7 @@
 //!
 //! A language can also be compiled on a background thread, where its
 //! grammar's tables are decoded too (another 20 to 600 ms the first time a
-//! grammar is used). Code blocks ask for languages that way: until a language
+//! grammar is used). Code blocks ask for languages that way. Until a language
 //! is ready its blocks show plain text, and whoever asked is told when it is.
 
 use std::{
@@ -95,7 +95,7 @@ pub(crate) struct CompiledLanguage {
     /// The source of [`Self::highlights`].
     pub(crate) highlights_source: SharedString,
     /// The injections, locals and highlights queries as one query, with the
-    /// injection patterns disabled: injected layers are found separately.
+    /// injection patterns disabled, as injected layers are found separately.
     pub(crate) highlights: Arc<HighlightQuery>,
     pub(crate) locals_pattern_index: usize,
     pub(crate) highlights_pattern_index: usize,
@@ -128,7 +128,7 @@ struct Cache {
     /// The highlights query alone, for injected layers.
     layers: HashMap<SharedString, Slot<Arc<HighlightQuery>>>,
     /// Who to tell when the compilation of a name, by a task of a domain, is
-    /// done. Kept when the entries are dropped: the task still runs and
+    /// done. Kept when the entries are dropped, as the task still runs and
     /// tells them, and they ask again.
     waiters: HashMap<(SharedString, u64), Vec<Sender<()>>>,
 }
@@ -173,7 +173,7 @@ pub(crate) enum Readiness<T> {
 /// Where a language that is not compiled yet gets compiled, and whom to
 /// tell when it is ready.
 ///
-/// Each waiter is a domain of its own, an application as a rule: its tasks
+/// Each waiter is a domain of its own, an application as a rule. Its tasks
 /// tell only its own senders, so no application is woken from another's
 /// threads. A language another domain is compiling is compiled again for
 /// this one.
@@ -252,7 +252,7 @@ fn cached<T: Clone>(
     compiled
 }
 
-/// Looks `name` up in the cache without compiling on this thread: a missing
+/// Looks `name` up in the cache without compiling on this thread. A missing
 /// entry is compiled by `compile` on `waiter`'s executor, which then tells
 /// `waiter`.
 fn cached_or_queued<T: Clone + Send + 'static>(
@@ -330,7 +330,7 @@ pub(crate) fn compiled_language(name: &str) -> Option<Arc<CompiledLanguage>> {
     cached(&name, |cache| &mut cache.languages, || compile(&name))
 }
 
-/// [`compiled_language`] without compiling on this thread: a language that
+/// [`compiled_language`] without compiling on this thread. A language that
 /// is not compiled yet is compiled in the background, and `waiter` is told
 /// when it is ready.
 pub(crate) fn compiled_language_now(
@@ -470,8 +470,8 @@ mod tests {
 
     /// A predicate a query doesn't know is kept as a general predicate,
     /// which the highlighter ignores, so its pattern matched everything the
-    /// rest of it matched: `#lua-match?` and `#has-ancestor?` from
-    /// nvim-treesitter, say.
+    /// rest of it matched. `#lua-match?` and `#has-ancestor?` from
+    /// nvim-treesitter are two.
     #[cfg(feature = "tree-sitter-languages")]
     #[test]
     fn bundled_queries_have_no_predicates_the_highlighter_ignores() {

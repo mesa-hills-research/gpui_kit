@@ -575,7 +575,7 @@ fn first_stale_step(lang: &str, code: &str) -> Option<String> {
 }
 
 /// A pattern can capture a node by what a later sibling's descendant looks
-/// like, on another line: Elixir's `defp` by the `arguments` that follow.
+/// like, on another line, as Elixir's `defp` by the `arguments` that follow.
 #[test]
 fn a_capture_that_depends_on_a_later_line_is_highlighted_again() {
     let long_args: String = (0..60).map(|i| format!("a{i}, ")).collect();

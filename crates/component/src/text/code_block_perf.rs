@@ -1,6 +1,6 @@
 //! Timing harness for code block highlighting while a block streams in.
 //!
-//! Ignored by default: run in release, one test at a time, with
+//! Ignored by default. Run it in release, one test at a time, with
 //!
 //! ```text
 //! cargo test --release -p gpui-component --features tree-sitter-languages --lib \
@@ -23,8 +23,9 @@ fn rust_source() -> String {
 }
 
 /// At least `kb` kilobytes of code in `lang`, generated the same way every
-/// time: Rust items with nested bodies, and flat Python, TypeScript, JSON,
-/// YAML, diff and Markdown, whose roots hold thousands of nodes.
+/// time. Rust has items with nested bodies, and Python, TypeScript, JSON,
+/// YAML, diff and Markdown are flat, with roots that hold thousands of
+/// nodes.
 pub(crate) fn generated_code(lang: &str, kb: usize) -> String {
     let mut code = String::new();
     match lang {
@@ -129,7 +130,7 @@ fn first_highlight_of_a_language() {
     );
 }
 
-/// The first highlight of a language the way an application gets it: the
+/// The first highlight of a language the way an application gets it. The
 /// call returns plain code at once and the language compiles in the
 /// background.
 #[gpui::test]
@@ -248,8 +249,8 @@ fn summary(mut times: Vec<Duration>) -> (f64, f64, f64) {
     )
 }
 
-/// The work of every 4-byte chunk of a block that streams in, where it's
-/// done for a code block of a text view: in the background.
+/// The work of every 4-byte chunk of a block that streams in, done in the
+/// background as for a code block of a text view.
 #[gpui::test]
 #[ignore = "timing harness, run by hand in release"]
 fn background_work_per_chunk(cx: &mut gpui::TestAppContext) {
@@ -276,8 +277,8 @@ fn background_work_per_chunk(cx: &mut gpui::TestAppContext) {
     }
 }
 
-/// What a chunk of a streamed block costs the UI thread: asking for its
-/// highlights, while the background catches up.
+/// What asking for the highlights of a chunk of a streamed block costs the
+/// UI thread, while the background catches up.
 #[gpui::test]
 #[ignore = "timing harness, run by hand in release"]
 fn ui_thread_work_per_chunk(cx: &mut gpui::TestAppContext) {
@@ -320,8 +321,8 @@ fn ui_thread_work_per_chunk(cx: &mut gpui::TestAppContext) {
     }
 }
 
-/// The memory the kept highlighting of many long blocks takes: 40 blocks of
-/// 200 KB, each highlighted once.
+/// The memory the kept highlighting of 40 blocks of 200 KB takes, each
+/// highlighted once.
 #[test]
 #[ignore = "memory harness, run by hand in release"]
 fn memory_of_kept_blocks() {
@@ -342,8 +343,8 @@ fn memory_of_kept_blocks() {
     );
 }
 
-/// What a theme switch costs a 200 KB block highlighted in the background:
-/// the call that asks for its highlights in the new theme.
+/// What the call that asks for the highlights of a 200 KB block in a new
+/// theme costs, for a block highlighted in the background.
 #[gpui::test]
 #[ignore = "timing harness, run by hand in release"]
 fn theme_change_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
@@ -372,8 +373,8 @@ fn theme_change_off_the_ui_thread(cx: &mut gpui::TestAppContext) {
     }
 }
 
-/// The background work of showing a capped 200 KB block whole: its first
-/// 60 lines were highlighted, then the whole code is.
+/// The background work of showing a capped 200 KB block whole, whose first
+/// 60 lines were highlighted before.
 #[gpui::test]
 #[ignore = "timing harness, run by hand in release"]
 fn showing_a_capped_block_whole(cx: &mut gpui::TestAppContext) {

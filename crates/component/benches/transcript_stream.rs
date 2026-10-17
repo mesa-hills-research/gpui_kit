@@ -1,4 +1,4 @@
-//! Streaming a long answer, about 20,000 tokens, into a chat transcript: a
+//! Streaming a long answer, about 20,000 tokens, into a chat transcript, a
 //! `MessageScroller` that follows its tail. Each iteration appends 16 bytes
 //! (about four tokens) to the end of the answer, lets the background parse
 //! land and draws the frame that shows them.
@@ -23,9 +23,9 @@ use gpui_component::{
     text::{TextView, TextViewState},
 };
 
-/// An answer the way a model writes a long one: sections of prose with
-/// emphasis, inline code and links, lists, code blocks and tables, about
-/// 80 KB.
+/// An answer the way a model writes a long one, about 80 KB of sections of
+/// prose with emphasis, inline code and links, lists, code blocks and
+/// tables.
 fn answer() -> String {
     let mut out = String::new();
     let mut section = 0;

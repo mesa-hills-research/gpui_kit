@@ -3,13 +3,13 @@
 //! The streaming benchmarks append 40 bytes per iteration, the way a model
 //! streams an answer, let the background Markdown parse land and draw the
 //! frame that shows them, so the window draw times are the UI-thread cost of
-//! a chunk: highlighting it, laying it out and painting it. The redraw
+//! highlighting, laying out and painting a chunk. The redraw
 //! benchmark draws the finished block again, as every frame of a window
 //! that shows it does.
 //!
-//! The code is generated the same way every time, so the numbers can be
-//! compared across commits: Rust items with nested bodies, and flat Python,
-//! whose root holds a node for every line.
+//! The code, Rust items with nested bodies and flat Python whose root holds a
+//! node for every line, is generated the same way every time, so the numbers
+//! can be compared across commits.
 //!
 //! Run with `cargo bench -p gpui-component --features
 //! tree-sitter-rust,tree-sitter-python --bench code_block_stream`.

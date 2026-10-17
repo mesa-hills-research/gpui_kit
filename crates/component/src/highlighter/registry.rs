@@ -390,7 +390,7 @@ impl gpui_base::input::HighlightStyleResolver for HighlightTheme {
 pub type LanguageParserFactory =
     Arc<dyn Fn() -> Result<(tree_sitter::Parser, tree_sitter::Language)> + Send + Sync>;
 
-/// A registered language: an application's configuration, or one of the
+/// A registered language, an application's configuration or one of the
 /// kit's own, whose configuration is built the first time it is asked for.
 ///
 /// Building a configuration decodes the grammar's tables, which takes tens
@@ -425,7 +425,7 @@ pub struct LanguageRegistry {
     /// Bumped by every registration; see [`Self::generation`].
     generation: AtomicU64,
     /// The generation at which each language name was last registered, by
-    /// name: see [`Self::changes_since`].
+    /// name, for [`Self::changes_since`].
     changes: Mutex<HashMap<SharedString, u64>>,
 }
 
@@ -504,9 +504,9 @@ impl LanguageRegistry {
             .is_some_and(|changed_at| *changed_at > generation)
     }
 
-    /// Prepares `languages` for highlighting on a background thread: decodes
-    /// their grammars and compiles their highlight queries, so the first code
-    /// block in one of them is highlighted from its first frame.
+    /// Prepares `languages` for highlighting on a background thread. It
+    /// decodes their grammars and compiles their highlight queries, so the
+    /// first code block in one of them is highlighted from its first frame.
     ///
     /// Without this, a language is prepared on that thread the first time a
     /// code block needs it, which takes from a millisecond to about a second

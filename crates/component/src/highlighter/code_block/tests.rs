@@ -17,7 +17,7 @@ fn per_byte(len: usize, styles: &[(Range<usize>, HighlightStyle)]) -> Vec<Highli
     bytes
 }
 
-/// What [`SyntaxHighlighter`] makes of `code` from scratch: the reference.
+/// What [`SyntaxHighlighter`] makes of `code` from scratch, the reference.
 fn from_scratch(lang: &str, code: &str, theme: &HighlightTheme) -> Vec<HighlightStyle> {
     let rope = Rope::from_str(code);
     let mut highlighter = SyntaxHighlighter::new(lang);
@@ -1001,7 +1001,7 @@ fn a_streamed_block_shows_its_last_highlights_until_the_next_are_made(
 }
 
 /// A closing fence that arrives in pieces shows in the code until it's
-/// whole: the code grows by a backtick or two, then shrinks back.
+/// whole, so the code grows by a backtick or two, then shrinks back.
 #[gpui::test]
 fn a_block_keeps_its_highlights_while_its_fence_closes(cx: &mut gpui::TestAppContext) {
     use crate::highlighter::compiled::Waiter;
@@ -1032,7 +1032,7 @@ fn a_block_keeps_its_highlights_while_its_fence_closes(cx: &mut gpui::TestAppCon
     );
 }
 
-/// A block streams in whose code starts with a complete block's code: it
+/// A block streams in whose code starts with a complete block's code. It
 /// takes up its own highlighting, and leaves the complete block's alone.
 #[gpui::test]
 fn a_streamed_block_leaves_a_complete_block_it_passes_alone(cx: &mut gpui::TestAppContext) {
@@ -1061,8 +1061,8 @@ fn a_streamed_block_leaves_a_complete_block_it_passes_alone(cx: &mut gpui::TestA
     assert_eq!(again.to_vec(), made.to_vec());
 }
 
-/// A capped block shown whole: its first lines were highlighted complete,
-/// and the whole code extends them.
+/// A capped block shown whole, whose first lines were highlighted complete
+/// and whose whole code extends them.
 #[gpui::test]
 fn a_complete_block_that_grows_is_parsed_once_more(cx: &mut gpui::TestAppContext) {
     use crate::highlighter::compiled::Waiter;

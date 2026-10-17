@@ -12,7 +12,7 @@
 //! 1. The tree takes an append edit and reparses incrementally, reusing
 //!    every node the new text left alone.
 //! 2. Highlighting starts again from the first byte whose highlights can
-//!    differ: the earlier of the line the appended text continues and the
+//!    differ, the earlier of the line the appended text continues and the
 //!    first node the reparse changed (see [`first_change`]).
 //! 3. Injected layers ending before that point are kept as they are. Only
 //!    the injections found from it on are parsed again, from their old trees.
@@ -70,18 +70,19 @@ const TREE_BYTES_PER_SOURCE_BYTE: usize = 60;
 /// parse on the UI thread short.
 const BACKGROUND_INJECTION_PARSE_TIMEOUT: std::time::Duration =
     std::time::Duration::from_millis(250);
-/// How far before the appended text highlighting starts again at least: the
-/// start of the line it continues, but never more than this many bytes back.
+/// How far before the appended text highlighting starts again at least,
+/// which is the start of the line it continues but never more than this many
+/// bytes back.
 /// [`first_change`] finds what the reparse changed, and this keeps a margin
 /// around the edit.
 const LINE_MARGIN: usize = 256;
 
 /// The highlight names covering a stretch of code, in the order they are
-/// layered: where they disagree, a later one wins.
+/// layered. Where they disagree, a later one wins.
 type NameStack = SmallVec<[HighlightName; 2]>;
 
 /// A stretch of code and the [`NameStack`] covering it, as an index into
-/// [`CodeBlockHighlighter::stacks`]. Stack 0 is empty: no highlight.
+/// [`CodeBlockHighlighter::stacks`]. Stack 0 is empty, for no highlight.
 #[derive(Debug, Clone, PartialEq)]
 struct Segment {
     range: Range<usize>,
@@ -176,8 +177,8 @@ impl CodeBlockHighlighter {
         self.text.len()
     }
 
-    /// About how much memory the highlighting takes: the trees, the text,
-    /// the highlights and their styles.
+    /// About how much memory the trees, the text, the highlights and their
+    /// styles take.
     fn memory(&self) -> usize {
         let styles = self
             .resolved
@@ -293,8 +294,8 @@ impl CodeBlockHighlighter {
 
     /// Brings the injected layers up to date with the tree, which is the
     /// same as before up to `dirty`, and returns where highlighting has to
-    /// start again: `dirty`, or the start of a layer whose highlights can
-    /// have changed before it. `edit` is the edit the tree took, if any.
+    /// start again. That's `dirty`, or the start of a layer whose highlights
+    /// can have changed before it. `edit` is the edit the tree took, if any.
     ///
     /// Mirrors [`SyntaxHighlighter::compute_injection_layers`], which does
     /// the same for a whole tree.
@@ -812,8 +813,8 @@ fn layer_captures(
     }
 }
 
-/// How many siblings before a changed node are highlighted again with it: a
-/// query pattern can match a node together with the siblings after it.
+/// How many siblings before a changed node are highlighted again with it, as
+/// a query pattern can match a node together with the siblings after it.
 const SIBLING_MARGIN: usize = 2;
 
 /// How far before the edit the siblings of the nodes [`first_change`]
@@ -835,7 +836,7 @@ const LEVEL_MARGIN: usize = 1024;
 /// the same kind and start is entered instead, to look for the first
 /// difference among its children, and the siblings before it at every level
 /// entered are highlighted again too, back to [`LEVEL_MARGIN`] before the
-/// edit: a pattern can match a node by what a later sibling's descendant
+/// edit, as a pattern can match a node by what a later sibling's descendant
 /// looks like.
 ///
 /// Error recovery also turns the root, or the only child of the root, into
@@ -966,9 +967,9 @@ fn edit_layer(layer: &mut InjectionLayer, edit: &InputEdit) {
     }
 }
 
-/// Combined injections whose ranges are parsed in groups in the background:
-/// Markdown's inline text, whose paragraphs, headings and list items parse
-/// apart from one another.
+/// Combined injections whose ranges are parsed in groups in the background.
+/// There's one, Markdown's inline text, whose paragraphs, headings and list
+/// items parse apart from one another.
 const GROUPED_INJECTIONS: [&str; 1] = ["markdown_inline"];
 
 /// About how many bytes of ranges a group of [`grouped_ranges`] takes.
@@ -979,7 +980,7 @@ const RANGE_GROUP_BYTES: usize = 4096;
 ///
 /// Markdown's inline text is one combined layer over every paragraph of a
 /// block, and its included ranges change with every chunk, so it was parsed
-/// again as a whole every time: 190 ms for a 200 KB block. Groups are made
+/// again as a whole every time, 190 ms for a 200 KB block. Groups are made
 /// from the first range on, so the groups before the last stay the same as
 /// text is appended, and their layers are kept.
 fn grouped_ranges(ranges: &[tree_sitter::Range]) -> Vec<Vec<tree_sitter::Range>> {
@@ -1088,7 +1089,7 @@ thread_local! {
 /// is whether the code can still grow (see [`CodeBlock::is_complete`]).
 ///
 /// Empty for a language without a grammar. With a `waiter`, nothing is
-/// parsed or highlighted here: a language that is not compiled yet is
+/// parsed or highlighted here. A language that is not compiled yet is
 /// compiled in the background, and the code is plain until then, and the
 /// code is highlighted in the background too (see [`highlight_in_background`]).
 /// Without one, it is all done here.
@@ -1138,7 +1139,7 @@ pub(crate) fn highlight_code_block(
 /// The highlighting of a code block kept by [`highlight_in_background`],
 /// shared with the task that brings it up to date.
 struct BlockJob {
-    /// The [`Waiter`] domain whose executor the task runs on: an
+    /// The [`Waiter`] domain whose executor the task runs on, so that an
     /// application's blocks are its own.
     domain: u64,
     language: Arc<CompiledLanguage>,
@@ -1210,8 +1211,8 @@ impl BlockJob {
     }
 }
 
-/// The most bytes of a closing fence [`BackgroundBlocks::find`] looks past:
-/// its line break, indentation and backticks or tildes.
+/// The most bytes of a closing fence [`BackgroundBlocks::find`] looks past,
+/// for its line break, indentation and backticks or tildes.
 const MAX_FENCE_START: usize = 16;
 
 /// The code blocks [`highlight_in_background`] keeps, the most recently
@@ -1235,11 +1236,11 @@ impl Default for BackgroundBlocks {
 impl BackgroundBlocks {
     /// The block of `code`, or of the longest code it extends, made the most
     /// recently used. The code of a complete block doesn't grow, so longer
-    /// code is most likely another block's: a block that streams is taken
+    /// code is most likely another block's, and a block that streams is taken
     /// before a complete one.
     ///
     /// Failing those, the block of `code` followed by the start of a closing
-    /// fence: a fence that arrives in pieces shows in the code until it's
+    /// fence. A fence that arrives in pieces shows in the code until it's
     /// whole, and the block keeps its highlights while the shorter code is
     /// highlighted.
     fn find(
@@ -1314,9 +1315,10 @@ thread_local! {
 /// A block's highlighting is kept and brought up to date by a task on
 /// `waiter`'s executor, as [`highlight_code_block`] does on the calling
 /// thread. The highlights the task made last are handed out meanwhile,
-/// pending until the task makes newer ones: those of the code before the
-/// latest chunk while a block streams in, which leave the chunk plain, and
-/// none for a block highlighted the first time. Chunks that arrive while the
+/// pending until the task makes newer ones. While a block streams in, those
+/// are the highlights of the code before the latest chunk, which leave the
+/// chunk plain, and a block highlighted the first time has none. Chunks that
+/// arrive while the
 /// task works are taken in one go when it's done.
 ///
 /// A block that streamed in is highlighted once more from scratch when it's

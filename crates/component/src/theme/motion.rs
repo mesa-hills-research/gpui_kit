@@ -3,8 +3,9 @@ use std::time::Duration;
 use gpui::{Rems, rems};
 use gpui_base::{Easing, Spring};
 
-/// The most frames a second a repeating loading indicator draws: a spinner,
-/// a skeleton, an indeterminate progress bar or ring, shimmering text.
+/// The most frames a second a repeating loading indicator draws, such as a
+/// spinner, a skeleton, an indeterminate progress bar or ring, or shimmering
+/// text.
 ///
 /// A loading indicator can show for as long as a request runs, and one that
 /// draws every frame keeps the window drawing at the display's full refresh
@@ -155,8 +156,7 @@ mod tests {
             renders.get()
         }
 
-        /// The cap must not stop an indicator: it draws about 30 times a
-        /// second.
+        /// The cap leaves an indicator drawing, about 30 times a second.
         #[gpui::test]
         fn a_loading_indicator_draws_about_thirty_times_a_second(cx: &mut TestAppContext) {
             let renders = renders_in_a_second(1, Duration::ZERO, cx);
