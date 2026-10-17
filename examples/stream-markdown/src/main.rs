@@ -85,7 +85,7 @@ impl Example {
         cx.new(|cx| Self::new(window, cx))
     }
 
-    /// Gives each top-level block of the answer a row: a view of that block,
+    /// Gives each top-level block of the answer a row, a view of that block
     /// added when the block appears. Ids change when the text is replaced,
     /// and the rows start over then.
     fn sync_rows(&mut self, state: &Entity<TextViewState>, cx: &mut Context<Self>) {
