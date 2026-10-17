@@ -881,15 +881,6 @@ impl TextViewState {
         self.parsed_content.document.selected_source_range()
     }
 
-    /// The format to copy in, which is [`SelectionFormat::Plain`] whenever the
-    /// requested one cannot be produced.
-    ///
-    /// Only a Markdown view can return source. Reconstructing HTML would mean
-    /// spelling every attribute back out — a mark's color, an image's
-    /// dimensions, a cell's alignment — with a new way to lose one at each
-    /// step, and html5ever records no source offsets to fall back on (it
-    /// reports only line numbers), so there is no original text to copy from
-    /// either.
     /// The copy group of a [`Self::block_range`] view: the views of one
     /// document copy as one view of it would, their blocks apart as blocks
     /// are within a view.
@@ -905,6 +896,15 @@ impl TextViewState {
         ))
     }
 
+    /// The format to copy in, which is [`SelectionFormat::Plain`] whenever the
+    /// requested one cannot be produced.
+    ///
+    /// Only a Markdown view can return source. Reconstructing HTML would mean
+    /// spelling every attribute back out — a mark's color, an image's
+    /// dimensions, a cell's alignment — with a new way to lose one at each
+    /// step, and html5ever records no source offsets to fall back on (it
+    /// reports only line numbers), so there is no original text to copy from
+    /// either.
     fn effective_format(&self) -> SelectionFormat {
         match self.format {
             TextViewFormat::Markdown => self.selection_format,
