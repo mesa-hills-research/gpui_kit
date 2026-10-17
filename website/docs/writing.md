@@ -140,7 +140,10 @@ background thread too, and `save` appends any it hasn't yet.
 Several processes can share one vocabulary file. Each save adds what this
 process learned since its last save to what the file holds now, under a lock,
 and writes the file whole, so a crash leaves the old file or the new one. A
-file that doesn't parse is moved aside rather than written over.
+file that doesn't parse is moved aside rather than written over. On Windows,
+another program that holds the file open without sharing it, such as a
+backup or sync tool, can refuse a save for a moment. The save tries again
+for about 600 ms, and otherwise keeps its learning for the next save.
 
 A save that would take the file past its cap drops the rarest entries, those
 seen once first, until it takes seven eighths of the cap. The vocabulary in

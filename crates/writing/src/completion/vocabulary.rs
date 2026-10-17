@@ -705,25 +705,48 @@ fn write_whole(path: &Path, data: &[u8]) -> io::Result<()> {
 }
 
 /// Renames `from` over `to`. On Windows, as elsewhere, the rename replaces a
-/// file that exists, even one another process has open as it loads, since the
-/// standard library opens files with delete sharing. Another program, such
-/// as a virus scanner, can hold the file open without it for a moment, so a
-/// refusal is tried again a few times.
+/// file that exists, even one another process has open as it loads: the
+/// standard library opens files with read, write and delete sharing, and
+/// falls back to a POSIX-style replace when the plain one is refused.
+/// Another program, such as a virus scanner, a backup or a sync client, can
+/// hold either file open without delete sharing for a moment, so a refusal
+/// is tried again, for about 600 ms in all.
 fn replace(from: &Path, to: &Path) -> io::Result<()> {
-    let mut tries = 0;
+    let mut waits = REPLACE_WAITS.iter();
     loop {
         match std::fs::rename(from, to) {
-            Err(error)
-                if cfg!(windows)
-                    && tries < 5
-                    && error.kind() == io::ErrorKind::PermissionDenied =>
-            {
-                tries += 1;
-                std::thread::sleep(Duration::from_millis(50));
-            }
+            Err(error) if is_held_elsewhere(&error) => match waits.next() {
+                Some(&wait) => std::thread::sleep(wait),
+                None => return Err(error),
+            },
             result => return result,
         }
     }
+}
+
+/// How long a refused replace waits before each new try.
+const REPLACE_WAITS: [Duration; 6] = [
+    Duration::from_millis(10),
+    Duration::from_millis(20),
+    Duration::from_millis(40),
+    Duration::from_millis(80),
+    Duration::from_millis(160),
+    Duration::from_millis(320),
+];
+
+/// Whether `error` refused a rename because another program has a file
+/// open, which passes once it lets go: on Windows, access denied, a sharing
+/// violation or a lock violation. Elsewhere an open file never stops a
+/// rename.
+fn is_held_elsewhere(error: &io::Error) -> bool {
+    const ACCESS_DENIED: i32 = 5;
+    const SHARING_VIOLATION: i32 = 32;
+    const LOCK_VIOLATION: i32 = 33;
+    cfg!(windows)
+        && matches!(
+            error.raw_os_error(),
+            Some(ACCESS_DENIED | SHARING_VIOLATION | LOCK_VIOLATION)
+        )
 }
 
 /// The lock file beside the vocabulary at `path`: `vocabulary.lock`. It stays
@@ -732,10 +755,22 @@ fn lock_path(path: &Path) -> PathBuf {
     path.with_extension("lock")
 }
 
+/// The lock on the vocabulary file, which a save holds while it reads and
+/// writes the file. Dropping it releases the lock at once. Closing the file
+/// would too, but Windows may take a while to release a lock whose handle
+/// is closed rather than unlocked.
+struct FileLock(File);
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 /// Takes the lock on the vocabulary at `path`, waiting up to `wait` while
-/// another process holds it. The lock is released when the returned file is
+/// another process holds it. The lock is released when the returned lock is
 /// dropped or the process ends, however it ends.
-fn lock(path: &Path, wait: Duration) -> io::Result<File> {
+fn lock(path: &Path, wait: Duration) -> io::Result<FileLock> {
     let file = File::options()
         .read(true)
         .write(true)
@@ -745,7 +780,7 @@ fn lock(path: &Path, wait: Duration) -> io::Result<File> {
     let deadline = Instant::now() + wait;
     loop {
         match file.try_lock() {
-            Ok(()) => return Ok(file),
+            Ok(()) => return Ok(FileLock(file)),
             Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
                 std::thread::sleep(LOCK_RETRY);
             }
@@ -2108,6 +2143,33 @@ mod tests {
         );
     }
 
+    /// A lock is free for another process as soon as its save drops it.
+    #[test]
+    fn a_dropped_lock_is_free_at_once() {
+        let scratch = Scratch::new("dropped-lock");
+        let held = lock(&scratch.file(), Duration::ZERO).unwrap();
+        assert!(lock(&scratch.file(), Duration::ZERO).is_err());
+        drop(held);
+        assert!(lock(&scratch.file(), Duration::ZERO).is_ok());
+    }
+
+    /// On Windows a replace refused because another program has a file
+    /// open is tried again. Elsewhere nothing refuses it that way.
+    #[test]
+    fn a_replace_tries_again_only_while_another_program_holds_a_file() {
+        for code in [5, 32, 33] {
+            assert_eq!(
+                is_held_elsewhere(&io::Error::from_raw_os_error(code)),
+                cfg!(windows),
+                "{code}"
+            );
+        }
+        assert!(!is_held_elsewhere(&io::Error::from(
+            io::ErrorKind::NotFound
+        )));
+        assert!(!is_held_elsewhere(&io::Error::from_raw_os_error(2)));
+    }
+
     /// A save on the calling thread waits only briefly for another process's
     /// lock, as the user may be waiting for it.
     #[test]
@@ -2465,10 +2527,27 @@ mod tests {
         }
     }
 
+    /// Saves until a save gets the file. A save on the calling thread waits
+    /// only half a second for another process's lock, which a busy
+    /// machine's saves can take longer to hand on, and what it couldn't
+    /// write stays for the next save.
+    fn save_until_saved(vocabulary: &mut Vocabulary) {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        vocabulary.save();
+        while vocabulary.dirty {
+            assert!(
+                Instant::now() < deadline,
+                "no save got the file in a minute"
+            );
+            std::thread::sleep(LOCK_RETRY);
+            vocabulary.save();
+        }
+    }
+
     /// Another process, for the tests that run several processes. `learn N
-    /// sentence` learns the sentence and saves, N times. `crash` learns and
-    /// saves a sentence, learns another, then holds the lock until it is
-    /// killed.
+    /// sentence` learns the sentence and saves, N times, and then saves
+    /// until a save gets the file. `crash` learns and saves a sentence,
+    /// learns another, then holds the lock until it is killed.
     #[test]
     #[ignore = "run as a process of its own by the tests with several processes"]
     fn other_process() {
@@ -2483,8 +2562,8 @@ mod tests {
             for _ in 0..times.parse().unwrap() {
                 vocabulary.learn_sentence(sentence);
                 vocabulary.save();
-                assert!(!vocabulary.dirty, "a save failed");
             }
+            save_until_saved(&mut vocabulary);
         } else {
             assert_eq!(task, "crash");
             vocabulary.learn_sentence("Ferns grow slowly");
@@ -2498,7 +2577,7 @@ mod tests {
     }
 
     /// Processes saving one file at the same time as each other add up their
-    /// learning.
+    /// learning, saves kept from the lock by the others' included.
     #[test]
     fn processes_on_one_file_add_up_their_learning() {
         let scratch = Scratch::new("processes");
@@ -2508,8 +2587,8 @@ mod tests {
         for _ in 0..50 {
             vocabulary.learn_sentence("Ferns need shade");
             vocabulary.save();
-            assert!(!vocabulary.dirty);
         }
+        save_until_saved(&mut vocabulary);
         for other in others {
             other.finish();
         }
