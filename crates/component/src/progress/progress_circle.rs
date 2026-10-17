@@ -119,7 +119,7 @@ impl ProgressCircle {
     /// Stack these segments along the ring instead of drawing one arc.
     ///
     /// Each segment takes its value in percent of the ring, in order, from
-    /// the top; together they replace [`ProgressCircle::value`] and
+    /// the top. Together they replace [`ProgressCircle::value`] and
     /// [`ProgressCircle::color`]. Label each segment and show the labels near
     /// the ring (a tooltip or popover will do), since a reader can't tell
     /// what a color means.

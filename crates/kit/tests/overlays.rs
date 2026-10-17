@@ -509,8 +509,8 @@ fn open_gallery(cx: &mut TestAppContext) -> (gpui_kit::WindowHandle<Root>, Entit
     })
 }
 
-/// Clicking Next twice quickly browses twice; the second click doesn't also
-/// reach the stage as a double click that switches to actual size.
+/// Clicking Next twice quickly browses twice, and the second click doesn't
+/// also reach the stage as a double click that switches to actual size.
 #[gpui_kit::test]
 fn quick_clicks_on_next_only_browse(cx: &mut TestAppContext) {
     let (handle, _) = open_gallery(cx);

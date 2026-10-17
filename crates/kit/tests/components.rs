@@ -203,8 +203,8 @@ fn diff_view_unfolds_unchanged_lines_and_copies_the_diff(cx: &mut TestAppContext
     });
     let diff = view.read_with(cx, |view, _| view.diff.clone());
     let rows = |cx: &mut TestAppContext| diff.read_with(cx, |state, _| state.row_count());
-    // The file row; the first hunk (7 lines, from line 1, so nothing folds
-    // before it); the second hunk (8 lines) after its folded gap; and the
+    // The file row, the first hunk (7 lines, from line 1, so nothing folds
+    // before it), the second hunk (8 lines) after its folded gap, and the
     // folded last two lines.
     assert_eq!(rows(cx), 1 + (1 + 7) + (1 + 8) + 1);
 

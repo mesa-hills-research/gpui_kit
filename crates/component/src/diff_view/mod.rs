@@ -444,7 +444,7 @@ impl DiffView {
 
     /// Take the height of the rows, up to `max_rows` of them, and scroll
     /// past that: for a diff inside a list of variable-height items, such as
-    /// a tool call's edit. Without it, the view fills its parent.
+    /// the messages of a chat. Without it, the view fills its parent.
     pub fn max_rows(mut self, max_rows: usize) -> Self {
         self.max_rows = Some(max_rows);
         self

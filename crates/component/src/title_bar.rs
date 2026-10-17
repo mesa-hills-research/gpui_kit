@@ -43,8 +43,8 @@ fn leading_inset(is_macos: bool, is_fullscreen: bool) -> Pixels {
 /// We can put some elements inside the title bar. It paints the theme's `title_bar` token, one
 /// solid color unless the theme gives it a gradient.
 ///
-/// The window buttons follow the platform: macOS keeps its traffic lights;
-/// Windows gets Windows 11 caption buttons; Linux, under client-side
+/// The window buttons follow the platform. macOS keeps its traffic lights,
+/// Windows gets Windows 11 caption buttons, and Linux, under client-side
 /// decorations, gets the buttons the compositor supports, on the sides and
 /// in the order the desktop's button layout gives.
 #[derive(IntoElement)]
@@ -234,8 +234,8 @@ impl CaptionColors {
     }
 }
 
-/// The font that draws Windows' caption glyphs on this machine, if any;
-/// looked up once, by resolving just these families rather than listing
+/// The font that draws Windows' caption glyphs on this machine, if any,
+/// looked up once by resolving just these families rather than listing
 /// every installed font.
 fn caption_glyph_font(cx: &App) -> Option<&'static str> {
     static FONT: std::sync::OnceLock<Option<&'static str>> = std::sync::OnceLock::new();
@@ -252,7 +252,7 @@ fn caption_glyph_font(cx: &App) -> Option<&'static str> {
 }
 
 /// A Windows 11 caption button. Windows runs it through the hit-test code
-/// its area answers, so it needs no click handler; a disabled one answers
+/// its area answers, so it needs no click handler. A disabled one answers
 /// none and occludes the drag area under it.
 #[derive(IntoElement)]
 struct CaptionButton {

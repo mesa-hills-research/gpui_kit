@@ -95,7 +95,7 @@ impl ImageViewerItem {
     }
 
     /// The image's size in pixels. With it, actual size shows one image
-    /// pixel per screen pixel; without it, one per logical pixel.
+    /// pixel per screen pixel. Without it, one per logical pixel.
     pub fn with_dimensions(mut self, width: u32, height: u32) -> Self {
         self.dimensions = Some(size(width, height));
         self
@@ -125,7 +125,7 @@ impl ImageViewerItem {
 /// A change in an [`ImageViewerState`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageViewerEvent {
-    /// Another image was selected; holds its index.
+    /// Another image was selected, at this index.
     Select(usize),
 }
 
@@ -205,14 +205,14 @@ impl ImageViewerState {
         cx.notify();
     }
 
-    /// Show the previous image; the first stays.
+    /// Show the previous image, if there is one.
     pub fn select_previous(&mut self, cx: &mut Context<Self>) {
         if let Some(ix) = self.selected_index.checked_sub(1) {
             self.set_selected_index(ix, cx);
         }
     }
 
-    /// Show the next image; the last stays.
+    /// Show the next image, if there is one.
     pub fn select_next(&mut self, cx: &mut Context<Self>) {
         self.set_selected_index(self.selected_index + 1, cx);
     }
@@ -346,7 +346,7 @@ fn actual_size(dimensions: Size<u32>, scale_factor: f32) -> Size<gpui::Pixels> {
 
 /// The viewer's surface: the image, its counter and caption, and the
 /// controls. [`WindowExt::open_image_viewer`](crate::WindowExt::open_image_viewer)
-/// mounts one over the window; mount it yourself only in an overlay of your
+/// mounts one over the window. Mount it yourself only in an overlay of your
 /// own, and close that overlay in [`ImageViewer::on_close`].
 #[derive(IntoElement)]
 pub struct ImageViewer {
@@ -605,7 +605,7 @@ impl RenderOnce for ImageViewer {
                             .map(|this| {
                                 if is_actual_size {
                                     // At actual size the image may be larger than
-                                    // the window; it scrolls, centred while it fits.
+                                    // the window. It scrolls, centred while it fits.
                                     this.child(
                                         div()
                                             .id("image-viewer-scroll")

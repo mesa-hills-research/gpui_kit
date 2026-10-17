@@ -66,7 +66,7 @@ pub trait WindowExt: Sized {
     /// Opens a full-window [`ImageViewer`](crate::image_viewer::ImageViewer)
     /// over the window, below its title bar, showing `items[selected_index]`.
     ///
-    /// The viewer takes focus; Escape or its close button closes it and gives
+    /// The viewer takes focus. Escape or its close button closes it and gives
     /// focus back to what had it, usually the thumbnail that opened it. Opening
     /// another replaces it. Returns the viewer's state, to follow or change
     /// the image shown.

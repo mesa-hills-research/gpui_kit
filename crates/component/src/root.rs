@@ -510,7 +510,7 @@ impl WindowState {
             .and_then(|old| old.previous_focused_handle.clone())
             .or_else(|| window.focused(cx).map(|handle| handle.downgrade()));
         // Dialogs opened over the replaced viewer would give focus back to
-        // it; they give it back where it would have.
+        // it, so they give it back where it would have instead.
         if let Some(old) = replaced.filter(|old| old.dialogs_below < self.active_dialogs.len()) {
             let old_focus = old.state.read(cx).focus_handle(cx);
             for dialog in &mut self.active_dialogs[old.dialogs_below..] {

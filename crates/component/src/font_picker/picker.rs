@@ -86,7 +86,7 @@ impl FontPicker {
         self
     }
 
-    /// Offer the weight and italic controls. On by default; turn it off
+    /// Offer the weight and italic controls. On by default. Turn it off
     /// where the setting the picker feeds keeps only a family and a size,
     /// such as an application's UI font, so no control does nothing.
     pub fn show_weight(mut self, show: bool) -> Self {

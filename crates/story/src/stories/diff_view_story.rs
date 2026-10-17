@@ -127,7 +127,7 @@ impl Render for DiffViewStory {
             .child(
                 section("Between two texts")
                     .description(
-                        "Unchanged lines between hunks fold; the row above a hunk unfolds them.",
+                        "Unchanged lines between hunks fold, and the row above a hunk unfolds them.",
                     )
                     .child(frame(DiffView::new(&self.computed))),
             )

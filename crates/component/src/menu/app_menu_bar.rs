@@ -151,7 +151,7 @@ impl AppMenuBar {
     }
 
     /// Focus the first menu's title from the keyboard, remembering what had
-    /// focus; if the bar already has the keyboard, give focus back instead.
+    /// focus. If the bar already has the keyboard, give focus back instead.
     /// What F10 and a tap of Alt do.
     pub fn toggle_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_active() {

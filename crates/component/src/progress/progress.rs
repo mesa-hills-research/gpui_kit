@@ -84,7 +84,7 @@ impl Progress {
     /// Fill the bar with these segments, side by side, instead of one value.
     ///
     /// Each segment takes its value in percent of the bar, in order, from the
-    /// left; together they replace [`Progress::value`] and
+    /// left. Together they replace [`Progress::value`] and
     /// [`Progress::color`], and a hairline keeps neighbours apart. Show each
     /// segment's label as text next to the bar — a
     /// [`UsageBar`](super::UsageBar) does — since a reader can't tell what a

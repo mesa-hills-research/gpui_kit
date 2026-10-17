@@ -15,7 +15,7 @@ use gpui_kit::{
 
 use crate::{Story, section};
 
-/// Screenshots held in memory, the way a tool returns them.
+/// A screenshot held in memory, as an app holds one it took.
 struct Screenshot {
     name: SharedString,
     image: Arc<Image>,
@@ -121,7 +121,7 @@ impl Render for ImageViewerStory {
         };
         v_flex().size_full().gap_6().child(
             section("Screenshots")
-                .description("Click a thumbnail, or focus it and press Enter. ←/→, Home/End browse; Z or a double-click toggles actual size; Escape closes.")
+                .description("Click a thumbnail, or focus it and press Enter. ←/→ and Home/End browse, Z or a double-click toggles actual size, and Escape closes.")
                 .child(
                     v_flex()
                         .gap_3()

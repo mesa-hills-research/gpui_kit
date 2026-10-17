@@ -84,20 +84,20 @@ pub(super) fn init(cx: &mut App) {
 /// Themes come from four places, later ones replacing earlier ones of the
 /// same name, compared ignoring case:
 ///
-/// 1. the kit's two defaults;
-/// 2. themes added with [`ThemeRegistry::load_themes_from_str`], which only
-///    fill names nothing else takes;
-/// 3. themes the application embeds in its binary, added with
-///    [`ThemeRegistry::add_bundled_themes`];
-/// 4. the folder [`ThemeRegistry::watch_dir`] watches (or
+/// 1. The kit's two defaults.
+/// 2. Themes added with [`ThemeRegistry::load_themes_from_str`], which only
+///    fill names nothing else takes.
+/// 3. Themes the application embeds in its binary, added with
+///    [`ThemeRegistry::add_bundled_themes`].
+/// 4. The folder [`ThemeRegistry::watch_dir`] watches (or
 ///    [`ThemeRegistry::load_dir`] read), the user's own themes.
 ///
 /// A name of one of the kit's defaults is never taken by another theme. A
 /// folder theme marked `is_default` becomes the default of its mode instead,
 /// for as long as it stays in the folder.
 ///
-/// The folder is read again whenever a file in it changes; the other themes
-/// stay registered across those reloads.
+/// The folder is read again whenever a file in it changes, and the other
+/// themes stay registered across those reloads.
 #[derive(Default, Debug)]
 pub struct ThemeRegistry {
     themes_dir: PathBuf,
@@ -117,7 +117,7 @@ pub struct ThemeRegistry {
     /// [`ThemeRegistry::load_dir`]: a read lands only if no later call
     /// asked for a folder since.
     folder_generation: u64,
-    /// The task that reloads the watched folder; replacing it stops the
+    /// The task that reloads the watched folder. Replacing it stops the
     /// previous watcher.
     folder_watch: Option<FolderWatch>,
 }
@@ -225,7 +225,7 @@ impl ThemeRegistry {
     /// Read a folder of theme files once, without watching it, on a
     /// background thread, then run `on_load`. The themes replace bundled
     /// ones as [`ThemeRegistry::watch_dir`]'s do, and it stops a watch
-    /// started before; a read of an earlier folder that ends late is
+    /// started before. A read of an earlier folder that ends late is
     /// dropped.
     ///
     /// Use it where hot reload isn't wanted, and in tests: the watcher
@@ -736,7 +736,7 @@ mod tests {
     }
 
     /// A folder theme marked default is the default while it is in the
-    /// folder; once its file goes, the kit's default is back.
+    /// folder. Once its file goes, the kit's default is back.
     #[test]
     fn a_folder_default_lasts_as_long_as_its_file() {
         let mut registry = ThemeRegistry::default();

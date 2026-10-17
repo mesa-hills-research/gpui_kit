@@ -69,7 +69,7 @@ impl UsageBar {
         self
     }
 
-    /// The bar's color. Defaults to the theme's progress bar color; use
+    /// The bar's color. Defaults to the theme's progress bar color. Use
     /// `warning` or `danger` only when the amount means that.
     pub fn color(mut self, color: impl Into<Hsla>) -> Self {
         self.color = Some(color.into());
