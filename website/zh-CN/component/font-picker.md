@@ -61,12 +61,13 @@ FontPicker::new(&picker).compact()
 ```rust
 FontPicker::new(&picker)
     .compact()
+    .show_monospace_filter(false)
     .show_weight(false)
     .show_line_height(false)
     .show_features(false)
 ```
 
-三者默认都显示。
+四项控件默认都显示。`show_monospace_filter(false)` 会在任一布局中隐藏 **仅等宽字体**，但保留状态中已有的过滤条件。用 `FontPickerState::monospace_only` 或 `set_monospace_only` 决定列表显示全部字体族还是仅显示等宽字体。
 
 ## 字体族
 

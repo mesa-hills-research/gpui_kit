@@ -76,12 +76,16 @@ italic row, the line height and the features in either layout:
 ```rust
 FontPicker::new(&picker)
     .compact()
+    .show_monospace_filter(false)
     .show_weight(false)
     .show_line_height(false)
     .show_features(false)
 ```
 
-All three are on by default.
+All four controls are shown by default. `show_monospace_filter(false)` hides
+**Monospace only** in either layout without changing the state's filter.
+Use `FontPickerState::monospace_only` or `set_monospace_only` to choose whether
+the list contains every family or only monospaced ones.
 
 ## Scrolling
 

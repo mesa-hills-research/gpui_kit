@@ -43,6 +43,7 @@ pub struct FontPicker {
     preview_text: SharedString,
     compact: bool,
     collapsible_features: bool,
+    show_monospace_filter: bool,
     show_weight: bool,
     show_line_height: bool,
     show_features: bool,
@@ -56,6 +57,7 @@ impl FontPicker {
             preview_text: PREVIEW_TEXT.into(),
             compact: false,
             collapsible_features: false,
+            show_monospace_filter: true,
             show_weight: true,
             show_line_height: true,
             show_features: true,
@@ -83,6 +85,13 @@ impl FontPicker {
     /// dozens of them. Off by default.
     pub fn collapsible_features(mut self, collapsible: bool) -> Self {
         self.collapsible_features = collapsible;
+        self
+    }
+
+    /// Show the Monospace only checkbox in either layout. On by default.
+    /// Hiding it keeps the state's current monospace filter unchanged.
+    pub fn show_monospace_filter(mut self, show: bool) -> Self {
+        self.show_monospace_filter = show;
         self
     }
 
@@ -384,7 +393,9 @@ impl FontPicker {
                                         t!("FontPicker.search").to_string()
                                     })),
                             )
-                            .child(self.monospace_checkbox(chosen.monospace_only)),
+                            .when(self.show_monospace_filter, |this| {
+                                this.child(self.monospace_checkbox(chosen.monospace_only))
+                            }),
                     )
                     .child(
                         v_flex()
@@ -475,7 +486,9 @@ impl FontPicker {
                 },
                 h_flex()
                     .gap_3()
-                    .child(self.monospace_checkbox(chosen.monospace_only))
+                    .when(self.show_monospace_filter, |this| {
+                        this.child(self.monospace_checkbox(chosen.monospace_only))
+                    })
                     .child(
                         div().w(select_width).child(
                             Select::new(&family_select)
@@ -536,5 +549,38 @@ impl RenderOnce for FontPicker {
         } else {
             self.render_full(chosen, cx).into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AppContext as _, TestAppContext};
+
+    #[gpui::test]
+    fn test_font_picker_builder(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let state = cx.new(|cx| {
+                FontPickerState::new(window, cx)
+                    .catalog(super::super::FontCatalog::default())
+                    .monospace_only(true)
+            });
+            assert!(FontPicker::new(&state).show_monospace_filter);
+            let picker = FontPicker::new(&state)
+                .compact()
+                .show_monospace_filter(false)
+                .show_weight(false)
+                .show_line_height(false)
+                .show_features(false);
+            assert!(picker.compact);
+            assert!(!picker.show_monospace_filter);
+            assert!(!picker.show_weight);
+            assert!(!picker.show_line_height);
+            assert!(!picker.show_features);
+            assert!(state.read(cx).is_monospace_only());
+            assert!(picker.show_monospace_filter(true).show_monospace_filter);
+        });
     }
 }

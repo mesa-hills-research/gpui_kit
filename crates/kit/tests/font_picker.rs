@@ -470,6 +470,7 @@ impl Render for FamilyAndSize {
             picker
         } else {
             picker
+                .show_monospace_filter(false)
                 .show_weight(false)
                 .show_line_height(false)
                 .show_features(false)
@@ -509,6 +510,7 @@ async fn a_picker_offers_only_the_rows_its_setting_keeps(cx: &mut TestAppContext
                 window.render_frame(cx);
                 let case = format!("compact {compact}, every row {every_row}");
                 let shown = |id: &'static str| window.try_find(id).is_some();
+                assert_eq!(shown("font-picker-monospace"), every_row, "{case}");
                 assert_eq!(shown("font-picker-weight"), every_row, "{case}");
                 assert_eq!(shown("font-picker-italic"), every_row, "{case}");
                 assert_eq!(shown("font-picker-line-height"), every_row, "{case}");

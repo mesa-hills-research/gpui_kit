@@ -159,8 +159,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   [FontPicker](website/component/font-picker.md#loading-and-replacing-a-catalog).
 - **Font pickers with only the rows a setting keeps** (`gpui-component`).
   `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
-  setting that stores only a family and a size. See
-  [FontPicker: compact layout](website/component/font-picker.md#compact-layout).
+  setting that stores only a family and a size. `show_monospace_filter(false)` hides the
+  monospace checkbox without changing the filter. See
+  [FontPicker](website/component/font-picker.md#compact-layout).
 - **A diff view** (`gpui-component`). `DiffView` shows `Diff::between(path, old, new)` or
   `Diff::parse(unified)` with old and new line numbers, added and removed lines on the
   success and danger colors and marked `+`/`-`, hunk headers, syntax colors by extension

@@ -15,6 +15,7 @@ pub struct FontPickerStory {
     focus_handle: FocusHandle,
     picker: Entity<FontPickerState>,
     compact: bool,
+    show_filter: bool,
     load: Task<()>,
 }
 
@@ -32,6 +33,7 @@ impl super::Story for FontPickerStory {
             focus_handle: cx.focus_handle(),
             picker: cx.new(|cx| FontPickerState::new(window, cx)),
             compact: false,
+            show_filter: true,
             load: Task::ready(()),
         })
     }
@@ -60,6 +62,15 @@ impl Render for FontPickerStory {
                                 cx.notify();
                             })),
                     )
+                    .child(
+                        Checkbox::new("show-filter")
+                            .label("Show monospace filter")
+                            .checked(self.show_filter)
+                            .on_click(cx.listener(|this, checked, _, cx| {
+                                this.show_filter = *checked;
+                                cx.notify();
+                            })),
+                    )
                     .child(Button::new("reload-fonts").label("Reload fonts").on_click(
                         cx.listener(|this, _, window, cx| {
                             let load = FontCatalog::load(cx);
@@ -80,7 +91,11 @@ impl Render for FontPickerStory {
                     .description(
                         "Reload the catalog with the search or dropdown open to keep your place.",
                     )
-                    .child(FontPicker::new(&self.picker).when(self.compact, FontPicker::compact)),
+                    .child(
+                        FontPicker::new(&self.picker)
+                            .show_monospace_filter(self.show_filter)
+                            .when(self.compact, FontPicker::compact),
+                    ),
             )
     }
 }

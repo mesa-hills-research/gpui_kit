@@ -1004,6 +1004,52 @@ fn font_picker_dark() {
     goldens().assert("font-picker-dark", &font_picker(ThemeMode::Dark));
 }
 
+struct FontPickerWithoutFilterView {
+    picker: Entity<FontPickerState>,
+    compact: bool,
+}
+
+impl Render for FontPickerWithoutFilterView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(
+            FontPicker::new(&self.picker)
+                .show_monospace_filter(false)
+                .when(self.compact, FontPicker::compact),
+        )
+    }
+}
+
+fn font_picker_without_filter(mode: ThemeMode, compact: bool) -> Screenshot {
+    let mut app = app(mode);
+    let fonts: Vec<Cow<'static, [u8]>> = vec![Cow::Borrowed(include_bytes!(
+        "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+    ))];
+    app.add_fonts(fonts.clone()).unwrap();
+    let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());
+    let dimensions = if compact { (560., 340.) } else { (720., 400.) };
+    let window = open(&mut app, dimensions, SCALE, move |window, cx| {
+        let picker = cx.new(|cx| {
+            FontPickerState::new(window, cx)
+                .catalog(catalog)
+                .default_settings(FontSettings::new("JetBrains Mono").with_size(px(14.)))
+        });
+        FontPickerWithoutFilterView { picker, compact }
+    });
+    app.capture(window).unwrap()
+}
+
+#[test]
+fn font_picker_without_monospace_filter() {
+    for (name, mode, compact) in [
+        ("font-picker-no-filter", ThemeMode::Light, false),
+        ("font-picker-no-filter-dark", ThemeMode::Dark, false),
+        ("font-picker-compact-no-filter", ThemeMode::Light, true),
+        ("font-picker-compact-no-filter-dark", ThemeMode::Dark, true),
+    ] {
+        goldens().assert(name, &font_picker_without_filter(mode, compact));
+    }
+}
+
 #[test]
 fn buttons_light() {
     goldens().assert("buttons", &buttons(ThemeMode::Light, SCALE));
