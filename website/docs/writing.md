@@ -81,7 +81,8 @@ that text is never learned.
 A sentence is learned once the user types on after its `.`, `!`, `?` or line
 break, so the last sentence of a chat message sent with Enter would never be.
 A composer calls `suggestions.learn_rest(state.text())` as it sends, before it
-clears the text: the last sentence is learned under the same rules, once.
+clears the text: the last sentence is learned under the same rules. A text
+that becomes empty starts afresh, so a message sent again is learned again.
 
 ## Files
 

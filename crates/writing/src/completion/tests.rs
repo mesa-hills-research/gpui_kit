@@ -630,6 +630,53 @@ fn the_rest_of_a_sent_message_is_learned(cx: &mut TestAppContext) {
     assert_eq!(learned, []);
 }
 
+/// A composer is cleared at every send, so a message or a sentence the user
+/// sends again is learned again, each time.
+#[gpui::test]
+fn a_message_sent_again_is_learned_again(cx: &mut TestAppContext) {
+    let send = |typist: &mut Typist| {
+        let text = typist
+            .textarea
+            .read_with(&typist.cx, |state, _| state.text().clone());
+        typist.suggestions.learn_rest(&text);
+        typist.cx.update(|window, cx| {
+            typist
+                .textarea
+                .update(cx, |state, cx| state.set_value("", window, cx))
+        });
+    };
+    let learned = learned_in_both_modes(cx, |typist| {
+        for _ in 0..3 {
+            typist.type_text("Please fix the tests");
+            send(typist);
+            typist.type_text("Looks good. ");
+            send(typist);
+        }
+    });
+    assert_eq!(
+        learned,
+        counts(&[
+            ("Looks", 3),
+            ("Please", 3),
+            ("fix", 3),
+            ("good", 3),
+            ("tests", 3),
+            ("the", 3)
+        ])
+    );
+
+    // In one text, a sentence written once is learned once.
+    let learned = learned_in_both_modes(cx, |typist| {
+        typist.type_text("Looks good. ");
+        typist.type_text("More text. ");
+        send(typist);
+    });
+    assert_eq!(
+        learned,
+        counts(&[("Looks", 1), ("More", 1), ("good", 1), ("text", 1)])
+    );
+}
+
 /// One word pasted over a selected word looks like a spelling correction,
 /// but the user didn't write it: its sentence teaches nothing.
 #[gpui::test]

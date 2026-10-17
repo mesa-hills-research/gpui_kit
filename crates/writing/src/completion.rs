@@ -515,6 +515,15 @@ impl WordSuggestions {
         self.with_held(|held| self.local_index.borrow_mut().update_all_extra(held));
     }
 
+    /// Forgets what the text taught and opened with once it is empty, as a
+    /// chat composer's is after each send. A sentence learned from it before
+    /// is learned again when the user writes it again.
+    fn forget_cleared_text(&self) {
+        *self.learned.borrow_mut() = LearnedSentences::default();
+        *self.taught.borrow_mut() = WordTally::new();
+        *self.opened.borrow_mut() = WordTally::new();
+    }
+
     /// Calls `f` with how many occurrences of a folded word the shared
     /// vocabulary may hold already: those this document taught it, and those
     /// the document opened with, up to the vocabulary's count of the word.
@@ -923,6 +932,9 @@ impl SuggestionProvider for WordSuggestions {
         // What is written while suggestions are off is never learned.
         let learning = self.pacer.mode() != SuggestionMode::Off;
         self.typed.borrow_mut().changed(change, learning);
+        if change.text().len() == 0 {
+            self.forget_cleared_text();
+        }
         self.count_edits(
             change
                 .edits()

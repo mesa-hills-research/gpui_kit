@@ -10,6 +10,8 @@
 //! The text a textarea opens with is counted as learned, whether or not it
 //! ever was, so reopening a document teaches nothing. Changing a sentence
 //! makes it a different one, which is learned when the user next finishes it.
+//! A text emptied, such as a chat composer's after a send, starts a new
+//! record, so a message sent again is learned again.
 
 use super::is_sentence_terminator;
 use super::typed::TypedText;
