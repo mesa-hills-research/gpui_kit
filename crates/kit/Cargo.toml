@@ -111,7 +111,7 @@ serde_json.workspace = true
 # crates in the workspace's [patch.crates-io]. Its goldens are drawn by Mesa's software Vulkan
 # driver, on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "f98b12a625c8a24e372622e7f6100023a65085ca" }
+gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "c2afdb370ee2041147b65f4e3bff15a18cc2c075" }
 # The Rust grammar, so the diff view's goldens color their Rust the same way whether the build
 # enables only the kit's default features or every grammar, as a workspace build with the story
 # crate does.

@@ -2882,4 +2882,111 @@ mod tests {
         assert_eq!(handle.drag_starts.get(), 1);
         assert_eq!(handle.drag_ends.get(), 1);
     }
+
+    /// The height of row `ix` of the list below, from 20px to 578px in no
+    /// particular order.
+    fn mixed_row_height(ix: usize) -> f32 {
+        20. + ((ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 59) as f32 * 18.
+    }
+
+    /// A list of 300 rows of mixed heights, 200px tall, with its scrollbar.
+    struct ListHarness {
+        state: ListState,
+    }
+
+    impl Render for ListHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .relative()
+                .size(px(200.))
+                .child(
+                    gpui::list(self.state.clone(), |ix, _, _| {
+                        div()
+                            .h(px(mixed_row_height(ix)))
+                            .w_full()
+                            .into_any_element()
+                    })
+                    .size_full(),
+                )
+                .child(Scrollbar::vertical(&self.state).mode(ScrollbarMode::Always))
+        }
+    }
+
+    #[gpui::test]
+    fn a_lists_thumb_follows_the_pointer_over_rows_not_measured_yet(cx: &mut TestAppContext) {
+        let state = ListState::new(300, gpui::ListAlignment::Top, px(50.));
+        state.set_follow_mode(gpui::FollowMode::Tail);
+        let (_, cx) = cx.add_window_view({
+            let state = state.clone();
+            move |_, _| ListHarness { state }
+        });
+        let frame = |cx: &mut VisualTestContext| cx.update(|window, cx| window.draw(cx).clear(cx));
+        frame(cx);
+        let offset = |state: &ListState| -state.scroll_px_offset_for_scrollbar().y;
+        let drag = |cx: &mut VisualTestContext, y: f32| {
+            cx.simulate_mouse_move(
+                point(px(195.), px(y)),
+                Some(MouseButton::Left),
+                Modifiers::default(),
+            );
+            frame(cx);
+        };
+
+        // The thumb sits at the bottom of the track, at least 48px long.
+        let max = state.max_offset_for_scrollbar().y;
+        assert_eq!(offset(&state), max);
+        let grab = 190.;
+        cx.simulate_mouse_down(
+            point(px(195.), px(grab)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        frame(cx);
+
+        // Up the track a few pixels a frame, while the list measures the rows
+        // it scrolls to. The scroll range holds, and each pixel of the track
+        // stays the same distance down the list, so the thumb stays under the
+        // pointer.
+        let mut per_px = None;
+        for step in 1..=20 {
+            let y = grab - step as f32 * 6.;
+            drag(cx, y);
+            assert_eq!(state.max_offset_for_scrollbar().y, max);
+            let moved = f32::from(max - offset(&state)) / (grab - y);
+            let first = *per_px.get_or_insert(moved);
+            assert!((moved - first).abs() < 0.01, "{moved} against {first}");
+        }
+
+        // Past the top of the track, the list shows its first row.
+        drag(cx, -40.);
+        cx.simulate_mouse_up(
+            point(px(195.), px(-40.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        frame(cx);
+        let top = state.logical_scroll_top();
+        assert_eq!((top.item_ix, top.offset_in_item), (0, px(0.)));
+        assert_eq!(offset(&state), px(0.));
+
+        // Past the bottom of the track, its last row, at the list's bottom.
+        cx.simulate_mouse_down(
+            point(px(195.), px(10.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        frame(cx);
+        for y in [60., 120., 180., 240.] {
+            drag(cx, y);
+        }
+        cx.simulate_mouse_up(
+            point(px(195.), px(240.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        frame(cx);
+        let last = state.bounds_for_item(299).expect("the last row shows");
+        assert_eq!(last.bottom(), state.viewport_bounds().bottom());
+        assert_eq!(offset(&state), state.max_offset_for_scrollbar().y);
+    }
 }
