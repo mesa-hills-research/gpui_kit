@@ -24,6 +24,10 @@ harness = false
 name = "text_view_scroll"
 harness = false
 
+[[bench]]
+name = "text_view_memory"
+harness = false
+
 [features]
 decimal = ["dep:rust_decimal"]
 test-support = ["gpui/test-support"]

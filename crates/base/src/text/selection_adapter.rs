@@ -215,6 +215,14 @@ impl TextViewSelectionAdapter {
         self.text_runs.push(run);
     }
 
+    /// Lets go of this frame's text runs once they are registered with the
+    /// selection, which keeps its own copy for as long as the view is drawn.
+    /// The runs hold the shaped text, which would otherwise stay with a view
+    /// long after it scrolled away.
+    pub(super) fn release_text_runs(&mut self) {
+        self.text_runs = Vec::new();
+    }
+
     pub(super) fn register_inline(&mut self, bounds: Vec<Bounds<Pixels>>) {
         self.text_bounds.extend(bounds);
     }
@@ -290,5 +298,11 @@ impl TextViewSelectionAdapter {
     #[cfg(test)]
     pub(super) fn text_bounds(&self) -> Vec<Bounds<Pixels>> {
         self.text_bounds.clone()
+    }
+
+    /// The text runs this view and its selection hold on to.
+    #[cfg(test)]
+    pub(super) fn held_text_runs(&self, cx: &App) -> (usize, usize) {
+        (self.text_runs.len(), self.selection.hit_test_run_count(cx))
     }
 }

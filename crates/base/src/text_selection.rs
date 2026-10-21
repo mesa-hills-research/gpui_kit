@@ -910,6 +910,11 @@ impl TextSelectionHandle {
         self.0.update(cx, |state, _| state.runs = runs.to_vec());
     }
 
+    #[cfg(test)]
+    pub(crate) fn hit_test_run_count(&self, cx: &App) -> usize {
+        self.0.read(cx).runs.len()
+    }
+
     /// Subscribes to participant selection notifications.
     pub fn subscribe(
         &self,
@@ -1334,7 +1339,13 @@ impl WindowSelectionState {
         for (id, participant) in stale {
             self.participants.remove(&id);
             if let Some(participant) = participant.upgrade() {
-                if let Some(handler) = participant.update(cx, |state, cx| state.clear_state(cx)) {
+                // Its runs describe text no longer drawn, and hold the text
+                // shaped, which a long list would otherwise keep for every
+                // row it scrolled past.
+                if let Some(handler) = participant.update(cx, |state, cx| {
+                    state.runs = Vec::new();
+                    state.clear_state(cx)
+                }) {
                     handlers.push(handler);
                 }
             }

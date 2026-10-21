@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
+  shaped text of rows a list scrolled past, which they kept for as long as the views lived. One
+  pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.
 - **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
   a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus
   yet. See [Title Bar](website/component/title-bar.md#menu-bar-and-the-keyboard).
