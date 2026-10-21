@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **A right-click keeps the selection it lands on** (`gpui-base`). A right-click on a selection,
+  just past its end or below the text after Select All, opens the menu with the selection kept,
+  and so do Shift-F10 and the Menu key, so Copy, Cut and Paste act on it.
 - **One context menu style for every text field** (`gpui-component`).
   `ContextMenuStyle::set_app_default` chooses between the operating system's menu and the menu
   GPUI draws in the theme's colors for every input, textarea and editor without a style of its

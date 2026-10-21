@@ -93,6 +93,15 @@ impl CursorSelection {
         offset >= self.start && offset < self.end
     }
 
+    /// Whether a right-click or the menu key at `offset` opens the context
+    /// menu on this selection, and so keeps it: anywhere from its start to its
+    /// end, both included. A click just past its last character, past the end
+    /// of its last line, or below the text when it reaches the end lands on
+    /// its end. A collapsed caret has nothing to keep.
+    pub(super) fn touches(&self, offset: usize) -> bool {
+        !self.is_empty() && (self.start..=self.end).contains(&offset)
+    }
+
     pub(super) fn cursor_offset(&self) -> usize {
         if self.reversed { self.start } else { self.end }
     }

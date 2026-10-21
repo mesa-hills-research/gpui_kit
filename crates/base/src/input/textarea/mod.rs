@@ -322,4 +322,69 @@ mod tests {
         cx.run_until_parked();
         assert!(opened.borrow().is_empty());
     }
+
+    /// A right-click on a selection keeps it for the menu: on it, just past
+    /// its end, and after Select All past the end of the last line and in the
+    /// empty space below the text. So does the menu key, at the caret on the
+    /// selection's end. A right-click away from the selection moves the caret
+    /// there, and the menu's Paste replaces what stays selected.
+    #[gpui::test]
+    fn a_right_click_on_the_selection_keeps_it(cx: &mut TestAppContext) {
+        use gpui::{ClipboardItem, Modifiers, MouseButton, point};
+
+        const TEXT: &str = "Hello world\nSecond line";
+        let (mut cx, textareas) = open(cx, vec![|state| state.default_value(TEXT)]);
+        let textarea = textareas[0].clone();
+        let opened = Rc::new(RefCell::new(0));
+        cx.update(|window, cx| {
+            textarea.update(cx, |state, cx| {
+                let opened = opened.clone();
+                state.on_context_menu(Rc::new(move |_, _, _, _, _| *opened.borrow_mut() += 1));
+                state.select_all(window, cx);
+            });
+            window.draw(cx).clear(cx);
+        });
+        let right_click = |position: Point<Pixels>, cx: &mut VisualTestContext| {
+            cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+            cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+            cx.run_until_parked();
+        };
+        let bounds = |range: std::ops::Range<usize>, cx: &VisualTestContext| {
+            textarea.read_with(cx, |state, _| state.range_to_bounds(&range).unwrap())
+        };
+        let selected =
+            |cx: &VisualTestContext| textarea.read_with(cx, |state, _| state.selected_range());
+
+        let end = bounds(TEXT.len()..TEXT.len(), &cx);
+        let below = point(
+            end.left() + px(4.),
+            textarea.read_with(&cx, |state, _| state.input_bounds().bottom()) - px(4.),
+        );
+        assert!(
+            below.y > end.bottom() + px(4.),
+            "the click is below the text"
+        );
+        for position in [end.center(), end.center() + point(px(60.), px(0.)), below] {
+            right_click(position, &mut cx);
+            assert_eq!(selected(&cx), 0..TEXT.len(), "at {position:?}");
+        }
+        cx.simulate_keystrokes("shift-f10");
+        cx.run_until_parked();
+        assert_eq!(selected(&cx), 0..TEXT.len());
+        assert_eq!(*opened.borrow(), 4);
+
+        // "world", which ends at the end of its line.
+        textarea.update(&mut cx, |state, cx| state.set_selected_range(6..11, cx));
+        let world_end = bounds(11..11, &cx);
+        right_click(world_end.center() + point(px(40.), px(0.)), &mut cx);
+        assert_eq!(selected(&cx), 6..11);
+        right_click(bounds(0..1, &cx).left_center(), &mut cx);
+        assert_eq!(selected(&cx), 0..0);
+
+        cx.update(|window, cx| textarea.update(cx, |state, cx| state.select_all(window, cx)));
+        cx.write_to_clipboard(ClipboardItem::new_string("Pasted".into()));
+        right_click(below, &mut cx);
+        cx.dispatch_action(crate::input::Paste);
+        assert_eq!(textarea.read_with(&cx, |state, _| state.value()), "Pasted");
+    }
 }

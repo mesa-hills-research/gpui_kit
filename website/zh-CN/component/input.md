@@ -231,6 +231,8 @@ ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx);
 
 输入框自身的 `context_menu_style` 仍然优先。应用没有设置默认样式时，Input、Textarea 和代码编辑器显示系统菜单，`TextEditor` 显示自己绘制的菜单。设置之后，`TextEditor` 也会遵循它。菜单在打开时读取默认样式，所以之后再修改也会作用于所有输入框。
 
+在选区上右键，或在选区末尾之后右键，选区会保留，菜单中的复制、剪切和粘贴都作用于它。在其他位置右键时，光标会先移到那里。
+
 Shift-F10 和 Menu 键会在光标处打开菜单。
 
 ### 触摸选择

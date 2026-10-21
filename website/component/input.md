@@ -252,6 +252,10 @@ inputs, textareas and code editors show the operating system's menu, and a
 `TextEditor` draws its own. With one, text editors follow it too. A menu reads
 the default as it opens, so changing it later reaches every field.
 
+A right-click on the selection, or just past its end, keeps it, so the menu's
+Copy, Cut and Paste act on it. A right-click elsewhere moves the caret there
+first.
+
 Shift-F10 and the Menu key open the menu at the caret. A textarea's menu can
 also be built from where it opened: see
 [Textarea: your own menu items](./textarea.md#your-own-menu-items).
