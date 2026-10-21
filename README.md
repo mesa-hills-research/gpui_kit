@@ -10,6 +10,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **The layout of selectable text** (`gpui-base`). `SelectableText::layout` returns the
+  `TextLayout` the text is drawn with, so an element around it can find where an offset is drawn
+  without shaping the text again. See
+  [Text Selection](website/base/text-selection.md#selectable-highlighted-text).
 - **A frame rate per shimmer** (`gpui-component`). `ShimmerStyle::max_fps` and
   `ShimmerText::max_fps` set how many frames a second a shimmer draws, 30 by default. See
   [Shimmer](website/component/shimmer.md#styling-theme-and-reduced-motion).

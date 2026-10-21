@@ -35,6 +35,11 @@ Keep the element ID stable between renders. Use `SelectableText::with_handle` an
 `document_order` when several runs form one selectable document. Kit windows
 already install the selection layer. Base-only windows install it as described below.
 
+`SelectableText::layout` returns the `TextLayout` the run is drawn with. An element
+that wraps the run can read it in `prepaint` or `paint`, for example to find the
+line a search match sits on with `position_for_index`, without shaping the text a
+second time.
+
 ## Get started
 
 To add text selection to a custom GPUI participant, connect its layout and paint lifecycle to the window selection state as shown below.

@@ -29,6 +29,10 @@ SelectableText::new("result", "Find matching text")
 `SelectableText::with_handle` 和 `document_order`。Kit 窗口已安装选择层，
 仅使用 Base 的窗口需要按下文安装。
 
+`SelectableText::layout` 返回绘制该文本段所用的 `TextLayout`。包装该文本段的元素可以在
+`prepaint` 或 `paint` 中读取它，例如用 `position_for_index` 找到搜索匹配所在的行，
+无需再次排版文本。
+
 ## 开始使用
 
 核心由窗口级 `TextSelectionState`、稳定的 `SelectableTextHandle`、prepaint 阶段注册的几何信息，以及把全局选择投影到各文本 run 的辅助 API 组成。
