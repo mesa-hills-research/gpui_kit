@@ -988,10 +988,12 @@ fn the_next_word_key_takes_one_word(cx: &mut TestAppContext) {
         let caret = typist
             .textarea
             .read_with(&typist.cx, |state, _| state.cursor());
+        // On macOS, Cmd-Right goes to the line's end in every keymap.
+        // Elsewhere Ctrl-Right moves a word in CUA and Emacs, and Vim
+        // leaves it unbound.
         let moves = match keymap {
-            Keymap::Cua => true,
-            Keymap::Emacs => !cfg!(target_os = "macos"),
-            _ => false,
+            Keymap::Cua | Keymap::Emacs => true,
+            _ => cfg!(target_os = "macos"),
         };
         assert_eq!(caret > 0, moves, "{keymap:?}");
         assert_eq!(typist.value(), "hello world. So", "{keymap:?}");
