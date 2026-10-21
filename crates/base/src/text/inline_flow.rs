@@ -463,6 +463,20 @@ impl Element for InlineFlow {
             .reduce(|found, next| if found.1 { found } else { next })
             .map(|(ix, _)| ix);
 
+        // Lines out of view are left out, unless something needs every line
+        // laid out: a selection, which each line records as it paints, or a
+        // cap on the view's lines, which counts them.
+        let visible = window.content_mask().bounds;
+        let cull = crate::GlobalState::global(cx)
+            .text_view_state()
+            .is_some_and(|view| {
+                let view = view.read(cx);
+                view.max_lines.is_none()
+                    && !view.is_selecting
+                    && !view.preserve_inline_selection
+                    && !view.has_selection(cx)
+            });
+
         let mut text_fragment_count = 0;
         for (fragment_ix, fragment) in layout.fragments.iter().enumerate() {
             match fragment {
@@ -538,6 +552,12 @@ impl Element for InlineFlow {
                     text_fragment_count += 1;
                     if let Ok(mut state) = state.lock() {
                         state.set_text(text.clone());
+                    }
+                    if cull
+                        && reveal_fragment != Some(fragment_ix)
+                        && !Bounds::new(bounds.origin + origin, fragment_size).intersects(&visible)
+                    {
+                        continue;
                     }
 
                     let is_code = highlights.iter().any(|(_, h)| h.font_size_scale.is_some());

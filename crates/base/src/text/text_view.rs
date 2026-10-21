@@ -801,20 +801,17 @@ impl Element for TextView {
     ) -> Self::PrepaintState {
         let state = request_layout.state.clone();
         let max_lines_active = state.read(cx).max_lines.is_some();
-        if max_lines_active {
-            if let Ok(mut line_spans) = state.read(cx).line_spans.lock() {
-                line_spans.clear();
-            }
-            // Descendant `Inline`s report their line spans through the state
-            // stack during prepaint (in addition to the paint-time push below).
-            GlobalState::global_mut(cx)
-                .text_view_state_stack
-                .push(state.clone());
+        if max_lines_active && let Ok(mut line_spans) = state.read(cx).line_spans.lock() {
+            line_spans.clear();
         }
+        // Descendant `Inline`s report their line spans through the state
+        // stack during prepaint (in addition to the paint-time push below),
+        // and inline flows read whether they may leave out lines out of view.
+        GlobalState::global_mut(cx)
+            .text_view_state_stack
+            .push(state.clone());
         request_layout.element.prepaint(window, cx);
-        if max_lines_active {
-            GlobalState::global_mut(cx).text_view_state_stack.pop();
-        }
+        GlobalState::global_mut(cx).text_view_state_stack.pop();
 
         let mut clip_bottom = None;
         if max_lines_active {

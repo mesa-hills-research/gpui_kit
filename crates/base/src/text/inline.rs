@@ -2874,6 +2874,37 @@ mod retained_layout_tests {
         assert_eq!(alive, 3, "one live layout per remaining fragment");
     }
 
+    /// A paragraph much taller than the window lays out only the lines in
+    /// view, and every line while a selection needs them.
+    #[gpui::test]
+    fn a_tall_flow_lays_out_only_the_lines_in_view(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let source = "word `code` ".repeat(300);
+        let (view, cx) = cx.add_window_view(|_, cx| Once {
+            state: cx.new(|cx| TextViewState::markdown(&source, cx)),
+        });
+        cx.simulate_resize(gpui::size(px(300.), px(120.)));
+        cx.run_until_parked();
+        let laid_out = |cx: &mut gpui::VisualTestContext| {
+            RETAINED_LAYOUTS.with(|layouts| *layouts.borrow_mut() = Default::default());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.len())
+        };
+        laid_out(cx);
+        let in_view = laid_out(cx);
+
+        view.update(cx, |view, cx| {
+            view.state.update(cx, |state, cx| state.select_all(cx))
+        });
+        let all = laid_out(cx);
+        // "word ", "code" and " " per repeat, a few lines of them in view.
+        assert!(all >= 600, "{all} fragments laid out with a selection");
+        assert!(
+            in_view > 0 && in_view * 10 < all,
+            "{in_view} of {all} fragments laid out without one"
+        );
+    }
+
     /// A streamed block is a new state with every chunk, so each chunk left
     /// the layout of the whole block before it behind, until four thousand
     /// had piled up, gigabytes for a long code block.
