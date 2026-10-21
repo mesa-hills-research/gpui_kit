@@ -10,9 +10,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
-- **Long paragraphs with inline code draw in about half the time** (`gpui-base`). A paragraph
-  with inline code, images or inline objects lays out and paints only the lines in view, unless a
-  selection needs every line. Streaming into a 20 KB one went from 14.9 to 8.2 ms a frame (p50).
+- **Long paragraphs with inline code stream faster** (`gpui-base`). A paragraph with inline code,
+  images or inline objects lays out and paints only the lines in view, unless a selection needs
+  every line, and text streamed onto its end lays out again only the lines it can change.
+  Streaming into a 20 KB one went from about 15 to 4 ms a frame, and into an 80 KB one from 65 to
+  8 ms (p50).
 - **A selection across rows survives scrolling** (`gpui-base`). A selection across the rows of
   one document, shown as views in a list, keeps its rows as they scroll out of view. Its ends
   hold, the rows are copied, and they show as selected when they come back.
