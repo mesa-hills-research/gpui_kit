@@ -47,8 +47,9 @@ impl From<Pixels> for ShimmerSpread {
 /// The appearance and timing of a reusable text shimmer.
 ///
 /// By default, the highlight's half-width spans 30% of the text width and
-/// completes one left-to-right sweep every two seconds. Its color follows the
-/// current text color and active theme.
+/// completes one left-to-right sweep every two seconds, drawn at most
+/// [`LOADING_ANIMATION_MAX_FPS`] times a second. Its color follows the current
+/// text color and active theme.
 #[derive(Clone, Copy, Debug)]
 pub struct ShimmerStyle {
     duration: Duration,
@@ -56,6 +57,7 @@ pub struct ShimmerStyle {
     spread: ShimmerSpread,
     reverse: bool,
     once: bool,
+    max_fps: f32,
 }
 
 impl ShimmerStyle {
@@ -109,8 +111,21 @@ impl ShimmerStyle {
         self
     }
 
+    /// Set the most frames a second the sweep draws. The default is
+    /// [`LOADING_ANIMATION_MAX_FPS`], 30.
+    ///
+    /// A lower rate makes a label that shows for a long time cheaper to draw,
+    /// and can match other animations an application holds to a lower rate.
+    /// Values that aren't finite and positive leave the rate unchanged.
+    pub fn max_fps(mut self, max_fps: f32) -> Self {
+        if max_fps.is_finite() && max_fps > 0. {
+            self.max_fps = max_fps;
+        }
+        self
+    }
+
     pub(crate) fn animation(self) -> Animation {
-        loading_animation(self.duration, self.once)
+        loading_animation(self.duration, self.once, self.max_fps)
     }
 }
 
@@ -122,6 +137,7 @@ impl Default for ShimmerStyle {
             spread: ShimmerSpread::default(),
             reverse: false,
             once: false,
+            max_fps: LOADING_ANIMATION_MAX_FPS,
         }
     }
 }
@@ -195,6 +211,12 @@ impl ShimmerText {
     /// Set whether the highlight should complete one sweep instead of looping.
     pub fn once(mut self, once: bool) -> Self {
         self.shimmer_style = self.shimmer_style.once(once);
+        self
+    }
+
+    /// Set the most frames a second the sweep draws, 30 by default.
+    pub fn max_fps(mut self, max_fps: f32) -> Self {
+        self.shimmer_style = self.shimmer_style.max_fps(max_fps);
         self
     }
 }
@@ -424,8 +446,8 @@ impl Element for ShimmerGlyphs {
     }
 }
 
-pub(crate) fn loading_animation(duration: Duration, once: bool) -> Animation {
-    let animation = Animation::new(duration).with_max_fps(LOADING_ANIMATION_MAX_FPS);
+fn loading_animation(duration: Duration, once: bool, max_fps: f32) -> Animation {
+    let animation = Animation::new(duration).with_max_fps(max_fps);
     if once {
         animation
     } else {
@@ -644,15 +666,81 @@ mod tests {
         assert_eq!(custom.s, muted.s);
         assert_eq!(custom.l, muted.l);
 
-        let animation = loading_animation(Duration::from_secs(3), false);
+        let animation = ShimmerStyle::new()
+            .duration(Duration::from_secs(3))
+            .animation();
         assert_eq!(animation.duration, Duration::from_secs(3));
         assert!(animation.synced);
         assert!(!animation.oneshot);
         assert_eq!(animation.max_fps, Some(LOADING_ANIMATION_MAX_FPS));
 
-        let animation = loading_animation(Duration::from_secs(3), true);
+        let animation = ShimmerStyle::new()
+            .duration(Duration::from_secs(3))
+            .once(true)
+            .animation();
         assert_eq!(animation.duration, Duration::from_secs(3));
         assert!(animation.oneshot);
         assert!(!animation.synced);
+    }
+
+    #[test]
+    fn the_frame_rate_is_set_per_shimmer() {
+        assert_eq!(ShimmerStyle::new().max_fps, LOADING_ANIMATION_MAX_FPS);
+        let style = ShimmerStyle::new().max_fps(12.);
+        assert_eq!(style.animation().max_fps, Some(12.));
+        assert_eq!(
+            ShimmerText::new("Thinking")
+                .max_fps(12.)
+                .shimmer_style
+                .max_fps,
+            12.
+        );
+
+        for invalid in [0., -5., f32::NAN, f32::INFINITY] {
+            assert_eq!(style.max_fps(invalid).max_fps, 12., "{invalid}");
+        }
+    }
+
+    /// Counts the renders of a view showing one shimmer at `max_fps`.
+    fn redraws_in_a_second(max_fps: Option<f32>, cx: &mut gpui::TestAppContext) -> usize {
+        use gpui::{Context, Render};
+        use std::{cell::Cell, rc::Rc};
+
+        struct Counted(Rc<Cell<usize>>, Option<f32>);
+        impl Render for Counted {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.0.set(self.0.get() + 1);
+                let text = ShimmerText::new("Thinking");
+                match self.1 {
+                    Some(max_fps) => text.max_fps(max_fps),
+                    None => text,
+                }
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let renders = Rc::new(Cell::new(0));
+        cx.open_window(size(px(200.), px(40.)), {
+            let renders = renders.clone();
+            move |_, _| Counted(renders, max_fps)
+        });
+        cx.run_until_parked();
+        let before = renders.get();
+        for _ in 0..100 {
+            cx.executor().advance_clock(Duration::from_millis(10));
+            cx.run_until_parked();
+        }
+        renders.get() - before
+    }
+
+    #[gpui::test]
+    fn a_shimmer_draws_at_its_own_frame_rate(cx: &mut gpui::TestAppContext) {
+        let default = redraws_in_a_second(None, cx);
+        assert!(
+            (25..=31).contains(&default),
+            "{default} redraws at the default"
+        );
+        let slow = redraws_in_a_second(Some(12.), cx);
+        assert!((10..=13).contains(&slow), "{slow} redraws at 12 fps");
     }
 }

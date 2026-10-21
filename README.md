@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **A frame rate per shimmer** (`gpui-component`). `ShimmerStyle::max_fps` and
+  `ShimmerText::max_fps` set how many frames a second a shimmer draws, 30 by default. See
+  [Shimmer](website/component/shimmer.md#styling-theme-and-reduced-motion).
 - **Keyboard navigation in tab bars and sidebar menus** (`gpui-base`, `gpui-component`). A
   `TabBar` and a `SidebarMenu` are each one Tab stop, on the selected tab or the active item, and
   the arrow keys, Home and End move focus between their enabled items. Enter or Space activates

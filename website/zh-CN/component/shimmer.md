@@ -48,6 +48,7 @@ ShimmerText::new("正在思考…")
 | `spread` | 相对 `0.3` | 高光半宽占文字宽度的比例，也可以传 `Pixels` 设置固定宽度。 |
 | `reverse` | `false` | 从左向右移动。 |
 | `once` | `false` | 默认循环播放。 |
+| `max_fps` | `30.` | 每秒最多绘制 30 帧。 |
 
 需要给同一文本的多个 sibling 设置独立动画身份时，可以设置 `.id(...)`：
 
@@ -238,7 +239,13 @@ ShimmerText::new("正在生成…")
 
 动画文本保持 `StyledText` 的布局，因此会继承换行和截断规则。高光的背景与 foreground 由当前主题计算；应用应避免在父级同时设置难以读取的背景和文字颜色。
 
-高光扫过时每秒最多绘制 30 帧（`LOADING_ANIMATION_MAX_FPS`），整段回复期间一直显示的“Thinking…”标签不会让窗口按显示器的满刷新率重绘。
+高光扫过时每秒最多绘制 30 帧（`LOADING_ANIMATION_MAX_FPS`），整段回复期间一直显示的“Thinking…”标签不会让窗口按显示器的满刷新率重绘。`max_fps(...)` 可以为单个 shimmer 或共享的 `ShimmerStyle` 设置其他帧率，例如与应用中其他限制在较低帧率的动画保持一致：
+
+```rust
+ShimmerText::new("正在思考…").max_fps(12.)
+```
+
+不是有限正数的值不会改变帧率。
 
 系统启用 reduced motion 时，`ShimmerText` 会直接渲染静态 `StyledText`，不会请求动画帧。应用无需额外写一个重复的动画分支，但仍应让文字本身完整表达状态。
 
@@ -270,6 +277,7 @@ ShimmerText::new("正在生成…")
 | `spread(f32 \| Pixels)` | 相对 `0.3` | 设置高光半宽：`f32` 为相对比例（限制在 `0.05..=1.0`），`Pixels` 为绝对宽度（最小 1px）。 |
 | `reverse(bool)` | `false` | 设置是否从右向左移动。 |
 | `once(bool)` | `false` | 设置是否只完成一次 sweep。 |
+| `max_fps(f32)` | `30.` | 设置 sweep 每秒最多绘制的帧数。 |
 
 ### `ShimmerText`
 
@@ -283,6 +291,7 @@ ShimmerText::new("正在生成…")
 | `spread(f32 \| Pixels)` | 相对 `0.3` | 直接设置半宽。 |
 | `reverse(bool)` | `false` | 直接设置方向。 |
 | `once(bool)` | `false` | 直接设置播放次数。 |
+| `max_fps(f32)` | `30.` | 直接设置帧率。 |
 | `Styled` 方法 | 继承文字样式 | 调整字号、颜色、宽度、字体和布局。 |
 
 ### 相关组件
