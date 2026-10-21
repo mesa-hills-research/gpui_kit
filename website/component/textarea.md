@@ -360,6 +360,10 @@ use gpui_kit::component::input::ContextMenuStyle;
 TextEditor::new(&document).context_menu_style(ContextMenuStyle::Native)
 ```
 
+`ContextMenuStyle::set_app_default` chooses the style of every text field at
+once, and a text editor without a style of its own follows it. See
+[Input: context menu](./input.md#context-menu).
+
 Choosing a suggestion replaces the word in one undo step. Add to
 Dictionary calls `SpellChecker::add_to_dictionary` and clears every underline
 of the word, and Ignore stops marking it in this textarea. `SpellEvent`

@@ -10,6 +10,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **One context menu style for every text field** (`gpui-component`).
+  `ContextMenuStyle::set_app_default` chooses between the operating system's menu and the menu
+  GPUI draws in the theme's colors for every input, textarea and editor without a style of its
+  own, the ones inside other components too, such as the Settings search field. See
+  [Input: context menu](website/component/input.md#context-menu).
 - **Long paragraphs with inline code stream faster** (`gpui-base`). A paragraph with inline code,
   images or inline objects lays out and paints only the lines in view, unless a selection needs
   every line, and text streamed onto its end lays out again only the lines it can change.

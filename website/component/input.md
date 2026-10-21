@@ -236,6 +236,22 @@ Input::new(&input).context_menu(|menu, window, cx| {
 On macOS and Windows the menu is the operating system's. `context_menu_style(ContextMenuStyle::Drawn)`
 shows GPUI's menu in the theme's colors instead, as on Linux.
 
+To use one style for every text field in the application, set it once at
+startup. It also reaches the fields that other components build for
+themselves, such as the search field of Settings or of a searchable Select.
+
+```rust
+use gpui_kit::component::input::ContextMenuStyle;
+
+gpui_kit::init(cx);
+ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx);
+```
+
+A field's own `context_menu_style` still wins. Without an application default,
+inputs, textareas and code editors show the operating system's menu, and a
+`TextEditor` draws its own. With one, text editors follow it too. A menu reads
+the default as it opens, so changing it later reaches every field.
+
 Shift-F10 and the Menu key open the menu at the caret. A textarea's menu can
 also be built from where it opened: see
 [Textarea: your own menu items](./textarea.md#your-own-menu-items).

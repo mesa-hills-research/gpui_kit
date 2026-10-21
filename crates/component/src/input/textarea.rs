@@ -41,7 +41,8 @@ pub struct Textarea {
     /// Paint the theme's editor background. See [`Input::editor_surface`].
     editor_surface: bool,
 
-    context_menu_style: ContextMenuStyle,
+    context_menu_style: Option<ContextMenuStyle>,
+    fallback_context_menu_style: ContextMenuStyle,
 }
 
 impl Textarea {
@@ -97,13 +98,20 @@ impl Textarea {
             token_hover_listener: None,
             suggestion_item: None,
             editor_surface: false,
-            context_menu_style: ContextMenuStyle::default(),
+            context_menu_style: None,
+            fallback_context_menu_style: ContextMenuStyle::default(),
         }
     }
 
     /// Paint the theme's `editor.background`, as [`super::TextEditor`] does.
     pub(crate) fn editor_surface(mut self, editor_surface: bool) -> Self {
         self.editor_surface = editor_surface;
+        self
+    }
+
+    /// See [`Input::fallback_context_menu_style`].
+    pub(crate) fn fallback_context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.fallback_context_menu_style = style;
         self
     }
 
@@ -224,15 +232,21 @@ impl Textarea {
     /// What draws the right-click menu: the operating system's menu on macOS
     /// and Windows, the default, or GPUI's menu in the theme's colors with
     /// [`ContextMenuStyle::Drawn`].
+    ///
+    /// Without it the textarea follows [`ContextMenuStyle::set_app_default`].
     pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
-        self.context_menu_style = style;
+        self.context_menu_style = Some(style);
         self
     }
 
-    /// The style [`Self::context_menu_style`] set, for tests.
+    /// The style the menu opens in now, for tests.
     #[cfg(test)]
-    pub(crate) fn current_context_menu_style(&self) -> ContextMenuStyle {
-        self.context_menu_style
+    pub(crate) fn current_context_menu_style(&self, cx: &App) -> ContextMenuStyle {
+        ContextMenuStyle::resolve(
+            self.context_menu_style,
+            ContextMenuStyle::app_default(cx),
+            self.fallback_context_menu_style,
+        )
     }
 
     /// Intercept paste payloads (images, files) before the default text insertion.
@@ -296,7 +310,10 @@ impl Textarea {
             .suggestion_item_renderer(self.suggestion_item)
             .context_menu_target_builder(self.context_menu_target_builder)
             .editor_surface(self.editor_surface)
-            .context_menu_style(self.context_menu_style)
+            .when_some(self.context_menu_style, |this, style| {
+                this.context_menu_style(style)
+            })
+            .fallback_context_menu_style(self.fallback_context_menu_style)
             .refine_style(&self.style)
     }
 }

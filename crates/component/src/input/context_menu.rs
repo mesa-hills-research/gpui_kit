@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use gpui::{App, Entity, SharedString};
+use gpui::{App, Entity, Global, SharedString};
 use gpui_base::input::{InputContextMenuCapabilities, Mark, Misspelling, RopeExt as _};
 use rust_i18n::t;
 
@@ -16,8 +16,11 @@ const MAX_SPELLING_SUGGESTIONS: usize = 5;
 /// What draws a text field's right-click menu.
 ///
 /// [`super::TextEditor`] uses [`Self::Drawn`], and inputs and textareas
-/// [`Self::Native`]. Change it with `context_menu_style` on [`super::Input`],
-/// [`super::Textarea`] or [`super::TextEditor`].
+/// [`Self::Native`]. [`Self::set_app_default`] chooses one style for every
+/// text field in the application, the ones inside other components too.
+/// `context_menu_style` on [`super::Input`], [`super::Textarea`] or
+/// [`super::TextEditor`] sets the style of one field, which wins over the
+/// application's.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ContextMenuStyle {
     /// A [`PopupMenu`](crate::menu::PopupMenu) drawn by GPUI in the theme's
@@ -29,7 +32,42 @@ pub enum ContextMenuStyle {
     Native,
 }
 
+/// The style [`ContextMenuStyle::set_app_default`] chose.
+struct AppContextMenuStyle(ContextMenuStyle);
+
+impl Global for AppContextMenuStyle {}
+
 impl ContextMenuStyle {
+    /// Use `style` for the right-click menu of every text field that sets no
+    /// style of its own with `context_menu_style`, text editors included.
+    ///
+    /// This reaches the fields that other components build for themselves,
+    /// such as the search field of [`crate::setting::Settings`] or of a
+    /// searchable [`crate::select::Select`], which an application can't style
+    /// one by one. A menu reads the style as it opens, so calling this again
+    /// changes the next menu of every field.
+    ///
+    /// ```ignore
+    /// gpui_kit::init(cx);
+    /// ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx);
+    /// ```
+    pub fn set_app_default(style: Self, cx: &mut App) {
+        cx.set_global(AppContextMenuStyle(style));
+    }
+
+    /// The style [`Self::set_app_default`] chose, or `None` when the
+    /// application chose none.
+    pub fn app_default(cx: &App) -> Option<Self> {
+        cx.try_global::<AppContextMenuStyle>().map(|style| style.0)
+    }
+
+    /// The style a text field's menu opens in: the field's `own` when it set
+    /// one, else the application's `app` default, else the component's
+    /// `fallback`.
+    pub(crate) fn resolve(own: Option<Self>, app: Option<Self>, fallback: Self) -> Self {
+        own.or(app).unwrap_or(fallback)
+    }
+
     /// Whether the operating system draws a menu of this style on `os`, a
     /// [`std::env::consts::OS`] value.
     pub(crate) fn uses_os_menu(self, os: &str) -> bool {
@@ -44,13 +82,31 @@ impl ContextMenuStyle {
         window: &mut gpui::Window,
         cx: &mut App,
     ) {
+        #[cfg(test)]
+        cx.default_global::<ShownMenuStyles>().0.push(self);
         if self.uses_os_menu(std::env::consts::OS) {
             menu.show(position, window, cx);
         } else {
             menu.show_drawn(position, window, cx);
         }
     }
+
+    /// The styles text field menus opened in so far, oldest first, for tests.
+    #[cfg(test)]
+    pub(crate) fn shown(cx: &App) -> Vec<Self> {
+        cx.try_global::<ShownMenuStyles>()
+            .map(|shown| shown.0.clone())
+            .unwrap_or_default()
+    }
 }
+
+/// The styles text field menus opened in, for tests.
+#[cfg(test)]
+#[derive(Default)]
+struct ShownMenuStyles(Vec<ContextMenuStyle>);
+
+#[cfg(test)]
+impl Global for ShownMenuStyles {}
 
 /// Where a textarea's context menu opened and what is there, for a menu
 /// builder given to [`super::Textarea::context_menu_at`].
@@ -220,7 +276,116 @@ pub(crate) fn standard_items(
 
 #[cfg(test)]
 mod tests {
+    use gpui::{
+        AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, Modifiers,
+        MouseButton, ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext,
+        Window, div, px,
+    };
+
     use super::ContextMenuStyle;
+    use crate::input::{Editor, EditorState, Input, InputState, TextEditor, Textarea};
+
+    /// A field's own style wins, then the application's, then the
+    /// component's.
+    #[test]
+    fn a_field_style_wins_over_the_app_default() {
+        use ContextMenuStyle::{Drawn, Native};
+        for fallback in [Drawn, Native] {
+            assert_eq!(ContextMenuStyle::resolve(None, None, fallback), fallback);
+            for app in [Drawn, Native] {
+                assert_eq!(ContextMenuStyle::resolve(None, Some(app), fallback), app);
+                for own in [Drawn, Native] {
+                    let style = ContextMenuStyle::resolve(Some(own), Some(app), fallback);
+                    assert_eq!(style, own);
+                }
+            }
+        }
+    }
+
+    /// One field of each kind, and an input that sets its own style.
+    struct Fields {
+        input: Entity<InputState>,
+        native_input: Entity<InputState>,
+        textarea: Entity<crate::input::TextareaState>,
+        text_editor: Entity<crate::input::TextareaState>,
+        editor: Entity<EditorState>,
+    }
+
+    impl Render for Fields {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let field =
+                |selector: &'static str| div().w_full().debug_selector(move || selector.into());
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(field("input").child(Input::new(&self.input)))
+                .child(field("native-input").child(
+                    Input::new(&self.native_input).context_menu_style(ContextMenuStyle::Native),
+                ))
+                .child(field("textarea").child(Textarea::new(&self.textarea).h(px(60.))))
+                .child(
+                    field("text-editor")
+                        .h(px(60.))
+                        .child(TextEditor::new(&self.text_editor)),
+                )
+                .child(field("editor").child(Editor::new(&self.editor).h(px(60.))))
+        }
+    }
+
+    fn open(cx: &mut TestAppContext) -> &mut VisualTestContext {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| Fields {
+            input: cx.new(|cx| InputState::new(window, cx).default_value("one")),
+            native_input: cx.new(|cx| InputState::new(window, cx).default_value("two")),
+            textarea: cx
+                .new(|cx| crate::input::TextareaState::new(window, cx).default_value("three")),
+            text_editor: cx.new(|cx| {
+                crate::input::TextareaState::new(window, cx)
+                    .text_editor()
+                    .default_value("four")
+            }),
+            editor: cx.new(|cx| EditorState::new(window, cx).default_value("five")),
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx
+    }
+
+    /// Right-click the field `selector` names, and return the style its menu
+    /// opened in.
+    fn menu_style(selector: &'static str, cx: &mut VisualTestContext) -> ContextMenuStyle {
+        let position = cx.debug_bounds(selector).expect(selector).center();
+        cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+        cx.run_until_parked();
+        let shown = cx.update(|_, cx| ContextMenuStyle::shown(cx));
+        *shown.last().expect("the menu opened")
+    }
+
+    /// Without an application default, inputs, textareas and code editors
+    /// keep the native menu and text editors draw theirs. An application
+    /// default reaches every field without a style of its own, as its next
+    /// menu opens, and a field's own style still wins.
+    #[gpui::test]
+    fn fields_follow_the_app_default(cx: &mut TestAppContext) {
+        use ContextMenuStyle::{Drawn, Native};
+        let cx = open(cx);
+        let fields = ["input", "native-input", "textarea", "text-editor", "editor"];
+        let styles = |cx: &mut VisualTestContext| fields.map(|field| menu_style(field, cx));
+
+        assert_eq!(cx.update(|_, cx| ContextMenuStyle::app_default(cx)), None);
+        assert_eq!(styles(cx), [Native, Native, Native, Drawn, Native]);
+
+        cx.update(|_, cx| ContextMenuStyle::set_app_default(Drawn, cx));
+        assert_eq!(
+            cx.update(|_, cx| ContextMenuStyle::app_default(cx)),
+            Some(Drawn)
+        );
+        assert_eq!(styles(cx), [Drawn, Native, Drawn, Drawn, Drawn]);
+
+        cx.update(|_, cx| ContextMenuStyle::set_app_default(Native, cx));
+        assert_eq!(styles(cx), [Native, Native, Native, Native, Native]);
+    }
 
     /// The drawn style is drawn by GPUI everywhere. The native one is the
     /// operating system's where there is one.

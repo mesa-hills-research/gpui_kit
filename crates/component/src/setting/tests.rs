@@ -374,3 +374,30 @@ fn wide_page_list_supports_keyboard_navigation(cx: &mut TestAppContext) {
     press("enter", cx);
     assert_eq!(selection(&host, cx), (1, None));
 }
+
+/// The search field Settings builds for itself opens its right-click menu in
+/// the style the application chose for every text field.
+#[gpui::test]
+fn the_search_field_menu_follows_the_app_default(cx: &mut TestAppContext) {
+    use crate::input::ContextMenuStyle;
+    use gpui::{Modifiers, MouseButton};
+
+    let (host, cx) = setup(cx);
+    cx.update(|_, cx| ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx));
+    let search_input = cx.update(|_, cx| {
+        let state = host.read(cx).state.clone().unwrap();
+        state.read(cx).search_input.clone()
+    });
+    let position = cx.update(|_, cx| search_input.read(cx).text_bounds().unwrap().center());
+    cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+    cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+    draw(cx);
+
+    let shown = cx.update(|_, cx| ContextMenuStyle::shown(cx));
+    assert_eq!(shown, [ContextMenuStyle::Drawn]);
+    let menu = cx.update(|window, cx| {
+        let overlay = crate::root::WindowState::native_menu_overlay(window, cx).unwrap();
+        overlay.read(cx).active_menu()
+    });
+    assert!(menu.is_some(), "the drawn menu opened");
+}

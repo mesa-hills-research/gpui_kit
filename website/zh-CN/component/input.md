@@ -217,6 +217,22 @@ Input::new(&input).context_menu(|menu, window, cx| {
 })
 ```
 
+在 macOS 和 Windows 上，菜单由操作系统显示。`context_menu_style(ContextMenuStyle::Drawn)`
+改为显示 GPUI 按主题颜色绘制的菜单，与 Linux 上一样。
+
+若要让应用中的所有输入框使用同一种样式，在启动时设置一次即可。其他组件自己创建的输入框也会使用它，例如 Settings 或可搜索 Select 的搜索框。
+
+```rust
+use gpui_kit::component::input::ContextMenuStyle;
+
+gpui_kit::init(cx);
+ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx);
+```
+
+输入框自身的 `context_menu_style` 仍然优先。应用没有设置默认样式时，Input、Textarea 和代码编辑器显示系统菜单，`TextEditor` 显示自己绘制的菜单。设置之后，`TextEditor` 也会遵循它。菜单在打开时读取默认样式，所以之后再修改也会作用于所有输入框。
+
+Shift-F10 和 Menu 键会在光标处打开菜单。
+
 ### 触摸选择
 
 在触摸屏上，长按会选中手指下的单词，手指按住不放时选区跟随手指移动。抬起手指后，选区上方会出现编辑菜单，列出当前可用的命令——`剪切`、`复制`、`粘贴` 和 `全选`——并在选区两端各显示一个拖动 handle。拖动 handle 会移动对应的一端，另一端保持不动；多行输入框在手指到达边缘时会自动滚动。长按空白处或空输入框时会放置光标，菜单只提供 `粘贴` 和 `全选`。

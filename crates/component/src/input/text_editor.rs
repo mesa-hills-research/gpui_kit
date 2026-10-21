@@ -9,7 +9,8 @@ use crate::{Sizable, Size};
 /// A textarea laid out as a text editor: it fills its parent's height, with
 /// square corners and no border, on the theme's `editor.background` like a
 /// code editor. Its right-click menu is drawn by GPUI in the theme's colors on
-/// every platform, see [`Self::context_menu_style`].
+/// every platform, unless the application chose another style for every text
+/// field (see [`Self::context_menu_style`]).
 ///
 /// Give it a state set up with [`TextareaState::text_editor`], which turns on
 /// line numbers, the search panel and soft wrap:
@@ -40,7 +41,7 @@ impl TextEditor {
                 .bordered(false)
                 .rounded_none()
                 .editor_surface(true)
-                .context_menu_style(ContextMenuStyle::Drawn),
+                .fallback_context_menu_style(ContextMenuStyle::Drawn),
         }
     }
 
@@ -92,6 +93,9 @@ impl TextEditor {
     /// What draws the right-click menu: GPUI's menu in the theme's colors,
     /// the default, or the operating system's menu on macOS and Windows with
     /// [`ContextMenuStyle::Native`].
+    ///
+    /// Without it the editor follows [`ContextMenuStyle::set_app_default`]
+    /// when the application set one, and draws its menu otherwise.
     pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
         self.textarea = self.textarea.context_menu_style(style);
         self
@@ -152,8 +156,8 @@ mod tests {
     }
 
     /// A text editor's menu is drawn by GPUI whatever the platform, unless
-    /// the application asks for the native one. A textarea keeps the native
-    /// menu where there is one.
+    /// the application asks for the native one, for this editor or for every
+    /// text field. A textarea keeps the native menu where there is one.
     #[gpui::test]
     fn the_text_editor_menu_is_drawn_on_every_platform(cx: &mut TestAppContext) {
         cx.update(crate::init);
@@ -163,18 +167,29 @@ mod tests {
 
             let style = TextEditor::new(&state)
                 .textarea
-                .current_context_menu_style();
+                .current_context_menu_style(cx);
             assert_eq!(style, ContextMenuStyle::Drawn);
             assert!(platforms.iter().all(|os| !style.uses_os_menu(os)));
 
             let native = TextEditor::new(&state)
                 .context_menu_style(ContextMenuStyle::Native)
                 .textarea
-                .current_context_menu_style();
+                .current_context_menu_style(cx);
             assert!(native.uses_os_menu("windows") && native.uses_os_menu("macos"));
 
-            let textarea = Textarea::new(&state).current_context_menu_style();
+            let textarea = Textarea::new(&state).current_context_menu_style(cx);
             assert_eq!(textarea, ContextMenuStyle::Native);
+
+            ContextMenuStyle::set_app_default(ContextMenuStyle::Native, cx);
+            let style = TextEditor::new(&state)
+                .textarea
+                .current_context_menu_style(cx);
+            assert_eq!(style, ContextMenuStyle::Native);
+            let drawn = TextEditor::new(&state)
+                .context_menu_style(ContextMenuStyle::Drawn)
+                .textarea
+                .current_context_menu_style(cx);
+            assert_eq!(drawn, ContextMenuStyle::Drawn);
             Probe
         });
     }
