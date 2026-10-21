@@ -35,6 +35,11 @@ Keep the element ID stable between renders. Use `SelectableText::with_handle` an
 `document_order` when several runs form one selectable document. Kit windows
 already install the selection layer. Base-only windows install it as described below.
 
+`SelectableText::layout` returns the `TextLayout` the run is drawn with. An element
+that wraps the run can read it in `prepaint` or `paint`, for example to find the
+line a search match sits on with `position_for_index`, without shaping the text a
+second time.
+
 ## Get started
 
 To add text selection to a custom GPUI participant, connect its layout and paint lifecycle to the window selection state as shown below.
@@ -163,6 +168,11 @@ fn register_selection(
 - `with_scope` assigns an explicit opaque scope. A surrounding `.text_selection_scope(scope)` builder overrides it while that subtree renders.
 
 Handles not registered in the current frame stop participating automatically.
+A participant that is one of several views of one document, such as the rows
+of a long answer in a list, can say where it sits with
+`with_document_position(document, position)`. Participants of one document are
+ordered by position across frames, and one that scrolls out of view while a
+selection covers it stays in the selection until the selection ends.
 
 ## Project selection onto text runs
 

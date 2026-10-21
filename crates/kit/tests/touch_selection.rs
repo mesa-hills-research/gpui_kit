@@ -719,7 +719,7 @@ fn select_all_takes_the_text_beyond_the_viewport(cx: &mut TestAppContext) {
         window.click("Select All", cx);
         assert_eq!(
             TextSelection::selected_text(window, cx).trim(),
-            "first line\nsecond line\nthird line\nlast line",
+            "first line\n\nsecond line\n\nthird line\n\nlast line",
             "the whole text, not the lines the box shows"
         );
     })

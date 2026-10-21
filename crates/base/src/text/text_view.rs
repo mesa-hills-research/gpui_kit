@@ -801,20 +801,17 @@ impl Element for TextView {
     ) -> Self::PrepaintState {
         let state = request_layout.state.clone();
         let max_lines_active = state.read(cx).max_lines.is_some();
-        if max_lines_active {
-            if let Ok(mut line_spans) = state.read(cx).line_spans.lock() {
-                line_spans.clear();
-            }
-            // Descendant `Inline`s report their line spans through the state
-            // stack during prepaint (in addition to the paint-time push below).
-            GlobalState::global_mut(cx)
-                .text_view_state_stack
-                .push(state.clone());
+        if max_lines_active && let Ok(mut line_spans) = state.read(cx).line_spans.lock() {
+            line_spans.clear();
         }
+        // Descendant `Inline`s report their line spans through the state
+        // stack during prepaint (in addition to the paint-time push below),
+        // and inline flows read whether they may leave out lines out of view.
+        GlobalState::global_mut(cx)
+            .text_view_state_stack
+            .push(state.clone());
         request_layout.element.prepaint(window, cx);
-        if max_lines_active {
-            GlobalState::global_mut(cx).text_view_state_stack.pop();
-        }
+        GlobalState::global_mut(cx).text_view_state_stack.pop();
 
         let mut clip_bottom = None;
         if max_lines_active {
@@ -915,7 +912,7 @@ impl Element for TextView {
         }
 
         if self.selectable {
-            let (adapter, scroll_offset, content_bounds, self_scroll, handle_color) = {
+            let (adapter, scroll_offset, content_bounds, self_scroll, handle_color, position) = {
                 let state = state.read(cx);
                 (
                     state.selection_adapter.clone(),
@@ -923,6 +920,7 @@ impl Element for TextView {
                     state.bounds(),
                     state.scrollable,
                     state.text_view_style.selection().alpha(1.),
+                    state.document_position(),
                 )
             };
             let document_order = GlobalState::global_mut(cx).next_selection_document_order();
@@ -931,10 +929,12 @@ impl Element for TextView {
                 content_bounds,
                 scroll_offset,
                 document_order,
+                position,
                 self_scroll,
                 window,
                 cx,
             );
+            state.update(cx, |state, _| state.selection_adapter.release_text_runs());
             // The handles of a touch selection go over the text, and under
             // whatever is painted over the text after it.
             adapter.paint_touch_handles(&prepaint.touch_handles, handle_color, window, cx);
@@ -961,6 +961,53 @@ mod tests {
 
     struct TextViewTestRoot {
         text_view: Entity<TextViewState>,
+    }
+
+    /// A text view that can be taken off the screen, as a list row is when
+    /// it scrolls away.
+    struct ShownOrNot {
+        view: Entity<TextViewState>,
+        shown: bool,
+    }
+
+    impl Render for ShownOrNot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .w(px(300.))
+                .child(crate::TextSelectionLayer)
+                .when(self.shown, |this| this.child(TextView::new(&self.view)))
+        }
+    }
+
+    /// The text runs hold the shaped text of the whole view. Kept with the
+    /// view after it left the screen, they made a long list keep the shaped
+    /// text of every row it scrolled past.
+    #[gpui::test]
+    fn a_view_no_longer_drawn_lets_go_of_its_text_runs(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|_, cx| ShownOrNot {
+            view: cx.new(|cx| TextViewState::markdown("One paragraph.\n\nAnother one.", cx)),
+            shown: true,
+        });
+        cx.run_until_parked();
+        let held = |cx: &mut VisualTestContext| {
+            root.read_with(cx, |root, cx| {
+                root.view.read(cx).selection_adapter.held_text_runs(cx)
+            })
+        };
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let (in_view, in_selection) = held(cx);
+        assert_eq!(in_view, 0, "the view hands its runs to the selection");
+        assert_eq!(in_selection, 2, "which keeps them while the view is drawn");
+
+        root.update(cx, |root, cx| {
+            root.shown = false;
+            cx.notify();
+        });
+        for _ in 0..2 {
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        }
+        assert_eq!(held(cx), (0, 0));
     }
 
     struct InlineHoverTestRoot {
@@ -2441,7 +2488,7 @@ mod tests {
             );
             assert_eq!(
                 selected_text.trim(),
-                "The same words with inline code.\nThe same words with inline code.\nThe same words with inline code.\nThe same words with inline code.\nHeading with inline code\nHeading with inline code\nthis is a test",
+                "The same words with inline code.\n\nThe same words with inline code.\n\nThe same words with inline code.\nThe same words with inline code.\n\nHeading with inline code\n\nHeading with inline code\n\nthis is a test",
                 "{case}: wrapped inline-code text was lost or duplicated"
             );
             let following = text_bounds.last().expect("following paragraph must paint");

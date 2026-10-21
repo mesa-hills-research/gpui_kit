@@ -94,6 +94,11 @@ struct InlineFlowFrameState {
     /// then the column's). A frame that changes nothing finds every width
     /// here and wraps and shapes nothing.
     layouts: Vec<Rc<InlineFlowLayout>>,
+    /// The layouts of the key before, with the byte of the flow's text from
+    /// which the current key may lay out differently. Their lines before it
+    /// are laid out again as they were, as when text is streamed onto the
+    /// end of a long paragraph.
+    previous: Option<(Vec<Rc<InlineFlowLayout>>, usize)>,
 }
 
 /// How many wrap widths a flow keeps a layout for.
@@ -108,16 +113,35 @@ impl InlineFlowFrameState {
         self.fragment_states[fragment_ix].clone()
     }
 
-    /// Makes `key` the current one, dropping the layouts of another key.
+    /// Makes `key` the current one. The layouts of another key are kept as
+    /// the previous ones, to take their unchanged lines from.
     fn set_key(&mut self, key: FlowLayoutKey) {
-        if !self
-            .key
-            .as_ref()
-            .is_some_and(|current| current.matches(&key))
-        {
-            self.layouts.clear();
+        match self.key.as_ref() {
+            Some(current) if current.matches(&key) => {}
+            Some(current) => {
+                let layouts = std::mem::take(&mut self.layouts);
+                self.previous = current
+                    .first_difference(&key)
+                    .filter(|&offset| offset > 0 && !layouts.is_empty())
+                    .map(|offset| (layouts, offset));
+            }
+            None => self.layouts.clear(),
         }
         self.key = Some(key);
+    }
+
+    /// A layout of the previous key at `wrap_width`, and how many of its
+    /// lines lay out the same for the current key.
+    fn reusable_lines(&self, wrap_width: Option<Pixels>) -> Option<(Rc<InlineFlowLayout>, usize)> {
+        let (layouts, offset) = self.previous.as_ref()?;
+        let layout = layouts
+            .iter()
+            .find(|layout| layout.wrap_width == wrap_width)?;
+        // A line wraps by the text up to the start of the next one, so the
+        // line before the first changed line is laid out again too.
+        let unchanged = layout.lines.partition_point(|line| line.end < *offset);
+        let keep = unchanged.saturating_sub(1);
+        (keep > 0).then(|| (layout.clone(), keep))
     }
 
     /// The layout at `wrap_width`, if the key was laid out there already.
@@ -146,6 +170,45 @@ struct FlowLayoutKey {
 }
 
 impl FlowLayoutKey {
+    /// The byte of the flow's text from which `other` may lay out
+    /// differently from this key, or `None` when its typography differs.
+    fn first_difference(&self, other: &Self) -> Option<usize> {
+        if self.typography != other.typography {
+            return None;
+        }
+        let mut offset = 0;
+        for (ix, (item, other_item)) in self.items.iter().zip(&other.items).enumerate() {
+            if self.image_sizes.get(ix) != other.image_sizes.get(ix) {
+                return Some(offset);
+            }
+            match (item, other_item) {
+                (
+                    MeasureItem::Text {
+                        text,
+                        links,
+                        highlights,
+                    },
+                    MeasureItem::Text {
+                        text: other_text,
+                        links: other_links,
+                        highlights: other_highlights,
+                    },
+                ) => {
+                    let within = common_prefix_len(text, other_text)
+                        .min(first_range_difference(links, other_links))
+                        .min(first_range_difference(highlights, other_highlights));
+                    if within < text.len() || text.len() != other_text.len() {
+                        return Some(offset + within);
+                    }
+                }
+                _ if item.same_layout_input(other_item) => {}
+                _ => return Some(offset),
+            }
+            offset += item.len();
+        }
+        Some(offset)
+    }
+
     fn matches(&self, other: &Self) -> bool {
         self.items.len() == other.items.len()
             && self
@@ -167,13 +230,51 @@ struct InlineFlowTypography {
     line_height: Pixels,
 }
 
+/// The length of the longest common prefix of `a` and `b`, on a character
+/// boundary of both.
+fn common_prefix_len(a: &str, b: &str) -> usize {
+    let mut len = a.bytes().zip(b.bytes()).take_while(|(a, b)| a == b).count();
+    while !a.is_char_boundary(len) {
+        len -= 1;
+    }
+    len
+}
+
+/// Where the first range of `a` and `b` that differs starts, `usize::MAX`
+/// when none does.
+fn first_range_difference<T: PartialEq>(a: &[(Range<usize>, T)], b: &[(Range<usize>, T)]) -> usize {
+    for ix in 0..a.len().max(b.len()) {
+        match (a.get(ix), b.get(ix)) {
+            (Some(a), Some(b)) if a == b => {}
+            (Some(a), Some(b)) => return a.0.start.min(b.0.start),
+            (Some(range), None) | (None, Some(range)) => return range.0.start,
+            (None, None) => break,
+        }
+    }
+    usize::MAX
+}
+
 #[derive(Default)]
 struct InlineFlowLayout {
     fragments: Vec<PositionedFragment>,
+    /// The flow's lines, in order.
+    lines: Vec<FlowLine>,
     size: Size<Pixels>,
     wrap_width: Option<Pixels>,
 }
 
+/// A line of a flow: the bytes of the flow's text it lays out, its first
+/// fragment, where it starts and how wide it is.
+#[derive(Clone)]
+struct FlowLine {
+    start: usize,
+    end: usize,
+    first_fragment: usize,
+    top: Pixels,
+    width: Pixels,
+}
+
+#[derive(Clone)]
 enum PositionedFragment {
     Object {
         item_ix: usize,
@@ -390,6 +491,7 @@ impl Element for InlineFlow {
                     return size;
                 }
                 let state = &mut *state;
+                let reuse = state.reusable_lines(wrap_width);
                 let key = state.key.as_ref().expect("set by request_layout");
                 let layout = window.with_rem_size(Some(typography.rem_size), |window| {
                     window.with_text_style(
@@ -401,6 +503,7 @@ impl Element for InlineFlow {
                                 &objects,
                                 &typography.text_style,
                                 wrap_width,
+                                reuse.as_ref().map(|(layout, keep)| (&**layout, *keep)),
                                 window,
                                 cx,
                             )
@@ -462,6 +565,20 @@ impl Element for InlineFlow {
             })
             .reduce(|found, next| if found.1 { found } else { next })
             .map(|(ix, _)| ix);
+
+        // Lines out of view are left out, unless something needs every line
+        // laid out. A selection does, as each line records its part as it
+        // paints, and so does a cap on the view's lines, which counts them.
+        let visible = window.content_mask().bounds;
+        let cull = crate::GlobalState::global(cx)
+            .text_view_state()
+            .is_some_and(|view| {
+                let view = view.read(cx);
+                view.max_lines.is_none()
+                    && !view.is_selecting
+                    && !view.preserve_inline_selection
+                    && !view.has_selection(cx)
+            });
 
         let mut text_fragment_count = 0;
         for (fragment_ix, fragment) in layout.fragments.iter().enumerate() {
@@ -538,6 +655,12 @@ impl Element for InlineFlow {
                     text_fragment_count += 1;
                     if let Ok(mut state) = state.lock() {
                         state.set_text(text.clone());
+                    }
+                    if cull
+                        && reveal_fragment != Some(fragment_ix)
+                        && !Bounds::new(bounds.origin + origin, fragment_size).intersects(&visible)
+                    {
+                        continue;
                     }
 
                     let is_code = highlights.iter().any(|(_, h)| h.font_size_scale.is_some());
@@ -849,6 +972,7 @@ fn layout_flow(
         &objects,
         text_style,
         wrap_width,
+        None,
         window,
         cx,
     )
@@ -860,12 +984,17 @@ thread_local! {
     pub(super) static FLOW_LAYOUTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Lays out a flow at `wrap_width`. With `reuse`, a layout of the flow's
+/// text before a change and how many of its lines lay out the same, those
+/// lines are taken from it and the rest is laid out from where they end.
+#[allow(clippy::too_many_arguments)]
 fn layout_measured_flow(
     items: &[MeasureItem],
     image_sizes: &[Option<Size<Pixels>>],
     prepared_objects: &[Option<MeasuredInlineObject>],
     text_style: &TextStyle,
     wrap_width: Option<Pixels>,
+    reuse: Option<(&InlineFlowLayout, usize)>,
     window: &mut Window,
     _cx: &mut App,
 ) -> InlineFlowLayout {
@@ -882,11 +1011,32 @@ fn layout_measured_flow(
         .iter()
         .map(|object| object.clone().map(|object| object.fit_text(wrap_width)))
         .collect::<Vec<_>>();
-    let line_ranges = line_ranges(items, image_sizes, &objects, text_style, wrap_width, window);
+    let (mut fragments, mut lines, from, mut y) = match reuse {
+        Some((layout, keep)) => {
+            let next = &layout.lines[keep];
+            (
+                layout.fragments[..next.first_fragment].to_vec(),
+                layout.lines[..keep].to_vec(),
+                next.start,
+                next.top,
+            )
+        }
+        None => (Vec::new(), Vec::new(), 0, Pixels::ZERO),
+    };
+    let mut max_width = lines
+        .iter()
+        .map(|line| line.width)
+        .fold(Pixels::ZERO, Pixels::max);
+    let line_ranges = line_ranges(
+        items,
+        image_sizes,
+        &objects,
+        text_style,
+        wrap_width,
+        from,
+        window,
+    );
     let font_size = text_style.font_size.to_pixels(rem_size);
-    let mut fragments = Vec::new();
-    let mut max_width = Pixels::ZERO;
-    let mut y = Pixels::ZERO;
 
     // `LineLayout` is the metric source used by the text paint path. Its
     // descent is normalized positive by native backends, whereas
@@ -918,6 +1068,7 @@ fn layout_measured_flow(
     let mut first_item_start = 0;
 
     for line_range in line_ranges {
+        let line_start = fragments.len();
         let mut line_fragments = Vec::new();
         let mut line_width = Pixels::ZERO;
         let mut line_ascent = body_baseline;
@@ -1123,12 +1274,20 @@ fn layout_measured_flow(
             fragments.push(positioned);
         }
 
+        lines.push(FlowLine {
+            start: line_range.start,
+            end: line_range.end,
+            first_fragment: line_start,
+            top: y,
+            width: line_width,
+        });
         max_width = max_width.max(line_width);
         y += line_ascent + line_descent;
     }
 
     InlineFlowLayout {
         fragments,
+        lines,
         size: size(max_width, y),
         wrap_width,
     }
@@ -1173,28 +1332,34 @@ fn code_background(
     })
 }
 
+/// The lines of the flow's text from byte `from`, which starts a line.
 fn line_ranges(
     items: &[MeasureItem],
     image_sizes: &[Option<Size<Pixels>>],
     objects: &[Option<MeasuredInlineObject>],
     text_style: &TextStyle,
     wrap_width: Option<Pixels>,
+    from: usize,
     window: &mut Window,
 ) -> Vec<Range<usize>> {
     let total_len = items.iter().map(MeasureItem::len).sum::<usize>();
     let mut hard_lines = Vec::new();
-    let mut line_start = 0;
+    let mut line_start = from;
     let mut item_start = 0;
 
     for item in items {
-        if let MeasureItem::Text { text, .. } = item {
-            for (newline, _) in text.match_indices('\n') {
-                let newline = item_start + newline;
+        let item_end = item_start + item.len();
+        if let MeasureItem::Text { text, .. } = item
+            && item_end > from
+        {
+            let skip = from.saturating_sub(item_start);
+            for (newline, _) in text[skip..].match_indices('\n') {
+                let newline = item_start + skip + newline;
                 hard_lines.push(line_start..newline);
                 line_start = newline + 1;
             }
         }
-        item_start += item.len();
+        item_start = item_end;
     }
     hard_lines.push(line_start..total_len);
 
@@ -1924,6 +2089,112 @@ mod tests {
         let measured = inline_image_size_for_line(None, px(20.));
 
         assert_eq!(measured, size(px(15.), px(15.)));
+    }
+
+    /// Text streamed onto the end of a flow lays out as the whole flow laid
+    /// out afresh would, though the lines before the change are taken from
+    /// the layout before it.
+    #[test]
+    fn appended_text_lays_out_as_a_fresh_layout() {
+        use super::super::inline::test_fonts::{BODY, MONO, WideMonoTextSystem};
+        use gpui::{AbsoluteLength, Empty, HighlightStyle, TestApp};
+
+        let mut app = TestApp::with_text_system(Arc::new(WideMonoTextSystem));
+        let mut window = app.open_window(|_, _| Empty);
+        let text_style = TextStyle {
+            font_family: SharedString::from(BODY),
+            font_size: AbsoluteLength::Pixels(px(10.)),
+            ..Default::default()
+        };
+        let code = InlineHighlight {
+            style: HighlightStyle::default(),
+            font_family: Some(SharedString::from(MONO)),
+            font_features: None,
+            font_size_scale: None,
+        };
+        let mut source = String::new();
+        let mut highlights = Vec::new();
+        for sentence in 0..60 {
+            source.push_str(&format!("Sentence {sentence} has "));
+            let start = source.len();
+            source.push_str(&format!("code_{sentence}"));
+            highlights.push((start..source.len(), code.clone()));
+            source.push_str(
+                " in it.\n"
+                    .split_at(if sentence % 7 == 6 { 8 } else { 7 })
+                    .0,
+            );
+        }
+        let key = |end: usize| FlowLayoutKey {
+            items: vec![MeasureItem::Text {
+                text: SharedString::from(source[..end].to_string()),
+                links: vec![],
+                highlights: slice_sorted_ranges(&highlights, 0, end, |range, style| {
+                    (range, style.clone())
+                }),
+            }],
+            image_sizes: vec![None],
+            typography: InlineFlowTypography {
+                text_style: text_style.clone(),
+                rem_size: px(16.),
+                line_height: px(16.),
+            },
+        };
+        let wrap_width = Some(px(300.));
+        let lay_out = |key: &FlowLayoutKey,
+                       reuse: Option<(&InlineFlowLayout, usize)>,
+                       window: &mut Window,
+                       cx: &mut App| {
+            layout_measured_flow(
+                &key.items,
+                &key.image_sizes,
+                &[None],
+                &text_style,
+                wrap_width,
+                reuse,
+                window,
+                cx,
+            )
+        };
+        let summary = |layout: &InlineFlowLayout| {
+            layout
+                .fragments
+                .iter()
+                .map(|fragment| match fragment {
+                    PositionedFragment::Text {
+                        text, origin, size, ..
+                    } => (text.to_string(), *origin, *size),
+                    _ => unreachable!(),
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let mut end = 400;
+        let mut state = InlineFlowFrameState::default();
+        let mut reused = 0;
+        window.update(|_, window, cx| {
+            state.set_key(key(end));
+            let layout = lay_out(state.key.as_ref().unwrap(), None, window, cx);
+            state.push_layout(Rc::new(layout));
+            while end < source.len() {
+                end = (end + 37).min(source.len());
+                state.set_key(key(end));
+                let reuse = state.reusable_lines(wrap_width);
+                reused += reuse.as_ref().map_or(0, |(_, keep)| *keep);
+                let key = state.key.as_ref().unwrap();
+                let incremental = lay_out(
+                    key,
+                    reuse.as_ref().map(|(layout, keep)| (&**layout, *keep)),
+                    window,
+                    cx,
+                );
+                let fresh = lay_out(key, None, window, cx);
+                assert_eq!(summary(&incremental), summary(&fresh), "at {end}");
+                assert_eq!(incremental.size, fresh.size, "at {end}");
+                state.push_layout(Rc::new(incremental));
+            }
+        });
+        assert!(reused > 0, "lines were taken from the layout before");
     }
 
     /// Line breaking must see the width of an inline code span in its own

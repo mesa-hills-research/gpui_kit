@@ -883,18 +883,26 @@ impl TextViewState {
         self.parsed_content.document.selected_source_range()
     }
 
+    /// Where a [`Self::block_range`] view is in its document, for the
+    /// window's selection, as the document and the first block it shows.
+    pub(super) fn document_position(&self) -> Option<(u64, u64)> {
+        let range = self.block_range.as_ref()?;
+        let start = match range.blocks.0 {
+            Bound::Included(start) => start,
+            Bound::Excluded(start) => start + 1,
+            Bound::Unbounded => 0,
+        };
+        Some((range.document.entity_id().as_u64(), start as u64))
+    }
+
     /// The copy group of a [`Self::block_range`] view. The views of one
     /// document copy as one view of it would, their blocks apart as blocks
     /// are within a view.
     pub(super) fn copy_group(&self) -> Option<crate::TextSelectionCopyGroup> {
         let document = self.block_range.as_ref()?.document.entity_id();
-        let separator = match self.effective_format() {
-            SelectionFormat::Plain => "\n",
-            SelectionFormat::Source => "\n\n",
-        };
         Some(crate::TextSelectionCopyGroup::new(
             document.as_u64(),
-            separator,
+            "\n\n",
         ))
     }
 
@@ -2889,7 +2897,7 @@ mod tests {
             let middle = cx.new(|cx| TextViewState::block_range(&document, 1..3, cx));
             let tail = cx.new(|cx| TextViewState::block_range(&document, 3.., cx));
 
-            assert_eq!(rendered(&middle, cx), "first\nsecond\n");
+            assert_eq!(rendered(&middle, cx), "first\n\nsecond\n");
             assert!(rendered(&tail, cx).starts_with("fn a() {}"));
 
             let blocks = document.read_with(cx, |document, _| document.blocks());
@@ -3317,6 +3325,104 @@ mod tests {
             copied
         }
 
+        /// Rows of one document, of which a list draws `shown`.
+        struct Scrolled {
+            views: Vec<Entity<TextViewState>>,
+            shown: std::ops::Range<usize>,
+        }
+
+        impl gpui::Render for Scrolled {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                use gpui::{ParentElement as _, Styled as _};
+                gpui::div()
+                    .w(gpui::px(400.))
+                    .flex()
+                    .flex_col()
+                    .children(
+                        self.views[self.shown.clone()]
+                            .iter()
+                            .map(crate::text::TextView::new),
+                    )
+                    .child(crate::TextSelectionLayer)
+            }
+        }
+
+        /// Rows scrolled away while a selection covers them stay in it. The
+        /// end in them holds, they are copied with the rest, and they show as
+        /// selected when they come back.
+        #[gpui::test]
+        fn a_selection_across_rows_survives_scrolling_them_away(cx: &mut TestAppContext) {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            let parsed = document(
+                "Alpha one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.",
+                cx,
+            );
+            let views = (0..4)
+                .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
+                .collect::<Vec<_>>();
+            let (root, cx) = cx.add_window_view(|_, _| Scrolled {
+                views: views.clone(),
+                shown: 0..4,
+            });
+            cx.run_until_parked();
+            let draw = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+            };
+            let copied = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| crate::TextSelection::selected_text(window, cx))
+            };
+            draw(cx);
+            let first = views[0].read_with(cx, |view, _| view.bounds());
+            let third = views[2].read_with(cx, |view, _| view.bounds());
+            let start = point(first.left() + px(1.), first.top() + px(4.));
+            let end = point(third.right() - px(1.), third.bottom() - px(4.));
+            cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            let selected = "Alpha one.\n\nBravo two.\n\nCharlie three.\n";
+            assert_eq!(copied(cx), selected);
+
+            // The rows holding the selection's start scroll out of the list.
+            root.update(cx, |root, cx| {
+                root.shown = 2..4;
+                cx.notify();
+            });
+            for _ in 0..3 {
+                draw(cx);
+            }
+            assert_eq!(copied(cx), selected, "the rows scrolled away are copied");
+            let painted = |ix: usize, cx: &mut gpui::VisualTestContext| {
+                views[ix].read_with(cx, |view, _| view.selected_text())
+            };
+            assert_eq!(painted(2, cx).trim(), "Charlie three.");
+            assert_eq!(painted(3, cx).trim(), "");
+
+            // Back in view, they show as selected again.
+            root.update(cx, |root, cx| {
+                root.shown = 0..4;
+                cx.notify();
+            });
+            draw(cx);
+            draw(cx);
+            assert_eq!(painted(0, cx).trim(), "Alpha one.");
+            assert_eq!(painted(1, cx).trim(), "Bravo two.");
+            assert_eq!(copied(cx), selected);
+
+            // A click elsewhere ends the selection, and the rows kept for it.
+            let fourth = views[3].read_with(cx, |view, _| view.bounds());
+            cx.simulate_click(fourth.center(), Modifiers::default());
+            draw(cx);
+            assert_eq!(copied(cx), "");
+        }
+
         #[gpui::test]
         fn rows_copy_as_one_view_of_their_document_copies(cx: &mut TestAppContext) {
             let answer =
@@ -3355,7 +3461,7 @@ mod tests {
             );
             assert_eq!(
                 drag_and_copy(views, SelectionFormat::Plain, cx),
-                "What is the plan?\n\nHere it is.\nStep one.\n\nAnd then:\nStep two.\n"
+                "What is the plan?\n\nHere it is.\n\nStep one.\n\nAnd then:\n\nStep two.\n"
             );
         }
 
@@ -3378,7 +3484,7 @@ mod tests {
             let document = document("one\n\ntwo\n\nthree", cx);
             let view = cx.new(|cx| TextViewState::block_range(&document, 0..1, cx));
             view.update(cx, |view, cx| view.set_block_range(1..=2, cx));
-            assert_eq!(rendered(&view, cx), "two\nthree\n");
+            assert_eq!(rendered(&view, cx), "two\n\nthree\n");
 
             view.update(cx, |view, cx| view.set_text("own text", cx));
             cx.run_until_parked();
@@ -3448,7 +3554,7 @@ mod tests {
             state.read_with(cx, |state, _| {
                 assert_eq!(
                     state.rendered_text().as_str(),
-                    "Title\nhello world *\nitem\na b\nc d\n\nlet x\n"
+                    "Title\n\nhello world *\n\nitem\n\na b\nc d\n\nlet x\n"
                 );
             });
         }
@@ -3474,8 +3580,8 @@ mod tests {
         #[gpui::test]
         fn a_range_across_blocks_skips_the_separator(cx: &mut TestAppContext) {
             let state = state("ab\n\ncd", cx);
-            // "ab\ncd\n": 1..4 is "b\nc".
-            set(&state, [1..4], cx).unwrap();
+            // "ab\n\ncd\n": 1..5 is "b\n\nc".
+            set(&state, [1..5], cx).unwrap();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [1..2]);
             assert_eq!(painted(&state, TextLeafKey::block(4), cx), [0..1]);
         }
@@ -3583,8 +3689,8 @@ mod tests {
         #[gpui::test]
         fn push_str_keeps_earlier_blocks_and_clips_the_changed_tail(cx: &mut TestAppContext) {
             let state = state("first\n\na **b", cx);
-            // "first\na **b\n"
-            set(&state, [0..5, 6..11], cx).unwrap();
+            // "first\n\na **b\n"
+            set(&state, [0..5, 7..12], cx).unwrap();
 
             // Closing the emphasis renders the tail as "a bc".
             state.update(cx, |state, cx| state.push_str("c**", cx));
@@ -3597,7 +3703,7 @@ mod tests {
         #[gpui::test]
         fn push_str_keeps_a_block_whose_text_is_unchanged(cx: &mut TestAppContext) {
             let state = state("first\n\nsecond", cx);
-            set(&state, [6..12], cx).unwrap();
+            set(&state, [7..13], cx).unwrap();
             // A setext underline turns the paragraph into a heading at the
             // same source start, rendering the same text.
             state.update(cx, |state, cx| state.push_str("\n===", cx));
@@ -3608,7 +3714,7 @@ mod tests {
         #[gpui::test]
         fn push_str_drops_highlights_of_a_leaf_that_is_gone(cx: &mut TestAppContext) {
             let state = state("first\n\n| a |", cx);
-            set(&state, [0..5, 6..11], cx).unwrap();
+            set(&state, [0..5, 7..12], cx).unwrap();
             // A delimiter row turns the paragraph into a table, whose text
             // lives in cells instead.
             state.update(cx, |state, cx| state.push_str("\n|---|", cx));
@@ -3621,7 +3727,7 @@ mod tests {
         #[gpui::test]
         fn replacing_text_drops_highlights_only_where_it_changed(cx: &mut TestAppContext) {
             let state = state("first\n\nsecond", cx);
-            set(&state, [0..5, 6..12], cx).unwrap();
+            set(&state, [0..5, 7..13], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("first\n\nchanged", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..5]);
@@ -3636,8 +3742,8 @@ mod tests {
         #[gpui::test]
         fn a_highlight_follows_its_block_past_an_earlier_edit(cx: &mut TestAppContext) {
             let state = state("foo\n\nbar\n\nbar", cx);
-            // "foo\nbar\nbar\n": the first "bar", in the block at source 5.
-            set(&state, [4..7], cx).unwrap();
+            // "foo\n\nbar\n\nbar\n": the first "bar", in the block at source 5.
+            set(&state, [5..8], cx).unwrap();
             // Deleting "foo" moves that "bar" to 0, and the second one to 5.
             state.update(cx, |state, cx| state.set_text("bar\n\nbar", cx));
             cx.run_until_parked();
@@ -3645,7 +3751,7 @@ mod tests {
             assert!(painted(&state, TextLeafKey::block(5), cx).is_empty());
 
             let state = self::state("ERROR a\n\nERROR b\n\nERROR c", cx);
-            set(&state, [8..15], cx).unwrap();
+            set(&state, [9..16], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("ERROR b\n\nERROR c", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..7]);
@@ -3655,8 +3761,8 @@ mod tests {
         #[gpui::test]
         fn appending_a_copy_of_the_last_block_keeps_the_highlight_on_it(cx: &mut TestAppContext) {
             let state = state("a\n\nfoo", cx);
-            // "a\nfoo\n"
-            set(&state, [2..5], cx).unwrap();
+            // "a\n\nfoo\n"
+            set(&state, [3..6], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("a\n\nfoo\n\nfoo", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(3), cx), [0..3]);
@@ -3700,7 +3806,7 @@ mod tests {
         #[gpui::test]
         fn an_edit_in_an_earlier_block_keeps_later_highlights(cx: &mut TestAppContext) {
             let state = state("one\n\ntwo", cx);
-            set(&state, [0..3, 4..7], cx).unwrap();
+            set(&state, [0..3, 5..8], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("one!\n\ntwo", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..3]);
@@ -3734,8 +3840,8 @@ mod tests {
         #[gpui::test]
         fn streaming_through_set_text_keeps_highlights(cx: &mut TestAppContext) {
             let state = state("first\n\nsec", cx);
-            // "first\nsec\n"
-            set(&state, [0..5, 6..9], cx).unwrap();
+            // "first\n\nsec\n"
+            set(&state, [0..5, 7..10], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("first\n\nsecond", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..5]);
@@ -3888,7 +3994,7 @@ mod tests {
             state.update(cx, |state, cx| state.select_all(cx));
             state.read_with(cx, |state, _| {
                 let text = state.rendered_text();
-                assert_eq!(text.as_str(), "Title\nhello world\nitem\n");
+                assert_eq!(text.as_str(), "Title\n\nhello world\n\nitem\n");
                 let source = state.selected_source_range().unwrap();
                 // All but the separator after the last block.
                 assert_eq!(text.range_for_source(source), Some(0..text.len() - 1));
@@ -3915,13 +4021,13 @@ mod tests {
 
             assert_eq!(
                 converted(&state, [second.clone(), 0..5], cx),
-                [Some(6..17), Some(0..5)]
+                [Some(7..18), Some(0..5)]
             );
             state.read_with(cx, |state, _| {
                 let text = state.rendered_text();
                 assert_ne!(text, before);
                 assert_eq!(text.source(), source);
-                assert_eq!(&text.as_str()[6..17], "second part");
+                assert_eq!(&text.as_str()[7..18], "second part");
             });
             // An earlier snapshot keeps converting against its own source.
             assert_eq!(before.source(), "first");

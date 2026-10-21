@@ -3,7 +3,7 @@ use std::ops::Range;
 use gpui::{
     App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, GlobalElementId, HighlightStyle,
     Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels,
-    Point, SharedString, StyledText, TextStyleRefinement, Window, transparent_black,
+    Point, SharedString, StyledText, TextLayout, TextStyleRefinement, Window, transparent_black,
 };
 
 use crate::{TextSelection, TextSelectionHandle, TextSelectionRegistration, TextSelectionRun};
@@ -82,6 +82,17 @@ impl SelectableText {
     pub fn selection_color(mut self, color: Hsla) -> Self {
         self.selection_color = Some(color);
         self
+    }
+
+    /// The layout the text is drawn with, for finding where a byte offset is
+    /// drawn, and so which line holds it, without shaping the text again.
+    ///
+    /// The layout fills in as the element is laid out and prepainted. Read it
+    /// from the `prepaint` or `paint` of an element that wraps this one, or
+    /// keep a clone and read it after the frame. Its position methods panic
+    /// before the first prepaint.
+    pub fn layout(&self) -> &TextLayout {
+        self.styled_text.layout()
     }
 
     fn paint_selection(
@@ -255,6 +266,8 @@ mod tests {
         Styled as _, TestAppContext, Window, div, point, px, size,
     };
 
+    use std::{cell::RefCell, rc::Rc};
+
     use super::SelectableText;
     use crate::{TextSelection, TextSelectionHandle, TextSelectionLayer};
 
@@ -355,6 +368,40 @@ mod tests {
             let _ = window.draw(cx);
             assert_eq!(TextSelection::selected_text(window, cx), "alpha 中文 beta");
         });
+    }
+
+    #[gpui::test]
+    fn layout_finds_the_line_of_an_offset_in_wrapped_text(cx: &mut TestAppContext) {
+        struct Wrapped(Rc<RefCell<Option<gpui::TextLayout>>>);
+        impl Render for Wrapped {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let text = SelectableText::new("wrapped", "alpha beta gamma delta");
+                *self.0.borrow_mut() = Some(text.layout().clone());
+                div()
+                    .size_full()
+                    .child(TextSelectionLayer)
+                    .child(div().w(px(60.)).child(text))
+            }
+        }
+
+        let layout = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view({
+            let layout = layout.clone();
+            move |_, _| Wrapped(layout)
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let layout = layout.borrow().clone().unwrap();
+        let first = layout.position_for_index(0).unwrap();
+        let delta = layout
+            .position_for_index("alpha beta gamma ".len())
+            .unwrap();
+        assert!(
+            delta.y >= first.y + layout.line_height(),
+            "\"delta\" wraps below the first line, at {delta:?}"
+        );
     }
 
     #[test]

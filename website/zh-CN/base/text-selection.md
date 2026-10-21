@@ -29,6 +29,10 @@ SelectableText::new("result", "Find matching text")
 `SelectableText::with_handle` 和 `document_order`。Kit 窗口已安装选择层，
 仅使用 Base 的窗口需要按下文安装。
 
+`SelectableText::layout` 返回绘制该文本段所用的 `TextLayout`。包装该文本段的元素可以在
+`prepaint` 或 `paint` 中读取它，例如用 `position_for_index` 找到搜索匹配所在的行，
+无需再次排版文本。
+
 ## 开始使用
 
 核心由窗口级 `TextSelectionState`、稳定的 `SelectableTextHandle`、prepaint 阶段注册的几何信息，以及把全局选择投影到各文本 run 的辅助 API 组成。
@@ -48,6 +52,8 @@ SelectableText::new("result", "Find matching text")
 ## 在 prepaint 注册几何
 
 文本最终布局完成后注册边界、行与字符位置。注册顺序必须与用户看到和辅助技术读取的逻辑顺序一致。动态插入、删除或移动参与者时，用稳定身份更新对应记录。
+
+当前帧没有注册的句柄会自动退出选择。如果参与者是同一文档的多个视图之一（例如列表中一篇长回复的各行），可以用 `with_document_position(document, position)` 说明它的位置。同一文档的参与者跨帧按位置排序，被选区覆盖时滚出视野的参与者会一直留在选区中，直到选区结束。
 
 ## 把选择投影到文本 run
 

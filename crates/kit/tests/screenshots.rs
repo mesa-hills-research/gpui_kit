@@ -1685,3 +1685,77 @@ fn every_thread_renders_the_same_pixels() {
         }
     }
 }
+
+struct KeyboardFocus;
+
+impl Render for KeyboardFocus {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_kit::component::{
+            sidebar::{SidebarItem as _, SidebarMenu, SidebarMenuItem},
+            tab::{Tab, TabBar},
+        };
+        page(cx)
+            .child(
+                TabBar::new("focus-tabs")
+                    .selected_index(0)
+                    .child(Tab::new().label("General"))
+                    .child(Tab::new().label("Appearance"))
+                    .child(Tab::new().label("Advanced")),
+            )
+            .child(
+                TabBar::new("focus-segmented")
+                    .segmented()
+                    .selected_index(0)
+                    .child(Tab::new().label("Day"))
+                    .child(Tab::new().label("Week"))
+                    .child(Tab::new().label("Month")),
+            )
+            .child(
+                div().w(px(200.)).child(
+                    SidebarMenu::new()
+                        .child(
+                            SidebarMenuItem::new("Inbox")
+                                .icon(IconName::Bell)
+                                .active(true),
+                        )
+                        .child(SidebarMenuItem::new("Drafts").icon(IconName::File))
+                        .child(SidebarMenuItem::new("Settings").icon(IconName::Settings))
+                        .render("focus-menu", window, cx),
+                ),
+            )
+    }
+}
+
+/// Keyboard focus on the second item of a control, after focus reaches the control's Tab stop
+/// and an arrow key moves along.
+fn keyboard_focus(mode: ThemeMode, stops: usize, arrow: &str) -> Screenshot {
+    let mut app = app(mode);
+    app.update(|cx| cx.set_reduce_motion(true));
+    let window = open(&mut app, (360., 260.), SCALE, |_, _| KeyboardFocus);
+    for _ in 0..stops {
+        act(&mut app, window, |window, cx| window.focus_next(cx));
+    }
+    act(&mut app, window, |window, cx| {
+        window.dispatch_keystroke(gpui_kit::Keystroke::parse(arrow).unwrap(), cx);
+    });
+    app.advance_clock(Duration::from_secs(1));
+    app.capture(window).unwrap()
+}
+
+#[test]
+fn keyboard_focus_rings() {
+    for (mode, suffix) in [(ThemeMode::Light, ""), (ThemeMode::Dark, "-dark")] {
+        goldens().assert(
+            &format!("tab-keyboard-focus{suffix}"),
+            &keyboard_focus(mode, 1, "right"),
+        );
+        goldens().assert(
+            &format!("segmented-tab-keyboard-focus{suffix}"),
+            &keyboard_focus(mode, 2, "right"),
+        );
+        goldens().assert(
+            &format!("sidebar-keyboard-focus{suffix}"),
+            &keyboard_focus(mode, 3, "down"),
+        );
+    }
+}

@@ -5,7 +5,7 @@ use gpui::{
     ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString, StatefulInteractiveElement as _,
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
-use gpui_base::spring;
+use gpui_base::{RovingFocus, spring};
 use rust_i18n::t;
 use smallvec::SmallVec;
 
@@ -123,7 +123,8 @@ impl TabBar {
     /// Track the scroll of the TabBar.
     ///
     /// This does not automatically reveal the selected tab. Use the tracked
-    /// [`ScrollHandle`] to request an explicit reveal when needed.
+    /// [`ScrollHandle`] to request an explicit reveal when needed. A tab the
+    /// keyboard moves focus to is revealed either way.
     pub fn track_scroll(mut self, scroll_handle: &ScrollHandle) -> Self {
         self.scroll_handle = Some(scroll_handle.clone());
         self
@@ -168,6 +169,10 @@ impl TabBar {
     /// Set the on_click callback of the TabBar, the first parameter is the index of the clicked tab.
     ///
     /// When this is set, the children's on_click will be ignored.
+    ///
+    /// Enter or Space on the focused tab calls it too. Tab reaches the bar on
+    /// its selected tab, the arrow keys and Home and End move focus between
+    /// the enabled tabs, and moving focus leaves the selection alone.
     pub fn on_click<F>(mut self, on_click: F) -> Self
     where
         F: Fn(&usize, &mut Window, &mut App) + 'static,
@@ -430,11 +435,30 @@ impl RenderOnce for TabBar {
         let mut indicator_element = indicator.map(|(el, _)| el);
         let indicator_ready = indicator_element.is_some();
 
+        // One Tab stop for the whole bar, on the selected tab.
+        let focus = RovingFocus::keyed(format!("{}-tab-focus", self.id), window, cx);
+        focus.set_items(
+            self.children.iter().map(|tab| !tab.disabled),
+            self.selected_index,
+            cx,
+        );
+        // Without a handle from the caller the bar keeps its own, so a tab
+        // the keyboard reaches can still be scrolled into view.
+        let scroll_handle = self.scroll_handle.clone().unwrap_or_else(|| {
+            window
+                .use_keyed_state(format!("{}-tab-scroll", self.id), cx, |_, _| {
+                    ScrollHandle::new()
+                })
+                .read(cx)
+                .clone()
+        });
+        focus.track_scroll(&scroll_handle);
+
         let has_suffix_or_menu = self.suffix.is_some() || self.menu;
         let mut item_metas: Vec<(Option<SharedString>, Option<Icon>, bool)> = Vec::new();
         let selected_index = self.selected_index;
         let on_click = self.on_click.clone();
-        let tabs = self.base;
+        let tabs = self.base.roving_focus(&focus);
         let mut rendered_tabs = Vec::with_capacity(self.children.len());
         let max_width = self.max_width;
 
@@ -450,6 +474,7 @@ impl RenderOnce for TabBar {
             tab.indicator_active = has_indicator;
             tab.indicator_ready = indicator_ready;
             tab.indicator_epoch = indicator_epoch;
+            tab.focus_handle = focus.handle(ix);
             let mut tab = tab
                 .when_some(selected_index, |tab, selected_index| {
                     tab.selected(selected_index == ix)
@@ -544,9 +569,7 @@ impl RenderOnce for TabBar {
                             .gap(gap)
                             .overflow_x_scroll()
                             .lock_scroll_axis()
-                            .when_some(self.scroll_handle, |this, scroll_handle| {
-                                this.track_scroll(&scroll_handle)
-                            })
+                            .track_scroll(&scroll_handle)
                             .children(rendered_tabs)
                             .when(has_suffix_or_menu, |this| this.child(self.last_empty_space)),
                     ),
@@ -1105,5 +1128,111 @@ mod tests {
                 bar.right()
             );
         }
+    }
+
+    /// Six 60px tabs in a 120px bar, the fourth disabled, the second selected.
+    struct KeyboardHarness {
+        selected: Rc<Cell<usize>>,
+        scroll_handle: ScrollHandle,
+    }
+
+    impl Render for KeyboardHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let selected = self.selected.clone();
+            div().w(px(120.)).child(
+                TabBar::new("keyboard-tabs")
+                    .w_full()
+                    .track_scroll(&self.scroll_handle)
+                    .selected_index(self.selected.get())
+                    .on_click(move |ix, _, _| selected.set(*ix))
+                    .children((0..6).map(|ix| {
+                        Tab::new()
+                            .w(px(60.))
+                            .label(format!("Tab {ix}"))
+                            .disabled(ix == 3)
+                    })),
+            )
+        }
+    }
+
+    fn keyboard_harness(
+        cx: &mut TestAppContext,
+    ) -> (&mut gpui::VisualTestContext, Rc<Cell<usize>>, ScrollHandle) {
+        cx.update(crate::init);
+        let selected = Rc::new(Cell::new(1));
+        let scroll_handle = ScrollHandle::new();
+        let (_, cx) = cx.add_window_view({
+            let selected = selected.clone();
+            let scroll_handle = scroll_handle.clone();
+            move |_, _| KeyboardHarness {
+                selected,
+                scroll_handle,
+            }
+        });
+        draw(cx);
+        (cx, selected, scroll_handle)
+    }
+
+    fn press(cx: &mut gpui::VisualTestContext, key: &str) {
+        let keystroke = gpui::Keystroke::parse(key).unwrap();
+        cx.simulate_event(gpui::KeyDownEvent {
+            keystroke: keystroke.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        cx.simulate_event(gpui::KeyUpEvent { keystroke });
+    }
+
+    #[gpui::test]
+    fn keyboard_moves_between_enabled_tabs_and_enter_selects(cx: &mut TestAppContext) {
+        let (cx, selected, _) = keyboard_harness(cx);
+        cx.update(|window, cx| window.focus_next(cx));
+
+        // Tab lands on the selected tab, so Enter keeps it selected.
+        press(cx, "enter");
+        assert_eq!(selected.get(), 1);
+
+        cx.simulate_keystrokes("right right");
+        press(cx, "enter");
+        assert_eq!(selected.get(), 4, "the disabled tab is skipped");
+
+        cx.simulate_keystrokes("end right");
+        press(cx, "space");
+        assert_eq!(selected.get(), 0, "focus wraps past the last tab");
+
+        cx.simulate_keystrokes("left");
+        assert_eq!(selected.get(), 0, "moving focus leaves the selection alone");
+        press(cx, "enter");
+        assert_eq!(selected.get(), 5);
+    }
+
+    #[gpui::test]
+    fn a_tab_the_keyboard_reaches_is_scrolled_into_view(cx: &mut TestAppContext) {
+        let (cx, _, scroll_handle) = keyboard_harness(cx);
+        cx.update(|window, cx| window.focus_next(cx));
+        assert_eq!(scroll_handle.offset().x, px(0.));
+
+        cx.simulate_keystrokes("end");
+        draw(cx);
+
+        assert!(
+            scroll_handle.offset().x < px(-200.),
+            "the last tab is in view, at offset {:?}",
+            scroll_handle.offset()
+        );
+    }
+
+    #[gpui::test]
+    fn only_the_selected_tab_is_a_tab_stop(cx: &mut TestAppContext) {
+        let (cx, selected, _) = keyboard_harness(cx);
+        cx.update(|window, cx| {
+            window.focus_next(cx);
+            window.focus_next(cx);
+        });
+
+        // Tab again leaves the bar, and there is nothing else to reach, so
+        // focus comes back around to the selected tab.
+        press(cx, "enter");
+        assert_eq!(selected.get(), 1);
     }
 }

@@ -4,7 +4,8 @@
 //! mode and inserts the next character literally in insert mode, as Vim
 //! does on Unix. The platform's clipboard and history shortcuts stay where
 //! they don't clash with Vim's keys: Cmd on macOS, and Ctrl-Shift-C and
-//! Ctrl-Shift-V on Windows and Linux.
+//! Ctrl-Shift-V on Windows and Linux. On macOS, Cmd-Left and Cmd-Right go to
+//! the ends of the line in every mode, as MacVim's do.
 
 use gpui::KeyBinding;
 
@@ -23,8 +24,9 @@ use super::{
     operator::Operator,
 };
 use crate::input::{
-    Backspace, Copy, Cut, DeleteToPreviousWordStart, Paste, Search, SelectNextSuggestion,
-    SelectPreviousSuggestion, ShowContextMenu,
+    Backspace, Copy, Cut, DeleteToPreviousWordStart, MoveEnd, MoveHome, Paste, Search,
+    SelectNextSuggestion, SelectPreviousSuggestion, SelectToEndOfLine, SelectToStartOfLine,
+    ShowContextMenu,
     keymap::{Keymap, KeymapPlatform, bind, common},
 };
 
@@ -483,6 +485,26 @@ pub(in crate::input::keymap) fn bindings(platform: KeymapPlatform) -> Vec<KeyBin
             bind("cmd-z", Undo, commands),
             bind("cmd-shift-z", Redo, commands),
             bind("cmd-f", Search, vim),
+            // The ends of the line, as Home and End while typing and as `0`
+            // and `$` among the motions.
+            bind("cmd-left", MoveHome, typing),
+            bind("cmd-right", MoveEnd, typing),
+            bind("cmd-shift-left", SelectToStartOfLine, typing),
+            bind("cmd-shift-right", SelectToEndOfLine, typing),
+            bind(
+                "cmd-left",
+                Move {
+                    motion: Motion::LineStart,
+                },
+                moving,
+            ),
+            bind(
+                "cmd-right",
+                Move {
+                    motion: Motion::LineEnd,
+                },
+                moving,
+            ),
         ]);
     }
 

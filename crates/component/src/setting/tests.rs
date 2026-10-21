@@ -334,3 +334,43 @@ fn selecting_a_group_from_another_page_scrolls_to_it(cx: &mut TestAppContext) {
 
 #[path = "narrow_tests.rs"]
 mod narrow;
+
+/// Presses and releases `key`, which a focused control's click handler hears.
+fn press(key: &str, cx: &mut VisualTestContext) {
+    let keystroke = gpui::Keystroke::parse(key).unwrap();
+    cx.simulate_event(gpui::KeyDownEvent {
+        keystroke: keystroke.clone(),
+        is_held: false,
+        prefer_character_input: false,
+    });
+    cx.simulate_event(gpui::KeyUpEvent { keystroke });
+    draw(cx);
+}
+
+#[gpui::test]
+fn wide_page_list_supports_keyboard_navigation(cx: &mut TestAppContext) {
+    let (host, cx) = setup(cx);
+    let state = cx.update(|_, cx| host.read(cx).state.clone().unwrap());
+    let search_input = cx.update(|_, cx| state.read(cx).search_input.clone());
+    cx.update(|window, cx| gpui::Focusable::focus_handle(&search_input, cx).focus(window, cx));
+
+    // Tab reaches the list on the selected page, Appearance, whose groups
+    // Colors and Fonts follow it.
+    cx.simulate_keystrokes("tab down");
+    press("enter", cx);
+    assert_eq!(selection(&host, cx), (1, Some(1)));
+    cx.simulate_keystrokes("down down");
+    press("space", cx);
+    assert_eq!(selection(&host, cx), (2, None));
+    cx.simulate_keystrokes("home");
+    press("enter", cx);
+    assert_eq!(selection(&host, cx), (0, None));
+
+    // Coming back with Tab lands on the page that's selected now, General,
+    // rather than on the item that last had focus.
+    cx.simulate_keystrokes("end");
+    cx.update(|window, cx| gpui::Focusable::focus_handle(&search_input, cx).focus(window, cx));
+    cx.simulate_keystrokes("tab down");
+    press("enter", cx);
+    assert_eq!(selection(&host, cx), (1, None));
+}

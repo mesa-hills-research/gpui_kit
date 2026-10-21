@@ -4,9 +4,9 @@ use crate::animation::{Lerp, ease_in_out_cubic};
 use crate::{ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Edges, ElementId, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Edges, ElementId,
+    FocusHandle, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 
 /// Tab variants.
@@ -415,6 +415,8 @@ pub struct Tab {
     /// restarts in sync with the indicator slide.
     pub(super) indicator_epoch: u64,
     pub(super) max_width: Option<Pixels>,
+    /// The handle the [`super::TabBar`]'s roving focus gives this tab.
+    pub(super) focus_handle: Option<FocusHandle>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -468,6 +470,7 @@ impl Default for Tab {
             variant: TabVariant::default(),
             size: Size::default(),
             max_width: None,
+            focus_handle: None,
             on_click: None,
         }
     }
@@ -617,7 +620,7 @@ impl Sizable for Tab {
 }
 
 impl RenderOnce for Tab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut normal_style = self.variant.normal(cx);
         let mut selected_style = self.variant.selected(cx);
         let mut disabled_style = self.variant.disabled(self.selected, cx);
@@ -648,6 +651,14 @@ impl RenderOnce for Tab {
         let inner_height = self.variant.inner_height(self.size);
         let height = self.variant.height(self.size);
         let aria_label = self.a11y_label();
+        // A press leaves focus where it is, so a ring only ever marks a tab
+        // the keyboard moved to.
+        let focus_visible = !self.disabled
+            && window.last_input_was_keyboard()
+            && self
+                .focus_handle
+                .as_ref()
+                .is_some_and(|focus_handle| focus_handle.is_focused(window));
 
         let segmented_indicator_active =
             self.variant == TabVariant::Segmented && self.indicator_active;
@@ -763,6 +774,9 @@ impl RenderOnce for Tab {
             .id(self.ix)
             .selected(self.selected)
             .disabled(self.disabled)
+            .when_some(self.focus_handle, |this, focus_handle| {
+                this.track_focus(&focus_handle)
+            })
             .when_some(aria_label, |this, label| this.accessibility_label(label))
             .styles(|styles| {
                 styles
@@ -866,6 +880,17 @@ impl RenderOnce for Tab {
                     div()
                         .when_some(max_width, |this, _| this.flex_shrink_0())
                         .child(suffix),
+                )
+            })
+            // Inside the tab, because the tab and its bar clip what's outside.
+            .when(focus_visible, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(radius)
+                        .border_2()
+                        .border_color(cx.theme().ring),
                 )
             })
             .when_some(self.on_click.clone(), |this, on_click| {

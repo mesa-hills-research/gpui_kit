@@ -10,6 +10,47 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Long paragraphs with inline code stream faster** (`gpui-base`). A paragraph with inline code,
+  images or inline objects lays out and paints only the lines in view, unless a selection needs
+  every line, and text streamed onto its end lays out again only the lines it can change.
+  Streaming into a 20 KB one went from about 15 to 4 ms a frame, and into an 80 KB one from 65 to
+  8 ms (p50).
+- **A selection across rows survives scrolling** (`gpui-base`). A selection across the rows of
+  one document, shown as views in a list, keeps its rows as they scroll out of view. Its ends
+  hold, the rows are copied, and they show as selected when they come back.
+  `TextSelectionRegistration::with_document_position` gives other participants the same. See
+  [TextView](website/component/text-view.md#a-long-document-as-rows).
+- **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
+  shaped text of rows a list scrolled past, which they kept for as long as the views lived. One
+  pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.
+- **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
+  a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus
+  yet. See [Title Bar](website/component/title-bar.md#menu-bar-and-the-keyboard).
+- **Paging a message scroller** (`gpui-component`). `MessageScrollerState` scrolls by a distance
+  with `scroll_by`, reports the viewport's height with `viewport_height`, and keeps and restores
+  the reader's place with `logical_scroll_top` and `scroll_to_offset`. See
+  [MessageScroller](website/component/message-scroller.md#page-and-keep-the-readers-place).
+- **Cmd-Left and Cmd-Right in the Emacs and Vim keys on macOS** (`gpui-base`). They go to the
+  start and end of the line, as in CUA and every Mac text field, extending Emacs's active region
+  and moving as `0` and `$` in Vim. See
+  [Textarea: keybindings](website/component/textarea.md#keybindings).
+- **Paragraphs a blank line apart in copied text** (`gpui-base`). Plain-text copy of a text view,
+  and `rendered_text()`, put a blank line between blocks, where there was one line break, so
+  pasted paragraphs stay apart. See
+  [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
+- **The layout of selectable text** (`gpui-base`). `SelectableText::layout` returns the
+  `TextLayout` the text is drawn with, so an element around it can find where an offset is drawn
+  without shaping the text again. See
+  [Text Selection](website/base/text-selection.md#selectable-highlighted-text).
+- **A frame rate per shimmer** (`gpui-component`). `ShimmerStyle::max_fps` and
+  `ShimmerText::max_fps` set how many frames a second a shimmer draws, 30 by default. See
+  [Shimmer](website/component/shimmer.md#styling-theme-and-reduced-motion).
+- **Keyboard navigation in tab bars and sidebar menus** (`gpui-base`, `gpui-component`). A
+  `TabBar` and a `SidebarMenu` are each one Tab stop, on the selected tab or the active item, and
+  the arrow keys, Home and End move focus between their enabled items. Enter or Space activates
+  the focused one, and in a sidebar Right and Left open and close submenus. `RovingFocus` gives
+  other controls the same behavior. See [Tabs](website/component/tabs.md#keyboard) and
+  [Sidebar](website/component/sidebar.md#keyboard).
 - **Cached Settings groups** (`gpui-component`). `SettingGroup::key` reuses unchanged groups
   while editable controls keep their own redraws. Groups without a key keep the existing
   behavior. See [Settings](website/component/settings.md#cache-independent-groups).

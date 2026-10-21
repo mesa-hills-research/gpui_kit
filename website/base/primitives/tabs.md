@@ -44,6 +44,38 @@ The complete implementation used by the runnable showcase is embedded directly f
 
 The command above supplies application initialization, window creation, and shared `BaseShowcase` state.
 
+## Keyboard
+
+`Tabs::roving_focus` gives a tab list the keyboard behavior of a desktop tab control. A `RovingFocus` keeps one focus handle per tab, and the list is one Tab stop, on the current tab. Left and Right move focus to the previous and next enabled tab, wrapping at the ends, and Home and End move to the first and last. Enter or Space on the focused tab runs its `on_click`.
+
+```rust
+use gpui_kit::base::{RovingFocus, Tab, Tabs};
+
+impl Render for Preferences {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let labels = ["General", "Appearance", "Advanced"];
+        let focus = RovingFocus::keyed("preferences-tabs-focus", window, cx);
+        focus.set_items(labels.iter().map(|_| true), Some(self.selected), cx);
+
+        Tabs::new("preferences-tabs")
+            .roving_focus(&focus)
+            .flex()
+            .children(labels.into_iter().enumerate().map(|(ix, label)| {
+                Tab::new(ix)
+                    .selected(ix == self.selected)
+                    .track_focus(&focus.handle(ix).unwrap())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.selected = ix;
+                        cx.notify();
+                    }))
+                    .child(label)
+            }))
+    }
+}
+```
+
+Other composite controls whose items share one Tab stop, such as a vertical list, can use `RovingFocus` directly and call `move_focus` from their key handlers.
+
 ## Accessibility
 
 Associate tabs with panels, expose selection, and support keyboard traversal.

@@ -85,6 +85,10 @@ fn the_tables_differ_only_in_macos_cmd_keys() {
         "cmd-v",
         "cmd-z",
         "cmd-shift-z",
+        "cmd-left",
+        "cmd-right",
+        "cmd-shift-left",
+        "cmd-shift-right",
     ]
     .map(|key| gpui::Keystroke::parse(key).unwrap().unparse());
     assert_eq!(cmd, expected);
@@ -605,6 +609,23 @@ fn emacs_keys_do_nothing_in_other_schemes(cx: &mut TestAppContext) {
     assert!(kill_ring(&test).is_empty());
     test.keys("ctrl-k");
     test.assert("hˇ");
+}
+
+#[gpui::test]
+fn macos_cmd_arrows_go_to_the_ends_of_the_line(cx: &mut TestAppContext) {
+    let mut test = KeymapTest::new(cx, Keymap::Emacs, KeymapPlatform::MacOS, "one\ntwˇo three");
+    test.keys("cmd-left");
+    test.assert("one\nˇtwo three");
+    test.keys("cmd-right");
+    test.assert("one\ntwo threeˇ");
+
+    // They extend an active region, as C-a and C-e do.
+    test.keys("ctrl-space cmd-left");
+    test.assert("one\n«ˇtwo three»");
+    test.keys("ctrl-g alt-f cmd-shift-right");
+    test.assert("one\ntwo« threeˇ»");
+    test.keys("cmd-shift-left");
+    test.assert("one\n«ˇtwo» three");
 }
 
 #[gpui::test]

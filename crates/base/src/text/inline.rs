@@ -13,7 +13,7 @@ use gpui::{
     GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
     IntoElement, LayoutId, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Pixels, Point, SharedString, StyledText, TextAlign, TextLayout, TextRun,
-    TextStyle, Window, point, px, quad, size,
+    TextStyle, Window, WindowId, point, px, quad, size,
 };
 
 use crate::{
@@ -391,6 +391,11 @@ pub(crate) struct InlineState {
 /// travels through the background parse, so the layouts live in a
 /// thread-local table keyed by the state's address, with a `Weak` to tell a
 /// live state from a reused address.
+///
+/// A layout no frame takes for [`RETAINED_UNUSED_FRAMES`] frames of its
+/// window is dropped. A list keeps the states of rows it no longer lays out,
+/// so without that a transcript scrolled from top to bottom kept the shaped
+/// text of every row it passed.
 struct RetainedLayout {
     state: Weak<Mutex<InlineState>>,
     styled_text: StyledText,
@@ -401,6 +406,16 @@ struct RetainedLayout {
     /// were built from a code block's highlights. Next frame those are
     /// recognized by it, without building the runs again to compare them.
     code_highlights: Option<u64>,
+    /// The window that laid the text out last, and its frame then.
+    window: WindowId,
+    frame: u64,
+}
+
+/// A window's frames that laid out text, counted at the end of each.
+#[derive(Default)]
+struct WindowFrames {
+    frame: u64,
+    end_scheduled: bool,
 }
 
 /// The layouts the previous frame left, by the address of their state, with
@@ -408,6 +423,7 @@ struct RetainedLayout {
 #[derive(Default)]
 struct RetainedLayouts {
     layouts: HashMap<usize, RetainedLayout>,
+    frames: HashMap<WindowId, WindowFrames>,
     text_bytes: usize,
     /// The number of entries at which dead entries are swept next.
     sweep_at_count: usize,
@@ -425,9 +441,8 @@ thread_local! {
 /// Dead entries (states that were dropped without a final paint, e.g. a
 /// replaced document) are swept once the table holds this many entries, or
 /// twice the entries that were live at the last sweep, whichever is more.
-/// Rows a list no longer lays out keep their entries alive, so a long
-/// transcript holds many thousands, and a fixed count swept the whole table
-/// on every insert past it.
+/// A long document on screen holds thousands of live entries, and a fixed
+/// count swept the whole table on every insert past it.
 const RETAINED_SWEEP_AT: usize = 4096;
 /// Dead entries are also swept once the table holds this many bytes of
 /// text, or twice the bytes the live entries held at the last sweep,
@@ -436,8 +451,45 @@ const RETAINED_SWEEP_AT: usize = 4096;
 /// megabytes a chunk, which a count of entries alone let pile up by the
 /// thousand.
 const RETAINED_SWEEP_BYTES: usize = 256 * 1024;
+/// A layout its window's frames haven't laid out for this many frames, a
+/// second at 60 frames a second, is dropped. Only frames that lay out some
+/// text count, so a window that animates nothing else keeps its layouts.
+const RETAINED_UNUSED_FRAMES: u64 = 60;
+/// How often, in a window's frames, its unused layouts are looked for.
+const RETAINED_EVICT_EVERY: u64 = 20;
 
 impl RetainedLayouts {
+    /// The frame `window` is laying out, and whether the end of that frame
+    /// is still to be scheduled.
+    fn begin_frame(&mut self, window: WindowId) -> (u64, bool) {
+        let frames = self.frames.entry(window).or_default();
+        let schedule = !mem::replace(&mut frames.end_scheduled, true);
+        (frames.frame, schedule)
+    }
+
+    /// Counts a frame of `window` that laid out text, and every few frames
+    /// drops the window's layouts that have gone unused.
+    fn end_frame(&mut self, window: WindowId) {
+        let frames = self.frames.entry(window).or_default();
+        frames.end_scheduled = false;
+        frames.frame += 1;
+        let frame = frames.frame;
+        if frame % RETAINED_EVICT_EVERY != 0 {
+            return;
+        }
+        self.layouts.retain(|_, retained| {
+            retained.state.strong_count() > 0
+                && (retained.window != window || frame - retained.frame <= RETAINED_UNUSED_FRAMES)
+        });
+        self.text_bytes = self
+            .layouts
+            .values()
+            .map(|retained| retained.text.len())
+            .sum();
+        self.sweep_at_count = self.sweep_at_count.min(self.layouts.len() * 2);
+        self.sweep_at_bytes = self.sweep_at_bytes.min(self.text_bytes * 2);
+    }
+
     fn remove(&mut self, key: usize) -> Option<RetainedLayout> {
         let retained = self.layouts.remove(&key)?;
         self.text_bytes -= retained.text.len();
@@ -497,6 +549,21 @@ fn retain_layout(state: &Arc<Mutex<InlineState>>, retained: RetainedLayout) {
     RETAINED_LAYOUTS.with(|layouts| layouts.borrow_mut().insert(state_key(state), retained));
 }
 
+/// The frame `window` is laying out. The first call in a frame schedules
+/// the frame's end, which counts the frame and drops the window's unused
+/// layouts.
+fn retained_frame(window: &Window, cx: &mut App) -> (WindowId, u64) {
+    let window = window.window_handle().window_id();
+    let (frame, schedule) =
+        RETAINED_LAYOUTS.with(|layouts| layouts.borrow_mut().begin_frame(window));
+    if schedule {
+        cx.defer(move |_| {
+            RETAINED_LAYOUTS.with(|layouts| layouts.borrow_mut().end_frame(window));
+        });
+    }
+    (window, frame)
+}
+
 impl InlineState {
     /// Save actually rendered text for selected text to use.
     pub(crate) fn set_text(&mut self, text: SharedString) {
@@ -514,13 +581,14 @@ impl Inline {
     /// frame (the same document shown twice), this one keeps its own: the
     /// table holds one layout per state, and an element must never be left
     /// to paint without its shaped text.
-    fn retain_styled_text(&mut self) {
+    fn retain_styled_text(&mut self, window: &Window, cx: &mut App) {
         if self.handed_over || self.retained_key.is_none() || has_retained_layout(&self.state) {
             return;
         }
         let Some((runs, text_style, code_highlights)) = self.retained_key.take() else {
             return;
         };
+        let (window, frame) = retained_frame(window, cx);
         retain_layout(
             &self.state,
             RetainedLayout {
@@ -530,6 +598,8 @@ impl Inline {
                 runs,
                 text_style,
                 code_highlights,
+                window,
+                frame,
             },
         );
         self.handed_over = true;
@@ -1146,7 +1216,7 @@ impl Element for Inline {
         self.request_reveal(window);
 
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        self.retain_styled_text();
+        self.retain_styled_text(window, cx);
         hitbox
     }
 
@@ -1385,7 +1455,7 @@ impl Element for Inline {
         }
 
         drop(state);
-        self.retain_styled_text();
+        self.retain_styled_text(window, cx);
     }
 }
 
@@ -2680,7 +2750,7 @@ mod tests {
 mod retained_layout_tests {
     use gpui::{
         AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-        TestAppContext, Window, div, px,
+        TestAppContext, Window, div, prelude::FluentBuilder as _, px,
     };
 
     use super::RETAINED_LAYOUTS;
@@ -2804,6 +2874,37 @@ mod retained_layout_tests {
         assert_eq!(alive, 3, "one live layout per remaining fragment");
     }
 
+    /// A paragraph much taller than the window lays out only the lines in
+    /// view, and every line while a selection needs them.
+    #[gpui::test]
+    fn a_tall_flow_lays_out_only_the_lines_in_view(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let source = "word `code` ".repeat(300);
+        let (view, cx) = cx.add_window_view(|_, cx| Once {
+            state: cx.new(|cx| TextViewState::markdown(&source, cx)),
+        });
+        cx.simulate_resize(gpui::size(px(300.), px(120.)));
+        cx.run_until_parked();
+        let laid_out = |cx: &mut gpui::VisualTestContext| {
+            RETAINED_LAYOUTS.with(|layouts| *layouts.borrow_mut() = Default::default());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.len())
+        };
+        laid_out(cx);
+        let in_view = laid_out(cx);
+
+        view.update(cx, |view, cx| {
+            view.state.update(cx, |state, cx| state.select_all(cx))
+        });
+        let all = laid_out(cx);
+        // "word ", "code" and " " per repeat, a few lines of them in view.
+        assert!(all >= 600, "{all} fragments laid out with a selection");
+        assert!(
+            in_view > 0 && in_view * 10 < all,
+            "{in_view} of {all} fragments laid out without one"
+        );
+    }
+
     /// A streamed block is a new state with every chunk, so each chunk left
     /// the layout of the whole block before it behind, until four thousand
     /// had piled up, gigabytes for a long code block.
@@ -2843,6 +2944,66 @@ mod retained_layout_tests {
         );
     }
 
+    struct Toggle {
+        shown: Entity<TextViewState>,
+        hidden: Entity<TextViewState>,
+        show_both: bool,
+    }
+
+    impl Render for Toggle {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .w(px(300.))
+                .child(TextView::new(&self.shown))
+                .when(self.show_both, |this| {
+                    this.child(TextView::new(&self.hidden))
+                })
+        }
+    }
+
+    /// Text that frames no longer lay out, as a row a list scrolled past,
+    /// lets its layout go once its window has drawn other text for a while,
+    /// though its state lives on.
+    #[gpui::test]
+    fn layouts_left_unused_for_a_while_are_dropped(cx: &mut TestAppContext) {
+        use super::{RETAINED_EVICT_EVERY, RETAINED_UNUSED_FRAMES};
+
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|_, cx| Toggle {
+            shown: cx.new(|cx| TextViewState::markdown("Shown paragraph.", cx)),
+            hidden: cx.new(|cx| TextViewState::markdown("Hidden paragraph.", cx)),
+            show_both: true,
+        });
+        cx.run_until_parked();
+        let entries = || RETAINED_LAYOUTS.with(|layouts| layouts.borrow().layouts.len());
+        /// The window's frames that laid out text so far.
+        fn frame() -> u64 {
+            RETAINED_LAYOUTS.with(|layouts| {
+                let layouts = layouts.borrow();
+                layouts.frames.values().map(|frames| frames.frame).sum()
+            })
+        }
+        /// Draws until the window has laid out text for `frames` more frames.
+        fn draw(view: &Entity<Toggle>, cx: &mut gpui::VisualTestContext, frames: u64) {
+            let until = frame() + frames;
+            while frame() < until {
+                view.update(cx, |_, cx| cx.notify());
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+            }
+        }
+
+        draw(&view, cx, 3);
+        assert_eq!(entries(), 2);
+        view.update(cx, |view, cx| {
+            view.show_both = false;
+            cx.notify();
+        });
+        draw(&view, cx, RETAINED_UNUSED_FRAMES - RETAINED_EVICT_EVERY);
+        assert_eq!(entries(), 2, "the hidden text keeps its layout a while");
+        draw(&view, cx, 2 * RETAINED_EVICT_EVERY + 1);
+        assert_eq!(entries(), 1, "then only the text on screen keeps one");
+    }
+
     /// A transcript keeps the states of the rows the reader scrolled past,
     /// and their layouts with them. Past 4096 live entries the table was
     /// swept on every insert, so every frame scanned the whole table.
@@ -2862,6 +3023,8 @@ mod retained_layout_tests {
                     runs: Vec::new(),
                     text_style: TextStyle::default(),
                     code_highlights: None,
+                    window: gpui::WindowId::from(0),
+                    frame: 0,
                 },
             );
         }

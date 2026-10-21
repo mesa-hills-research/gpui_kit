@@ -151,6 +151,7 @@ pub fn init(cx: &mut App) {
     popover::init(cx);
     questionnaire::init(cx);
     menu::init(cx);
+    sidebar::init(cx);
     table::init(cx);
     tooltip::init(cx);
 }

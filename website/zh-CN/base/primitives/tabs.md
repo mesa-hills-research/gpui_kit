@@ -38,6 +38,38 @@ use gpui_kit::base::{Tab, Tabs};
 
 <<< ../../../../crates/base/examples/showcase/components/tabs.rs{rust}
 
+## 键盘
+
+`Tabs::roving_focus` 让标签列表具备桌面标签控件的键盘行为。`RovingFocus` 为每个标签保存一个 focus handle，整个列表只占一个 Tab 停靠点，落在当前标签上。Left 和 Right 将焦点移到上一个和下一个可用标签，到两端时环绕，Home 和 End 移到第一个和最后一个。在获得焦点的标签上按 Enter 或 Space 会执行它的 `on_click`。
+
+```rust
+use gpui_kit::base::{RovingFocus, Tab, Tabs};
+
+impl Render for Preferences {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let labels = ["General", "Appearance", "Advanced"];
+        let focus = RovingFocus::keyed("preferences-tabs-focus", window, cx);
+        focus.set_items(labels.iter().map(|_| true), Some(self.selected), cx);
+
+        Tabs::new("preferences-tabs")
+            .roving_focus(&focus)
+            .flex()
+            .children(labels.into_iter().enumerate().map(|(ix, label)| {
+                Tab::new(ix)
+                    .selected(ix == self.selected)
+                    .track_focus(&focus.handle(ix).unwrap())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.selected = ix;
+                        cx.notify();
+                    }))
+                    .child(label)
+            }))
+    }
+}
+```
+
+其他各项共用一个 Tab 停靠点的复合控件（例如纵向列表）也可以直接使用 `RovingFocus`，在按键处理中调用 `move_focus`。
+
 ## 可访问性
 
 保留标签列表、标签与面板关系，以及方向键和焦点行为。
