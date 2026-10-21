@@ -10,6 +10,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Keys still reach a focused row scrolled out of view** (`gpui-base`). While the window has a
+  selection, a text view holding focus keeps its keys when a list no longer draws it, so Cmd-C
+  or Ctrl-C copies the whole selection, and Select All and the context menu keys still work. See
+  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
 - **Separate views in one document** (`gpui-base`, `gpui-component`). `TextView::document_position`
   and `SelectableText::document_position` place views the application shows apart, such as the
   messages of a conversation, in one document, so a selection across them keeps both ends and

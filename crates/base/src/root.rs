@@ -1,5 +1,6 @@
 //! Window roots and presentation-layer plugins.
 use crate::input::Copy;
+use crate::text_selection::TextSelectionFocus;
 use crate::{StyledExt, TextSelectionLayer};
 use gpui::{
     AnyElement, AnyView, App, AppContext, ClipboardItem, Context, Div, Entity, Global,
@@ -330,6 +331,8 @@ impl Render for Root {
             .relative()
             .size_full()
             .child(TextSelectionLayer)
+            // Before the content, which takes the keys back from it.
+            .child(TextSelectionFocus)
             .child(self.view.clone())
             .child(
                 div()

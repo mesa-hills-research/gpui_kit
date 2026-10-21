@@ -13,8 +13,8 @@ use web_time::Instant;
 
 use gpui::{
     App, AppContext as _, Bounds, Context, Entity, EntityId, FocusHandle, IntoElement, KeyBinding,
-    ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Subscription,
-    Task, WeakEntity, Window, prelude::FluentBuilder as _, px,
+    KeyContext, ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _,
+    Subscription, Task, WeakEntity, Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -331,6 +331,12 @@ impl TextViewState {
     fn without_text(format: TextViewFormat, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let selection_adapter = TextViewSelectionAdapter::new(cx.entity().downgrade(), cx);
+        // A row a list no longer draws keeps its keys while it holds focus.
+        let mut key_context = KeyContext::default();
+        key_context.add(CONTEXT);
+        selection_adapter
+            .handle()
+            .set_view_focus(&focus_handle, key_context, cx);
 
         Self {
             entity_id: cx.entity_id(),

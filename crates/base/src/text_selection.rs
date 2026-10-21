@@ -1,4 +1,5 @@
 use std::{
+    any::TypeId,
     collections::HashMap,
     ops::Range,
     rc::Rc,
@@ -6,11 +7,12 @@ use std::{
 };
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, Element, ElementId, Entity, EntityId, EventEmitter,
-    Global, GlobalElementId, Half, Hitbox, HitboxBehavior, Hsla, InputEvent as _,
-    InspectorElementId, IntoElement, LayoutId, LongPressEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent, SharedString,
-    Style, Subscription, TextLayout, TouchDragEvent, TouchPhase, WeakEntity, Window, point, px,
+    App, AppContext as _, Bounds, Context, DispatchPhase, Element, ElementId, Entity, EntityId,
+    EventEmitter, FocusHandle, Global, GlobalElementId, Half, Hitbox, HitboxBehavior, Hsla,
+    InputEvent as _, InspectorElementId, IntoElement, KeyContext, LayoutId, LongPressEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta,
+    ScrollWheelEvent, SharedString, Style, Subscription, TextLayout, TouchDragEvent, TouchPhase,
+    WeakEntity, WeakFocusHandle, Window, point, px,
 };
 
 use crate::text_boundary::{line_range_at, word_range_at};
@@ -730,6 +732,9 @@ struct SelectableTextState {
     copy_group: Option<CopyGroupCallback>,
     content_key_resolver: Option<ContentKeyResolver>,
     select_all: Option<FocusCallback>,
+    /// The focus handle of the view showing this text, and the key context
+    /// its keys are bound in. See [`TextSelectionFocus`].
+    view_focus: Option<(WeakFocusHandle, KeyContext)>,
 }
 
 impl EventEmitter<TextSelectionEvent> for SelectableTextState {}
@@ -748,6 +753,7 @@ impl SelectableTextState {
             copy_group: None,
             content_key_resolver: None,
             select_all: None,
+            view_focus: None,
         }
     }
 
@@ -993,6 +999,21 @@ impl TextSelectionHandle {
     ) {
         self.0
             .update(cx, |state, _| state.select_all = Some(Rc::new(callback)));
+    }
+
+    /// Names the focus handle of the view showing this text, and the key
+    /// context its keys are bound in, so its keys keep working while it
+    /// holds focus but isn't drawn. See [`TextSelectionFocus`].
+    pub(crate) fn set_view_focus(
+        &self,
+        focus_handle: &FocusHandle,
+        key_context: KeyContext,
+        cx: &mut App,
+    ) {
+        let focus_handle = focus_handle.downgrade();
+        self.0.update(cx, |state, _| {
+            state.view_focus = Some((focus_handle, key_context))
+        });
     }
 
     /// Sets the [`TextSelectionCopyGroup`] the participant's copied text
@@ -1612,6 +1633,42 @@ impl WindowSelectionState {
                     .upgrade()
                     .is_some_and(|participant| participant.read(cx).local_selection)
             })
+    }
+
+    /// The participant whose view holds the window's focus, while the
+    /// window has a selection, with the view's focus handle and key context.
+    fn focused_participant(&self, window: &Window, cx: &App) -> Option<FocusedParticipant> {
+        let focused = window.focused(cx)?;
+        let (participant, key_context) = self.participants.values().find_map(|registration| {
+            let participant = registration.participant.upgrade()?;
+            let (focus_handle, key_context) = participant.read(cx).view_focus.as_ref()?;
+            (*focus_handle == focused).then(|| (participant.downgrade(), key_context.clone()))
+        })?;
+        self.has_selection(cx).then_some(FocusedParticipant {
+            participant,
+            focus_handle: focused,
+            key_context,
+        })
+    }
+
+    /// Under the end of the selected text drawn last frame, the last in
+    /// reading order, where the keyboard opens a context menu for a
+    /// participant that isn't drawn.
+    fn drawn_selection_end(&self) -> Option<Point<Pixels>> {
+        let keys = self.reading_keys();
+        self.participants
+            .iter()
+            .filter(|(_, registration)| {
+                !registration.offscreen
+                    && registration.registration.scope == self.active_scope
+                    && registration.participant.upgrade().is_some()
+            })
+            .filter_map(|(id, registration)| {
+                let (_, end) = registration.registration.selection_edges?;
+                Some((keys.get(id), end))
+            })
+            .max_by_key(|(key, _)| *key)
+            .map(|(_, end)| end.bottom_left())
     }
 
     /// Returns the current resolved selection endpoints.
@@ -3015,6 +3072,128 @@ impl Element for TextSelectionLayer {
         cx: &mut App,
     ) {
         paint_text_selection(&state.0, window, cx);
+    }
+}
+
+/// A participant whose view holds focus, found for [`TextSelectionFocus`].
+pub(crate) struct FocusedParticipant {
+    participant: WeakEntity<SelectableTextState>,
+    focus_handle: FocusHandle,
+    key_context: KeyContext,
+}
+
+/// Keeps the keys of a selectable view working while it holds focus but
+/// isn't drawn, such as a row a list scrolled away while a selection that
+/// started in it lasts.
+///
+/// GPUI sends a key along the path from the window's root to the focused
+/// element, or to the root alone when that element isn't drawn. That path
+/// misses the window's [`crate::Root`], whose Cmd-C or Ctrl-C copies the
+/// window's selection, and the view's own keys, so Copy, Select All and the
+/// context menu keys would do nothing. `Root` draws this element before its
+/// content. While the window has a selection and the view of one of its
+/// participants holds focus, the element tracks that focus handle, with the
+/// view's key context. A view that is drawn tracks its handle later in the
+/// same frame and takes the keys back, so the element only stands in for a
+/// view that isn't drawn. Copy then reaches `Root`, and the element selects
+/// all of the participant and opens its context menu.
+pub(crate) struct TextSelectionFocus;
+
+impl IntoElement for TextSelectionFocus {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for TextSelectionFocus {
+    type RequestLayoutState = ();
+    type PrepaintState = Option<FocusedParticipant>;
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (window.request_layout(Style::default(), [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        let focused = WindowSelectionState::existing(window, cx)?
+            .read(cx)
+            .focused_participant(window, cx)?;
+        window.set_focus_handle(&focused.focus_handle, cx);
+        Some(focused)
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        focused: &mut Self::PrepaintState,
+        window: &mut Window,
+        _: &mut App,
+    ) {
+        let Some(focused) = focused.take() else {
+            return;
+        };
+        window.set_key_context(focused.key_context);
+        let participant = focused.participant;
+        let select_all = participant.clone();
+        window.on_action(
+            TypeId::of::<crate::input::SelectAll>(),
+            move |_, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let Some(select_all) = select_all
+                    .upgrade()
+                    .and_then(|participant| participant.read(cx).select_all.clone())
+                else {
+                    cx.propagate();
+                    return;
+                };
+                select_all(window, cx);
+            },
+        );
+        window.on_action(
+            TypeId::of::<crate::input::ShowContextMenu>(),
+            move |_, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let Some(state) = live_text_selection_state(window, cx) else {
+                    cx.propagate();
+                    return;
+                };
+                let position = state.read(cx).drawn_selection_end().unwrap_or_else(|| {
+                    let viewport = window.viewport_size();
+                    point(viewport.width.half(), viewport.height.half())
+                });
+                open_context_menu(&state, position, participant.clone(), window, cx);
+            },
+        );
     }
 }
 

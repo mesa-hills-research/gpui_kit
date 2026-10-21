@@ -8,6 +8,8 @@ mod inline_object;
 mod inline_virtual_tests;
 mod markdown_ext;
 mod node;
+#[cfg(test)]
+mod offscreen_focus_tests;
 mod range_highlight;
 pub(crate) mod selection;
 mod selection_adapter;

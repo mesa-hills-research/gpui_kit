@@ -99,6 +99,8 @@ TextSelection::show_context_menu(&handle, position, window, cx);
 
 无论焦点在哪里，`CopyTextSelection` 复制的内容都与 Cmd-C 或 Ctrl-C 相同。`SelectAllText` 全选菜单所在的参与者。两者都由 `Root` 处理。参与者通过 `TextSelectionHandle::select_all_with` 提供回调后，菜单中才会出现全选，`TextView` 已经这样做。GPUI 绘制的菜单需要在每帧 paint 时调用 `TextSelection::register_menu(bounds, window, cx)`，这样按下菜单项时选区会保留，与按下系统菜单一样。GPUI Component 安装的处理函数按应用的上下文菜单样式显示复制和全选。
 
+窗口有选区时，获得焦点的 `TextView` 即使没有绘制也保留自己的按键，例如被列表滚走的行。`Root` 会代替它接收按键，因此 Cmd-C 或 Ctrl-C 复制选区，Cmd-A 或 Ctrl-A 全选该视图，Shift-F10 和 Menu 键在仍绘制的选区末端下方打开菜单。在此期间焦点仍留在该视图上，因此窗口的失去焦点监听器不会因它而运行。
+
 ## 高级参与者适配器
 
 自定义文本布局可以实现参与者接口，提供命中测试、范围投影和文本提取。适配器应只桥接已有布局数据，避免在指针移动热路径中重新排版或分配大型缓冲区。

@@ -196,10 +196,13 @@ blocks of one view of it do, a blank line apart, and a blank line sets them
 apart from the text around them too. A selection across the rows of one
 document stays when its rows scroll out of view. An end of it in a row
 scrolled away holds, those rows are copied with the rest, and they show as
-selected when they come back. A row the list never laid out while the
-selection was made isn't part of it. A copy button for a whole answer can
-take the document's text instead. Show either
-the document or views of its blocks, as they share the parsed blocks.
+selected when they come back. The row holding focus keeps its keys while it's
+out of view, so Cmd-C or Ctrl-C still copies the whole selection, Cmd-A or
+Ctrl-A selects all of that row, and Shift-F10 and the Menu key open the
+selection's menu. A row the list never laid out while the selection was made
+isn't part of it. A copy button for a whole answer can take the document's
+text instead. Show either the document or views of its blocks, as they share
+the parsed blocks.
 
 Separate views can share a document too, such as the messages of a
 conversation, each a text view of its own. `document_position` places a view

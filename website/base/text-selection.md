@@ -299,6 +299,13 @@ paints, every frame, so pressing its items keeps the selection, as pressing an
 operating system menu does. GPUI Component installs a handler that shows Copy
 and Select All in the application's context menu style.
 
+While the window has a selection, a `TextView` that holds focus keeps its keys
+when it isn't drawn, such as a row a list scrolled away. `Root` stands in for
+it, so Cmd-C or Ctrl-C copies the selection, Cmd-A or Ctrl-A selects all of the
+view, and Shift-F10 and the Menu key open the menu under the end of the
+selection still drawn. Focus stays with the view meanwhile, so the window's
+focus-lost listeners don't run for it.
+
 ## Advanced participant adapters
 
 Plain text usually needs only `refresh_window_on_change` and `update_runs`. Rich or virtualized participants can configure additional behavior directly on the handle:
