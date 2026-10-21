@@ -230,6 +230,30 @@ TextView::new(&state).on_reveal(move |line, _, _| {
 
 handle 和菜单由 [`Root`](./root.md) 为整个窗口选区绘制，因此跨多个视图的选区也能覆盖到。点击其他位置会清除它们；手指滚动内容时菜单会暂时让开。
 
+## 上下文菜单
+
+在可选择的文字上右键会打开包含 `复制` 和 `全选` 的菜单。`复制` 复制的内容与 Cmd-C 或 Ctrl-C 相同，也就是跨行、跨视图的整个选区，段落之间保留空行。没有选中文字时，`复制` 不可用。`全选` 选中菜单所在的视图。右键不会改变选区，无论落在哪里。在获得焦点的 TextView 中，Shift-F10 和 Menu 键也会打开这个菜单。
+
+菜单使用应用的上下文菜单样式（见 [Input：上下文菜单](./input.md#上下文菜单)），因此调用 `ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx)` 之后，它在所有平台上都按主题颜色绘制。
+
+用 `TextSelectionMenu::set_builder` 添加应用自己的菜单项。builder 会收到一个空菜单和一个 target，target 可以读取选中的文字。
+
+```rust
+use gpui_kit::component::text::TextSelectionMenu;
+
+TextSelectionMenu::set_builder(
+    |menu, target, _, _| {
+        target
+            .standard_items(menu)
+            .separator()
+            .menu_with_disabled("Search the Web", !target.has_selection(), Box::new(SearchWeb))
+    },
+    cx,
+);
+```
+
+自带上下文菜单的元素（`ContextMenuExt`）、输入框，以及设置了 `on_link_click` 的链接会保留自己的右键操作，这个菜单不会在那里打开。
+
 ## 图片
 
 Markdown 的 `![alt](src)` 和 HTML 的 `<img src>` 都通过 GPUI 的 `img` 元素渲染，

@@ -139,6 +139,7 @@ pub fn init(cx: &mut App) {
     root::init(cx);
     gpui_base::init(cx);
     input::init(cx);
+    text::init(cx);
     image_viewer::init(cx);
     diff_view::init(cx);
     date_picker::init(cx);

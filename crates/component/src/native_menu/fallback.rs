@@ -8,10 +8,11 @@
 use crate::root::WindowState;
 use gpui::{
     App, Context, DismissEvent, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Pixels,
-    Point, Render, Subscription, Window, anchored, deferred, div, px,
+    Point, Render, Styled as _, Subscription, Window, anchored, canvas, deferred, div, px,
 };
 
 use crate::menu::{PopupMenu, PopupMenuItem};
+use gpui_base::TextSelection;
 
 use super::NativeMenuItem;
 
@@ -124,7 +125,23 @@ impl Render for FallbackMenuOverlay {
                     anchored()
                         .position(active.position)
                         .snap_to_window_with_margin(px(8.))
-                        .child(active.menu.clone()),
+                        .child(
+                            // Pressing an item keeps the window's text
+                            // selection, as pressing an operating system menu
+                            // does, so the menu can act on it.
+                            div().relative().child(active.menu.clone()).child(
+                                canvas(
+                                    |bounds, window, cx| {
+                                        TextSelection::register_menu(bounds, window, cx)
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full(),
+                            ),
+                        ),
                 )
                 .with_priority(gpui_base::POPUP_PRIORITY),
             );

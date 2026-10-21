@@ -10,6 +10,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **A context menu for selectable text** (`gpui-base`, `gpui-component`). A right-click on a
+  selectable `TextView` or `SelectableText`, or Shift-F10 and the Menu key in a focused text view,
+  opens a menu with Copy and Select All in the application's context menu style. Copy copies the
+  whole window selection as Ctrl-C does, and the right-click leaves the selection as it is.
+  `TextSelectionMenu::set_builder` adds an application's own items. See
+  [TextView: context menu](website/component/text-view.md#context-menu).
 - **A right-click keeps the selection it lands on** (`gpui-base`). A right-click on a selection,
   just past its end or below the text after Select All, opens the menu with the selection kept,
   and so do Shift-F10 and the Menu key, so Copy, Cut and Paste act on it.
