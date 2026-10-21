@@ -10,6 +10,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **A selection across rows survives scrolling** (`gpui-base`). A selection across the rows of
+  one document, shown as views in a list, keeps its rows as they scroll out of view: its ends
+  hold, the rows are copied, and they show as selected when they come back.
+  `TextSelectionRegistration::with_document_position` gives other participants the same. See
+  [TextView](website/component/text-view.md#a-long-document-as-rows).
 - **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
   shaped text of rows a list scrolled past, which they kept for as long as the views lived. One
   pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.

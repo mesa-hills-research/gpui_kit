@@ -883,6 +883,18 @@ impl TextViewState {
         self.parsed_content.document.selected_source_range()
     }
 
+    /// Where a [`Self::block_range`] view is in its document, for the
+    /// window's selection: the document, and the first block the view shows.
+    pub(super) fn document_position(&self) -> Option<(u64, u64)> {
+        let range = self.block_range.as_ref()?;
+        let start = match range.blocks.0 {
+            Bound::Included(start) => start,
+            Bound::Excluded(start) => start + 1,
+            Bound::Unbounded => 0,
+        };
+        Some((range.document.entity_id().as_u64(), start as u64))
+    }
+
     /// The copy group of a [`Self::block_range`] view. The views of one
     /// document copy as one view of it would, their blocks apart as blocks
     /// are within a view.
@@ -3311,6 +3323,104 @@ mod tests {
             cx.update(|window, _| window.remove_window());
             cx.run_until_parked();
             copied
+        }
+
+        /// Rows of one document, of which a list draws `shown`.
+        struct Scrolled {
+            views: Vec<Entity<TextViewState>>,
+            shown: std::ops::Range<usize>,
+        }
+
+        impl gpui::Render for Scrolled {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                use gpui::{ParentElement as _, Styled as _};
+                gpui::div()
+                    .w(gpui::px(400.))
+                    .flex()
+                    .flex_col()
+                    .children(
+                        self.views[self.shown.clone()]
+                            .iter()
+                            .map(crate::text::TextView::new),
+                    )
+                    .child(crate::TextSelectionLayer)
+            }
+        }
+
+        /// Rows scrolled away while a selection covers them stay in it: the
+        /// end in them holds, they are copied with the rest, and they show as
+        /// selected when they come back.
+        #[gpui::test]
+        fn a_selection_across_rows_survives_scrolling_them_away(cx: &mut TestAppContext) {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            let parsed = document(
+                "Alpha one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.",
+                cx,
+            );
+            let views = (0..4)
+                .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
+                .collect::<Vec<_>>();
+            let (root, cx) = cx.add_window_view(|_, _| Scrolled {
+                views: views.clone(),
+                shown: 0..4,
+            });
+            cx.run_until_parked();
+            let draw = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+            };
+            let copied = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| crate::TextSelection::selected_text(window, cx))
+            };
+            draw(cx);
+            let first = views[0].read_with(cx, |view, _| view.bounds());
+            let third = views[2].read_with(cx, |view, _| view.bounds());
+            let start = point(first.left() + px(1.), first.top() + px(4.));
+            let end = point(third.right() - px(1.), third.bottom() - px(4.));
+            cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            let selected = "Alpha one.\n\nBravo two.\n\nCharlie three.\n";
+            assert_eq!(copied(cx), selected);
+
+            // The rows holding the selection's start scroll out of the list.
+            root.update(cx, |root, cx| {
+                root.shown = 2..4;
+                cx.notify();
+            });
+            for _ in 0..3 {
+                draw(cx);
+            }
+            assert_eq!(copied(cx), selected, "the rows scrolled away are copied");
+            let painted = |ix: usize, cx: &mut gpui::VisualTestContext| {
+                views[ix].read_with(cx, |view, _| view.selected_text())
+            };
+            assert_eq!(painted(2, cx).trim(), "Charlie three.");
+            assert_eq!(painted(3, cx).trim(), "");
+
+            // Back in view, they show as selected again.
+            root.update(cx, |root, cx| {
+                root.shown = 0..4;
+                cx.notify();
+            });
+            draw(cx);
+            draw(cx);
+            assert_eq!(painted(0, cx).trim(), "Alpha one.");
+            assert_eq!(painted(1, cx).trim(), "Bravo two.");
+            assert_eq!(copied(cx), selected);
+
+            // A click elsewhere ends the selection, and the rows kept for it.
+            let fourth = views[3].read_with(cx, |view, _| view.bounds());
+            cx.simulate_click(fourth.center(), Modifiers::default());
+            draw(cx);
+            assert_eq!(copied(cx), "");
         }
 
         #[gpui::test]

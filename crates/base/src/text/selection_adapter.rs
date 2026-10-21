@@ -234,6 +234,7 @@ impl TextViewSelectionAdapter {
         bounds: Bounds<Pixels>,
         scroll_offset: Point<Pixels>,
         document_order: u64,
+        document_position: Option<(u64, u64)>,
         self_scroll: bool,
         window: &mut Window,
         cx: &mut App,
@@ -245,6 +246,10 @@ impl TextViewSelectionAdapter {
             .with_text_bounds(self.text_bounds.clone())
             .with_self_scroll(self_scroll)
             .with_rendered_element(&self.selection, window, cx);
+        let registration = match document_position {
+            Some((document, position)) => registration.with_document_position(document, position),
+            None => registration,
+        };
         let registration = match self.selection_edges {
             Some((start, end)) => registration.with_selection_edges(start, end),
             None => registration,

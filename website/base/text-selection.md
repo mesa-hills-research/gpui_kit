@@ -168,6 +168,11 @@ fn register_selection(
 - `with_scope` assigns an explicit opaque scope. A surrounding `.text_selection_scope(scope)` builder overrides it while that subtree renders.
 
 Handles not registered in the current frame stop participating automatically.
+A participant that is one of several views of one document, such as the rows
+of a long answer in a list, can say where it sits with
+`with_document_position(document, position)`. Participants of one document are
+ordered by position across frames, and one that scrolls out of view while a
+selection covers it stays in the selection until the selection ends.
 
 ## Project selection onto text runs
 

@@ -249,6 +249,7 @@ pub struct TextSelectionRegistration {
     self_scroll: bool,
     selection_edges: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
     rendered: Option<WeakEntity<RenderedMarker>>,
+    document_position: Option<(u64, u64)>,
 }
 
 impl TextSelectionRegistration {
@@ -264,7 +265,22 @@ impl TextSelectionRegistration {
             self_scroll: false,
             selection_edges: None,
             rendered: None,
+            document_position: None,
         }
+    }
+
+    /// Places the participant at `position` within `document`, such as the
+    /// rows of one long text shown as separate views in a list.
+    ///
+    /// Participants of one document are ordered by position, frame after
+    /// frame, where others are ordered by [`Self::with_document_order`] in
+    /// each frame. A participant of a document that stops being drawn while
+    /// a selection covers it stays in the selection: an end of the selection
+    /// in it holds, its text is copied with the rest, and it shows as
+    /// selected again when it comes back.
+    pub fn with_document_position(mut self, document: u64, position: u64) -> Self {
+        self.document_position = Some((document, position));
+        self
     }
 
     /// Ties this registration to the retained state of the element reporting
@@ -377,7 +393,18 @@ impl TextSelectionRegistration {
     pub const fn selection_edges(&self) -> Option<(Bounds<Pixels>, Bounds<Pixels>)> {
         self.selection_edges
     }
+
+    /// Returns the participant's document and position in it, if it has one.
+    pub const fn document_position(&self) -> Option<(u64, u64)> {
+        self.document_position
+    }
 }
+
+/// A participant's place in reading order. The rows of a document sit
+/// together, in the order of their positions, where the document order of
+/// its first drawn row puts them; any other participant sits at its document
+/// order.
+type ReadingKey = (u64, u64, u64);
 
 /// Laid-out text reported by a plain selection participant during paint.
 #[derive(Clone)]
@@ -1079,6 +1106,10 @@ struct ParticipantRegistration {
     participant: WeakEntity<SelectableTextState>,
     registration: Rc<TextSelectionRegistration>,
     generation: u64,
+    /// No longer drawn, and kept because the selection covers it (see
+    /// [`TextSelectionRegistration::with_document_position`]). Its geometry
+    /// is where it was last drawn, so it takes no part in hit testing.
+    offscreen: bool,
 }
 
 #[derive(Clone)]
@@ -1329,14 +1360,26 @@ impl WindowSelectionState {
         let stale = self
             .participants
             .iter()
-            .filter_map(|(id, registration)| {
-                (registration.generation != self.frame_generation
-                    && !registration.registration.is_rendered())
-                .then(|| (*id, registration.participant.clone()))
+            .filter(|(_, registration)| {
+                !registration.offscreen
+                    && registration.generation != self.frame_generation
+                    && !registration.registration.is_rendered()
             })
+            .map(|(id, registration)| (*id, registration.participant.clone()))
             .collect::<Vec<_>>();
         let mut handlers = Vec::new();
         for (id, participant) in stale {
+            // A row of a document the selection covers keeps its part of the
+            // selection while it is scrolled away.
+            if self.keeps_offscreen(id) {
+                if let Some(registration) = self.participants.get_mut(&id) {
+                    registration.offscreen = true;
+                }
+                if let Some(participant) = participant.upgrade() {
+                    participant.update(cx, |state, _| state.runs = Vec::new());
+                }
+                continue;
+            }
             self.participants.remove(&id);
             if let Some(participant) = participant.upgrade() {
                 // Its runs describe text no longer drawn, and hold the text
@@ -1349,6 +1392,10 @@ impl WindowSelectionState {
                     handlers.push(handler);
                 }
             }
+        }
+        // Rows kept for a selection that has since lost an end go with it.
+        if self.snapshot().is_none() {
+            self.drop_offscreen_participants();
         }
         self.publish_snapshots(cx);
         self.frame_generation = self.frame_generation.wrapping_add(1);
@@ -1400,6 +1447,7 @@ impl WindowSelectionState {
                 participant: selection.downgrade(),
                 registration: Rc::new(registration),
                 generation: self.frame_generation,
+                offscreen: false,
             },
         );
         self.publish_snapshots(cx);
@@ -1452,11 +1500,14 @@ impl WindowSelectionState {
             self.touch_changed(cx);
         }
         self.prune_dead_participants();
-        self.participants
+        let handlers = self
+            .participants
             .values()
             .filter_map(|registration| registration.participant.upgrade())
             .filter_map(|participant| participant.update(cx, |state, cx| state.clear_state(cx)))
-            .collect()
+            .collect();
+        self.drop_offscreen_participants();
+        handlers
     }
 
     /// Tells whoever draws the handles and the menu that they changed.
@@ -1492,13 +1543,15 @@ impl WindowSelectionState {
     }
 
     fn copy_items(&self, cx: &App) -> Vec<CopyItem> {
-        self.participants
-            .values()
-            .filter_map(|registration| {
+        let keys = self.reading_keys();
+        let mut participants = self.participants.iter().collect::<Vec<_>>();
+        participants.sort_by_key(|(id, _)| keys.get(*id));
+        participants
+            .into_iter()
+            .enumerate()
+            .filter_map(|(order, (_, registration))| {
                 let participant = registration.participant.upgrade()?;
-                participant
-                    .read(cx)
-                    .copy_item(registration.registration.document_order)
+                participant.read(cx).copy_item(order as u64)
             })
             .collect()
     }
@@ -1545,8 +1598,8 @@ impl WindowSelectionState {
         }
         let anchor_endpoint = self.anchor.as_ref()?;
         let cursor_endpoint = self.cursor.as_ref()?;
-        let anchor = anchor_endpoint.resolve(&self.participants)?;
-        let cursor = cursor_endpoint.resolve(&self.participants)?;
+        let anchor = self.resolve_endpoint(anchor_endpoint, cursor_endpoint)?;
+        let cursor = self.resolve_endpoint(cursor_endpoint, anchor_endpoint)?;
         (anchor != cursor).then(|| {
             TextSelectionSnapshot::new(anchor_endpoint.snapshot(), cursor_endpoint.snapshot())
                 .with_selecting(self.is_selecting)
@@ -1578,6 +1631,7 @@ impl WindowSelectionState {
             .filter_map(|registration| registration.participant.upgrade())
             .filter_map(|participant| participant.update(cx, |state, cx| state.clear_state(cx)))
             .collect();
+        self.drop_offscreen_participants();
         self.pending_extension_anchor = pending_extension_anchor;
         handlers
     }
@@ -1598,7 +1652,10 @@ impl WindowSelectionState {
         let mut end: Option<(u64, Bounds<Pixels>, bool)> = None;
         for registration in self.participants.values() {
             let geometry = &registration.registration;
-            if geometry.scope != self.active_scope || registration.participant.upgrade().is_none() {
+            if registration.offscreen
+                || geometry.scope != self.active_scope
+                || registration.participant.upgrade().is_none()
+            {
                 continue;
             }
             let Some((edge_start, edge_end)) = geometry.selection_edges else {
@@ -1652,6 +1709,7 @@ impl WindowSelectionState {
         let order = own.registration.document_order;
         let others = self.participants.iter().filter(|(id, registration)| {
             **id != participant
+                && !registration.offscreen
                 && registration.registration.scope == self.active_scope
                 && registration.registration.selection_edges.is_some()
                 && registration.participant.upgrade().is_some()
@@ -2018,7 +2076,8 @@ impl WindowSelectionState {
         )> = None;
 
         for registration in self.participants.values() {
-            if registration.registration.scope != self.active_scope
+            if registration.offscreen
+                || registration.registration.scope != self.active_scope
                 || registration.participant.upgrade().is_none()
             {
                 continue;
@@ -2112,24 +2171,61 @@ impl WindowSelectionState {
         self.prune_dead_participants();
         let snapshot = self.snapshot();
         let single_participant = self.single_participant();
+        let keys = self.reading_keys();
         for (id, registration) in &self.participants {
             let Some(participant) = registration.participant.upgrade() else {
                 continue;
             };
             let participant_snapshot = (registration.registration.scope == self.active_scope
-                && self.participates(*id, registration)
+                && self.participates(*id, &keys)
                 && single_participant.is_none_or(|single| single == *id))
             .then_some(snapshot)
             .flatten()
             .map(|mut snapshot| {
-                snapshot.coverage = self.coverage_for(*id);
+                snapshot.coverage = self.coverage_for(*id, &keys);
                 snapshot
             });
             participant.update(cx, |state, cx| state.set_snapshot(participant_snapshot, cx));
         }
     }
 
-    fn coverage_for(&self, id: EntityId) -> TextSelectionCoverage {
+    /// Each participant's [`ReadingKey`].
+    fn reading_keys(&self) -> HashMap<EntityId, ReadingKey> {
+        // Per document: the least document order of its drawn rows, and of
+        // all its rows.
+        let mut documents = HashMap::<u64, (Option<u64>, u64)>::default();
+        for registration in self.participants.values() {
+            let Some((document, _)) = registration.registration.document_position else {
+                continue;
+            };
+            let order = registration.registration.document_order;
+            let (drawn, any) = documents.entry(document).or_insert((None, order));
+            *any = (*any).min(order);
+            if !registration.offscreen {
+                *drawn = Some(drawn.map_or(order, |drawn| drawn.min(order)));
+            }
+        }
+        self.participants
+            .iter()
+            .map(|(id, registration)| {
+                let order = registration.registration.document_order;
+                let key = match registration.registration.document_position {
+                    Some((document, position)) => {
+                        let (drawn, any) = documents[&document];
+                        (drawn.unwrap_or(any), position, order)
+                    }
+                    None => (order, 0, order),
+                };
+                (*id, key)
+            })
+            .collect()
+    }
+
+    fn coverage_for(
+        &self,
+        id: EntityId,
+        keys: &HashMap<EntityId, ReadingKey>,
+    ) -> TextSelectionCoverage {
         let Some(anchor) = self.anchor.as_ref().and_then(SelectionEndpoint::entity_id) else {
             return TextSelectionCoverage::Bounded;
         };
@@ -2139,11 +2235,10 @@ impl WindowSelectionState {
         if anchor == cursor {
             return TextSelectionCoverage::Bounded;
         }
-        let anchor_order = self.participants[&anchor].registration.document_order;
-        let cursor_order = self.participants[&cursor].registration.document_order;
+        let anchor_first = keys.get(&anchor) < keys.get(&cursor);
         if id != anchor && id != cursor {
             TextSelectionCoverage::Full
-        } else if (id == anchor) == (anchor_order < cursor_order) {
+        } else if (id == anchor) == anchor_first {
             TextSelectionCoverage::ToEnd
         } else {
             TextSelectionCoverage::FromStart
@@ -2156,30 +2251,69 @@ impl WindowSelectionState {
         (anchor == cursor).then_some(anchor)
     }
 
-    fn participates(&self, id: EntityId, registration: &ParticipantRegistration) -> bool {
+    fn participates(&self, id: EntityId, keys: &HashMap<EntityId, ReadingKey>) -> bool {
         let Some(anchor) = self.anchor.as_ref().and_then(SelectionEndpoint::entity_id) else {
             return false;
         };
         let Some(cursor) = self.cursor.as_ref().and_then(SelectionEndpoint::entity_id) else {
             return false;
         };
-        let Some(anchor_registration) = self.participants.get(&anchor) else {
+        let (Some(anchor_key), Some(cursor_key), Some(own)) =
+            (keys.get(&anchor), keys.get(&cursor), keys.get(&id))
+        else {
             return false;
         };
-        let Some(cursor_registration) = self.participants.get(&cursor) else {
-            return false;
-        };
-        let start = anchor_registration
-            .registration
-            .document_order
-            .min(cursor_registration.registration.document_order);
-        let end = anchor_registration
-            .registration
-            .document_order
-            .max(cursor_registration.registration.document_order);
-        (start..=end).contains(&registration.registration.document_order)
+        (anchor_key.min(cursor_key)..=anchor_key.max(cursor_key)).contains(&own)
             || id == anchor
             || id == cursor
+    }
+
+    /// Whether participant `id`, no longer drawn, stays in the selection: it
+    /// is a row of a document the selection runs through.
+    fn keeps_offscreen(&self, id: EntityId) -> bool {
+        let Some(registration) = self.participants.get(&id) else {
+            return false;
+        };
+        registration.registration.document_position.is_some()
+            && self.snapshot().is_some()
+            && self.participates(id, &self.reading_keys())
+    }
+
+    /// Where `endpoint` is in window coordinates. An end in a participant
+    /// no longer drawn is placed past the drawn text of its document, before
+    /// or after it as the document orders them, so the drawn rows show the
+    /// part of the selection that reaches them.
+    fn resolve_endpoint(
+        &self,
+        endpoint: &SelectionEndpoint,
+        other: &SelectionEndpoint,
+    ) -> Option<Point<Pixels>> {
+        let resolved = endpoint.resolve(&self.participants)?;
+        let id = endpoint.entity_id()?;
+        let registration = &self.participants.get(&id)?.registration;
+        if !self.participants[&id].offscreen || other.entity_id() == Some(id) {
+            return Some(resolved);
+        }
+        let Some((document, position)) = registration.document_position else {
+            return Some(resolved);
+        };
+        let drawn = self.participants.values().find_map(|other| {
+            let (other_document, other_position) = other.registration.document_position?;
+            (!other.offscreen && other_document == document).then_some(other_position)
+        });
+        // Far enough past any drawn text, and apart for the two ends.
+        let away = px(1_000_000.) + px(position as f32);
+        Some(match drawn {
+            Some(drawn) if position < drawn => point(px(0.), -away),
+            Some(_) => point(px(0.), away),
+            None => resolved,
+        })
+    }
+
+    /// Drops the participants kept only because the selection covered them.
+    fn drop_offscreen_participants(&mut self) {
+        self.participants
+            .retain(|_, registration| !registration.offscreen);
     }
 
     fn update_auto_scroll(
@@ -2309,7 +2443,10 @@ impl WindowSelectionState {
         &self,
     ) -> Option<(Entity<SelectableTextState>, Rc<TextSelectionRegistration>)> {
         let participant = self.anchor_participant()?;
-        let registration = self.participants.get(&participant.entity_id())?;
+        let registration = self
+            .participants
+            .get(&participant.entity_id())
+            .filter(|registration| !registration.offscreen)?;
         Some((participant, registration.registration.clone()))
     }
 

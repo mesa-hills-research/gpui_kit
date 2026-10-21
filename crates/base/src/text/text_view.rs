@@ -915,7 +915,7 @@ impl Element for TextView {
         }
 
         if self.selectable {
-            let (adapter, scroll_offset, content_bounds, self_scroll, handle_color) = {
+            let (adapter, scroll_offset, content_bounds, self_scroll, handle_color, position) = {
                 let state = state.read(cx);
                 (
                     state.selection_adapter.clone(),
@@ -923,6 +923,7 @@ impl Element for TextView {
                     state.bounds(),
                     state.scrollable,
                     state.text_view_style.selection().alpha(1.),
+                    state.document_position(),
                 )
             };
             let document_order = GlobalState::global_mut(cx).next_selection_document_order();
@@ -931,6 +932,7 @@ impl Element for TextView {
                 content_bounds,
                 scroll_offset,
                 document_order,
+                position,
                 self_scroll,
                 window,
                 cx,
