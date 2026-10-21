@@ -201,6 +201,22 @@ selection was made isn't part of it. A copy button for a whole answer can
 take the document's text instead. Show either
 the document or views of its blocks, as they share the parsed blocks.
 
+Separate views can share a document too, such as the messages of a
+conversation, each a text view of its own. `document_position` places a view
+in a document the application names, and a selection across those views then
+stays as it does across rows.
+
+```rust
+// Positions rise in reading order. The document is any id no other document
+// in the window uses.
+TextView::new(&message).document_position(conversation.entity_id().as_u64(), ix as u64)
+```
+
+`SelectableText::document_position` does the same for plain runs made with a
+handle the application keeps. A view's position replaces the one a
+`block_range` row takes by itself, so when a message is shown as rows, give
+each row a position that sorts after the rows of the messages before it.
+
 The document parses, so Markdown extensions and plugins go on the document,
 not on the rows' `TextView`s, and the rows render with the document's:
 

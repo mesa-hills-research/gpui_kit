@@ -10,6 +10,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Separate views in one document** (`gpui-base`, `gpui-component`). `TextView::document_position`
+  and `SelectableText::document_position` place views the application shows apart, such as the
+  messages of a conversation, in one document, so a selection across them keeps both ends and
+  copies whole while one scrolls out of view. See
+  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
 - **A context menu for selectable text** (`gpui-base`, `gpui-component`). A right-click on a
   selectable `TextView` or `SelectableText`, or Shift-F10 and the Menu key in a focused text view,
   opens a menu with Copy and Select All in the application's context menu style. Copy copies the

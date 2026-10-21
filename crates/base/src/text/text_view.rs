@@ -175,6 +175,7 @@ pub struct TextView {
     reveal_handler: Option<Rc<RevealHandlerFn>>,
     markdown_extensions: Option<Arc<MarkdownExtensions>>,
     motion: Option<TextViewMotion>,
+    document_position: Option<(u64, u64)>,
 }
 
 /// A plugin that can configure a [`TextView`].
@@ -223,6 +224,7 @@ impl TextView {
             reveal_handler: None,
             markdown_extensions: None,
             motion: None,
+            document_position: None,
         }
     }
 
@@ -248,6 +250,7 @@ impl TextView {
             reveal_handler: None,
             markdown_extensions: None,
             motion: None,
+            document_position: None,
         }
     }
 
@@ -273,6 +276,7 @@ impl TextView {
             reveal_handler: None,
             markdown_extensions: None,
             motion: None,
+            document_position: None,
         }
     }
 
@@ -307,6 +311,26 @@ impl TextView {
     /// `**bold**` (the Markdown source) rather than `bold`.
     pub fn selection_format(mut self, selection_format: SelectionFormat) -> Self {
         self.selection_format = selection_format;
+        self
+    }
+
+    /// Places this view at `position` within `document` for the window's
+    /// selection, for a document the application shows as several views,
+    /// such as the messages of a conversation.
+    ///
+    /// Views of one document are ordered by position, frame after frame, so
+    /// give them positions that rise in reading order. A view that stops
+    /// being drawn while the selection covers it, scrolled out of a list for
+    /// instance, stays in the selection. An end of the selection in it holds,
+    /// its text is copied with the rest, and it shows as selected again when
+    /// it comes back. Use a `document` no other document in the window uses,
+    /// such as the entity id of the conversation's state.
+    ///
+    /// Without it, a [`TextViewState::block_range`] view takes its document
+    /// and its first block, and any other view is ordered by where it is
+    /// drawn.
+    pub fn document_position(mut self, document: u64, position: u64) -> Self {
+        self.document_position = Some((document, position));
         self
     }
 
@@ -731,6 +755,7 @@ impl Element for TextView {
             }
             state.selectable = self.selectable;
             state.selection_format = self.selection_format;
+            state.document_position_override = self.document_position;
             state.scrollable = self.scrollable;
             state.max_lines = max_lines;
             state.code_block_max_lines = self.code_block_max_lines;

@@ -101,6 +101,12 @@ impl TextView {
         self.inner = self.inner.selection_format(value);
         self
     }
+    /// Places this view at `position` within `document` for the window's
+    /// selection. See [`gpui_base::TextView::document_position`].
+    pub fn document_position(mut self, document: u64, position: u64) -> Self {
+        self.inner = self.inner.document_position(document, position);
+        self
+    }
     /// Sets whether the view scrolls its own content.
     pub fn scrollable(mut self, value: bool) -> Self {
         self.inner = self.inner.scrollable(value);

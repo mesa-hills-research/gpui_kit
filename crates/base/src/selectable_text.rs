@@ -22,6 +22,7 @@ pub struct SelectableText {
     text: SharedString,
     styled_text: StyledText,
     document_order: u64,
+    document_position: Option<(u64, u64)>,
     text_style: Option<TextStyleRefinement>,
     selection_color: Option<Hsla>,
 }
@@ -48,6 +49,7 @@ impl SelectableText {
             styled_text: StyledText::new(text.clone()),
             text,
             document_order: 0,
+            document_position: None,
             text_style: None,
             selection_color: None,
         }
@@ -56,6 +58,18 @@ impl SelectableText {
     /// Places this run in reading order among the others sharing its handle.
     pub fn document_order(mut self, order: u64) -> Self {
         self.document_order = order;
+        self
+    }
+
+    /// Places this run at `position` within `document`, for a document the
+    /// application shows as several elements. A run made with
+    /// [`Self::with_handle`] that stops being drawn while the selection covers
+    /// it stays in the selection, as described for
+    /// [`crate::text::TextView::document_position`], whose documents it can
+    /// share. The application keeps the handle, so the run outlives its
+    /// element.
+    pub fn document_position(mut self, document: u64, position: u64) -> Self {
+        self.document_position = Some((document, position));
         self
     }
 
@@ -215,6 +229,10 @@ impl Element for SelectableText {
             .with_document_order(self.document_order)
             .with_text_bounds(vec![bounds])
             .with_rendered_element(handle, window, cx);
+        let registration = match self.document_position {
+            Some((document, position)) => registration.with_document_position(document, position),
+            None => registration,
+        };
         handle.register(registration, window, cx);
         hitbox
     }
@@ -403,6 +421,81 @@ mod tests {
         cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
         cx.run_until_parked();
         assert!(requests.borrow().is_empty());
+    }
+
+    /// Runs the application places in one document, with handles it keeps,
+    /// keep a selection across them while the one holding its start is not
+    /// drawn.
+    #[gpui::test]
+    fn runs_of_one_document_keep_a_selection_across_them(cx: &mut TestAppContext) {
+        struct Runs {
+            handles: [TextSelectionHandle; 2],
+            first_shown: bool,
+        }
+        impl Render for Runs {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let [first, second] = self.handles.clone();
+                div()
+                    .size_full()
+                    .child(TextSelectionLayer)
+                    .children(self.first_shown.then(|| {
+                        div().h(px(32.)).child(
+                            SelectableText::with_handle("first", first, "alpha beta")
+                                .document_position(3, 0),
+                        )
+                    }))
+                    .child(
+                        div().h(px(32.)).child(
+                            SelectableText::with_handle("second", second, "gamma delta")
+                                .document_position(3, 1),
+                        ),
+                    )
+            }
+        }
+
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|_, cx| Runs {
+            handles: [
+                TextSelectionHandle::new("alpha beta", cx),
+                TextSelectionHandle::new("gamma delta", cx),
+            ],
+            first_shown: true,
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(
+            point(px(1.), px(12.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            point(px(300.), px(44.)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            point(px(300.), px(44.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let selected = cx.update(|window, cx| TextSelection::selected_text(window, cx));
+        assert!(selected.contains("alpha beta") && selected.contains("gamma delta"));
+
+        root.update(cx, |root, cx| {
+            root.first_shown = false;
+            cx.notify();
+        });
+        for _ in 0..3 {
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        }
+        let kept = cx.update(|window, cx| TextSelection::selected_text(window, cx));
+        assert_eq!(kept, selected);
     }
 
     #[gpui::test]

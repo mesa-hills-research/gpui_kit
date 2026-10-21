@@ -173,6 +173,11 @@ of a long answer in a list, can say where it sits with
 `with_document_position(document, position)`. Participants of one document are
 ordered by position across frames, and one that scrolls out of view while a
 selection covers it stays in the selection until the selection ends.
+`TextView::document_position` and `SelectableText::document_position` set it
+for those elements, so separate views, such as the messages of a conversation,
+can form one document. A `SelectableText` that leaves the frame stays in the
+selection only when it was made with `SelectableText::with_handle` and the
+application keeps the handle.
 
 ## Project selection onto text runs
 
