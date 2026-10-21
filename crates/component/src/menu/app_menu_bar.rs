@@ -299,10 +299,13 @@ impl AppMenuBar {
         if self.selected_index.is_none() && ix.is_some() && self.action_context.is_none() {
             self.action_context = window.focused(cx);
         } else if ix.is_none() {
-            if let Some(action_context) = self.action_context.as_ref() {
-                action_context.focus(window, cx);
+            match self.action_context.take() {
+                Some(action_context) => action_context.focus(window, cx),
+                // Nothing had focus before the bar took the keyboard, so
+                // nothing has it after.
+                None if self.focus_handle.contains_focused(window, cx) => window.blur(cx),
+                None => {}
             }
-            self.action_context = None;
         }
 
         self.selected_index = ix;

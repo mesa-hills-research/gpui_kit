@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
+  a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus
+  yet. See [Title Bar](website/component/title-bar.md#menu-bar-and-the-keyboard).
 - **Paging a message scroller** (`gpui-component`). `MessageScrollerState` scrolls by a distance
   with `scroll_by`, reports the viewport's height with `viewport_height`, and keeps and restores
   the reader's place with `logical_scroll_top` and `scroll_to_offset`. See

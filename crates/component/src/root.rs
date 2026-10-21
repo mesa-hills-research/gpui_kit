@@ -21,6 +21,89 @@ use std::{any::TypeId, rc::Rc};
 
 pub(crate) fn init(cx: &mut App) {
     gpui_base::Root::register_plugin::<WindowState>(cx, WindowState::new);
+    if !cfg!(target_os = "macos") {
+        menu_bar_keys_without_focus(cx);
+    }
+}
+
+/// Marks the app-wide menu bar listeners as installed, so a second `init`
+/// adds no second set.
+struct MenuBarKeysWithoutFocus;
+
+impl gpui::Global for MenuBarKeysWithoutFocus {}
+
+/// F10, a tap of Alt and Alt with a menu's letter, pressed while nothing in
+/// the window has focus.
+///
+/// Keys then go only to the window's root view, past the root surface whose
+/// listeners route them to the menu bar, so these listen app-wide and act in
+/// the window the key went to. The key bindings still decide what F10 and a
+/// lone Alt do, so an application that binds them to something else keeps
+/// its binding.
+fn menu_bar_keys_without_focus(cx: &mut App) {
+    if cx.has_global::<MenuBarKeysWithoutFocus>() {
+        return;
+    }
+    cx.set_global(MenuBarKeysWithoutFocus);
+
+    cx.on_action(|_: &FocusAppMenuBar, cx| {
+        WindowState::after_key(cx, |window, cx| {
+            if window.focused(cx).is_none()
+                && let Some(bar) = WindowState::app_menu_bar(window, cx)
+            {
+                bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
+            }
+        });
+        // Leave the key to whatever else listens.
+        cx.propagate();
+    });
+    cx.on_action(|_: &AltTap, cx| {
+        WindowState::after_key(cx, |window, cx| {
+            let tap = WindowState::try_update(window, cx, |state, _, _| {
+                let heard = std::mem::take(&mut state.surface_heard_alt_tap);
+                let spoiled = std::mem::take(&mut state.alt_spoiled);
+                !heard && !spoiled && !state.focus_just_gained
+            })
+            .unwrap_or(false);
+            if tap
+                && window.focused(cx).is_none()
+                && let Some(bar) = WindowState::app_menu_bar(window, cx)
+            {
+                bar.update(cx, |bar, cx| bar.toggle_focus(window, cx));
+            }
+        });
+        // The tap is also Alt let go, which the window's modifier listeners
+        // must see.
+        cx.propagate();
+    });
+    cx.observe_keystrokes(|event, window, cx| {
+        // Any other key ends the Alt press, and GPUI makes no tap of it.
+        if event.keystroke.key != "alt" {
+            WindowState::try_update(window, cx, |state, _, _| state.alt_spoiled = false);
+        }
+        if event.action.is_some() || window.focused(cx).is_some() {
+            return;
+        }
+        if let Some(key) = alt_letter(&event.keystroke)
+            && let Some(bar) = WindowState::app_menu_bar(window, cx)
+        {
+            bar.update(cx, |bar, cx| bar.open_menu_with_key(key, window, cx));
+        }
+    })
+    .detach();
+}
+
+/// The letter of a key pressed with Alt alone, which opens the menu whose
+/// access key it is.
+fn alt_letter(keystroke: &gpui::Keystroke) -> Option<char> {
+    let modifiers = keystroke.modifiers;
+    let alt_only =
+        modifiers.alt && !modifiers.control && !modifiers.platform && !modifiers.function;
+    let mut chars = keystroke.key.chars();
+    match (chars.next(), chars.next()) {
+        (Some(key), None) if alt_only => Some(key),
+        _ => None,
+    }
 }
 
 /// Component-owned window state and presentation; Base owns the actual root.
@@ -41,6 +124,14 @@ pub(crate) struct WindowState {
     /// its release something other than a tap: no pointer press or wheel,
     /// no loss of focus. GPUI's lone-Alt keystroke already rules out keys.
     alt_tap_pending: bool,
+    /// Whether a pointer press, release or wheel came with Alt held since the
+    /// last key. While nothing has focus the root surface hears no modifier
+    /// changes, so this, rather than `alt_tap_pending`, decides whether a
+    /// lone Alt was a tap.
+    alt_spoiled: bool,
+    /// Whether the root surface handled the last lone Alt, with something
+    /// focused, so the app-wide listener leaves it alone.
+    surface_heard_alt_tap: bool,
     /// Whether the window gained focus moments ago: an Alt reported down
     /// now was held from before, as in Alt+Tab, or a tiling compositor's
     /// Alt+key to switch windows.
@@ -117,6 +208,8 @@ impl WindowState {
             active_image_viewer: None,
             app_menu_bar: None,
             alt_tap_pending: false,
+            alt_spoiled: false,
+            surface_heard_alt_tap: false,
             focus_just_gained: false,
             alt_held_from_before: false,
             _focus_just_gained: None,
@@ -462,6 +555,17 @@ impl WindowState {
     /// The window's menu bar, unless a dialog, sheet or image viewer is
     /// open over the window: the bar's keys must not reach past a modal
     /// layer.
+    /// Runs `f` in the window a key went to once the key has been handled,
+    /// for a listener that hears the key app-wide, without the window.
+    fn after_key(cx: &mut App, f: impl FnOnce(&mut Window, &mut App) + 'static) {
+        let Some(window) = cx.active_window() else {
+            return;
+        };
+        cx.defer(move |cx| {
+            _ = window.update(cx, |_, window, cx| f(window, cx));
+        });
+    }
+
     fn app_menu_bar(window: &Window, cx: &App) -> Option<Entity<AppMenuBar>> {
         let state = Self::entity(window, cx)?;
         let state = state.read(cx);
@@ -654,6 +758,7 @@ impl gpui_base::RootPlugin for WindowState {
             });
             interactivity.on_action(|_: &AltTap, window, cx| {
                 let pending = Self::try_update(window, cx, |state, _, _| {
+                    state.surface_heard_alt_tap = true;
                     std::mem::take(&mut state.alt_tap_pending)
                 })
                 .unwrap_or(false);
@@ -666,17 +771,7 @@ impl gpui_base::RootPlugin for WindowState {
                 cx.propagate();
             });
             interactivity.on_key_down(|event, window, cx| {
-                let keystroke = &event.keystroke;
-                let alt_only = keystroke.modifiers.alt
-                    && !keystroke.modifiers.control
-                    && !keystroke.modifiers.platform
-                    && !keystroke.modifiers.function;
-                let Some(key) = keystroke
-                    .key
-                    .chars()
-                    .next()
-                    .filter(|_| alt_only && keystroke.key.chars().count() == 1)
-                else {
+                let Some(key) = alt_letter(&event.keystroke) else {
                     return;
                 };
                 if let Some(bar) = Self::app_menu_bar(window, cx)
@@ -748,26 +843,33 @@ impl RenderOnce for WindowStateLayers {
                         move |_, _, window, _| {
                             let clear = {
                                 let root = root.clone();
-                                move |cx: &mut App| {
-                                    root.update(cx, |state, _| state.alt_tap_pending = false)
+                                move |modifiers: gpui::Modifiers, cx: &mut App| {
+                                    root.update(cx, |state, _| {
+                                        state.alt_tap_pending = false;
+                                        state.alt_spoiled |= modifiers.alt;
+                                    })
                                 }
                             };
                             let on_press = clear.clone();
-                            window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, cx| {
-                                if phase == gpui::DispatchPhase::Capture {
-                                    on_press(cx);
-                                }
-                            });
-                            let on_release = clear.clone();
-                            window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
-                                if phase == gpui::DispatchPhase::Capture {
-                                    on_release(cx);
-                                }
-                            });
                             window.on_mouse_event(
-                                move |_: &gpui::ScrollWheelEvent, phase, _, cx| {
+                                move |event: &gpui::MouseDownEvent, phase, _, cx| {
                                     if phase == gpui::DispatchPhase::Capture {
-                                        clear(cx);
+                                        on_press(event.modifiers, cx);
+                                    }
+                                },
+                            );
+                            let on_release = clear.clone();
+                            window.on_mouse_event(
+                                move |event: &gpui::MouseUpEvent, phase, _, cx| {
+                                    if phase == gpui::DispatchPhase::Capture {
+                                        on_release(event.modifiers, cx);
+                                    }
+                                },
+                            );
+                            window.on_mouse_event(
+                                move |event: &gpui::ScrollWheelEvent, phase, _, cx| {
+                                    if phase == gpui::DispatchPhase::Capture {
+                                        clear(event.modifiers, cx);
                                     }
                                 },
                             );

@@ -257,6 +257,20 @@ mod menu_bar_keys {
     fn open_watching_alt(
         cx: &mut TestAppContext,
     ) -> (AnyWindowHandle, Entity<AppMenuBar>, Rc<RefCell<Vec<bool>>>) {
+        open_with_focus(cx, true)
+    }
+
+    /// The same window with nothing focused, as a window is before it's
+    /// first clicked.
+    fn open_unfocused(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<AppMenuBar>) {
+        let (handle, bar, _) = open_with_focus(cx, false);
+        (handle, bar)
+    }
+
+    fn open_with_focus(
+        cx: &mut TestAppContext,
+        focus_doc: bool,
+    ) -> (AnyWindowHandle, Entity<AppMenuBar>, Rc<RefCell<Vec<bool>>>) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             GlobalState::global_mut(cx).set_app_menus(vec![
@@ -272,7 +286,9 @@ mod menu_bar_keys {
             common::open_window(cx, Some(size(px(600.), px(400.))), |window, cx| {
                 cx.new(|cx| {
                     let doc = cx.focus_handle();
-                    doc.focus(window, cx);
+                    if focus_doc {
+                        doc.focus(window, cx);
+                    }
                     MenuBarWindow {
                         menu_bar: AppMenuBar::new(cx),
                         doc,
@@ -382,6 +398,74 @@ mod menu_bar_keys {
         assert_eq!(state(&bar, cx), (None, Some(1)));
         press(cx, handle, "escape");
         assert_eq!(focused(cx, handle, "doc"), Some(true));
+    }
+
+    fn nothing_focused(cx: &mut TestAppContext, handle: AnyWindowHandle) -> bool {
+        cx.update_window(handle, |_, window, cx| window.focused(cx).is_none())
+            .unwrap()
+    }
+
+    /// With nothing focused, as in a window not yet clicked, F10, a tap of
+    /// Alt and Alt with a letter reach the menu bar too, and leaving the bar
+    /// leaves nothing focused again.
+    #[gpui_kit::test]
+    fn the_menu_bar_is_reachable_with_nothing_focused(cx: &mut TestAppContext) {
+        let (handle, bar) = open_unfocused(cx);
+        assert!(nothing_focused(cx, handle));
+
+        press(cx, handle, "f10");
+        assert_eq!(focused(cx, handle, "app-menu-bar"), Some(true));
+        assert_eq!(state(&bar, cx), (Some(0), None));
+        press(cx, handle, "escape");
+        assert_eq!(state(&bar, cx), (None, None));
+        assert!(nothing_focused(cx, handle), "focus goes back to nothing");
+
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (Some(0), None));
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (None, None));
+        assert!(nothing_focused(cx, handle));
+
+        press(cx, handle, "alt-e");
+        assert_eq!(state(&bar, cx), (None, Some(1)));
+        press(cx, handle, "escape");
+        assert_eq!(state(&bar, cx), (None, None));
+        assert!(nothing_focused(cx, handle));
+    }
+
+    /// With nothing focused, Alt+wheel is no tap, nor is Alt held when the
+    /// window gains focus. A tap a moment later is one.
+    #[gpui_kit::test]
+    fn alt_with_nothing_focused_is_a_tap_only_alone(cx: &mut TestAppContext) {
+        let (handle, bar) = open_unfocused(cx);
+        let position = cx
+            .update_window(handle, |_, window, _| window.find("doc").bounds().center())
+            .unwrap();
+        act(cx, handle, |window, cx| {
+            modifiers(window, cx, Modifiers::alt());
+            window.dispatch_event(
+                PlatformInput::ScrollWheel(gpui_kit::ScrollWheelEvent {
+                    position,
+                    modifiers: Modifiers::alt(),
+                    ..Default::default()
+                }),
+                cx,
+            );
+            modifiers(window, cx, Modifiers::default());
+        });
+        assert_eq!(state(&bar, cx), (None, None));
+        assert!(nothing_focused(cx, handle));
+
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        visual.deactivate_window();
+        act(cx, handle, |window, _| window.activate_window());
+        cx.run_until_parked();
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (None, None));
+
+        settle_after_focus(cx);
+        tap_alt(cx, handle);
+        assert_eq!(state(&bar, cx), (Some(0), None));
     }
 
     /// Alt+click (a caret added in a text area, a column selection) and
