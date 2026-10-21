@@ -1,5 +1,6 @@
 use crate::{
     ActiveTheme as _, Collapsible, Icon, IconName, Placement, Sizable as _, StyledExt,
+    actions::{SelectDown, SelectFirst, SelectLast, SelectLeft, SelectRight, SelectUp},
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::{ContextMenuExt, PopupMenu},
@@ -8,12 +9,151 @@ use crate::{
     v_flex,
 };
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window, div, percentage, prelude::FluentBuilder,
+    AnyElement, App, ClickEvent, ElementId, Entity, InteractiveElement as _, IntoElement,
+    KeyBinding, ParentElement as _, Role, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, div, percentage, prelude::FluentBuilder,
 };
-use gpui_base::TestSupportExt as _;
+use gpui_base::{RovingFocus, RovingStep, TestSupportExt as _};
 use std::rc::Rc;
+
+const CONTEXT: &str = "SidebarMenu";
+
+pub(super) fn init(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("up", SelectUp, Some(CONTEXT)),
+        KeyBinding::new("down", SelectDown, Some(CONTEXT)),
+        KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
+        KeyBinding::new("right", SelectRight, Some(CONTEXT)),
+        KeyBinding::new("home", SelectFirst, Some(CONTEXT)),
+        KeyBinding::new("end", SelectLast, Some(CONTEXT)),
+    ]);
+}
+
+/// The element id of the `ix`th item under `parent`.
+fn item_id(parent: &ElementId, ix: usize) -> ElementId {
+    SharedString::from(format!("{}-{}", parent, ix)).into()
+}
+
+/// A visible item of a [`SidebarMenu`], in the order the keyboard moves
+/// through them, where an item's open submenu follows it.
+struct MenuEntry {
+    parent: Option<usize>,
+    depth: usize,
+    enabled: bool,
+    active: bool,
+    /// The open state of an item whose submenu can open.
+    open_state: Option<Entity<bool>>,
+    is_open: bool,
+}
+
+/// An item's place in the keyboard order of the menu that renders it.
+#[derive(Clone)]
+struct MenuItemFocus {
+    focus: RovingFocus,
+    ix: usize,
+}
+
+/// Gives every visible item of `items` its place in the keyboard order and
+/// its submenu's open state, and lists them in `entries`.
+#[allow(clippy::too_many_arguments)]
+fn prepare_items(
+    items: &mut [SidebarMenuItem],
+    parent_id: &ElementId,
+    parent: Option<usize>,
+    depth: usize,
+    collapsed: bool,
+    focus: &RovingFocus,
+    entries: &mut Vec<MenuEntry>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    for (ix, item) in items.iter_mut().enumerate() {
+        let id = item_id(parent_id, ix);
+        let flat_ix = entries.len();
+        let open_state = item.is_submenu().then(|| {
+            let default_open = item.default_open;
+            window.use_keyed_state(id.clone(), cx, move |_, _| default_open)
+        });
+        // A collapsed sidebar shows no submenus.
+        let can_open = !collapsed && open_state.is_some();
+        let is_open = can_open && open_state.as_ref().is_some_and(|state| *state.read(cx));
+        entries.push(MenuEntry {
+            parent,
+            depth,
+            enabled: !item.disabled,
+            active: item.active,
+            open_state: can_open.then(|| open_state.clone()).flatten(),
+            is_open,
+        });
+        item.focus = Some(MenuItemFocus {
+            focus: focus.clone(),
+            ix: flat_ix,
+        });
+        item.open_state = open_state;
+        if is_open {
+            prepare_items(
+                &mut item.children,
+                &id,
+                Some(flat_ix),
+                depth + 1,
+                collapsed,
+                focus,
+                entries,
+                window,
+                cx,
+            );
+        }
+    }
+}
+
+/// Opens the focused item's submenu, or moves into an open one.
+fn expand(focus: &RovingFocus, entries: &[MenuEntry], window: &mut Window, cx: &mut App) -> bool {
+    let Some(ix) = focus.focused_index(window) else {
+        return false;
+    };
+    let Some(entry) = entries.get(ix) else {
+        return false;
+    };
+    let Some(open_state) = entry.open_state.as_ref() else {
+        return false;
+    };
+    if !entry.is_open {
+        open_state.update(cx, |is_open, cx| {
+            *is_open = true;
+            cx.notify();
+        });
+        return true;
+    }
+    let first_child = entries[ix + 1..]
+        .iter()
+        .take_while(|child| child.depth > entry.depth)
+        .position(|child| child.parent == Some(ix) && child.enabled);
+    if let Some(offset) = first_child {
+        focus.focus(ix + 1 + offset, window, cx);
+    }
+    true
+}
+
+/// Closes the focused item's open submenu, or moves to its parent item.
+fn collapse(focus: &RovingFocus, entries: &[MenuEntry], window: &mut Window, cx: &mut App) -> bool {
+    let Some(ix) = focus.focused_index(window) else {
+        return false;
+    };
+    let Some(entry) = entries.get(ix) else {
+        return false;
+    };
+    if let (true, Some(open_state)) = (entry.is_open, entry.open_state.as_ref()) {
+        open_state.update(cx, |is_open, cx| {
+            *is_open = false;
+            cx.notify();
+        });
+        return true;
+    }
+    match entry.parent {
+        Some(parent) => focus.focus(parent, window, cx),
+        None => false,
+    }
+}
 
 /// Menu for the [`super::Sidebar`]
 #[derive(Clone)]
@@ -70,16 +210,72 @@ impl SidebarItem for SidebarMenu {
         cx: &mut App,
     ) -> impl IntoElement {
         let id = id.into();
+        let collapsed = self.collapsed;
+        let mut items: Vec<_> = self
+            .items
+            .into_iter()
+            .map(|item| item.collapsed(collapsed))
+            .collect();
+
+        // The menu is one Tab stop, on its active item.
+        let focus = RovingFocus::keyed(SharedString::from(format!("{id}-focus")), window, cx);
+        let mut entries = Vec::new();
+        prepare_items(
+            &mut items,
+            &id,
+            None,
+            0,
+            collapsed,
+            &focus,
+            &mut entries,
+            window,
+            cx,
+        );
+        focus.set_items(
+            entries.iter().map(|entry| entry.enabled),
+            entries.iter().position(|entry| entry.active),
+            cx,
+        );
+        let entries: Rc<[MenuEntry]> = entries.into();
+        let step = |step: RovingStep| {
+            let focus = focus.clone();
+            move |window: &mut Window, cx: &mut App| {
+                if focus.move_focus(step, window, cx).is_none() {
+                    cx.propagate();
+                }
+            }
+        };
+        let (previous, next) = (step(RovingStep::Previous), step(RovingStep::Next));
+        let (first, last) = (step(RovingStep::First), step(RovingStep::Last));
 
         v_flex()
             .gap_2()
+            .key_context(CONTEXT)
+            .on_action(move |_: &SelectUp, window, cx| previous(window, cx))
+            .on_action(move |_: &SelectDown, window, cx| next(window, cx))
+            .on_action(move |_: &SelectFirst, window, cx| first(window, cx))
+            .on_action(move |_: &SelectLast, window, cx| last(window, cx))
+            .on_action({
+                let focus = focus.clone();
+                let entries = entries.clone();
+                move |_: &SelectRight, window, cx| {
+                    if !expand(&focus, &entries, window, cx) {
+                        cx.propagate();
+                    }
+                }
+            })
+            .on_action(move |_: &SelectLeft, window, cx| {
+                if !collapse(&focus, &entries, window, cx) {
+                    cx.propagate();
+                }
+            })
             .refine_style(&self.style)
-            .children(self.items.into_iter().enumerate().map(|(ix, item)| {
-                let id = SharedString::from(format!("{}-{}", id, ix));
-                item.collapsed(self.collapsed)
-                    .render(id, window, cx)
-                    .into_any_element()
-            }))
+            .children(
+                items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, item)| item.render(item_id(&id, ix), window, cx).into_any_element()),
+            )
     }
 }
 
@@ -107,6 +303,9 @@ pub struct SidebarMenuItem {
     suffix: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
     disabled: bool,
     context_menu: Option<Rc<dyn Fn(PopupMenu, &mut Window, &mut App) -> PopupMenu + 'static>>,
+    /// Set by the [`SidebarMenu`] that renders the item.
+    focus: Option<MenuItemFocus>,
+    open_state: Option<Entity<bool>>,
 }
 
 impl SidebarMenuItem {
@@ -128,6 +327,8 @@ impl SidebarMenuItem {
             suffix: None,
             disabled: false,
             context_menu: None,
+            focus: None,
+            open_state: None,
         }
     }
 
@@ -256,7 +457,7 @@ impl Collapsible for SidebarMenuItem {
 
 impl SidebarItem for SidebarMenuItem {
     fn render(
-        self,
+        mut self,
         id: impl Into<ElementId>,
         window: &mut Window,
         cx: &mut App,
@@ -269,10 +470,10 @@ impl SidebarItem for SidebarMenuItem {
         let label_text = self.label.clone();
         let accessibility_label = self.accessibility_label.clone();
         let is_submenu = self.is_submenu();
-        let open_state = if is_submenu {
-            Some(window.use_keyed_state(id.clone(), cx, |_, _| default_open))
-        } else {
-            None
+        let open_state = match self.open_state.take() {
+            Some(open_state) => Some(open_state),
+            None if is_submenu => Some(window.use_keyed_state(id.clone(), cx, |_, _| default_open)),
+            None => None,
         };
         let handler = self.handler.clone();
         let is_collapsed = self.collapsed;
@@ -282,6 +483,16 @@ impl SidebarItem for SidebarMenuItem {
         let is_open = open_state
             .as_ref()
             .map_or(false, |s| !is_collapsed && *s.read(cx));
+        let focus_handle = self
+            .focus
+            .as_ref()
+            .filter(|_| !is_disabled)
+            .and_then(|item| item.focus.handle(item.ix));
+        // Pressing an item focuses it too, but only the keyboard shows a ring.
+        let focus_visible = window.last_input_was_keyboard()
+            && focus_handle
+                .as_ref()
+                .is_some_and(|focus_handle| focus_handle.is_focused(window));
 
         div()
             .id(id.clone())
@@ -294,6 +505,12 @@ impl SidebarItem for SidebarMenuItem {
                     .role(Role::TreeItem)
                     .aria_label(accessibility_label.unwrap_or_else(|| label_text.clone()))
                     .aria_selected(is_active)
+                    .when(is_submenu && !is_collapsed, |this| {
+                        this.aria_expanded(is_open)
+                    })
+                    .when_some(focus_handle, |this, focus_handle| {
+                        this.track_focus(&focus_handle)
+                    })
                     .overflow_x_hidden()
                     .flex_shrink_0()
                     .p_2()
@@ -366,6 +583,17 @@ impl SidebarItem for SidebarMenuItem {
                     .when(is_disabled, |this| {
                         this.text_color(cx.theme().muted_foreground)
                     })
+                    // Inside the row, which clips what's outside it.
+                    .when(focus_visible, |this| {
+                        this.child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .rounded(cx.theme().radius)
+                                .border_2()
+                                .border_color(cx.theme().ring),
+                        )
+                    })
                     .when(!is_disabled, |this| {
                         this.on_click({
                             let open_state = open_state.clone();
@@ -420,8 +648,7 @@ impl SidebarItem for SidebarMenuItem {
                         .pl_2p5()
                         .py_0p5()
                         .children(self.children.into_iter().enumerate().map(|(ix, item)| {
-                            let id = format!("{}-{}", id, ix);
-                            item.render(id, window, cx).into_any_element()
+                            item.render(item_id(&id, ix), window, cx).into_any_element()
                         })),
                 )
             })
@@ -454,5 +681,112 @@ mod tests {
 
         assert!(expanded.collapsed_tooltip().is_none());
         assert!(iconless.collapsed_tooltip().is_none());
+    }
+
+    mod keyboard {
+        use super::*;
+        use gpui::{Context, KeyDownEvent, KeyUpEvent, Keystroke, Render, TestAppContext};
+        use std::cell::RefCell;
+
+        type Clicks = Rc<RefCell<Vec<&'static str>>>;
+
+        /// Inbox (active), Projects with Alpha and Beta, Archive (disabled), Trash.
+        struct MenuHarness {
+            clicks: Clicks,
+        }
+
+        fn item(label: &'static str, clicks: &Clicks) -> SidebarMenuItem {
+            let clicks = clicks.clone();
+            SidebarMenuItem::new(label).on_click(move |_, _, _| clicks.borrow_mut().push(label))
+        }
+
+        impl Render for MenuHarness {
+            fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                let clicks = &self.clicks;
+                div().w(gpui::px(240.)).child(
+                    SidebarMenu::new()
+                        .child(item("Inbox", clicks).active(true))
+                        .child(
+                            item("Projects", clicks)
+                                .children([item("Alpha", clicks), item("Beta", clicks)]),
+                        )
+                        .child(item("Archive", clicks).disable(true))
+                        .child(item("Trash", clicks))
+                        .render("menu", window, cx),
+                )
+            }
+        }
+
+        fn harness(cx: &mut TestAppContext) -> (&mut gpui::VisualTestContext, Clicks) {
+            cx.update(crate::init);
+            let clicks = Clicks::default();
+            let (_, cx) = cx.add_window_view({
+                let clicks = clicks.clone();
+                move |_, _| MenuHarness { clicks }
+            });
+            draw(cx);
+            cx.update(|window, cx| window.focus_next(cx));
+            (cx, clicks)
+        }
+
+        fn draw(cx: &mut gpui::VisualTestContext) {
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        }
+
+        /// Presses Enter on the focused item and returns what it clicked.
+        fn activate(cx: &mut gpui::VisualTestContext, clicks: &Clicks) -> Option<&'static str> {
+            let keystroke = Keystroke::parse("enter").unwrap();
+            cx.simulate_event(KeyDownEvent {
+                keystroke: keystroke.clone(),
+                is_held: false,
+                prefer_character_input: false,
+            });
+            cx.simulate_event(KeyUpEvent { keystroke });
+            clicks.borrow_mut().pop()
+        }
+
+        #[gpui::test]
+        fn tab_reaches_the_active_item_and_arrows_skip_disabled_items(cx: &mut TestAppContext) {
+            let (cx, clicks) = harness(cx);
+            assert_eq!(activate(cx, &clicks), Some("Inbox"));
+
+            cx.simulate_keystrokes("down");
+            assert_eq!(activate(cx, &clicks), Some("Projects"));
+            cx.simulate_keystrokes("down");
+            assert_eq!(activate(cx, &clicks), Some("Trash"), "Archive is disabled");
+            cx.simulate_keystrokes("down");
+            assert_eq!(activate(cx, &clicks), Some("Inbox"), "focus wraps");
+            cx.simulate_keystrokes("up");
+            assert_eq!(activate(cx, &clicks), Some("Trash"));
+            cx.simulate_keystrokes("home");
+            assert_eq!(activate(cx, &clicks), Some("Inbox"));
+            cx.simulate_keystrokes("end");
+            assert_eq!(activate(cx, &clicks), Some("Trash"));
+        }
+
+        #[gpui::test]
+        fn right_and_left_open_enter_leave_and_close_a_submenu(cx: &mut TestAppContext) {
+            let (cx, clicks) = harness(cx);
+            cx.simulate_keystrokes("down right");
+            draw(cx);
+            cx.simulate_keystrokes("down");
+            assert_eq!(
+                activate(cx, &clicks),
+                Some("Alpha"),
+                "Right opened Projects"
+            );
+
+            cx.simulate_keystrokes("up right");
+            assert_eq!(activate(cx, &clicks), Some("Alpha"), "Right moved into it");
+            cx.simulate_keystrokes("down");
+            assert_eq!(activate(cx, &clicks), Some("Beta"));
+
+            cx.simulate_keystrokes("left");
+            assert_eq!(activate(cx, &clicks), Some("Projects"), "Left moved out");
+            cx.simulate_keystrokes("left");
+            draw(cx);
+            cx.simulate_keystrokes("down");
+            assert_eq!(activate(cx, &clicks), Some("Trash"), "Left closed Projects");
+        }
     }
 }

@@ -257,6 +257,19 @@ TabBar::new("custom-tabs")
     )
 ```
 
+## Keyboard
+
+A `TabBar` is one Tab stop. Tab and Shift-Tab reach it on the selected tab, and the arrow keys move focus between its tabs.
+
+| Key | Behavior |
+| --- | --- |
+| `←` / `→` | Move focus to the previous / next enabled tab, wrapping at the ends |
+| `Home` / `End` | Move focus to the first / last enabled tab |
+| `Enter` / `Space` | Select the focused tab, through `TabBar::on_click` or the tab's own `on_click` |
+| `Tab` | Leave the tab bar |
+
+Moving focus leaves the selection alone until Enter or Space. Disabled tabs are skipped. A tab that takes focus scrolls into view and shows a focus ring. Pressing a tab with the pointer selects it and leaves focus where it was, so a tab bar above an editor leaves the editor focused.
+
 ## API Reference
 
 ### TabBar

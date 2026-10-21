@@ -24,6 +24,10 @@ pub use group::*;
 pub use header::*;
 pub use menu::*;
 
+pub(crate) fn init(cx: &mut App) {
+    menu::init(cx);
+}
+
 const DEFAULT_WIDTH: Pixels = px(255.);
 const COLLAPSED_WIDTH: Pixels = px(48.);
 

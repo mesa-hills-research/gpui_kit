@@ -54,6 +54,7 @@ mod radio_group;
 mod reduce_motion;
 mod resizable;
 mod root;
+mod roving_focus;
 mod scroll_bounce;
 mod scrollable_mask;
 mod scrollbar;
@@ -159,6 +160,7 @@ pub use resizable::{
 #[doc(hidden)]
 pub use resizable::{PANEL_MIN_SIZE, resize_handle};
 pub use root::{Root, RootPlugin};
+pub use roving_focus::{RovingFocus, RovingStep};
 pub use scroll_bounce::{ScrollBounce, ScrollBounceMotion};
 pub use scrollable_mask::ScrollableMask;
 pub use scrollbar::{
@@ -244,6 +246,7 @@ pub fn init(cx: &mut App) {
     time_field::init(cx);
     input::init(cx);
     tree::init(cx);
+    tabs::init(cx);
     text::init(cx);
     root::init(cx);
 }

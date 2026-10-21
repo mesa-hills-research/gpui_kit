@@ -320,6 +320,21 @@ Sidebar::new()
     )
 ```
 
+## Keyboard
+
+Each `SidebarMenu` is one Tab stop. Tab and Shift-Tab reach it on its active item, or on its first enabled item when none is active. The arrow keys move focus through the items in the order they appear, including the items of open submenus.
+
+| Key | Behavior |
+| --- | --- |
+| `↑` / `↓` | Move focus to the previous / next enabled item, wrapping at the ends |
+| `Home` / `End` | Move focus to the first / last enabled item |
+| `→` | Open the focused item's submenu, or move into it when it's open |
+| `←` | Close the focused item's open submenu, or move to its parent item |
+| `Enter` / `Space` | Run the focused item's `on_click` |
+| `Tab` | Leave the menu |
+
+Disabled items are skipped. Pressing an item with the pointer focuses it too, and only keyboard focus shows a ring. A sidebar taller than its window doesn't scroll to the focused item yet.
+
 ## Theming
 
 The sidebar uses dedicated theme colors:
