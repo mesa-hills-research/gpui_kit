@@ -37,16 +37,42 @@ impl NodeRenderOptions {
     }
 }
 
+/// What goes between the plain text before a top-level block and the
+/// block's own, so that blocks stay a blank line apart, as paragraphs do
+/// where the text is pasted.
+pub(super) fn block_separator(before: &str) -> &'static str {
+    if before.is_empty() || before.ends_with("\n\n") {
+        ""
+    } else if before.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    }
+}
+
+/// Appends the plain text of a top-level block.
+fn push_block_text(text: &mut String, block_text: &str) {
+    if !block_text.is_empty() {
+        text.push_str(block_separator(text));
+        text.push_str(block_text);
+    }
+}
+
 impl ParsedDocument {
+    /// The plain text of the whole document, its top-level blocks a blank
+    /// line apart.
     pub(super) fn text(&self) -> String {
         let mut text = String::new();
         for block in self.blocks.iter() {
-            text.push_str(&block.text());
+            push_block_text(&mut text, &block.text());
         }
         text
     }
 
     /// The selected text across all blocks, in `format`.
+    ///
+    /// In [`SelectionFormat::Plain`] top-level blocks are joined with a blank
+    /// line, so paragraphs stay apart where the text is pasted.
     ///
     /// In [`SelectionFormat::Source`] each block reconstructs its own Markdown
     /// source (inline markup, and block prefixes for headings and lists), and
@@ -102,14 +128,14 @@ impl ParsedDocument {
                     .as_ref()
                     .is_some_and(|blocks| ix == *blocks.start() || ix == *blocks.end());
                 if requested_blocks.is_some() && !is_virtual_endpoint {
-                    text.push_str(&block.text());
+                    push_block_text(&mut text, &block.text());
                 } else if !selected.is_empty() {
-                    text.push_str(&selected);
+                    push_block_text(&mut text, &selected);
                 } else if !painted[ix] {
                     // Never painted, so it cannot report a selection of its own
                     // even though the span covers it. A painted block that came
                     // up empty really has nothing selected, and stays empty.
-                    text.push_str(&block.text());
+                    push_block_text(&mut text, &block.text());
                 }
             }
             return text;

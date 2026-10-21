@@ -274,9 +274,20 @@ impl RenderedIndex {
         let mut builder = IndexBuilder::default();
         let mut blocks = Vec::with_capacity(document.blocks.len());
         for block in document.blocks.iter() {
+            // Blocks are a blank line apart, as in `ParsedDocument::text`. A
+            // block that renders no text takes no separator.
+            let separator_start = builder.text.len();
+            builder
+                .text
+                .push_str(super::document::block_separator(&builder.text));
             let start = builder.text.len();
             builder.push_block(block);
-            blocks.push(start..builder.text.len());
+            if builder.text.len() == start {
+                builder.text.truncate(separator_start);
+                blocks.push(separator_start..separator_start);
+            } else {
+                blocks.push(start..builder.text.len());
+            }
         }
         let index = Self {
             text: builder.text.into(),
@@ -1170,10 +1181,10 @@ mod tests {
     #[test]
     fn a_range_across_blocks_holds_the_separators_between_them() {
         let markdown = "ab\n\ncd\n\n# ef";
-        // "ab\ncd\nef\n"
+        // "ab\n\ncd\n\nef\n"
         assert_eq!(
             converted_needle(markdown, "b\n\ncd\n\n# e").as_deref(),
-            Some("b\ncd\ne")
+            Some("b\n\ncd\n\ne")
         );
 
         let table = "| a | b |\n|---|---|\n| c | d |";
@@ -1254,17 +1265,17 @@ mod tests {
         };
         let text = rendered(format::markdown::parse(markdown, &mut cx).unwrap());
 
-        assert_eq!(text.as_str(), "before\n$TSLA.US\nafter\n");
+        assert_eq!(text.as_str(), "before\n\n$TSLA.US\n\nafter\n");
         let ticker = nth(markdown, "$TSLA.US", 0);
-        assert_eq!(text.range_for_source(ticker.clone()), Some(7..15));
+        assert_eq!(text.range_for_source(ticker.clone()), Some(8..16));
         // Part of the block's source converts the whole block.
         assert_eq!(
             text.range_for_source(ticker.start + 1..ticker.start + 3),
-            Some(7..15)
+            Some(8..16)
         );
         assert_eq!(
             text.range_for_source(nth(markdown, "re\n\n$T", 0)),
-            Some(4..15)
+            Some(4..16)
         );
     }
 

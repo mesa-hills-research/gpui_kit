@@ -10,6 +10,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Paragraphs a blank line apart in copied text** (`gpui-base`). Plain-text copy of a text view,
+  and `rendered_text()`, put a blank line between blocks, where there was one line break, so
+  pasted paragraphs stay apart. See
+  [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
 - **The layout of selectable text** (`gpui-base`). `SelectableText::layout` returns the
   `TextLayout` the text is drawn with, so an element around it can find where an offset is drawn
   without shaping the text again. See

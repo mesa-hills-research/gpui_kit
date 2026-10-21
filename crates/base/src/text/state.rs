@@ -888,13 +888,9 @@ impl TextViewState {
     /// are within a view.
     pub(super) fn copy_group(&self) -> Option<crate::TextSelectionCopyGroup> {
         let document = self.block_range.as_ref()?.document.entity_id();
-        let separator = match self.effective_format() {
-            SelectionFormat::Plain => "\n",
-            SelectionFormat::Source => "\n\n",
-        };
         Some(crate::TextSelectionCopyGroup::new(
             document.as_u64(),
-            separator,
+            "\n\n",
         ))
     }
 
@@ -2889,7 +2885,7 @@ mod tests {
             let middle = cx.new(|cx| TextViewState::block_range(&document, 1..3, cx));
             let tail = cx.new(|cx| TextViewState::block_range(&document, 3.., cx));
 
-            assert_eq!(rendered(&middle, cx), "first\nsecond\n");
+            assert_eq!(rendered(&middle, cx), "first\n\nsecond\n");
             assert!(rendered(&tail, cx).starts_with("fn a() {}"));
 
             let blocks = document.read_with(cx, |document, _| document.blocks());
@@ -3355,7 +3351,7 @@ mod tests {
             );
             assert_eq!(
                 drag_and_copy(views, SelectionFormat::Plain, cx),
-                "What is the plan?\n\nHere it is.\nStep one.\n\nAnd then:\nStep two.\n"
+                "What is the plan?\n\nHere it is.\n\nStep one.\n\nAnd then:\n\nStep two.\n"
             );
         }
 
@@ -3378,7 +3374,7 @@ mod tests {
             let document = document("one\n\ntwo\n\nthree", cx);
             let view = cx.new(|cx| TextViewState::block_range(&document, 0..1, cx));
             view.update(cx, |view, cx| view.set_block_range(1..=2, cx));
-            assert_eq!(rendered(&view, cx), "two\nthree\n");
+            assert_eq!(rendered(&view, cx), "two\n\nthree\n");
 
             view.update(cx, |view, cx| view.set_text("own text", cx));
             cx.run_until_parked();
@@ -3448,7 +3444,7 @@ mod tests {
             state.read_with(cx, |state, _| {
                 assert_eq!(
                     state.rendered_text().as_str(),
-                    "Title\nhello world *\nitem\na b\nc d\n\nlet x\n"
+                    "Title\n\nhello world *\n\nitem\n\na b\nc d\n\nlet x\n"
                 );
             });
         }
@@ -3474,8 +3470,8 @@ mod tests {
         #[gpui::test]
         fn a_range_across_blocks_skips_the_separator(cx: &mut TestAppContext) {
             let state = state("ab\n\ncd", cx);
-            // "ab\ncd\n": 1..4 is "b\nc".
-            set(&state, [1..4], cx).unwrap();
+            // "ab\n\ncd\n": 1..5 is "b\n\nc".
+            set(&state, [1..5], cx).unwrap();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [1..2]);
             assert_eq!(painted(&state, TextLeafKey::block(4), cx), [0..1]);
         }
@@ -3583,8 +3579,8 @@ mod tests {
         #[gpui::test]
         fn push_str_keeps_earlier_blocks_and_clips_the_changed_tail(cx: &mut TestAppContext) {
             let state = state("first\n\na **b", cx);
-            // "first\na **b\n"
-            set(&state, [0..5, 6..11], cx).unwrap();
+            // "first\n\na **b\n"
+            set(&state, [0..5, 7..12], cx).unwrap();
 
             // Closing the emphasis renders the tail as "a bc".
             state.update(cx, |state, cx| state.push_str("c**", cx));
@@ -3597,7 +3593,7 @@ mod tests {
         #[gpui::test]
         fn push_str_keeps_a_block_whose_text_is_unchanged(cx: &mut TestAppContext) {
             let state = state("first\n\nsecond", cx);
-            set(&state, [6..12], cx).unwrap();
+            set(&state, [7..13], cx).unwrap();
             // A setext underline turns the paragraph into a heading at the
             // same source start, rendering the same text.
             state.update(cx, |state, cx| state.push_str("\n===", cx));
@@ -3608,7 +3604,7 @@ mod tests {
         #[gpui::test]
         fn push_str_drops_highlights_of_a_leaf_that_is_gone(cx: &mut TestAppContext) {
             let state = state("first\n\n| a |", cx);
-            set(&state, [0..5, 6..11], cx).unwrap();
+            set(&state, [0..5, 7..12], cx).unwrap();
             // A delimiter row turns the paragraph into a table, whose text
             // lives in cells instead.
             state.update(cx, |state, cx| state.push_str("\n|---|", cx));
@@ -3621,7 +3617,7 @@ mod tests {
         #[gpui::test]
         fn replacing_text_drops_highlights_only_where_it_changed(cx: &mut TestAppContext) {
             let state = state("first\n\nsecond", cx);
-            set(&state, [0..5, 6..12], cx).unwrap();
+            set(&state, [0..5, 7..13], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("first\n\nchanged", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..5]);
@@ -3636,8 +3632,8 @@ mod tests {
         #[gpui::test]
         fn a_highlight_follows_its_block_past_an_earlier_edit(cx: &mut TestAppContext) {
             let state = state("foo\n\nbar\n\nbar", cx);
-            // "foo\nbar\nbar\n": the first "bar", in the block at source 5.
-            set(&state, [4..7], cx).unwrap();
+            // "foo\n\nbar\n\nbar\n": the first "bar", in the block at source 5.
+            set(&state, [5..8], cx).unwrap();
             // Deleting "foo" moves that "bar" to 0, and the second one to 5.
             state.update(cx, |state, cx| state.set_text("bar\n\nbar", cx));
             cx.run_until_parked();
@@ -3645,7 +3641,7 @@ mod tests {
             assert!(painted(&state, TextLeafKey::block(5), cx).is_empty());
 
             let state = self::state("ERROR a\n\nERROR b\n\nERROR c", cx);
-            set(&state, [8..15], cx).unwrap();
+            set(&state, [9..16], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("ERROR b\n\nERROR c", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..7]);
@@ -3655,8 +3651,8 @@ mod tests {
         #[gpui::test]
         fn appending_a_copy_of_the_last_block_keeps_the_highlight_on_it(cx: &mut TestAppContext) {
             let state = state("a\n\nfoo", cx);
-            // "a\nfoo\n"
-            set(&state, [2..5], cx).unwrap();
+            // "a\n\nfoo\n"
+            set(&state, [3..6], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("a\n\nfoo\n\nfoo", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(3), cx), [0..3]);
@@ -3700,7 +3696,7 @@ mod tests {
         #[gpui::test]
         fn an_edit_in_an_earlier_block_keeps_later_highlights(cx: &mut TestAppContext) {
             let state = state("one\n\ntwo", cx);
-            set(&state, [0..3, 4..7], cx).unwrap();
+            set(&state, [0..3, 5..8], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("one!\n\ntwo", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..3]);
@@ -3734,8 +3730,8 @@ mod tests {
         #[gpui::test]
         fn streaming_through_set_text_keeps_highlights(cx: &mut TestAppContext) {
             let state = state("first\n\nsec", cx);
-            // "first\nsec\n"
-            set(&state, [0..5, 6..9], cx).unwrap();
+            // "first\n\nsec\n"
+            set(&state, [0..5, 7..10], cx).unwrap();
             state.update(cx, |state, cx| state.set_text("first\n\nsecond", cx));
             cx.run_until_parked();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [0..5]);
@@ -3888,7 +3884,7 @@ mod tests {
             state.update(cx, |state, cx| state.select_all(cx));
             state.read_with(cx, |state, _| {
                 let text = state.rendered_text();
-                assert_eq!(text.as_str(), "Title\nhello world\nitem\n");
+                assert_eq!(text.as_str(), "Title\n\nhello world\n\nitem\n");
                 let source = state.selected_source_range().unwrap();
                 // All but the separator after the last block.
                 assert_eq!(text.range_for_source(source), Some(0..text.len() - 1));
@@ -3915,13 +3911,13 @@ mod tests {
 
             assert_eq!(
                 converted(&state, [second.clone(), 0..5], cx),
-                [Some(6..17), Some(0..5)]
+                [Some(7..18), Some(0..5)]
             );
             state.read_with(cx, |state, _| {
                 let text = state.rendered_text();
                 assert_ne!(text, before);
                 assert_eq!(text.source(), source);
-                assert_eq!(&text.as_str()[6..17], "second part");
+                assert_eq!(&text.as_str()[7..18], "second part");
             });
             // An earlier snapshot keeps converting against its own source.
             assert_eq!(before.source(), "first");

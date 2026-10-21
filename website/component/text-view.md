@@ -192,8 +192,8 @@ the blocks from `ix` on. The last block stays incomplete until
 it is parsed, and its row is then left alone like the others.
 A selection runs across rows as it runs across separate text views, and each
 view selects its own blocks. Copied, the rows of one document join as the
-blocks of one view of it do, apart by a blank line in Markdown source, and a
-blank line sets them apart from the text around them too. A selection covers
+blocks of one view of it do, a blank line apart, and a blank line sets them
+apart from the text around them too. A selection covers
 the rows the list lays out. Rows scrolled well out of view drop out of it
 until they're back, so a copy then takes the rows still laid out. A copy
 button for a whole answer can take the document's text instead. Show either
@@ -271,9 +271,9 @@ fn highlight_matches(
 }
 ```
 
-`rendered_text()` is the text plain copy produces: `hello **world**` reads
-`hello world`, escapes are resolved, and heading and list markers are left
-out. Offsets are UTF-8 byte offsets, so the ranges `str` search returns can be
+`rendered_text()` is the text plain copy produces. `hello **world**` reads
+`hello world`, escapes are resolved, heading and list markers are left out,
+and blocks are a blank line apart. Offsets are UTF-8 byte offsets, so the ranges `str` search returns can be
 passed as they are, and a repeated phrase is addressed by where it occurs. The
 text is built the first time it is read.
 

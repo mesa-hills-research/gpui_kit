@@ -2441,7 +2441,7 @@ mod tests {
             );
             assert_eq!(
                 selected_text.trim(),
-                "The same words with inline code.\nThe same words with inline code.\nThe same words with inline code.\nThe same words with inline code.\nHeading with inline code\nHeading with inline code\nthis is a test",
+                "The same words with inline code.\n\nThe same words with inline code.\n\nThe same words with inline code.\nThe same words with inline code.\n\nHeading with inline code\n\nHeading with inline code\n\nthis is a test",
                 "{case}: wrapped inline-code text was lost or duplicated"
             );
             let following = text_bounds.last().expect("following paragraph must paint");
