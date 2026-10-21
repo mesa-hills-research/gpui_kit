@@ -53,7 +53,7 @@ SelectableText::new("result", "Find matching text")
 
 文本最终布局完成后注册边界、行与字符位置。注册顺序必须与用户看到和辅助技术读取的逻辑顺序一致。动态插入、删除或移动参与者时，用稳定身份更新对应记录。
 
-当前帧没有注册的句柄会自动退出选择。如果参与者是同一文档的多个视图之一（例如列表中一篇长回复的各行），可以用 `with_document_position(document, position)` 说明它的位置。同一文档的参与者跨帧按位置排序，被选区覆盖时滚出视野的参与者会一直留在选区中，直到选区结束。
+当前帧没有注册的句柄会自动退出选择。如果参与者是同一文档的多个视图之一（例如列表中一篇长回复的各行），可以用 `with_document_position(document, position)` 说明它的位置。同一文档的参与者跨帧按位置排序，被选区覆盖时滚出视野的参与者会一直留在选区中，直到选区结束。`TextView::document_position` 和 `SelectableText::document_position` 为这两种元素设置位置，因此对话中的各条消息这类独立视图也能组成一个文档。离开当前帧的 `SelectableText` 只有在用 `SelectableText::with_handle` 创建、并且应用保留了句柄时，才会留在选区中。
 
 ## 把选择投影到文本 run
 
@@ -76,6 +76,28 @@ cargo run -p gpui-base-examples -- text-selection
 在参与者上长按会选中手指下的单词；抬起手指后，这个选区成为*触摸选区*：两端各带一个拖动 handle，并附带编辑菜单。手势和拖动由 Base 负责；展示层根据 `TextSelectionSnapshot` 之外的 `TouchSelectionSnapshot` 绘制 handle 和菜单，它以窗口坐标提供选区两端的光标行框。
 
 通过 `TextSelection::touch_selection` 读取快照，用 `TextSelection::observe_touch_selection` 在快照变化时重绘；`begin_edge_drag`、`update_edge_drag`、`end_edge_drag` 拖动其中一端，`select_all` 全选被按下的参与者，`close_edit_menu` 在菜单自身的命令执行后关闭菜单。handle 由参与者自己绘制，位于它在绘制顺序中的位置，因此盖住文字的东西也会盖住 handle：在 prepaint 调用 `TextSelectionHandle::prepaint_touch_handles`（插入手指可按的 hitbox），在 paint 末尾、`register` 之后调用 `TextSelectionHandle::paint_touch_handles` 并传入选区颜色；`TextView` 已完成这两步。参与者通过 `TextSelectionRegistration::with_selection_edges` 上报其选区两端的绘制位置。绘制菜单的一方需要在每帧 paint 时调用 `TextSelection::register_touch_ui` 登记菜单 bounds，这样落在菜单上的按压不会清除它所属的选区；GPUI Component 的 `Root` 负责绘制菜单。
+
+### 上下文菜单
+
+在参与者上松开右键时，会向应用请求可选择文字的上下文菜单。在获得焦点的 `TextView` 中按 Shift-F10 或 Menu 键也一样。右键不会改变选区，无论落在哪里。指针下接管这次按压的控件会保留它。这样的控件在按下右键时调用 `GlobalState::suppress_text_selection(cx)`（GPUI Component 的输入框和 `ContextMenuExt` 都这样做），或者停止事件传播（设置了 `on_link_click` 的链接就是这样）。
+
+```rust
+use gpui_kit::base::{CopyTextSelection, SelectAllText, TextSelection};
+
+TextSelection::on_context_menu(
+    |request, window, cx| {
+        // request.position()、request.selected_text()、request.has_selection()
+        // 和 request.supports_select_all() 描述要显示的菜单。
+        // 菜单项派发 CopyTextSelection 和 SelectAllText。
+    },
+    cx,
+);
+
+// 在其他地方打开菜单，效果与在 position 处右键相同。
+TextSelection::show_context_menu(&handle, position, window, cx);
+```
+
+无论焦点在哪里，`CopyTextSelection` 复制的内容都与 Cmd-C 或 Ctrl-C 相同。`SelectAllText` 全选菜单所在的参与者。两者都由 `Root` 处理。参与者通过 `TextSelectionHandle::select_all_with` 提供回调后，菜单中才会出现全选，`TextView` 已经这样做。GPUI 绘制的菜单需要在每帧 paint 时调用 `TextSelection::register_menu(bounds, window, cx)`，这样按下菜单项时选区会保留，与按下系统菜单一样。GPUI Component 安装的处理函数按应用的上下文菜单样式显示复制和全选。
 
 ## 高级参与者适配器
 

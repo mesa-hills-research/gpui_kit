@@ -201,6 +201,22 @@ selection was made isn't part of it. A copy button for a whole answer can
 take the document's text instead. Show either
 the document or views of its blocks, as they share the parsed blocks.
 
+Separate views can share a document too, such as the messages of a
+conversation, each a text view of its own. `document_position` places a view
+in a document the application names, and a selection across those views then
+stays as it does across rows.
+
+```rust
+// Positions rise in reading order. The document is any id no other document
+// in the window uses.
+TextView::new(&message).document_position(conversation.entity_id().as_u64(), ix as u64)
+```
+
+`SelectableText::document_position` does the same for plain runs made with a
+handle the application keeps. A view's position replaces the one a
+`block_range` row takes by itself, so when a message is shown as rows, give
+each row a position that sorts after the rows of the messages before it.
+
 The document parses, so Markdown extensions and plugins go on the document,
 not on the rows' `TextView`s, and the rows render with the document's:
 
@@ -413,6 +429,41 @@ window selection, so they cover a selection that spans several views. A tap
 elsewhere clears them, and the menu steps aside while the content scrolls
 under a finger.
 
+## Context Menu
+
+A right-click on selectable text opens a menu with Copy and Select All. Copy
+copies what Cmd-C or Ctrl-C copies, which is the whole selection across rows
+and views with a blank line between paragraphs, and it is disabled when nothing
+is selected. Select All selects the view the menu opened on. A right-click
+leaves the selection as it is, wherever it lands, and Shift-F10 and the Menu
+key open the menu in a focused text view.
+
+The menu shows in the application's context menu style (see
+[Input: context menu](./input.md#context-menu)), so after
+`ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx)` it is drawn in
+the theme's colors on every platform.
+
+`TextSelectionMenu::set_builder` adds the application's own items. The builder
+gets an empty menu and a target that knows the selected text.
+
+```rust
+use gpui_kit::component::text::TextSelectionMenu;
+
+TextSelectionMenu::set_builder(
+    |menu, target, _, _| {
+        target
+            .standard_items(menu)
+            .separator()
+            .menu_with_disabled("Search the Web", !target.has_selection(), Box::new(SearchWeb))
+    },
+    cx,
+);
+```
+
+An element with a context menu of its own (`ContextMenuExt`), a text field and
+a link with an `on_link_click` handler keep their right-clicks, and this menu
+stays closed there.
+
 ## Link Click Handling
 
 Use `on_link_click` when links should be routed by the application instead of
@@ -441,9 +492,10 @@ markdown("[Open the project](https://github.com/longbridge/gpui-kit)")
 ```
 
 Installing a handler consumes the link event and disables the default URL
-opening behavior. If no handler is installed, links continue to use
-`App::open_url` as usual. The callback is used for both text links and linked
-images.
+opening behavior. It takes right-clicks on links too, so the [context
+menu](#context-menu) stays closed there. If no handler is installed, links
+continue to use `App::open_url` as usual. The callback is used for both text
+links and linked images.
 
 ## Images
 

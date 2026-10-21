@@ -1436,6 +1436,11 @@ impl Element for Inline {
                     if let Some(link) =
                         Self::link_for_position(&text_layout, &links, event.position)
                     {
+                        // Without a handler a right-click opens nothing here,
+                        // so it goes on to the menu of the selectable text.
+                        if link_click_handler.is_none() && event.button == MouseButton::Right {
+                            return;
+                        }
                         TextSelection::end(window, cx);
                         cx.stop_propagation();
                         let click = ClickEvent::Mouse(MouseClickEvent {

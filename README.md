@@ -10,6 +10,25 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Separate views in one document** (`gpui-base`, `gpui-component`). `TextView::document_position`
+  and `SelectableText::document_position` place views the application shows apart, such as the
+  messages of a conversation, in one document, so a selection across them keeps both ends and
+  copies whole while one scrolls out of view. See
+  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
+- **A context menu for selectable text** (`gpui-base`, `gpui-component`). A right-click on a
+  selectable `TextView` or `SelectableText`, or Shift-F10 and the Menu key in a focused text view,
+  opens a menu with Copy and Select All in the application's context menu style. Copy copies the
+  whole window selection as Ctrl-C does, and the right-click leaves the selection as it is.
+  `TextSelectionMenu::set_builder` adds an application's own items. See
+  [TextView: context menu](website/component/text-view.md#context-menu).
+- **A right-click keeps the selection it lands on** (`gpui-base`). A right-click on a selection,
+  just past its end or below the text after Select All, opens the menu with the selection kept,
+  and so do Shift-F10 and the Menu key, so Copy, Cut and Paste act on it.
+- **One context menu style for every text field** (`gpui-component`).
+  `ContextMenuStyle::set_app_default` chooses between the operating system's menu and the menu
+  GPUI draws in the theme's colors for every input, textarea and editor without a style of its
+  own, the ones inside other components too, such as the Settings search field. See
+  [Input: context menu](website/component/input.md#context-menu).
 - **Long paragraphs with inline code stream faster** (`gpui-base`). A paragraph with inline code,
   images or inline objects lays out and paints only the lines in view, unless a selection needs
   every line, and text streamed onto its end lays out again only the lines it can change.

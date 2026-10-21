@@ -55,6 +55,8 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-a", input::SelectAll, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-a", input::SelectAll, Some(CONTEXT)),
+        KeyBinding::new("shift-f10", input::ShowContextMenu, Some(CONTEXT)),
+        KeyBinding::new("menu", input::ShowContextMenu, Some(CONTEXT)),
     ]);
 }
 
@@ -127,6 +129,8 @@ pub struct TextViewState {
     multi_click_selection: Option<TextViewMultiClickSelection>,
     selected_text_override: Option<String>,
     select_all: bool,
+    /// See [`crate::text::TextView::document_position`].
+    pub(super) document_position_override: Option<(u64, u64)>,
     pub(super) auto_scroll: AutoScroll,
     pub(super) selection_adapter: TextViewSelectionAdapter,
 
@@ -335,6 +339,7 @@ impl TextViewState {
             multi_click_selection: None,
             selected_text_override: None,
             select_all: false,
+            document_position_override: None,
             selectable: false,
             selection_format: SelectionFormat::default(),
             scrollable: false,
@@ -883,9 +888,13 @@ impl TextViewState {
         self.parsed_content.document.selected_source_range()
     }
 
-    /// Where a [`Self::block_range`] view is in its document, for the
-    /// window's selection, as the document and the first block it shows.
+    /// Where this view is in its document, for the window's selection: the
+    /// position its element set, else the document and the first block a
+    /// [`Self::block_range`] view shows.
     pub(super) fn document_position(&self) -> Option<(u64, u64)> {
+        if let Some(position) = self.document_position_override {
+            return Some(position);
+        }
         let range = self.block_range.as_ref()?;
         let start = match range.blocks.0 {
             Bound::Included(start) => start,
@@ -1465,6 +1474,27 @@ impl TextViewState {
         }
 
         self.select_all(cx);
+    }
+
+    /// Shift-F10 or the Menu key opens the context menu at the selection's
+    /// end, or at the view's corner when it shows no selection. See
+    /// [`crate::TextSelection::on_context_menu`].
+    pub(super) fn on_action_show_context_menu(
+        &mut self,
+        _: &input::ShowContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selectable {
+            cx.propagate();
+            return;
+        }
+        let position = self
+            .selection_adapter
+            .menu_position()
+            .unwrap_or(self.bounds.origin);
+        let handle = self.selection_adapter.handle().clone();
+        crate::TextSelection::show_context_menu(&handle, position, window, cx);
     }
 
     pub(crate) fn is_selectable(&self) -> bool {
@@ -3421,6 +3451,107 @@ mod tests {
             cx.simulate_click(fourth.center(), Modifiers::default());
             draw(cx);
             assert_eq!(copied(cx), "");
+        }
+
+        /// Messages, each a view of its own, that the application placed in
+        /// one document.
+        struct Messages {
+            views: Vec<Entity<TextViewState>>,
+            shown: std::ops::Range<usize>,
+            document: Option<u64>,
+        }
+
+        impl gpui::Render for Messages {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                use gpui::{ParentElement as _, Styled as _};
+                let document = self.document;
+                let first = self.shown.start;
+                gpui::div()
+                    .w(gpui::px(400.))
+                    .flex()
+                    .flex_col()
+                    .children(self.views[self.shown.clone()].iter().enumerate().map(
+                        move |(ix, view)| {
+                            let view = crate::text::TextView::new(view);
+                            match document {
+                                Some(document) => {
+                                    view.document_position(document, (first + ix) as u64)
+                                }
+                                None => view,
+                            }
+                        },
+                    ))
+                    .child(crate::TextSelectionLayer)
+            }
+        }
+
+        /// Separate views the application places in one document keep a
+        /// selection across them while the one holding its start is not
+        /// drawn, as the rows of a document do. Views left to their own
+        /// positions lose it.
+        #[gpui::test]
+        fn views_of_one_named_document_keep_a_selection_across_them(cx: &mut TestAppContext) {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            cx.update(crate::init);
+            for named in [true, false] {
+                let views = ["Alpha one.", "Bravo two.", "Charlie three."]
+                    .map(|text| cx.new(|cx| TextViewState::markdown(text, cx)))
+                    .to_vec();
+                let (root, cx) = cx.add_window_view(|_, _| Messages {
+                    views: views.clone(),
+                    shown: 0..3,
+                    document: named.then_some(7),
+                });
+                cx.run_until_parked();
+                let draw = |cx: &mut gpui::VisualTestContext| {
+                    cx.update(|window, cx| window.draw(cx).clear(cx));
+                };
+                let copied = |cx: &mut gpui::VisualTestContext| {
+                    cx.update(|window, cx| crate::TextSelection::selected_text(window, cx))
+                };
+                draw(cx);
+                let first = views[0].read_with(cx, |view, _| view.bounds());
+                let second = views[1].read_with(cx, |view, _| view.bounds());
+                let start = point(first.left() + px(1.), first.top() + px(4.));
+                let end = point(second.right() - px(1.), second.bottom() - px(4.));
+                cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+                draw(cx);
+                cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+                draw(cx);
+                cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+                draw(cx);
+                let selected = copied(cx);
+                assert!(selected.starts_with("Alpha one.") && selected.contains("Bravo two."));
+
+                // The first message scrolls out of the list.
+                root.update(cx, |root, cx| {
+                    root.shown = 1..3;
+                    cx.notify();
+                });
+                for _ in 0..3 {
+                    draw(cx);
+                }
+                if named {
+                    assert_eq!(copied(cx), selected, "the message not drawn is copied");
+                    root.update(cx, |root, cx| {
+                        root.shown = 0..3;
+                        cx.notify();
+                    });
+                    draw(cx);
+                    draw(cx);
+                    let painted = views[0].read_with(cx, |view, _| view.selected_text());
+                    assert_eq!(painted.trim(), "Alpha one.", "it shows as selected again");
+                } else {
+                    assert_ne!(copied(cx), selected);
+                }
+                cx.update(|window, _| window.remove_window());
+                cx.run_until_parked();
+            }
         }
 
         #[gpui::test]

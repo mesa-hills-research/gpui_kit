@@ -395,6 +395,10 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         && event.button == MouseButton::Right
                         && hitbox.is_hovered(window)
                     {
+                        // This menu takes the press, so selectable text under
+                        // it opens no menu of its own.
+                        gpui_base::GlobalState::init(cx);
+                        gpui_base::GlobalState::suppress_text_selection(cx);
                         // Capture the focused element to restore focus to on dismiss.
                         // If focus is still on the previous menu, keep its captured focus.
                         let previous_focus_handle = window.focused(cx).and_then(|focused| {

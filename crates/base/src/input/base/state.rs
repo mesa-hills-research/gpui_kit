@@ -2162,7 +2162,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             return;
         }
 
-        if !self.active_selection().contains(offset) {
+        if !self.active_selection().touches(offset) {
             self.move_to(offset, None, cx);
         }
 
@@ -2411,7 +2411,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         // Show Mouse context menu
         if event.button == MouseButton::Right {
             if self.enable_context_menu {
-                if !self.active_selection().contains(offset) {
+                if !self.active_selection().touches(offset) {
                     self.move_to(offset, None, cx);
                 }
                 self.pending_context_menu = Some((event.position, offset));

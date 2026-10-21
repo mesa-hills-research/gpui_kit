@@ -2,6 +2,7 @@
 
 mod compat;
 mod frontmatter;
+mod selection_menu;
 mod style;
 
 pub use compat::{
@@ -14,6 +15,8 @@ pub use gpui_base::text::{
     RangeHighlight, RangeHighlightError, RenderedText, SelectionFormat, TableData, TextBlock,
     TextBlockContent, TextBlockId, TextViewMotion, TextViewState, markdown_ast,
 };
+pub(crate) use selection_menu::init;
+pub use selection_menu::{TextSelectionMenu, TextSelectionMenuTarget};
 pub use style::TextViewStyle;
 
 #[cfg(feature = "tree-sitter")]

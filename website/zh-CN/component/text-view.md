@@ -103,6 +103,15 @@ TextView::new(&row)
 
 文档每完成一次解析，视图就从文档取回自己的块，块全部完成的视图此后不再变化。末端开放的范围（例如 `ix..`）会包含之后追加的块。`blocks()` 会为文档的每个顶层块给出它是什么（段落、标题、列表、代码块及其语言、表格……）、在源文本中的范围、追加文字后是否还会变化，以及在只追加文字期间保持不变的 id。按块的类型把块分组成行，文本被替换时用 id 判断哪些行可以保留。如果设置的文字只是首尾空白不同（例如回复结束后改为修剪过的文字），就不算替换，id、各行和其中的选区都保持不变。`block_count()` 不用构建列表就能判断文档自上次查看后是否多了块，`blocks_from(ix)` 只列出从 `ix` 起的块。在 `TextViewState::finish` 把回复标记为结束、并且此前推入的文字解析完成之前，最后一个块一直算作未完成。此后，它所在的行也和其他行一样不再变化。选区可以跨行，就像跨多个独立的 TextView 一样，每个视图选择自己的块。复制时，同一文档的各行像同一个视图里的块那样拼接，彼此隔一个空行，与前后的其他文字之间也隔一个空行。同一文档各行上的选区在这些行滚出视野后依然保留。落在已滚走行中的选区端点保持不变，这些行会和其余部分一起复制，滚回视野时仍显示为选中。做选择期间列表从未布局过的行不属于选区。整篇回复的复制按钮可以改为复制文档的文本。文档本身和它的块视图只显示其一，因为它们共用解析出的块。
 
+独立的视图也可以共用一个文档，例如对话中的各条消息，每条消息都是一个单独的 TextView。`document_position` 把视图放进应用指定的文档，此后跨这些视图的选区会像跨行时一样保留。
+
+```rust
+// 位置按阅读顺序递增。文档可以是窗口中其他文档都没有使用的任意 id。
+TextView::new(&message).document_position(conversation.entity_id().as_u64(), ix as u64)
+```
+
+`SelectableText::document_position` 对用应用保留的句柄创建的纯文本 run 起同样的作用。视图设置的位置会取代 `block_range` 行自己的位置，所以一条消息拆成多行显示时，要让每一行的位置排在前面各条消息的行之后。
+
 解析由文档完成，所以 Markdown 扩展和插件要设在文档上，而不是各行的 `TextView` 上，各行按文档的扩展渲染：
 
 ```rust
@@ -229,6 +238,30 @@ TextView::new(&state).on_reveal(move |line, _, _| {
 在触摸屏上，长按会选中手指下的单词，手指按住不放时选区跟随手指移动。抬起手指后，选区上方会出现包含 `复制` 和 `全选` 的编辑菜单，并在选区两端各显示一个拖动 handle。拖动 handle 会移动对应的一端，另一端保持不动；`全选` 选中被按下的那个视图，其 handle 仍可继续调整结果。
 
 handle 和菜单由 [`Root`](./root.md) 为整个窗口选区绘制，因此跨多个视图的选区也能覆盖到。点击其他位置会清除它们；手指滚动内容时菜单会暂时让开。
+
+## 上下文菜单
+
+在可选择的文字上右键会打开包含 `复制` 和 `全选` 的菜单。`复制` 复制的内容与 Cmd-C 或 Ctrl-C 相同，也就是跨行、跨视图的整个选区，段落之间保留空行。没有选中文字时，`复制` 不可用。`全选` 选中菜单所在的视图。右键不会改变选区，无论落在哪里。在获得焦点的 TextView 中，Shift-F10 和 Menu 键也会打开这个菜单。
+
+菜单使用应用的上下文菜单样式（见 [Input：上下文菜单](./input.md#上下文菜单)），因此调用 `ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx)` 之后，它在所有平台上都按主题颜色绘制。
+
+用 `TextSelectionMenu::set_builder` 添加应用自己的菜单项。builder 会收到一个空菜单和一个 target，target 可以读取选中的文字。
+
+```rust
+use gpui_kit::component::text::TextSelectionMenu;
+
+TextSelectionMenu::set_builder(
+    |menu, target, _, _| {
+        target
+            .standard_items(menu)
+            .separator()
+            .menu_with_disabled("Search the Web", !target.has_selection(), Box::new(SearchWeb))
+    },
+    cx,
+);
+```
+
+自带上下文菜单的元素（`ContextMenuExt`）、输入框，以及设置了 `on_link_click` 的链接会保留自己的右键操作，这个菜单不会在那里打开。
 
 ## 图片
 

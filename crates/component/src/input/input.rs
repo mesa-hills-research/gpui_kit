@@ -154,8 +154,12 @@ pub struct Input {
     /// [`super::TextEditor`].
     editor_surface: bool,
 
-    /// What draws the right-click menu.
-    context_menu_style: ContextMenuStyle,
+    /// What draws the right-click menu, when this input chose.
+    context_menu_style: Option<ContextMenuStyle>,
+
+    /// What draws the right-click menu when neither this input nor the
+    /// application chose. See [`ContextMenuStyle::set_app_default`].
+    fallback_context_menu_style: ContextMenuStyle,
 }
 
 /// Builds a textarea's context menu from where it opened. See
@@ -272,8 +276,16 @@ impl Input {
             suggestion_item_renderer: None,
             context_menu_target_builder: None,
             editor_surface: false,
-            context_menu_style: ContextMenuStyle::default(),
+            context_menu_style: None,
+            fallback_context_menu_style: ContextMenuStyle::default(),
         }
+    }
+
+    /// What draws the right-click menu when neither this input nor the
+    /// application chose, as [`super::TextEditor`] draws its own.
+    pub(crate) fn fallback_context_menu_style(mut self, style: ContextMenuStyle) -> Self {
+        self.fallback_context_menu_style = style;
+        self
     }
 
     /// Paint the theme's `editor.background` behind the text and the line
@@ -432,8 +444,10 @@ impl Input {
     /// What draws the right-click menu: the operating system's menu on macOS
     /// and Windows, the default, or GPUI's menu in the theme's colors with
     /// [`ContextMenuStyle::Drawn`].
+    ///
+    /// Without it the input follows [`ContextMenuStyle::set_app_default`].
     pub fn context_menu_style(mut self, style: ContextMenuStyle) -> Self {
-        self.context_menu_style = style;
+        self.context_menu_style = Some(style);
         self
     }
 
@@ -702,6 +716,7 @@ impl RenderOnce for Input {
         let custom = self.context_menu_builder.clone();
         let custom_at = self.context_menu_target_builder.clone();
         let context_menu_style = self.context_menu_style;
+        let fallback_context_menu_style = self.fallback_context_menu_style;
         // Weak: the state keeps this handler, and must not keep itself alive.
         let textarea = match &state {
             TextInputState::Textarea(textarea) => Some(textarea.downgrade()),
@@ -741,7 +756,14 @@ impl RenderOnce for Input {
                     }
                     standard_items(menu, capabilities)
                 };
-                context_menu_style.show(menu, position, window, cx);
+                // Read as the menu opens, so a default the application sets
+                // later reaches inputs drawn before.
+                let style = ContextMenuStyle::resolve(
+                    context_menu_style,
+                    ContextMenuStyle::app_default(cx),
+                    fallback_context_menu_style,
+                );
+                style.show(menu, position, window, cx);
             }),
             cx,
         );

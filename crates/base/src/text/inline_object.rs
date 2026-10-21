@@ -344,6 +344,11 @@ impl Element for InlineObject {
                 {
                     return;
                 }
+                // Without a handler a right-click opens nothing here, so it
+                // goes on to the menu of the selectable text.
+                if handler.is_none() && event.button == gpui::MouseButton::Right {
+                    return;
+                }
                 crate::TextSelection::end(window, cx);
                 cx.stop_propagation();
                 let click = gpui::ClickEvent::Mouse(gpui::MouseClickEvent {

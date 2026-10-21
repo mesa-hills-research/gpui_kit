@@ -167,6 +167,14 @@ impl TextViewSelectionAdapter {
             cx,
         );
 
+        let view_for_select_all = view.clone();
+        selection.select_all_with(
+            move |_, cx| {
+                let _ = view_for_select_all.update(cx, |state, cx| state.select_all(cx));
+            },
+            cx,
+        );
+
         selection.focus_with(
             move |window, cx| {
                 let Some(view) = view.upgrade() else {
@@ -196,6 +204,18 @@ impl TextViewSelectionAdapter {
             self.layout_revision = Some(revision);
         }
         changed && !is_selecting
+    }
+
+    /// The participant this view's text takes part in the window selection
+    /// as.
+    pub(super) fn handle(&self) -> &TextSelectionHandle {
+        &self.selection
+    }
+
+    /// Where the keyboard opens the context menu, under the end of the
+    /// selection painted last frame, if this view painted one.
+    pub(super) fn menu_position(&self) -> Option<Point<Pixels>> {
+        self.selection_edges.map(|(_, end)| end.bottom_left())
     }
 
     pub(super) fn begin_frame(&mut self) {
