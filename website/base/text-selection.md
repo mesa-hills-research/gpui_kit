@@ -259,6 +259,41 @@ TextSelection::close_edit_menu(window, cx); // after the menu's own action ran
 
 A participant paints its own handles, where it is in the paint order, so that whatever covers the text covers them too: call `TextSelectionHandle::prepaint_touch_handles` in prepaint (it inserts the hitboxes the finger takes) and `TextSelectionHandle::paint_touch_handles` at the end of paint, after `register`, with the selection color. `TextView` does both. Participants report where their selection ends were painted through `TextSelectionRegistration::with_selection_edges`. Whatever draws the menu must call `TextSelection::register_touch_ui(bounds, window, cx)` with its bounds as it paints, every frame; a press inside a registered surface is then left to that surface instead of clearing the selection it belongs to. `Root` in GPUI Component draws the menu.
 
+### Context menu
+
+A right-click let go over a participant asks the application for the context
+menu of the selectable text, and so do Shift-F10 and the Menu key in a focused
+`TextView`. The right-click leaves the selection as it is, wherever it lands.
+A control under the pointer that takes the press keeps it. It calls
+`GlobalState::suppress_text_selection(cx)` on the right mouse down, as inputs
+and `ContextMenuExt` in GPUI Component do, or stops its propagation, as a link
+with an `on_link_click` handler does.
+
+```rust
+use gpui_kit::base::{CopyTextSelection, SelectAllText, TextSelection};
+
+TextSelection::on_context_menu(
+    |request, window, cx| {
+        // request.position(), request.selected_text(), request.has_selection()
+        // and request.supports_select_all() describe the menu to show. Its
+        // items dispatch CopyTextSelection and SelectAllText.
+    },
+    cx,
+);
+
+// Open the menu from elsewhere, as a right-click at `position` would.
+TextSelection::show_context_menu(&handle, position, window, cx);
+```
+
+`CopyTextSelection` copies what Cmd-C or Ctrl-C copies, whatever has focus, and
+`SelectAllText` selects all of the participant the menu opened on. `Root`
+handles both. A participant offers Select All by giving
+`TextSelectionHandle::select_all_with` a callback, as `TextView` does. A menu
+GPUI draws calls `TextSelection::register_menu(bounds, window, cx)` as it
+paints, every frame, so pressing its items keeps the selection, as pressing an
+operating system menu does. GPUI Component installs a handler that shows Copy
+and Select All in the application's context menu style.
+
 ## Advanced participant adapters
 
 Plain text usually needs only `refresh_window_on_change` and `update_runs`. Rich or virtualized participants can configure additional behavior directly on the handle:
@@ -271,6 +306,7 @@ Plain text usually needs only `refresh_window_on_change` and `update_runs`. Rich
 | `set_fallback_copy_text`   | Replace the participant's fallback copy text.                                         |
 | `resolve_content_key_with` | Attach a stable `TextSelectionContentKey` to an endpoint.                             |
 | `focus_with`               | Focus the participant when a drag begins inside it.                                   |
+| `select_all_with`          | Select all of the participant's text, which puts Select All in its context menu.      |
 | `clear_with`               | Synchronously clear participant-local state when the window selection clears.         |
 | `set_local_selection`      | Report participant-local selection such as select-all.                                |
 

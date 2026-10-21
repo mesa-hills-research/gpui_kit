@@ -283,6 +283,31 @@ impl Root {
         }
         cx.write_to_clipboard(ClipboardItem::new_string(text));
     }
+
+    /// The context menu of selectable text copies the window's selection
+    /// whatever has focus, a text field included.
+    fn on_action_copy_text_selection(
+        &mut self,
+        _: &crate::CopyTextSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = crate::TextSelection::selected_text(window, cx)
+            .trim()
+            .to_string();
+        if !text.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    }
+
+    fn on_action_select_all_text(
+        &mut self,
+        _: &crate::SelectAllText,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::TextSelection::select_all_in_menu_target(window, cx);
+    }
 }
 impl Styled for Root {
     fn style(&mut self) -> &mut StyleRefinement {
@@ -300,6 +325,8 @@ impl Render for Root {
             .on_action(cx.listener(Self::on_action_tab))
             .on_action(cx.listener(Self::on_action_tab_prev))
             .on_action(cx.listener(Self::on_action_copy))
+            .on_action(cx.listener(Self::on_action_copy_text_selection))
+            .on_action(cx.listener(Self::on_action_select_all_text))
             .relative()
             .size_full()
             .child(TextSelectionLayer)

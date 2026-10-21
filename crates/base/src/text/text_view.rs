@@ -772,6 +772,7 @@ impl Element for TextView {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
             })
             .on_action(window.listener_for(&state, TextViewState::on_action_select_all))
+            .on_action(window.listener_for(&state, TextViewState::on_action_show_context_menu))
             .child(state.clone())
             // Overlay controls must paint after the document, otherwise rich
             // content and selection backgrounds cover the thumb and hitbox.

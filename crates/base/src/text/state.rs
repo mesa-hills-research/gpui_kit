@@ -55,6 +55,8 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("cmd-a", input::SelectAll, Some(CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-a", input::SelectAll, Some(CONTEXT)),
+        KeyBinding::new("shift-f10", input::ShowContextMenu, Some(CONTEXT)),
+        KeyBinding::new("menu", input::ShowContextMenu, Some(CONTEXT)),
     ]);
 }
 
@@ -1465,6 +1467,27 @@ impl TextViewState {
         }
 
         self.select_all(cx);
+    }
+
+    /// Shift-F10 or the Menu key opens the context menu at the selection's
+    /// end, or at the view's corner when it shows no selection. See
+    /// [`crate::TextSelection::on_context_menu`].
+    pub(super) fn on_action_show_context_menu(
+        &mut self,
+        _: &input::ShowContextMenu,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selectable {
+            cx.propagate();
+            return;
+        }
+        let position = self
+            .selection_adapter
+            .menu_position()
+            .unwrap_or(self.bounds.origin);
+        let handle = self.selection_adapter.handle().clone();
+        crate::TextSelection::show_context_menu(&handle, position, window, cx);
     }
 
     pub(crate) fn is_selectable(&self) -> bool {

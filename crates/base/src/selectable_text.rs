@@ -320,6 +320,91 @@ mod tests {
         });
     }
 
+    /// A right-click on selectable text asks the application's handler for
+    /// its menu when it is let go, with the selection as it was, and a press
+    /// on a menu that registered its bounds keeps the selection. A control
+    /// that takes the press opens no menu.
+    #[gpui::test]
+    fn a_right_click_asks_for_the_menu_and_keeps_the_selection(cx: &mut TestAppContext) {
+        let requests: Rc<RefCell<Vec<crate::TextSelectionMenuRequest>>> = Rc::default();
+        cx.update(|cx| {
+            crate::init(cx);
+            let requests = requests.clone();
+            TextSelection::on_context_menu(
+                move |request, _, _| requests.borrow_mut().push(request.clone()),
+                cx,
+            );
+        });
+        let (_, cx) = cx.add_window_view(|_, _| SelectableTextTestView);
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(
+            point(px(1.), px(12.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            point(px(220.), px(12.)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_up(
+            point(px(220.), px(12.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let position = point(px(20.), px(12.));
+        cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+        assert!(requests.borrow().is_empty(), "the menu opens on release");
+        cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+        cx.run_until_parked();
+        let request = requests.borrow_mut().pop().expect("the menu was asked for");
+        assert_eq!(request.position(), position);
+        assert_eq!(request.selected_text().as_ref(), "alpha beta");
+        assert!(request.has_selection());
+        assert!(!request.supports_select_all());
+
+        cx.update(|window, cx| {
+            TextSelection::register_menu(Bounds::new(position, size(px(40.), px(20.))), window, cx)
+        });
+        cx.simulate_mouse_down(position, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| {
+            assert_eq!(TextSelection::selected_text(window, cx), "alpha beta");
+            let _ = window.draw(cx);
+        });
+
+        // A control under the pointer that takes the press.
+        use gpui::InteractiveElement as _;
+        struct Claimed;
+        impl Render for Claimed {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(TextSelectionLayer).child(
+                    div()
+                        .w(px(240.))
+                        .h(px(32.))
+                        .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                            crate::GlobalState::suppress_text_selection(cx)
+                        })
+                        .child(SelectableText::new("claimed", "alpha beta")),
+                )
+            }
+        }
+        let (_, cx) = cx.add_window_view(|_, _| Claimed);
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_down(position, MouseButton::Right, Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Right, Modifiers::default());
+        cx.run_until_parked();
+        assert!(requests.borrow().is_empty());
+    }
+
     #[gpui::test]
     fn highlighted_text_keeps_unicode_selection(cx: &mut TestAppContext) {
         struct HighlightedText;
