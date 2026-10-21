@@ -77,7 +77,8 @@ The conventions:
   the modifier. GPUI's `secondary-` would give the modifier of the platform the code runs on, so
   the tables never use it.
 - Emacs's Meta is Alt on Windows and Linux and Option on macOS, written `alt-` everywhere. On
-  macOS, Cmd keeps the clipboard, history and Select All.
+  macOS, Cmd keeps the clipboard, history and Select All, and Cmd-Left and Cmd-Right go to the
+  ends of the line.
 - Vim binds the same keys on every platform.
 
 ## State for modal schemes
@@ -218,7 +219,8 @@ them.
 **Platforms.** The tables differ only in macOS's Cmd keys.
 
 - Meta is Alt on Windows and Linux and Option on macOS, where Cmd-A, C, X, V, Z and Shift-Z keep
-  their system meaning.
+  their system meaning. Cmd-Left and Cmd-Right run `C-a` and `C-e`, so they extend an active
+  region, and Cmd-Shift-Left and Cmd-Shift-Right select as Shift-Home and Shift-End do.
 - Escape followed by a key is Meta with that key. GPUI waits up to a second for the second key, so
   a lone Escape reaches the textarea and the application after that second.
 - On macOS, Ctrl-Space switches input sources by default, and some Linux input methods take it as
@@ -353,7 +355,8 @@ are shared by its buffers.
 - Vim binds the same keys on every platform, with Vim's Unix behaviour: Ctrl-V starts visual
   block mode, and in insert mode inserts the next key as it is. The platform's clipboard and
   history shortcuts stay where they don't clash: Cmd-C, Cmd-X, Cmd-V, Cmd-A, Cmd-Z, Cmd-Shift-Z
-  and Cmd-F on macOS, Ctrl-Shift-C and Ctrl-Shift-V on Windows and Linux.
+  and Cmd-F on macOS, Ctrl-Shift-C and Ctrl-Shift-V on Windows and Linux. On macOS, Cmd-Left and
+  Cmd-Right are `0` and `$` as motions and Home and End while typing, as in MacVim.
 - Vim's own Ctrl keys win over the application's: Ctrl-A, Ctrl-B, Ctrl-C, Ctrl-D, Ctrl-F,
   Ctrl-H, Ctrl-R, Ctrl-T, Ctrl-U, Ctrl-V, Ctrl-W, Ctrl-X and Ctrl-[, in the modes that use them.
   Ctrl-N and Ctrl-P are Vim's while the suggestion menu is open. Every other Ctrl and Cmd

@@ -10,6 +10,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Cmd-Left and Cmd-Right in the Emacs and Vim keys on macOS** (`gpui-base`). They go to the
+  start and end of the line, as in CUA and every Mac text field, extending Emacs's active region
+  and moving as `0` and `$` in Vim. See
+  [Textarea: keybindings](website/component/textarea.md#keybindings).
 - **Paragraphs a blank line apart in copied text** (`gpui-base`). Plain-text copy of a text view,
   and `rendered_text()`, put a blank line between blocks, where there was one line break, so
   pasted paragraphs stay apart. See

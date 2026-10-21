@@ -102,6 +102,26 @@ fn macos_keeps_the_cmd_shortcuts(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn macos_cmd_arrows_go_to_the_ends_of_the_line(cx: &mut TestAppContext) {
+    let mut test = vim_on(cx, KeymapPlatform::MacOS, "one\ntwˇo three");
+    test.keys("cmd-right");
+    test.assert("one\ntwo threˇe");
+    test.keys("cmd-left");
+    test.assert("one\nˇtwo three");
+    test.keys("w d cmd-right");
+    test.assert("one\ntwoˇ ");
+
+    // In insert mode they act as anywhere else.
+    test.keys("i cmd-left");
+    test.assert("one\nˇtwo ");
+    test.keys("cmd-shift-right");
+    test.assert("one\n«two ˇ»");
+    test.keys("cmd-right");
+    test.assert("one\ntwo ˇ");
+    test.assert_mode(VimMode::Insert);
+}
+
+#[gpui::test]
 fn windows_and_linux_copy_and_paste_with_ctrl_shift(cx: &mut TestAppContext) {
     for platform in [KeymapPlatform::Windows, KeymapPlatform::Linux] {
         let mut test = vim_on(cx, platform, "ˇone two");

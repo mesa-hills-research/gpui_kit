@@ -471,7 +471,8 @@ application that binds them to other keys.
 
 Meta is Alt on Windows and Linux and Option on macOS, and Escape followed by a
 key works as Meta too. On macOS, Cmd keeps Copy, Cut, Paste, Undo, Redo and
-Select All.
+Select All, and Cmd-Left and Cmd-Right go to the start and end of the line as
+`C-a` and `C-e` do, with Shift to select.
 
 | Keys | Command |
 |---|---|
@@ -512,7 +513,9 @@ kill ring.
 Vim's keys are the same on every platform. Ctrl-V starts visual block mode, as
 in Vim on Unix. The clipboard and undo shortcuts stay: Cmd-C, Cmd-X, Cmd-V,
 Cmd-A and Cmd-Z on macOS, Ctrl-Shift-C and Ctrl-Shift-V on Windows and Linux.
-Other Ctrl and Cmd shortcuts reach the application, except Vim's own Ctrl keys
+On macOS, Cmd-Left and Cmd-Right go to the start and end of the line in every
+mode, as `0` and `$` do, and select with Shift in insert mode. Other Ctrl and
+Cmd shortcuts reach the application, except Vim's own Ctrl keys
 such as Ctrl-R and Ctrl-W.
 
 While a command line is typed, the mode label shows it, such as `:s/a/b/`.

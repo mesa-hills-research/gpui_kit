@@ -2,7 +2,8 @@
 //!
 //! Control and Meta carry the commands. Meta is Alt on Windows and Linux and
 //! Option on macOS, where Cmd keeps the system's shortcuts for the clipboard,
-//! history and Select All. Escape followed by a key is Meta with that key.
+//! history and Select All, and Cmd-Left and Cmd-Right go to the ends of the
+//! line. Escape followed by a key is Meta with that key.
 //!
 //! The scheme keeps an [`EmacsState`] per textarea: the mark, the kill ring
 //! and the prefix argument being typed. Each key runs one of the actions
@@ -37,7 +38,10 @@ use gpui::{
 use serde::Deserialize;
 
 use super::{Keymap, KeymapPlatform, KeymapState, bind, common};
-use crate::input::{Copy, Cut, Newline, Paste, Redo, Search, SelectAll, TextareaState, Undo};
+use crate::input::{
+    Copy, Cut, Newline, Paste, Redo, Search, SelectAll, SelectToEndOfLine, SelectToStartOfLine,
+    TextareaState, Undo,
+};
 use kill::KillRing;
 use motion::Motion;
 
@@ -249,6 +253,12 @@ pub(super) fn bindings(platform: KeymapPlatform) -> Vec<KeyBinding> {
             bind("cmd-v", Paste, cx),
             bind("cmd-z", Undo, cx),
             bind("cmd-shift-z", Redo, cx),
+            // The ends of the line, as in every Mac text field. Like Home and
+            // End they extend an active region, and with Shift they select.
+            bind("cmd-left", BeginningOfLine, cx),
+            bind("cmd-right", EndOfLine, cx),
+            bind("cmd-shift-left", SelectToStartOfLine, cx),
+            bind("cmd-shift-right", SelectToEndOfLine, cx),
         ]);
     }
     bindings
