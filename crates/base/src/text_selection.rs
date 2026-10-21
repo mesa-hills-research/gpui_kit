@@ -275,7 +275,7 @@ impl TextSelectionRegistration {
     /// Participants of one document are ordered by position, frame after
     /// frame, where others are ordered by [`Self::with_document_order`] in
     /// each frame. A participant of a document that stops being drawn while
-    /// a selection covers it stays in the selection: an end of the selection
+    /// a selection covers it stays in the selection. An end of the selection
     /// in it holds, its text is copied with the rest, and it shows as
     /// selected again when it comes back.
     pub fn with_document_position(mut self, document: u64, position: u64) -> Self {
@@ -402,7 +402,7 @@ impl TextSelectionRegistration {
 
 /// A participant's place in reading order. The rows of a document sit
 /// together, in the order of their positions, where the document order of
-/// its first drawn row puts them; any other participant sits at its document
+/// its first drawn row puts them. Any other participant sits at its document
 /// order.
 type ReadingKey = (u64, u64, u64);
 
@@ -2191,8 +2191,8 @@ impl WindowSelectionState {
 
     /// Each participant's [`ReadingKey`].
     fn reading_keys(&self) -> HashMap<EntityId, ReadingKey> {
-        // Per document: the least document order of its drawn rows, and of
-        // all its rows.
+        // The least document order of each document's drawn rows, and of all
+        // its rows.
         let mut documents = HashMap::<u64, (Option<u64>, u64)>::default();
         for registration in self.participants.values() {
             let Some((document, _)) = registration.registration.document_position else {
@@ -2268,8 +2268,8 @@ impl WindowSelectionState {
             || id == cursor
     }
 
-    /// Whether participant `id`, no longer drawn, stays in the selection: it
-    /// is a row of a document the selection runs through.
+    /// Whether participant `id`, no longer drawn, stays in the selection, as
+    /// a row of a document the selection runs through.
     fn keeps_offscreen(&self, id: EntityId) -> bool {
         let Some(registration) = self.participants.get(&id) else {
             return false;

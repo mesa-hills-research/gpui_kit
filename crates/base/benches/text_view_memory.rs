@@ -3,8 +3,8 @@
 //! A transcript shows each answer as its own `TextView`, in a virtual list. A
 //! text view keeps the shaped text of each paragraph for the next frame, so
 //! a paragraph laid out again in the same place is not shaped again. This
-//! measures what a scroll from the top to the bottom leaves behind: the live
-//! heap after the pass, less the heap after the first frame.
+//! measures what a scroll from the top to the bottom leaves behind, as the
+//! live heap after the pass less the heap after the first frame.
 //!
 //! Run with `cargo bench -p gpui-base --bench text_view_memory`. The numbers
 //! are the same in a debug build, which `cargo test -p gpui-base --bench

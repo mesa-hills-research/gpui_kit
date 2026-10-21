@@ -485,8 +485,8 @@ pub(in crate::input::keymap) fn bindings(platform: KeymapPlatform) -> Vec<KeyBin
             bind("cmd-z", Undo, commands),
             bind("cmd-shift-z", Redo, commands),
             bind("cmd-f", Search, vim),
-            // The ends of the line: Home and End while typing, `0` and `$`
-            // as motions.
+            // The ends of the line, as Home and End while typing and as `0`
+            // and `$` among the motions.
             bind("cmd-left", MoveHome, typing),
             bind("cmd-right", MoveEnd, typing),
             bind("cmd-shift-left", SelectToStartOfLine, typing),

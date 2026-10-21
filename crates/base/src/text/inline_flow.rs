@@ -464,8 +464,8 @@ impl Element for InlineFlow {
             .map(|(ix, _)| ix);
 
         // Lines out of view are left out, unless something needs every line
-        // laid out: a selection, which each line records as it paints, or a
-        // cap on the view's lines, which counts them.
+        // laid out. A selection does, as each line records its part as it
+        // paints, and so does a cap on the view's lines, which counts them.
         let visible = window.content_mask().bounds;
         let cull = crate::GlobalState::global(cx)
             .text_view_state()

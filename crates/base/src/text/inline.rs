@@ -451,8 +451,8 @@ const RETAINED_SWEEP_AT: usize = 4096;
 /// megabytes a chunk, which a count of entries alone let pile up by the
 /// thousand.
 const RETAINED_SWEEP_BYTES: usize = 256 * 1024;
-/// A layout its window's frames haven't laid out for this many frames is
-/// dropped: a second at 60 frames a second. Only frames that lay out some
+/// A layout its window's frames haven't laid out for this many frames, a
+/// second at 60 frames a second, is dropped. Only frames that lay out some
 /// text count, so a window that animates nothing else keeps its layouts.
 const RETAINED_UNUSED_FRAMES: u64 = 60;
 /// How often, in a window's frames, its unused layouts are looked for.

@@ -884,7 +884,7 @@ impl TextViewState {
     }
 
     /// Where a [`Self::block_range`] view is in its document, for the
-    /// window's selection: the document, and the first block the view shows.
+    /// window's selection, as the document and the first block it shows.
     pub(super) fn document_position(&self) -> Option<(u64, u64)> {
         let range = self.block_range.as_ref()?;
         let start = match range.blocks.0 {
@@ -3351,7 +3351,7 @@ mod tests {
             }
         }
 
-        /// Rows scrolled away while a selection covers them stay in it: the
+        /// Rows scrolled away while a selection covers them stay in it. The
         /// end in them holds, they are copied with the rest, and they show as
         /// selected when they come back.
         #[gpui::test]
