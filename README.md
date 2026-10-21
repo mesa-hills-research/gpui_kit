@@ -10,6 +10,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 
 ## Changes from upstream
 
+- **Paging a message scroller** (`gpui-component`). `MessageScrollerState` scrolls by a distance
+  with `scroll_by`, reports the viewport's height with `viewport_height`, and keeps and restores
+  the reader's place with `logical_scroll_top` and `scroll_to_offset`. See
+  [MessageScroller](website/component/message-scroller.md#page-and-keep-the-readers-place).
 - **Cmd-Left and Cmd-Right in the Emacs and Vim keys on macOS** (`gpui-base`). They go to the
   start and end of the line, as in CUA and every Mac text field, extending Emacs's active region
   and moving as `0` and `$` in Vim. See

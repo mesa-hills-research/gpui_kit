@@ -174,7 +174,19 @@ if let Some(index) = messages
 }
 ```
 
-`scroll_to_item(...)` 以 index 为 viewport 起始位置并暂停尾部跟随；靠近末尾时受可用滚动范围限制，index 超出当前数量时返回 `false`。它是唯一的定位原语：未读边界、搜索结果、书签消息、回复目标、深链接都先在应用侧解析成 index。组件没有 ID-native 的定位、turn anchor、peek 或可见 ID API；这些行为应由应用维护 ID/index 映射，并在需要时组合自己的 header、提示或高亮。
+`scroll_to_item(...)` 以 index 为 viewport 起始位置并暂停尾部跟随；靠近末尾时受可用滚动范围限制，index 超出当前数量时返回 `false`。未读边界、搜索结果、书签消息、回复目标、深链接都先在应用侧解析成 index。组件没有 ID-native 的定位、turn anchor、peek 或可见 ID API；这些行为应由应用维护 ID/index 映射，并在需要时组合自己的 header、提示或高亮。
+
+## 翻页与保留阅读位置
+
+`scroll_by(distance, cx)` 按给定距离滚动，正值向下。`viewport_height()` 给出翻页所用的高度。向上滚动会像滚轮一样暂停尾部跟随，回到末尾后恢复。
+
+```rust
+// Page Up，保留上一页的十分之一在视野内。
+let page = scroller.read(cx).viewport_height() * 0.9;
+scroller.update(cx, |state, cx| state.scroll_by(-page, cx));
+```
+
+`logical_scroll_top()` 返回位于 viewport 顶部的 row，以及 viewport 从该 row 内多深的位置开始。保存它，之后用 `scroll_to_offset(...)` 恢复，读者就会回到原来的位置。
 
 ## Reset 与初始位置
 
@@ -299,6 +311,10 @@ GPUI 版本保留必要的滚动行为，省略 React primitive 中重复的 Pro
 | `remeasure_items(range, cx)` | 标记指定 range 重新测量。 |
 | `scroll_to_item(index, cx)` | 定位到指定 index；越界返回 `false`。 |
 | `scroll_to_end(cx)` | 恢复尾部跟随并滚到最新内容。 |
+| `scroll_by(distance, cx)` | 按距离滚动，正值向下，向上滚动会暂停尾部跟随。 |
+| `logical_scroll_top()` | 返回 viewport 顶部的 row 及其内部偏移（`ListOffset`）。 |
+| `scroll_to_offset(offset, cx)` | 把保存的 `ListOffset` 放回 viewport 顶部。 |
+| `viewport_height()` | 返回 viewport 的高度，首次绘制前为零。 |
 
 ### `MessageScroller`
 

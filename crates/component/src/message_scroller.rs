@@ -2,8 +2,8 @@ use std::{ops::Range, time::Duration};
 
 use gpui::{
     AnyElement, App, Axis, Context, ElementId, Entity, FollowMode, Hsla, InteractiveElement as _,
-    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, RenderOnce, Role,
-    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, Pixels, RenderOnce,
+    Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     linear_color_stop, linear_gradient, list, prelude::FluentBuilder as _, px, rems,
 };
 use gpui_base::motion::{Transition, transition};
@@ -154,6 +154,41 @@ impl MessageScrollerState {
         self.list_state.set_follow_mode(FollowMode::Tail);
         self.list_state.scroll_to_end();
         cx.notify();
+    }
+
+    /// Scroll by `distance`, down when it's positive.
+    ///
+    /// Scrolling up stops following the tail, as the scroll wheel does, and
+    /// reaching the end again resumes it. Page Up and Page Down can scroll by
+    /// a share of [`Self::viewport_height`].
+    pub fn scroll_by(&mut self, distance: Pixels, cx: &mut Context<Self>) {
+        if distance == px(0.) {
+            return;
+        }
+        self.list_state.scroll_by(distance);
+        cx.notify();
+    }
+
+    /// The row at the top of the viewport, and how far into that row the
+    /// viewport starts.
+    ///
+    /// Keep it to restore the reader's place later with
+    /// [`Self::scroll_to_offset`].
+    pub fn logical_scroll_top(&self) -> ListOffset {
+        self.list_state.logical_scroll_top()
+    }
+
+    /// Scroll so that `offset` is at the top of the viewport. An offset past
+    /// the last row scrolls to the end.
+    pub fn scroll_to_offset(&mut self, offset: ListOffset, cx: &mut Context<Self>) {
+        self.list_state.scroll_to(offset);
+        cx.notify();
+    }
+
+    /// The height of the viewport as last laid out, or zero before the
+    /// scroller is first drawn.
+    pub fn viewport_height(&self) -> Pixels {
+        self.list_state.viewport_bounds().size.height
     }
 
     fn valid_range(&self, range: &Range<usize>) -> bool {
@@ -504,5 +539,82 @@ mod tests {
         assert!(scroller.jump_button_renderer.is_some());
         assert_eq!(scroller.jump_button_transition, Duration::from_millis(300));
         assert_eq!(scroller.bottom_fade, Some(gpui::white()));
+    }
+
+    /// Twenty rows of 50px, spaced apart, in a 200px window.
+    fn paged(
+        cx: &mut gpui::TestAppContext,
+    ) -> (Entity<MessageScrollerState>, &mut gpui::VisualTestContext) {
+        struct Host(Entity<MessageScrollerState>);
+        impl gpui::Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    MessageScroller::new("paged", self.0.clone(), |ix, _, _| {
+                        div().h(px(50.)).child(format!("Row {ix}"))
+                    })
+                    .size_full()
+                    .scrollbar(false)
+                    .jump_button(false),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let state = cx.new(|cx| MessageScrollerState::new(20, cx));
+        let (_, cx) = cx.add_window_view({
+            let state = state.clone();
+            move |_, _| Host(state)
+        });
+        cx.simulate_resize(gpui::size(px(300.), px(200.)));
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        (state, cx)
+    }
+
+    fn top(
+        state: &Entity<MessageScrollerState>,
+        cx: &mut gpui::VisualTestContext,
+    ) -> (usize, Pixels) {
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let top = state.read_with(cx, |state, _| state.logical_scroll_top());
+        (top.item_ix, top.offset_in_item)
+    }
+
+    #[gpui::test]
+    fn pages_through_the_rows(cx: &mut gpui::TestAppContext) {
+        let (state, cx) = paged(cx);
+        let page = state.read_with(cx, |state, _| state.viewport_height());
+        assert_eq!(page, px(200.));
+        assert!(state.read_with(cx, |state, _| state.is_following_tail()));
+
+        // A page up from the end stops following the tail.
+        let end = top(&state, cx);
+        state.update(cx, |state, cx| state.scroll_by(-page, cx));
+        let place = top(&state, cx);
+        assert_ne!(place, end);
+        state.read_with(cx, |state, _| {
+            assert!(!state.is_following_tail());
+            assert!(state.is_scrolled_up());
+        });
+
+        // A page down from there is back at the end.
+        state.update(cx, |state, cx| state.scroll_by(page, cx));
+        assert_eq!(top(&state, cx), end);
+
+        // A place kept with `logical_scroll_top` comes back after scrolling
+        // elsewhere.
+        state.update(cx, |state, cx| state.scroll_to_item(0, cx));
+        assert_eq!(top(&state, cx), (0, px(0.)));
+        state.update(cx, |state, cx| state.scroll_by(px(25.), cx));
+        assert_eq!(top(&state, cx), (0, px(25.)));
+        state.update(cx, |state, cx| {
+            state.scroll_to_offset(
+                ListOffset {
+                    item_ix: place.0,
+                    offset_in_item: place.1,
+                },
+                cx,
+            )
+        });
+        assert_eq!(top(&state, cx), place);
     }
 }

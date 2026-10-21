@@ -208,15 +208,30 @@ if let Some(index) = messages.iter().position(|message| message.id == unread_id)
 }
 ```
 
-`scroll_to_item(...)` returns `false` for an out-of-range index. It is the
-single navigation primitive: an unread boundary, a search result, a bookmarked
-message, a reply target, and a deep link all resolve to an index in the
-application first.
+`scroll_to_item(...)` returns `false` for an out-of-range index. An unread
+boundary, a search result, a bookmarked message, a reply target, and a deep
+link all resolve to an index in the application first.
 
 The current API does not expose turn anchors, peek previews, visible IDs, or
 stable-ID navigation. Map domain IDs to the current index in the application;
 keep an index map if lookup cost matters. The scroller does not know whether a
 row is a turn, a reply, an unread boundary, or a search result.
+
+## Page and keep the reader's place
+
+`scroll_by(distance, cx)` scrolls by a distance, down when it's positive, and
+`viewport_height()` gives the height to page by. Scrolling up stops following
+the tail, as the scroll wheel does, and reaching the end again resumes it.
+
+```rust
+// Page Up, keeping a tenth of the page before in view.
+let page = scroller.read(cx).viewport_height() * 0.9;
+scroller.update(cx, |state, cx| state.scroll_by(-page, cx));
+```
+
+`logical_scroll_top()` is the row at the top of the viewport and how far into
+that row the viewport starts. Keep it, and put it back later with
+`scroll_to_offset(...)` to return the reader to the same place.
 
 ## Dynamic row heights and structural updates
 
@@ -386,6 +401,10 @@ model around this component.
 | `remeasure_items(range, cx)` | `true` if valid | Remeasure selected dynamic rows. |
 | `scroll_to_item(index, cx)` | `false` if out of range | Navigate to an arbitrary row index. |
 | `scroll_to_end(cx)` | tail following enabled | Move to the latest row and resume following. |
+| `scroll_by(distance, cx)` | stops following upward | Scroll by a distance, down when positive. |
+| `logical_scroll_top()` | `ListOffset` | Read the row at the top of the viewport and the offset into it. |
+| `scroll_to_offset(offset, cx)` | — | Put a kept `ListOffset` back at the top of the viewport. |
+| `viewport_height()` | zero before the first draw | Read the viewport's height, to page by. |
 
 ### `MessageScroller`
 
