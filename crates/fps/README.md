@@ -42,8 +42,8 @@ gpui-fps = { git = "https://github.com/longbridge/gpui-kit" }
 ```
 
 It must resolve to the same `gpui` as your application. Both depending on the
-same `gpui-pre` version is enough — Cargo unifies them — but a `[patch]`, a
-different `gpui-pre` version, or a checkout of the Zed repository will produce
+same `mhr-gpui` version is enough — Cargo unifies them — but a `[patch]`, a
+different `mhr-gpui` version, or a checkout of the Zed repository will produce
 two incompatible `gpui` crates, and the error will be about mismatched `Window`
 types rather than about versions.
 

@@ -1,4 +1,4 @@
-//! Golden screenshots of GPUI Kit components, rendered by the gpui fork's gpui-pre-screenshot
+//! Golden screenshots of GPUI Kit components, rendered by the gpui fork's mhr-gpui-screenshot
 //! on Mesa's software Vulkan driver. The goldens live in `tests/screenshots`. On a mismatch the
 //! actual image and a diff go to `tests/screenshots/failures`, and `UPDATE_GOLDENS=1` rewrites
 //! the goldens. The gpui fork's `docs/screenshots.md` explains how to review and update them.

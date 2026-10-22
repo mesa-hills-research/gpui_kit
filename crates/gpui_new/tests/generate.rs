@@ -168,32 +168,28 @@ fn the_manifest_parses_and_names_the_crate() {
     }
 }
 
-/// New apps patch the gpui crates to the fork at the commit the kit's own
-/// `[patch.crates-io]` names, since Cargo applies only the app's patches.
+/// New apps get GPUI from the kit, which pins the published `mhr-gpui` crates,
+/// so their manifest names no GPUI crate and needs no patch for one.
 #[test]
-fn the_manifest_patches_gpui_to_the_kits_fork() {
-    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
-    let text = fs::read_to_string(&workspace).unwrap();
-    let workspace = text.parse::<toml::Table>().unwrap();
-    let kit_patch = workspace["patch"]["crates-io"].as_table().unwrap();
-    assert_eq!(
-        kit_patch["gpui-pre"]["rev"].as_str(),
-        Some(gpui_new::GPUI_REV)
-    );
-
-    let dir = scratch("patched");
+fn the_manifest_takes_gpui_from_the_kit() {
+    let dir = scratch("unpatched");
     run_ok(&[dir.to_str().unwrap(), "--no-git"]);
     let manifest = read_manifest(&dir);
-    let patch = manifest["patch"]["crates-io"].as_table().unwrap();
-    assert!(patch.contains_key("gpui-pre"));
-    for (name, entry) in patch {
-        let kit_entry = kit_patch
-            .get(name)
-            .unwrap_or_else(|| panic!("the kit doesn't patch {name}"));
-        assert_eq!(entry["git"].as_str(), Some(gpui_new::GPUI_GIT), "{name}");
-        assert_eq!(entry["git"].as_str(), kit_entry["git"].as_str(), "{name}");
-        assert_eq!(entry["rev"].as_str(), kit_entry["rev"].as_str(), "{name}");
+    assert!(manifest.get("patch").is_none(), "the app patches crates");
+
+    let dependencies = manifest["dependencies"].as_table().unwrap();
+    assert!(dependencies.contains_key("gpui-kit"));
+    for name in dependencies.keys() {
+        assert!(
+            !name.starts_with("gpui") || name == "gpui-kit",
+            "the app depends on {name} itself"
+        );
     }
+
+    let text = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+    assert!(!text.contains("gpui-pre"), "the manifest names gpui-pre");
+    let optimized = manifest["profile"]["dev"]["package"].as_table().unwrap();
+    assert!(optimized.contains_key("mhr-gpui"));
 }
 
 #[test]

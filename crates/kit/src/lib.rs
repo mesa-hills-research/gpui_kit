@@ -1,8 +1,8 @@
 //! GPUI Kit: one dependency for building desktop applications with GPUI.
 //!
-//! GPUI itself is published as a family of `gpui-pre-*` crates that move
-//! together. This crate depends on the matching set for you, so an
-//! application lists `gpui-kit` alone. `use gpui_kit::*;` is GPUI, and each
+//! GPUI itself is published as a family of `mhr-gpui-*` crates, Mesa Hills
+//! Research's fork of Zed's gpui. This crate depends on the matching set for
+//! you, so an application lists `gpui-kit` alone. `use gpui_kit::*;` is GPUI, and each
 //! layer is reachable by name:
 //!
 //! | Path            | Crate              | Feature          |

@@ -62,19 +62,19 @@ gpui-component-shell = { path = "crates/component-shell", version = "0.7.1" }
 gpui-kit-writing = { path = "crates/writing", version = "0.7.1" }
 story = { path = "crates/story" }
 
-# GPUI comes from the `gpui-pre-*` snapshots of Zed's crates, and any snapshot
-# may change GPUI's API. These requirements are what the published gpui-kit
-# crates carry to crates.io, so they pin the exact snapshot the release was
-# built against: a caret requirement let the weekly release move applications
-# onto a newer snapshot that gpui-component did not compile with (#3156). Bump
-# every snapshot crate together with its Cargo.lock entry; `script/check-gpui-pin.ts`
-# fails CI when a pin is not exact.
-gpui = { package = "gpui-pre", version = "=0.3.8" }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-gpui_web = { package = "gpui-pre-web", version = "=0.3.8" }
-gpui_macros = { package = "gpui-pre-macros", version = "=0.3.8" }
-reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.8" }
-sum-tree = { package = "gpui-pre-sum-tree", version = "=0.3.8" }
+# GPUI comes from the `mhr-gpui` crates, Mesa Hills Research's fork of Zed's gpui,
+# published on crates.io. The published gpui-kit crates carry these requirements to
+# crates.io, so they pin the exact release each kit release was built against: a caret
+# requirement lets a new release of one gpui crate reach applications that the
+# other gpui crates and gpui-component were not built with. Crates that changed in a
+# release carry its version and the others keep the version they were published at.
+# `script/check-gpui-pin.ts` fails CI when a pin is not exact.
+gpui = { package = "mhr-gpui", version = "=0.1.1" }
+gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.1", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui_web = { package = "mhr-gpui-web", version = "=0.1.1" }
+gpui_macros = { package = "mhr-gpui-macros", version = "=0.1.0" }
+reqwest_client = { package = "mhr-reqwest-client", version = "=0.1.0" }
+sum-tree = { package = "mhr-sum-tree", version = "=0.1.0" }
 reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
     "charset",
     "http2",
@@ -151,15 +151,15 @@ rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
 smol = { opt-level = 3 }
-gpui-pre = { opt-level = 3 }
-gpui-pre-platform = { opt-level = 3 }
-gpui-pre-macros = { opt-level = 3 }
+mhr-gpui = { opt-level = 3 }
+mhr-gpui-platform = { opt-level = 3 }
+mhr-gpui-macros = { opt-level = 3 }
 mesquite = { opt-level = 3 }
 mesquite_language = { opt-level = 3 }
-gpui-pre-sum-tree = { opt-level = 3 }
+mhr-sum-tree = { opt-level = 3 }
 ropey = { opt-level = 3 }
 lsp-types = { opt-level = 3 }
-gpui-pre-reqwest-client = { opt-level = 3 }
+mhr-reqwest-client = { opt-level = 3 }
 markdown = { opt-level = 3 }
 xml5ever = { opt-level = 3 }
 # `quickjs-jit` is a facade that re-exports `quickjs-jit-core`, so naming it alone
@@ -179,37 +179,15 @@ cap-std = { opt-level = 3 }
 # the shell and LLRT share the exact same quickjs-jit types and VM.
 rquickjs = { path = "crates/shell/rquickjs-compat" }
 
-# GPUI from Mesa Hills Research's fork of the gpui-pre crates, which keeps
-# their names and versions so the =0.3.8 pins above resolve to it. Every
-# entry, and gpui-screenshot in crates/kit/Cargo.toml, names the same rev:
-# move them together. New apps from crates/gpui_new take the rev of the
-# gpui-pre entry. To build against a local checkout instead, see "Working on
-# the gpui fork alongside" in crates/kit/TESTING.md.
-gpui-pre                   = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-apple             = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-bench-metrics     = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-collections       = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-derive-refineable = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-http-client       = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-http-client-tls   = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-linux             = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-macos             = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-macros            = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-perf              = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-platform          = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-refineable        = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-reqwest-client    = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-scheduler         = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-shared-string     = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-sum-tree          = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-util              = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-util-macros       = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-web               = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-wgpu              = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-windows           = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-zlog              = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-ztracing          = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
-gpui-pre-ztracing-macro    = { git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
+# The golden-image harness for crates/kit/tests/screenshots.rs is not published, so
+# `gpui-screenshot` in crates/kit/Cargo.toml takes it from the gpui repository, and its
+# dependencies on `mhr-gpui` and `mhr-gpui-wgpu` would otherwise build a second copy of
+# GPUI from git. These entries give it the published crates the rest of the workspace
+# uses, so the harness and the kit share one set of GPUI types. The versions are the
+# harness's own requirements, so move them with `gpui-screenshot`'s rev.
+[patch."https://github.com/mesa-hills-research/gpui"]
+mhr-gpui = "=0.1.1"
+mhr-gpui-wgpu = "=0.1.1"
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]

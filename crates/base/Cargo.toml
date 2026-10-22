@@ -94,7 +94,7 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsA
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The reduced-motion preference, through the XDG desktop portal's Settings
-# interface. The same version and features `gpui-pre-linux` already pulls in.
+# interface. The same version and features `mhr-gpui-linux` already pulls in.
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
 
 [dev-dependencies]

@@ -107,11 +107,12 @@ gpui-kit-assets = { workspace = true, features = ["fonts"] }
 lsp-types.workspace = true
 serde_json.workspace = true
 
-# The golden-image harness for tests/screenshots.rs, from the gpui fork at the same rev as the gpui
-# crates in the workspace's [patch.crates-io]. Its goldens are drawn by Mesa's software Vulkan
-# driver, on Linux.
+# The golden-image harness for tests/screenshots.rs. It is not published, so it comes from the gpui
+# repository at the commit the published mhr-gpui crates were cut from, and the workspace's
+# [patch."https://github.com/mesa-hills-research/gpui"] gives it those published crates. Its goldens
+# are drawn by Mesa's software Vulkan driver, on Linux.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-gpui-screenshot = { package = "gpui-pre-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "f81901422286163d323daf3d100c082282fe1729" }
+gpui-screenshot = { package = "mhr-gpui-screenshot", git = "https://github.com/mesa-hills-research/gpui", rev = "007875d12ce2b30d93ca04659b0c4fb2632ae44a" }
 # The Rust grammar, so the diff view's goldens color their Rust the same way whether the build
 # enables only the kit's default features or every grammar, as a workspace build with the story
 # crate does.
