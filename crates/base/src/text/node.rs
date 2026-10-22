@@ -2454,7 +2454,7 @@ impl CodeBlock {
 }
 
 /// A context for rendering nodes, contains link references.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct NodeContext {
     /// The byte offset of the node in the original markdown text.
     /// Used for incremental updates.
@@ -2475,6 +2475,26 @@ pub(crate) struct NodeContext {
     pub(crate) range_highlights: Option<Arc<RangeHighlightFrame>>,
     /// The line being scrolled into view, when there is one.
     pub(crate) reveal: Option<RevealRequest>,
+}
+
+impl Default for NodeContext {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            link_refs: HashMap::default(),
+            style: TextViewStyle::shared_default(),
+            code_block_actions: None,
+            code_block_highlighter: None,
+            code_block_max_lines: None,
+            table_actions: None,
+            image_source: None,
+            link_click_handler: None,
+            markdown_extensions: Arc::default(),
+            stream_fade: None,
+            range_highlights: None,
+            reveal: None,
+        }
+    }
 }
 
 impl NodeContext {

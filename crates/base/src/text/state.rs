@@ -175,20 +175,23 @@ pub struct TextViewState {
 /// The background parse of a [`TextViewState`]'s text, and the task that
 /// commits its results.
 struct BackgroundParser {
-    tx: Sender<UpdateOptions>,
+    /// Updates go boxed. A channel keeps room for 31 messages of the size it
+    /// carries once it has had one, which for every text view was about 12 KB
+    /// of unused slots at the size of an update.
+    tx: Sender<Box<UpdateOptions>>,
     _parse_task: Task<()>,
     _receive_task: Task<()>,
 }
 
 impl BackgroundParser {
     fn new(format: TextViewFormat, cx: &mut Context<TextViewState>) -> Self {
-        let (tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
+        let (tx, rx) = unbounded::<Box<UpdateOptions>>();
+        let (tx_result, rx_result) = unbounded::<Box<ParsedUpdate>>();
         let _receive_task = cx.spawn({
             async move |weak_self, cx| {
                 while let Ok(parsed_update) = rx_result.recv().await {
                     _ = weak_self.update(cx, |state, cx| {
-                        state.commit_parsed_update(parsed_update, cx);
+                        state.commit_parsed_update(*parsed_update, cx);
                     });
                 }
             }
@@ -358,7 +361,7 @@ impl TextViewState {
             // as zero height until scrolled into view, which makes the
             // scrollbar jitter as more blocks get measured during scrolling.
             list_state: ListState::new(0, gpui::ListAlignment::Top, px(1000.)).measure_all(),
-            text_view_style: Arc::default(),
+            text_view_style: TextViewStyle::shared_default(),
             code_block_actions: None,
             code_block_highlighter: None,
             table_actions: None,
@@ -819,14 +822,14 @@ impl TextViewState {
             self.full_update_revision = self.revision;
             self.selection_revision = self.selection_revision.wrapping_add(1);
             if let Some(parser) = &self.parser {
-                _ = parser.tx.try_send(UpdateOptions {
+                _ = parser.tx.try_send(Box::new(UpdateOptions {
                     revision: self.revision,
                     append: false,
                     mode: ParseMode::Replace,
                     pending_text: self.text.clone(),
                     markdown_extensions: self.markdown_extensions.clone(),
                     baseline: None,
-                });
+                }));
             }
         }
         self
@@ -1078,12 +1081,18 @@ impl TextViewState {
             // Keep the background parser's accumulated document in sync so a
             // later append extends this baseline instead of parsing the delta
             // as a standalone document.
-            _ = self.background_parser(cx).tx.try_send(update_options);
+            _ = self
+                .background_parser(cx)
+                .tx
+                .try_send(Box::new(update_options));
             cx.notify();
             return;
         }
 
-        _ = self.background_parser(cx).tx.try_send(update_options);
+        _ = self
+            .background_parser(cx)
+            .tx
+            .try_send(Box::new(update_options));
     }
 
     /// The background parser, started now if the state had none.
@@ -1712,15 +1721,15 @@ pub(crate) struct ParsedContent {
 struct UpdateFuture {
     format: TextViewFormat,
     content: ParsedContent,
-    rx: Pin<Box<Receiver<UpdateOptions>>>,
-    tx_result: Sender<ParsedUpdate>,
+    rx: Pin<Box<Receiver<Box<UpdateOptions>>>>,
+    tx_result: Sender<Box<ParsedUpdate>>,
 }
 
 impl UpdateFuture {
     fn new(
         format: TextViewFormat,
-        rx: Receiver<UpdateOptions>,
-        tx_result: Sender<ParsedUpdate>,
+        rx: Receiver<Box<UpdateOptions>>,
+        tx_result: Sender<Box<ParsedUpdate>>,
     ) -> Self {
         Self {
             format,
@@ -1737,7 +1746,8 @@ impl Future for UpdateFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
             match self.rx.as_mut().poll_next(cx) {
-                Poll::Ready(Some(mut options)) => {
+                Poll::Ready(Some(options)) => {
+                    let mut options = *options;
                     let hit_coalesce_budget =
                         merge_pending_options(&mut options, self.rx.as_ref().get_ref());
 
@@ -1748,13 +1758,13 @@ impl Future for UpdateFuture {
                     if let Ok(content) = &res {
                         self.content = content.clone();
                     }
-                    _ = self.tx_result.try_send(ParsedUpdate {
+                    _ = self.tx_result.try_send(Box::new(ParsedUpdate {
                         revision: options.revision,
                         full_parse: !options.append,
                         selection_compatible: options.mode == ParseMode::Compatible,
                         baseline_ack: options.mode == ParseMode::BaselineAck,
                         result: res,
-                    });
+                    }));
                     if hit_coalesce_budget {
                         cx.waker().wake_by_ref();
                         return Poll::Pending;
@@ -1835,13 +1845,13 @@ fn differs_only_around(old: &str, new: &str) -> bool {
     indentation(old) == indentation(new)
 }
 
-fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOptions>) -> bool {
+fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<Box<UpdateOptions>>) -> bool {
     let mut update_count = 1;
 
     while update_count < MAX_COALESCED_UPDATES_PER_PARSE {
         match rx.try_recv() {
             Ok(next_options) => {
-                options.merge(next_options);
+                options.merge(*next_options);
                 update_count += 1;
             }
             Err(_) => return false,
@@ -2667,12 +2677,12 @@ mod tests {
 
     #[test]
     fn update_future_yields_before_coalescing_all_queued_updates() {
-        let (tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
+        let (tx, rx) = unbounded::<Box<UpdateOptions>>();
+        let (tx_result, rx_result) = unbounded::<Box<ParsedUpdate>>();
         let total_updates = 128;
 
         for revision in 1..=total_updates {
-            tx.try_send(UpdateOptions {
+            tx.try_send(Box::new(UpdateOptions {
                 revision,
                 pending_text: format!("{revision}\n"),
                 append: revision != 1,
@@ -2683,7 +2693,7 @@ mod tests {
                 },
                 markdown_extensions: Arc::default(),
                 baseline: None,
-            })
+            }))
             .unwrap();
         }
 
@@ -2716,8 +2726,8 @@ mod tests {
     /// than parsing the text again and keeping a second copy.
     #[test]
     fn the_background_parser_takes_the_baseline_it_is_given_and_extends_it() {
-        let (tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
+        let (tx, rx) = unbounded::<Box<UpdateOptions>>();
+        let (tx_result, rx_result) = unbounded::<Box<ParsedUpdate>>();
         let options = |revision, text: &str, append, mode, baseline| UpdateOptions {
             revision,
             pending_text: text.to_string(),
@@ -2737,13 +2747,13 @@ mod tests {
         let mut task_cx = std::task::Context::from_waker(&waker);
 
         // Text that parses to something else shows if the update is parsed.
-        tx.try_send(options(
+        tx.try_send(Box::new(options(
             1,
             "not what the baseline is",
             false,
             ParseMode::BaselineAck,
             Some(baseline.clone()),
-        ))
+        )))
         .unwrap();
         assert!(matches!(
             std::future::Future::poll(future.as_mut(), &mut task_cx),
@@ -2759,8 +2769,14 @@ mod tests {
             &baseline.document.blocks
         ));
 
-        tx.try_send(options(2, "\n\nthird", true, ParseMode::Compatible, None))
-            .unwrap();
+        tx.try_send(Box::new(options(
+            2,
+            "\n\nthird",
+            true,
+            ParseMode::Compatible,
+            None,
+        )))
+        .unwrap();
         assert!(matches!(
             std::future::Future::poll(future.as_mut(), &mut task_cx),
             Poll::Pending
@@ -2812,6 +2828,34 @@ mod tests {
 
         assert!(options.baseline.is_none());
         assert_eq!(options.pending_text, "old more");
+    }
+
+    /// A style takes about 3 KB, so views that were not given one share the
+    /// default instead of each building their own.
+    #[gpui::test]
+    fn text_views_without_a_style_share_the_default_one(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (first, second) = cx.update(|cx| {
+            (
+                cx.new(|cx| TextViewState::markdown("first", cx)),
+                cx.new(|cx| TextViewState::markdown("second", cx)),
+            )
+        });
+        cx.run_until_parked();
+
+        let style = |state: &Entity<TextViewState>, cx: &TestAppContext| {
+            state.read_with(cx, |state, _| {
+                (
+                    state.text_view_style.clone(),
+                    state.parsed_content.node_cx.style.clone(),
+                )
+            })
+        };
+        let (first_style, first_parsed) = style(&first, cx);
+        let (second_style, second_parsed) = style(&second, cx);
+        assert!(Arc::ptr_eq(&first_style, &second_style));
+        assert!(Arc::ptr_eq(&first_style, &first_parsed));
+        assert!(Arc::ptr_eq(&first_style, &second_parsed));
     }
 
     #[gpui::test]

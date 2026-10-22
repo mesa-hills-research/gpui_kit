@@ -11,8 +11,9 @@ use gpui_base::text::TextViewState;
 mod support;
 
 /// How many bytes of heap a parsed answer may take for each byte of its
-/// Markdown. Parsing the text twice and keeping both documents took 86.
-const BYTES_PER_SOURCE_BYTE: f64 = 60.;
+/// Markdown. Parsing the text twice and keeping both documents took 86, and
+/// giving every view its own style and message channels took 53.
+const BYTES_PER_SOURCE_BYTE: f64 = 48.;
 
 #[test]
 fn parsed_markdown_takes_a_bounded_number_of_bytes_for_each_byte_of_source() {

@@ -59,6 +59,16 @@ impl Default for TextViewStyle {
 }
 
 impl TextViewStyle {
+    /// The default style, one copy for every text view and parse that has
+    /// not been given another. A style takes about 3 KB, and each text view
+    /// and each parse used to build its own.
+    pub(crate) fn shared_default() -> Arc<Self> {
+        static DEFAULT: std::sync::OnceLock<Arc<TextViewStyle>> = std::sync::OnceLock::new();
+        DEFAULT.get_or_init(Arc::default).clone()
+    }
+}
+
+impl TextViewStyle {
     /// Derives rich-text colors from Base semantic theme tokens.
     pub fn from_theme(theme: &crate::Theme) -> Self {
         Self::from_colors(
