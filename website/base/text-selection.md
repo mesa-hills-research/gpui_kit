@@ -177,7 +177,8 @@ selection covers it stays in the selection until the selection ends.
 for those elements, so separate views, such as the messages of a conversation,
 can form one document. A `SelectableText` that leaves the frame stays in the
 selection only when it was made with `SelectableText::with_handle` and the
-application keeps the handle.
+application keeps the handle. One that holds an end of the selection copies
+only the part that is selected, and any `u64` can be a position.
 
 ## Project selection onto text runs
 

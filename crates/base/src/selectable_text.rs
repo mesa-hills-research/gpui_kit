@@ -498,6 +498,178 @@ mod tests {
         assert_eq!(kept, selected);
     }
 
+    const ROWS: [&str; 4] = ["alpha beta", "gamma delta", "epsilon zeta", "eta theta"];
+
+    /// Four runs of one document, each in its own 32px row, that a test can
+    /// stop drawing one by one. The first position is `first`.
+    struct DocumentRows {
+        handles: [TextSelectionHandle; 4],
+        shown: [bool; 4],
+        first: u64,
+        layouts: Rc<RefCell<[Option<gpui::TextLayout>; 4]>>,
+    }
+
+    impl Render for DocumentRows {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let mut rows = div().size_full().child(TextSelectionLayer);
+            for ix in 0..4 {
+                if !self.shown[ix] {
+                    continue;
+                }
+                let text =
+                    SelectableText::with_handle(("row", ix), self.handles[ix].clone(), ROWS[ix])
+                        .document_position(3, self.first + ix as u64);
+                self.layouts.borrow_mut()[ix] = Some(text.layout().clone());
+                rows = rows.child(div().h(px(32.)).child(text));
+            }
+            rows
+        }
+    }
+
+    impl DocumentRows {
+        fn open(
+            first: u64,
+            cx: &mut TestAppContext,
+        ) -> (
+            gpui::Entity<Self>,
+            &mut gpui::VisualTestContext,
+            Rc<RefCell<[Option<gpui::TextLayout>; 4]>>,
+        ) {
+            cx.update(crate::init);
+            let layouts = Rc::new(RefCell::new([None, None, None, None]));
+            let (view, cx) = cx.add_window_view({
+                let layouts = layouts.clone();
+                move |_, cx| Self {
+                    handles: ROWS.map(|text| TextSelectionHandle::new(text, cx)),
+                    shown: [true; 4],
+                    first,
+                    layouts,
+                }
+            });
+            draw(cx);
+            (view, cx, layouts)
+        }
+    }
+
+    fn draw(cx: &mut gpui::VisualTestContext) {
+        for _ in 0..3 {
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        }
+    }
+
+    fn selected(cx: &mut gpui::VisualTestContext) -> String {
+        cx.update(|window, cx| TextSelection::selected_text(window, cx))
+    }
+
+    /// Where byte `offset` of row `ix` is drawn.
+    fn row_point(
+        layouts: &Rc<RefCell<[Option<gpui::TextLayout>; 4]>>,
+        ix: usize,
+        offset: usize,
+    ) -> gpui::Point<gpui::Pixels> {
+        let layout = layouts.borrow()[ix].clone().unwrap();
+        layout.position_for_index(offset).unwrap() + point(px(0.), px(8.))
+    }
+
+    /// Presses at `from`, drags to `to` and lets go there.
+    fn drag_across(
+        cx: &mut gpui::VisualTestContext,
+        from: gpui::Point<gpui::Pixels>,
+        to: gpui::Point<gpui::Pixels>,
+    ) {
+        press_and_drag(cx, from, to);
+        cx.simulate_mouse_up(to, MouseButton::Left, Modifiers::default());
+        draw(cx);
+    }
+
+    /// Presses at `from` and drags to `to`, holding the button.
+    fn press_and_drag(
+        cx: &mut gpui::VisualTestContext,
+        from: gpui::Point<gpui::Pixels>,
+        to: gpui::Point<gpui::Pixels>,
+    ) {
+        cx.simulate_mouse_down(from, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(to, Some(MouseButton::Left), Modifiers::default());
+        draw(cx);
+    }
+
+    fn hide(view: &gpui::Entity<DocumentRows>, rows: &[usize], cx: &mut gpui::VisualTestContext) {
+        view.update(cx, |view, cx| {
+            for &ix in rows {
+                view.shown[ix] = false;
+            }
+            cx.notify();
+        });
+        draw(cx);
+    }
+
+    /// The run holding the start of a selection copies the selected part
+    /// after it stops being drawn, not its whole text, and follows the
+    /// selection as the drag goes on.
+    #[gpui::test]
+    fn an_undrawn_run_holding_the_selection_start_copies_only_the_selected_part(
+        cx: &mut TestAppContext,
+    ) {
+        let (view, cx, layouts) = DocumentRows::open(10, cx);
+        press_and_drag(cx, row_point(&layouts, 0, 6), row_point(&layouts, 1, 5));
+        assert_eq!(selected(cx), "beta\ngamma");
+
+        hide(&view, &[0], cx);
+        assert_eq!(selected(cx), "beta\ngamma");
+
+        let end = row_point(&layouts, 1, 8);
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        draw(cx);
+        assert_eq!(selected(cx), "beta\ngamma de");
+    }
+
+    /// The same, for the run holding the end of a selection.
+    #[gpui::test]
+    fn an_undrawn_run_holding_the_selection_end_copies_only_the_selected_part(
+        cx: &mut TestAppContext,
+    ) {
+        let (view, cx, layouts) = DocumentRows::open(10, cx);
+        drag_across(cx, row_point(&layouts, 0, 6), row_point(&layouts, 1, 5));
+        hide(&view, &[1, 2, 3], cx);
+        assert_eq!(selected(cx), "beta\ngamma");
+    }
+
+    /// A run that is not drawn and holds no end is inside the selection, so
+    /// it copies whole.
+    #[gpui::test]
+    fn an_undrawn_run_between_the_ends_copies_whole(cx: &mut TestAppContext) {
+        let (view, cx, layouts) = DocumentRows::open(10, cx);
+        let from = row_point(&layouts, 0, 6);
+        let to = row_point(&layouts, 2, 7);
+        drag_across(cx, from, to);
+        assert_eq!(selected(cx), "beta\ngamma delta\nepsilon");
+        hide(&view, &[0, 1], cx);
+        assert_eq!(selected(cx), "beta\ngamma delta\nepsilon");
+    }
+
+    /// Document positions past what a pixel coordinate can tell apart keep
+    /// the selection when two runs holding its ends stop being drawn.
+    #[gpui::test]
+    fn runs_at_very_large_positions_keep_a_selection_when_both_ends_are_undrawn(
+        cx: &mut TestAppContext,
+    ) {
+        for first in [1 << 20, 1 << 25, 1 << 26, 1 << 40, u64::MAX - 3] {
+            let (view, cx, layouts) = DocumentRows::open(first, cx);
+            drag_across(cx, row_point(&layouts, 0, 6), row_point(&layouts, 1, 5));
+            assert_eq!(selected(cx), "beta\ngamma", "drawn, from position {first}");
+
+            hide(&view, &[0, 1], cx);
+            assert_eq!(
+                selected(cx),
+                "beta\ngamma",
+                "undrawn, from position {first}"
+            );
+        }
+    }
+
     #[gpui::test]
     fn highlighted_text_keeps_unicode_selection(cx: &mut TestAppContext) {
         struct HighlightedText;

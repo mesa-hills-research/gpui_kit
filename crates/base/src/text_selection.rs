@@ -278,8 +278,8 @@ impl TextSelectionRegistration {
     /// frame, where others are ordered by [`Self::with_document_order`] in
     /// each frame. A participant of a document that stops being drawn while
     /// a selection covers it stays in the selection. An end of the selection
-    /// in it holds, its text is copied with the rest, and it shows as
-    /// selected again when it comes back.
+    /// in it holds, its selected text is copied with the rest, and it shows
+    /// as selected again when it comes back. Any `u64` can be a position.
     pub fn with_document_position(mut self, document: u64, position: u64) -> Self {
         self.document_position = Some((document, position));
         self
@@ -714,6 +714,28 @@ fn resolve_copy_items(mut items: Vec<CopyItem>, cx: &mut App) -> String {
     copied
 }
 
+/// The text of the selected ranges of `runs`, in the order of the runs.
+fn selected_copy_text(runs: &[TextSelectionRun], states: &TextSelectionProjection) -> String {
+    let mut selected_runs = runs
+        .iter()
+        .zip(states.ranges())
+        .enumerate()
+        .filter_map(|(index, (run, state))| {
+            state.as_ref().map(|range| {
+                debug_assert!(run.text.is_char_boundary(range.start));
+                debug_assert!(run.text.is_char_boundary(range.end));
+                (
+                    run.document_order,
+                    index,
+                    run.text[range.clone()].to_string(),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    selected_runs.sort_by_key(|(order, index, _)| (*order, *index));
+    selected_runs.into_iter().map(|(_, _, text)| text).collect()
+}
+
 fn dispatch_clear_handlers(handlers: Vec<ClearHandler>, cx: &mut App) {
     for handler in handlers {
         handler(cx);
@@ -724,6 +746,9 @@ struct SelectableTextState {
     fallback_copy_text: String,
     projected_copy_text: Option<String>,
     runs: Vec<TextSelectionRun>,
+    /// The runs of a participant that stopped being drawn while it held an
+    /// end of the selection, kept to copy only the part that is selected.
+    undrawn_runs: Vec<TextSelectionRun>,
     local_selection: bool,
     snapshot: Option<TextSelectionSnapshot>,
     on_focus: Option<FocusCallback>,
@@ -745,6 +770,7 @@ impl SelectableTextState {
             fallback_copy_text: fallback_copy_text.into(),
             projected_copy_text: None,
             runs: Vec::new(),
+            undrawn_runs: Vec::new(),
             local_selection: false,
             snapshot: None,
             on_focus: None,
@@ -781,27 +807,32 @@ impl SelectableTextState {
     /// never returns text from a previous projection while waiting to repaint.
     fn update_runs(&mut self, runs: &[TextSelectionRun]) -> TextSelectionProjection {
         self.runs = runs.to_vec();
+        self.undrawn_runs = Vec::new();
         let states = project_ranges(self.snapshot, runs);
-        let mut selected_runs = runs
-            .iter()
-            .zip(states.ranges())
-            .enumerate()
-            .filter_map(|(index, (run, state))| {
-                state.as_ref().map(|range| {
-                    debug_assert!(run.text.is_char_boundary(range.start));
-                    debug_assert!(run.text.is_char_boundary(range.end));
-                    (
-                        run.document_order,
-                        index,
-                        run.text[range.clone()].to_string(),
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-        selected_runs.sort_by_key(|(order, index, _)| (*order, *index));
-        self.projected_copy_text =
-            Some(selected_runs.into_iter().map(|(_, _, text)| text).collect());
+        self.projected_copy_text = Some(selected_copy_text(runs, &states));
         states
+    }
+
+    /// Keeps the runs of a participant that stops being drawn while it holds
+    /// an end of the selection, so that it goes on copying only the part of
+    /// them that is selected.
+    fn keep_runs_undrawn(&mut self) {
+        self.undrawn_runs = std::mem::take(&mut self.runs);
+    }
+
+    /// Projects the runs kept by [`Self::keep_runs_undrawn`] onto `points`
+    /// and caches their selected text, unless the cache still holds the
+    /// text of the current snapshot.
+    fn project_undrawn(&mut self, points: TextSelectionWindowPoints) {
+        let Some(snapshot) = self.snapshot else {
+            return;
+        };
+        if self.projected_copy_text.is_some() || self.undrawn_runs.is_empty() {
+            return;
+        }
+        let snapshot = snapshot.with_window_points(Some(points));
+        let states = project_ranges(Some(snapshot), &self.undrawn_runs);
+        self.projected_copy_text = Some(selected_copy_text(&self.undrawn_runs, &states));
     }
 
     /// Installs the callback which focuses the participant when a drag begins in it.
@@ -845,6 +876,7 @@ impl SelectableTextState {
     fn clear_state(&mut self, cx: &mut Context<Self>) -> Option<ClearHandler> {
         self.snapshot = None;
         self.projected_copy_text = None;
+        self.undrawn_runs = Vec::new();
         self.local_selection = false;
         cx.emit(TextSelectionEvent::Cleared);
         cx.emit(TextSelectionEvent::SelectionChanged(None));
@@ -1188,6 +1220,40 @@ impl SelectionEndpoint {
     }
 }
 
+/// How far above or below the drawn text an end in a row no longer drawn is
+/// placed. It only has to lie beyond any text that can be drawn.
+const BEYOND_DRAWN: Pixels = px(1_000_000.);
+
+/// Where a selection end is, for the rows that paint the selection.
+///
+/// A row of a long document is told apart from the others by its position,
+/// which can be larger than a pixel coordinate can hold exactly, so an end
+/// in a row no longer drawn is kept as a side of the drawn text and never as
+/// a distance from it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum EndPlacement {
+    /// At a point in window coordinates.
+    At(Point<Pixels>),
+    /// In a row that comes before every drawn row of its document.
+    BeforeDrawn,
+    /// In a row that comes after every drawn row of its document.
+    AfterDrawn,
+}
+
+impl EndPlacement {
+    fn point(self) -> Point<Pixels> {
+        match self {
+            Self::At(point) => point,
+            Self::BeforeDrawn => point(px(0.), -BEYOND_DRAWN),
+            Self::AfterDrawn => point(px(0.), BEYOND_DRAWN),
+        }
+    }
+
+    fn is_beyond_drawn(self) -> bool {
+        !matches!(self, Self::At(_))
+    }
+}
+
 /// What a long press left behind: the handles and the edit menu.
 ///
 /// The presentation layer draws both and reports their bounds each frame, so
@@ -1419,8 +1485,22 @@ impl WindowSelectionState {
                 if let Some(registration) = self.participants.get_mut(&id) {
                     registration.offscreen = true;
                 }
+                // A row holding an end of the selection goes on copying its
+                // selected part, which needs its text as it was laid out. The
+                // other rows are copied whole, and hold nothing shaped. A row
+                // with a copy of its own, like a text view, makes its text.
+                let holds_end = [self.anchor.as_ref(), self.cursor.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|end| end.entity_id() == Some(id));
                 if let Some(participant) = participant.upgrade() {
-                    participant.update(cx, |state, _| state.runs = Vec::new());
+                    participant.update(cx, |state, _| {
+                        if holds_end && state.copy.is_none() {
+                            state.keep_runs_undrawn();
+                        } else {
+                            state.runs = Vec::new();
+                        }
+                    });
                 }
                 continue;
             }
@@ -1439,7 +1519,7 @@ impl WindowSelectionState {
         }
         // Rows kept for a selection that has since lost an end go with it.
         if self.snapshot().is_none() {
-            self.drop_offscreen_participants();
+            self.drop_offscreen_participants(cx);
         }
         self.publish_snapshots(cx);
         self.frame_generation = self.frame_generation.wrapping_add(1);
@@ -1550,7 +1630,7 @@ impl WindowSelectionState {
             .filter_map(|registration| registration.participant.upgrade())
             .filter_map(|participant| participant.update(cx, |state, cx| state.clear_state(cx)))
             .collect();
-        self.drop_offscreen_participants();
+        self.drop_offscreen_participants(cx);
         handlers
     }
 
@@ -1678,12 +1758,17 @@ impl WindowSelectionState {
         }
         let anchor_endpoint = self.anchor.as_ref()?;
         let cursor_endpoint = self.cursor.as_ref()?;
-        let anchor = self.resolve_endpoint(anchor_endpoint, cursor_endpoint)?;
-        let cursor = self.resolve_endpoint(cursor_endpoint, anchor_endpoint)?;
-        (anchor != cursor).then(|| {
+        let anchor = self.place_endpoint(anchor_endpoint, cursor_endpoint)?;
+        let cursor = self.place_endpoint(cursor_endpoint, anchor_endpoint)?;
+        // Two ends beyond the drawn text on the same side are in different
+        // rows, and there is text between them.
+        (anchor != cursor || anchor.is_beyond_drawn()).then(|| {
             TextSelectionSnapshot::new(anchor_endpoint.snapshot(), cursor_endpoint.snapshot())
                 .with_selecting(self.is_selecting)
-                .with_window_points(Some(TextSelectionWindowPoints { anchor, cursor }))
+                .with_window_points(Some(TextSelectionWindowPoints {
+                    anchor: anchor.point(),
+                    cursor: cursor.point(),
+                }))
         })
     }
 
@@ -1711,7 +1796,7 @@ impl WindowSelectionState {
             .filter_map(|registration| registration.participant.upgrade())
             .filter_map(|participant| participant.update(cx, |state, cx| state.clear_state(cx)))
             .collect();
-        self.drop_offscreen_participants();
+        self.drop_offscreen_participants(cx);
         self.pending_extension_anchor = pending_extension_anchor;
         handlers
     }
@@ -2283,7 +2368,17 @@ impl WindowSelectionState {
                 snapshot.coverage = self.coverage_for(*id, &keys);
                 snapshot
             });
-            participant.update(cx, |state, cx| state.set_snapshot(participant_snapshot, cx));
+            // A row no longer drawn can't paint the part of it that is
+            // selected, so the selection projects its retained text again.
+            let undrawn_points = participant_snapshot
+                .filter(|_| registration.offscreen)
+                .and_then(|snapshot| self.undrawn_points(*id, snapshot.coverage));
+            participant.update(cx, |state, cx| {
+                state.set_snapshot(participant_snapshot, cx);
+                if let Some(points) = undrawn_points {
+                    state.project_undrawn(points);
+                }
+            });
         }
     }
 
@@ -2377,16 +2472,16 @@ impl WindowSelectionState {
             && self.participates(id, &self.reading_keys())
     }
 
-    /// Where `endpoint` is in window coordinates. An end in a participant
-    /// no longer drawn is placed past the drawn text of its document, before
-    /// or after it as the document orders them, so the drawn rows show the
-    /// part of the selection that reaches them.
-    fn resolve_endpoint(
+    /// Where `endpoint` is. An end in a participant no longer drawn is placed
+    /// past the drawn text of its document, before or after it as the
+    /// document orders them, so the drawn rows show the part of the
+    /// selection that reaches them.
+    fn place_endpoint(
         &self,
         endpoint: &SelectionEndpoint,
         other: &SelectionEndpoint,
-    ) -> Option<Point<Pixels>> {
-        let resolved = endpoint.resolve(&self.participants)?;
+    ) -> Option<EndPlacement> {
+        let resolved = EndPlacement::At(endpoint.resolve(&self.participants)?);
         let id = endpoint.entity_id()?;
         let registration = &self.participants.get(&id)?.registration;
         if !self.participants[&id].offscreen || other.entity_id() == Some(id) {
@@ -2399,19 +2494,48 @@ impl WindowSelectionState {
             let (other_document, other_position) = other.registration.document_position?;
             (!other.offscreen && other_document == document).then_some(other_position)
         });
-        // Far enough past any drawn text, and apart for the two ends.
-        let away = px(1_000_000.) + px(position as f32);
         Some(match drawn {
-            Some(drawn) if position < drawn => point(px(0.), -away),
-            Some(_) => point(px(0.), away),
+            Some(drawn) if position < drawn => EndPlacement::BeforeDrawn,
+            Some(_) => EndPlacement::AfterDrawn,
             None => resolved,
         })
     }
 
+    /// The window points a participant that is no longer drawn projects its
+    /// retained text with, from the places of its own ends where it was last
+    /// drawn and the side of it the other end is on.
+    fn undrawn_points(
+        &self,
+        id: EntityId,
+        coverage: TextSelectionCoverage,
+    ) -> Option<TextSelectionWindowPoints> {
+        let place = |endpoint: &SelectionEndpoint| {
+            if endpoint.entity_id() == Some(id) {
+                endpoint.resolve(&self.participants)
+            } else {
+                match coverage {
+                    TextSelectionCoverage::ToEnd => Some(EndPlacement::AfterDrawn.point()),
+                    TextSelectionCoverage::FromStart => Some(EndPlacement::BeforeDrawn.point()),
+                    TextSelectionCoverage::Bounded | TextSelectionCoverage::Full => None,
+                }
+            }
+        };
+        Some(TextSelectionWindowPoints {
+            anchor: place(self.anchor.as_ref()?)?,
+            cursor: place(self.cursor.as_ref()?)?,
+        })
+    }
+
     /// Drops the participants kept only because the selection covered them.
-    fn drop_offscreen_participants(&mut self) {
-        self.participants
-            .retain(|_, registration| !registration.offscreen);
+    fn drop_offscreen_participants(&mut self, cx: &mut App) {
+        self.participants.retain(|_, registration| {
+            if registration.offscreen
+                && let Some(participant) = registration.participant.upgrade()
+            {
+                participant.update(cx, |state, _| state.undrawn_runs = Vec::new());
+            }
+            !registration.offscreen
+        });
     }
 
     fn update_auto_scroll(
