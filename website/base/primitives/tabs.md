@@ -76,6 +76,8 @@ impl Render for Preferences {
 
 Other composite controls whose items share one Tab stop, such as a vertical list, can use `RovingFocus` directly and call `move_focus` from their key handlers.
 
+A control in a scrolling container can scroll the item that takes focus into view. `track_scroll` takes the `ScrollHandle` of a container with one child per item. `track_list_scroll` takes the `ListState` of a GPUI `list` whose items may each hold many of the control's items, as in a sidebar, and each item reports where it is drawn with `item_prepainted`. The list scrolls by the least distance that shows an item that took focus from the keyboard, and it doesn't scroll when the item is in view already.
+
 ## Accessibility
 
 Associate tabs with panels, expose selection, and support keyboard traversal.

@@ -73,8 +73,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Keyboard navigation in tab bars and sidebar menus** (`gpui-base`, `gpui-component`). A
   `TabBar` and a `SidebarMenu` are each one Tab stop, on the selected tab or the active item, and
   the arrow keys, Home and End move focus between their enabled items. Enter or Space activates
-  the focused one, and in a sidebar Right and Left open and close submenus. `RovingFocus` gives
-  other controls the same behavior. See [Tabs](website/component/tabs.md#keyboard) and
+  the focused one, and in a sidebar Right and Left open and close submenus. A sidebar taller than
+  its window scrolls to the item that takes focus. `RovingFocus` gives other controls the same
+  behavior. See [Tabs](website/component/tabs.md#keyboard) and
   [Sidebar](website/component/sidebar.md#keyboard).
 - **Cached Settings groups** (`gpui-component`). `SettingGroup::key` reuses unchanged groups
   while editable controls keep their own redraws. Groups without a key keep the existing

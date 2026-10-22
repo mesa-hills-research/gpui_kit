@@ -11,7 +11,7 @@ use crate::{
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, Entity, InteractiveElement as _, IntoElement,
     KeyBinding, ParentElement as _, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, div, percentage, prelude::FluentBuilder,
+    StyleRefinement, Styled, Window, canvas, div, percentage, prelude::FluentBuilder,
 };
 use gpui_base::{RovingFocus, RovingStep, TestSupportExt as _};
 use std::rc::Rc;
@@ -219,6 +219,10 @@ impl SidebarItem for SidebarMenu {
 
         // The menu is one Tab stop, on its active item.
         let focus = RovingFocus::keyed(SharedString::from(format!("{id}-focus")), window, cx);
+        // In a sidebar, the item that takes focus scrolls into view.
+        if let Some(list_state) = super::current_list() {
+            focus.track_list_scroll(&list_state);
+        }
         let mut entries = Vec::new();
         prepare_items(
             &mut items,
@@ -493,6 +497,7 @@ impl SidebarItem for SidebarMenuItem {
             && focus_handle
                 .as_ref()
                 .is_some_and(|focus_handle| focus_handle.is_focused(window));
+        let item_focus = self.focus.clone().filter(|_| !is_disabled);
 
         div()
             .id(id.clone())
@@ -582,6 +587,20 @@ impl SidebarItem for SidebarMenuItem {
                     })
                     .when(is_disabled, |this| {
                         this.text_color(cx.theme().muted_foreground)
+                    })
+                    // Tells the menu where the row is, to scroll it into view
+                    // when it takes focus.
+                    .when_some(item_focus, |this, item| {
+                        this.child(
+                            canvas(
+                                move |bounds, window, cx| {
+                                    item.focus.item_prepainted(item.ix, bounds, window, cx)
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
                     })
                     // Inside the row, which clips what's outside it.
                     .when(focus_visible, |this| {

@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use gpui::{App, ElementId, FocusHandle, ScrollHandle, Window};
+use gpui::{App, Bounds, ElementId, FocusHandle, ListState, Pixels, ScrollHandle, Window, px};
 
 /// Where an arrow key moves focus among the items of a [`RovingFocus`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,6 +36,11 @@ pub enum RovingStep {
 ///    the key go on to their parent when it returns `None`.
 ///
 /// [`crate::Tabs::roving_focus`] does step 4 for a tab list.
+///
+/// A control in a scrolling container scrolls the item that takes focus into
+/// view. [`RovingFocus::track_scroll`] does it for a container with one child
+/// per item, and [`RovingFocus::track_list_scroll`] for the items of a GPUI
+/// `list`, which may each be only a small part of a list item.
 #[derive(Clone, Default)]
 pub struct RovingFocus {
     state: Rc<RefCell<RovingFocusState>>,
@@ -47,6 +52,10 @@ struct RovingFocusState {
     enabled: Vec<bool>,
     tab_stop: Option<usize>,
     scroll_handle: Option<ScrollHandle>,
+    list_state: Option<ListState>,
+    /// The item that has focus and was already scrolled to, so that a later
+    /// frame leaves the scroll position to the user.
+    revealed: Option<usize>,
 }
 
 impl RovingFocus {
@@ -91,6 +100,64 @@ impl RovingFocus {
     /// container holds one child per item, in item order.
     pub fn track_scroll(&self, scroll_handle: &ScrollHandle) {
         self.state.borrow_mut().scroll_handle = Some(scroll_handle.clone());
+    }
+
+    /// Reveals the item that takes focus from the keyboard in `list_state`,
+    /// the state of a GPUI `list` that shows the item. The list's own items
+    /// may be much taller than the control's items, as when one holds the
+    /// whole control, so each item reports where it's drawn to
+    /// [`RovingFocus::item_prepainted`].
+    pub fn track_list_scroll(&self, list_state: &ListState) {
+        self.state.borrow_mut().list_state = Some(list_state.clone());
+    }
+
+    /// Tells the control where item `ix` is drawn, in window coordinates.
+    /// Call it from the prepaint of every enabled item, for example from a
+    /// [`gpui::canvas`] that fills the item.
+    ///
+    /// When the item has just taken focus from the keyboard, the list given
+    /// to [`RovingFocus::track_list_scroll`] scrolls by the least distance
+    /// that brings the item into view, and doesn't scroll when the item is
+    /// in view already. It scrolls once for each time the item takes focus,
+    /// so the user's own scrolling is left alone while it keeps focus. Focus
+    /// that a pointer press gave to the item scrolls nothing.
+    pub fn item_prepainted(
+        &self,
+        ix: usize,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let list_state = {
+            let mut state = self.state.borrow_mut();
+            let focused = state
+                .handles
+                .get(ix)
+                .is_some_and(|handle| handle.is_focused(window));
+            if !focused {
+                if state.revealed == Some(ix) {
+                    state.revealed = None;
+                }
+                return;
+            }
+            if state.revealed == Some(ix) {
+                return;
+            }
+            state.revealed = Some(ix);
+            match state.list_state.clone() {
+                Some(list_state) if window.last_input_was_keyboard() => list_state,
+                _ => return,
+            }
+        };
+        // The list is laying out its items right now. Once the frame is
+        // drawn, it knows the viewport that `bounds` is in.
+        window.defer(cx, move |window, _| {
+            let distance = reveal_distance(list_state.viewport_bounds(), bounds);
+            if distance != px(0.) {
+                list_state.scroll_by(distance);
+                window.refresh();
+            }
+        });
     }
 
     /// The number of items given to [`RovingFocus::set_items`].
@@ -162,6 +229,22 @@ impl RovingFocus {
     }
 }
 
+/// How far to scroll a list showing `viewport` down, or up when negative, to
+/// bring `item` into it with the least movement. An item taller than the
+/// viewport lines up with its top.
+fn reveal_distance(viewport: Bounds<Pixels>, item: Bounds<Pixels>) -> Pixels {
+    if viewport.size.height <= px(0.) {
+        return px(0.);
+    }
+    if item.size.height >= viewport.size.height || item.top() < viewport.top() {
+        item.top() - viewport.top()
+    } else if item.bottom() > viewport.bottom() {
+        item.bottom() - viewport.bottom()
+    } else {
+        px(0.)
+    }
+}
+
 /// The enabled item `step` lands on from `from`.
 fn step_target(enabled: &[bool], from: Option<usize>, step: RovingStep) -> Option<usize> {
     let len = enabled.len();
@@ -204,6 +287,38 @@ mod tests {
         );
         assert_eq!(step_target(&enabled, Some(2), RovingStep::First), Some(0));
         assert_eq!(step_target(&enabled, Some(0), RovingStep::Last), Some(3));
+    }
+
+    #[test]
+    fn reveal_scrolls_the_least_distance_and_not_at_all_when_in_view() {
+        use gpui::{point, size};
+        let viewport = Bounds::new(point(px(0.), px(100.)), size(px(200.), px(200.)));
+        let item =
+            |top: f32, height: f32| Bounds::new(point(px(0.), px(top)), size(px(200.), px(height)));
+
+        assert_eq!(reveal_distance(viewport, item(100., 28.)), px(0.));
+        assert_eq!(reveal_distance(viewport, item(172., 28.)), px(0.));
+        assert_eq!(
+            reveal_distance(viewport, item(250., 28.)),
+            px(0.),
+            "ends at the bottom edge"
+        );
+        assert_eq!(reveal_distance(viewport, item(280., 28.)), px(8.), "below");
+        assert_eq!(reveal_distance(viewport, item(600., 28.)), px(328.));
+        assert_eq!(reveal_distance(viewport, item(90., 28.)), px(-10.), "above");
+        assert_eq!(reveal_distance(viewport, item(0., 28.)), px(-100.));
+        assert_eq!(
+            reveal_distance(viewport, item(50., 400.)),
+            px(-50.),
+            "taller than the viewport"
+        );
+        assert_eq!(reveal_distance(viewport, item(100., 400.)), px(0.));
+        let unlaid = Bounds::default();
+        assert_eq!(
+            reveal_distance(unlaid, item(600., 28.)),
+            px(0.),
+            "no viewport yet"
+        );
     }
 
     #[test]
