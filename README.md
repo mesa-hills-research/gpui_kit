@@ -48,6 +48,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
 - **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
   shaped text of rows a list scrolled past, which they kept for as long as the views lived. One
   pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.
+- **Less memory for parsed Markdown** (`gpui-base`). A text view parsed a short text twice, kept
+  both documents, and held about 28 KB before it had any text. 160 answers (318 KB of Markdown)
+  now take 5.5 MB parsed, where they took 26.8 MB, and parse in half the time. `cargo bench -p
+  gpui-base --bench text_view_memory` prints the numbers.
 - **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
   a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus
   yet, and holding Alt underlines the menus' letters there too. See

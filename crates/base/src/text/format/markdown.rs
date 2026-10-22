@@ -220,6 +220,9 @@ fn parse_inline_children(
             }
         }
     }
+    // A document keeps its paragraphs for as long as it is shown, and a vector
+    // that grew by pushing holds room for up to twice what it needs.
+    paragraph.children.shrink_to_fit();
     text
 }
 
@@ -283,6 +286,7 @@ fn push_merged(
     } else {
         node.marks.push((0..len, new_mark));
     }
+    node.marks.shrink_to_fit();
     paragraph.push(node);
 }
 
@@ -1169,6 +1173,32 @@ mod tests {
         assert_eq!(complete("    indented\n"), [false]);
         assert_eq!(complete("    indented\n\nthen text\n"), [true]);
         assert_eq!(complete("```\na\n```\n\n```\nb\n"), [true, false]);
+    }
+
+    /// A document keeps its nodes for as long as it is shown, so the vectors
+    /// that hold a run's marks and source spans, and a paragraph's runs, take
+    /// what they need and no more.
+    #[test]
+    fn a_parsed_paragraph_holds_no_spare_capacity() {
+        let source = "The **dip window** is `08-18` to `08-26`, with [the filing](https://example.com) and *guidance*.\n";
+        let document = parse(source, &mut NodeContext::default()).unwrap();
+        let paragraph = document
+            .blocks
+            .iter()
+            .find_map(first_paragraph)
+            .expect("expected paragraph");
+
+        assert!(paragraph.children.len() > 6);
+        assert_eq!(paragraph.children.capacity(), paragraph.children.len());
+        for run in &paragraph.children {
+            assert_eq!(run.marks.capacity(), run.marks.len(), "{:?}", run.text);
+            assert_eq!(
+                run.source_segments.capacity(),
+                run.source_segments.len(),
+                "{:?}",
+                run.text
+            );
+        }
     }
 
     fn first_paragraph(block: &BlockNode) -> Option<&Paragraph> {

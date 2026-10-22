@@ -647,9 +647,13 @@ fn source_range_for_segments(
 pub(crate) struct InlineNode {
     /// The text content.
     pub(crate) text: SharedString,
-    pub(crate) image: Option<ImageNode>,
-    pub(crate) custom: Option<MarkdownNode>,
-    custom_selection: Arc<Mutex<bool>>,
+    /// Images and custom objects are rare, and an `ImageNode` and a
+    /// `MarkdownNode` together are twice the size of the rest of the node, so
+    /// they are boxed.
+    pub(crate) image: Option<Box<ImageNode>>,
+    pub(crate) custom: Option<Box<MarkdownNode>>,
+    /// Whether the custom object is selected, for a node that has one.
+    custom_selection: Option<Arc<Mutex<bool>>>,
     /// The text styles, each tuple contains the range of the text and the style.
     pub(crate) marks: Vec<(Range<usize>, TextMark)>,
     /// Rendered UTF-8 byte spans paired with their exact Markdown source spans.
@@ -1076,7 +1080,7 @@ impl InlineNode {
             text: text.into(),
             image: None,
             custom: None,
-            custom_selection: Arc::default(),
+            custom_selection: None,
             marks: vec![],
             source_segments: vec![],
             state: Arc::new(Mutex::new(InlineState::default())),
@@ -1085,23 +1089,33 @@ impl InlineNode {
 
     pub(crate) fn custom(node: MarkdownNode) -> Self {
         let mut this = Self::new(node.as_text().to_string());
-        this.custom = Some(node);
+        this.custom = Some(Box::new(node));
+        this.custom_selection = Some(Arc::default());
         this
     }
 
-    pub(crate) fn image(image: ImageNode) -> Self {
+    pub(crate) fn image(image: impl Into<Box<ImageNode>>) -> Self {
         let mut this = Self::new("");
-        this.image = Some(image);
+        this.image = Some(image.into());
         this
+    }
+
+    /// Whether the custom object of the node is selected.
+    fn custom_is_selected(&self) -> bool {
+        self.custom_selection
+            .as_ref()
+            .is_some_and(|selected| selected.lock().is_ok_and(|selected| *selected))
     }
 
     pub(crate) fn marks(mut self, marks: Vec<(Range<usize>, TextMark)>) -> Self {
         self.marks = marks;
+        self.marks.shrink_to_fit();
         self
     }
 
     pub(crate) fn source_segments(mut self, source_segments: Vec<SourceSegment>) -> Self {
         self.source_segments = source_segments;
+        self.source_segments.shrink_to_fit();
         self
     }
 
@@ -1266,7 +1280,7 @@ impl Paragraph {
                 text.push_str(&state.text[selection.start..selection.end]);
             }
             if let Some(custom) = &c.custom
-                && c.custom_selection.lock().is_ok_and(|selected| *selected)
+                && c.custom_is_selected()
             {
                 text.push_str(custom.as_text());
             }
@@ -1350,8 +1364,8 @@ impl Paragraph {
                 }
                 selected.merge(run_range);
 
-                match child.custom_selection.lock() {
-                    Ok(value) if *value => {
+                match child.custom_selection.as_deref().map(Mutex::lock) {
+                    Some(Ok(value)) if *value => {
                         if run.is_empty() || (run_selection.emitted && run_selection.at_end) {
                             merge_images(&mut selected, &mut pending_images);
                         }
@@ -1359,14 +1373,14 @@ impl Paragraph {
                             child
                                 .custom
                                 .as_ref()
-                                .and_then(MarkdownNode::source_range)
+                                .and_then(|custom| custom.source_range())
                                 .map(SourceRangeSelection::Mapped)
                                 .unwrap_or(SourceRangeSelection::Unmapped),
                         );
                         enters_image = true;
                     }
-                    Ok(_) => enters_image = false,
-                    Err(_) => {
+                    Some(Ok(_)) | None => enters_image = false,
+                    Some(Err(_)) => {
                         selected.merge(SourceRangeSelection::Unmapped);
                         enters_image = false;
                     }
@@ -1442,10 +1456,7 @@ impl Paragraph {
         for child in self.children.iter() {
             if child.custom.is_some() {
                 let selected = emit_run(&child.state, &run, &mut pending_images, &mut source);
-                let object_selected = child
-                    .custom_selection
-                    .lock()
-                    .is_ok_and(|selected| *selected);
+                let object_selected = child.custom_is_selected();
                 if object_selected {
                     if run.is_empty() || (selected.emitted && selected.at_end) {
                         source.push_str(&pending_images.join(""));
@@ -1502,8 +1513,7 @@ impl Paragraph {
     /// Mirrors the [`selected_text`](Self::selected_text) traversal.
     pub(super) fn has_selection(&self) -> bool {
         self.children.iter().any(|c| {
-            c.state.lock().is_ok_and(|state| state.selection.is_some())
-                || c.custom_selection.lock().is_ok_and(|selected| *selected)
+            c.state.lock().is_ok_and(|state| state.selection.is_some()) || c.custom_is_selected()
         }) || self
             .state
             .lock()
@@ -1512,7 +1522,7 @@ impl Paragraph {
 
     pub(super) fn clear_selection(&self) {
         for c in self.children.iter() {
-            if let Ok(mut selected) = c.custom_selection.lock() {
+            if let Some(Ok(mut selected)) = c.custom_selection.as_deref().map(Mutex::lock) {
                 *selected = false;
             }
             if let Ok(mut state) = c.state.lock() {
@@ -2888,7 +2898,7 @@ impl Paragraph {
                     renderer: Arc::new(move |context, window, cx| {
                         extensions.render_inline(&rendered_node, context, window, cx)
                     }),
-                    selected: inline_node.custom_selection.clone(),
+                    selected: inline_node.custom_selection.clone().unwrap_or_default(),
                     style: object_style,
                     link: object_link,
                 });
@@ -4008,6 +4018,15 @@ impl BlockNode {
 mod tests {
     use super::*;
 
+    /// A document holds one of these for each run of text, so ten of them to a
+    /// paragraph make its size the node's size. It was 424 bytes with the
+    /// image and the custom object inline.
+    #[test]
+    fn an_inline_node_stays_small() {
+        let size = std::mem::size_of::<InlineNode>();
+        assert!(size <= 128, "an inline node is {size} bytes");
+    }
+
     #[test]
     fn selected_inline_objects_coalesce_surrounding_emphasis() {
         for (object_mark, expected) in [
@@ -4025,7 +4044,7 @@ mod tests {
                 state.text = "before ".into();
                 state.selection = Some((2..7).into());
             }
-            *formula.custom_selection.lock().unwrap() = true;
+            *formula.custom_selection.as_ref().unwrap().lock().unwrap() = true;
             let paragraph = Paragraph {
                 children: vec![before, formula, after],
                 ..Default::default()
@@ -4044,8 +4063,8 @@ mod tests {
         let first =
             InlineNode::custom(MarkdownNode::new("math", ()).text("甲²").markdown("$甲^2$"));
         let second = InlineNode::custom(MarkdownNode::new("math", ()).text("b").markdown("$b$"));
-        *first.custom_selection.lock().unwrap() = true;
-        *second.custom_selection.lock().unwrap() = true;
+        *first.custom_selection.as_ref().unwrap().lock().unwrap() = true;
+        *second.custom_selection.as_ref().unwrap().lock().unwrap() = true;
         let paragraph = Paragraph {
             children: vec![first, second],
             ..Default::default()
@@ -4071,7 +4090,7 @@ mod tests {
             preceding.text = "中文 ".into();
             preceding.selection = Some((3..7).into());
         }
-        *formula.custom_selection.lock().unwrap() = true;
+        *formula.custom_selection.as_ref().unwrap().lock().unwrap() = true;
         let paragraph = Paragraph {
             children: vec![before, formula, after],
             ..Default::default()
