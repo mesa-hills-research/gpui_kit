@@ -1,20 +1,24 @@
-//! The heap a long transcript holds after the reader scrolls through it once.
+//! The heap a long transcript holds, and the time it takes to parse and to
+//! scroll through.
 //!
-//! A transcript shows each answer as its own `TextView`, in a virtual list. A
-//! text view keeps the shaped text of each paragraph for the next frame, so
-//! a paragraph laid out again in the same place is not shaped again. This
-//! measures what a scroll from the top to the bottom leaves behind, as the
-//! live heap after the pass less the heap after the first frame.
+//! A transcript shows each answer as its own `TextView`, in a virtual list.
+//! This prints three things.
 //!
-//! Run with `cargo bench -p gpui-base --bench text_view_memory`. The numbers
-//! are the same in a debug build, which `cargo test -p gpui-base --bench
-//! text_view_memory` runs.
+//! - The heap the parsed answers take before anything is drawn, with the
+//!   time to parse them, which is what a transcript holds for every answer
+//!   it has ever scrolled past.
+//! - The heap after the first frame.
+//! - What a scroll from the top to the bottom leaves behind, as the live heap
+//!   after the pass less the heap after the first frame, with the time the
+//!   pass takes. A text view keeps the shaped text of each paragraph for the
+//!   next frame, so a paragraph laid out again in the same place is not
+//!   shaped again.
+//!
+//! Run with `cargo bench -p gpui-base --bench text_view_memory`. The heap
+//! numbers are the same in a debug build, which `cargo test -p gpui-base
+//! --bench text_view_memory` runs. The times are not.
 
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    fmt::Write as _,
-    sync::atomic::{AtomicIsize, Ordering},
-};
+use std::time::Instant;
 
 use gpui::{
     AppContext as _, Context, Entity, IntoElement, ListAlignment, ListState, ParentElement as _,
@@ -25,74 +29,13 @@ use gpui_base::{
     text::{TextView, TextViewState},
 };
 
-/// Counts the bytes allocated and not yet freed.
-struct LiveBytes;
-
-static LIVE: AtomicIsize = AtomicIsize::new(0);
-
-// SAFETY: every operation is forwarded unchanged to the system allocator. The
-// counter has no bearing on allocation validity or lifetime.
-unsafe impl GlobalAlloc for LiveBytes {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        LIVE.fetch_add(layout.size() as isize, Ordering::Relaxed);
-        // SAFETY: `layout` is passed through from the caller.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        LIVE.fetch_sub(layout.size() as isize, Ordering::Relaxed);
-        // SAFETY: `ptr` and `layout` are the pair the caller allocated.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        LIVE.fetch_add(
-            new_size as isize - layout.size() as isize,
-            Ordering::Relaxed,
-        );
-        // SAFETY: all arguments are passed through from the caller.
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-}
-
-#[global_allocator]
-static ALLOCATOR: LiveBytes = LiveBytes;
-
-fn live() -> isize {
-    LIVE.load(Ordering::Relaxed)
-}
+mod support;
+use support::{answer, live};
 
 /// Answers in the transcript.
 const ANSWERS: usize = 160;
 /// How far each frame of the pass scrolls.
 const SCROLL_PER_FRAME: f32 = 240.;
-
-/// An answer of about 4 KB: prose with emphasis, links and inline code, a
-/// list, and a code block in every third answer.
-fn answer(ix: usize) -> String {
-    let mut out = String::new();
-    let _ = writeln!(out, "## Answer {ix}: what the data shows\n");
-    for paragraph in 0..5 {
-        let _ = writeln!(
-            out,
-            "Paragraph {paragraph} of answer {ix}. The **dip window** is `08-18` → `08-26` \
-             (trough $208.48 on 08-24), followed by a post-earnings jump. Let me confirm the \
-             earnings date and date the specific news events in that window, then weave in \
-             [the filing](https://example.com/filing/{ix}) and the *guidance* update so the \
-             numbers line up with what the market priced in before the open.\n"
-        );
-    }
-    let _ = writeln!(out, "- FOMC 09-16: +25bp to 3.75–4.00%, 12-0.");
-    let _ = writeln!(out, "- Dot plot: one more hike implied this year.");
-    let _ = writeln!(out, "- XLE +45.2% YTD, the standout winner.\n");
-    if ix % 3 == 0 {
-        let _ = writeln!(
-            out,
-            "```rust\nfn main() {{\n    let total: u64 = (0..{ix}).sum();\n    println!(\"{{total}}\");\n}}\n```\n"
-        );
-    }
-    out
-}
 
 struct Transcript {
     answers: Vec<Entity<TextViewState>>,
@@ -120,10 +63,22 @@ impl Render for Transcript {
 fn main() {
     let mut app = TestApp::with_text_system(gpui_platform::bench_text_system());
     app.update(gpui_base::init);
-    let mut window = app.open_window(|_, cx| Transcript {
-        answers: (0..ANSWERS)
+
+    // The parsed state of every answer, before anything is drawn.
+    let source_bytes: usize = (0..ANSWERS).map(|ix| answer(ix).len()).sum();
+    let before_states = live();
+    let parse_started = Instant::now();
+    let answers = app.update(|cx| {
+        (0..ANSWERS)
             .map(|ix| cx.new(|cx| TextViewState::markdown(&answer(ix), cx)))
-            .collect(),
+            .collect::<Vec<Entity<TextViewState>>>()
+    });
+    app.run_until_parked();
+    let parse_time = parse_started.elapsed();
+    let parsed = live() - before_states;
+
+    let mut window = app.open_window(move |_, _| Transcript {
+        answers,
         list: ListState::new(ANSWERS, ListAlignment::Top, px(400.)),
     });
     window.simulate_resize(gpui::size(px(800.), px(900.)));
@@ -132,8 +87,9 @@ fn main() {
         window.draw();
     }
 
-    let text: usize = (0..ANSWERS).map(|ix| answer(ix).len()).sum();
+    let text = source_bytes;
     let start = live();
+    let pass_started = Instant::now();
     let mut frames = 0;
     loop {
         let at_end = window.update(|transcript, _, _| {
@@ -147,16 +103,31 @@ fn main() {
         }
     }
     let after_pass = live();
+    let pass_time = pass_started.elapsed();
 
     let mb = |bytes: isize| bytes as f64 / (1024. * 1024.);
     println!(
         "{ANSWERS} answers, {:.0} KB of Markdown, {frames} frames at {SCROLL_PER_FRAME}px",
         text as f64 / 1024.
     );
+    println!(
+        "parsed state, nothing drawn: {:.1} MB ({:.0} bytes per source byte)",
+        mb(parsed),
+        parsed as f64 / source_bytes as f64
+    );
+    println!(
+        "parse time:                 {:.1} ms",
+        parse_time.as_secs_f64() * 1000.
+    );
     println!("heap after the first frame: {:.1} MB", mb(start));
     println!(
         "heap after one pass:        {:.1} MB ({:+.1} MB)",
         mb(after_pass),
         mb(after_pass - start)
+    );
+    println!(
+        "pass time:                  {:.1} ms ({:.2} ms a frame)",
+        pass_time.as_secs_f64() * 1000.,
+        pass_time.as_secs_f64() * 1000. / frames as f64
     );
 }
