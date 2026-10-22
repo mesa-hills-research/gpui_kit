@@ -200,3 +200,7 @@ required-features = ["assets", "test-support", "component"]
 [[test]]
 name = "touch_selection"
 required-features = ["test-support", "component"]
+
+[[test]]
+name = "spinner_motion"
+required-features = ["test-support", "component", "assets"]

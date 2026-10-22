@@ -4,8 +4,7 @@ use gpui::{Rems, rems};
 use gpui_base::{Easing, Spring};
 
 /// The most frames a second a repeating loading indicator draws, such as a
-/// spinner, a skeleton, an indeterminate progress bar or ring, or shimmering
-/// text.
+/// skeleton, an indeterminate progress bar or ring, or shimmering text.
 ///
 /// A loading indicator can show for as long as a request runs, and one that
 /// draws every frame keeps the window drawing at the display's full refresh
@@ -65,7 +64,8 @@ mod tests {
         };
 
         use crate::{
-            marker::Marker,
+            LOADING_ANIMATION_MAX_FPS,
+            marker::{Marker, MarkerContent, MarkerLoadingStyle},
             progress::{Progress, ProgressCircle},
             shimmer::ShimmerText,
             skeleton::Skeleton,
@@ -85,8 +85,7 @@ mod tests {
         #[gpui::test]
         fn loading_indicators_draw_at_a_capped_frame_rate(cx: &mut TestAppContext) {
             cx.update(crate::init);
-            let indicators: [(&str, fn() -> AnyElement); 6] = [
-                ("Spinner", || Spinner::new().into_any_element()),
+            let indicators: [(&str, fn() -> AnyElement); 5] = [
                 ("Skeleton", || Skeleton::new().into_any_element()),
                 ("Progress", || {
                     Progress::new("progress").loading(true).into_any_element()
@@ -99,7 +98,13 @@ mod tests {
                 ("ShimmerText", || {
                     ShimmerText::new("Thinking…").into_any_element()
                 }),
-                ("Marker", || Marker::new().loading(true).into_any_element()),
+                ("Marker", || {
+                    Marker::new()
+                        .loading(true)
+                        .with_loading_style(MarkerLoadingStyle::Shimmer)
+                        .content(MarkerContent::new().text("Thinking…"))
+                        .into_any_element()
+                }),
             ];
             for (name, indicator) in indicators {
                 let window =
@@ -121,9 +126,11 @@ mod tests {
         impl Render for Spinners {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
                 self.renders.set(self.renders.get() + 1);
-                div()
-                    .size_full()
-                    .children((0..self.shown).map(|ix| div().id(ix).child(Spinner::new())))
+                div().size_full().children((0..self.shown).map(|ix| {
+                    div()
+                        .id(ix)
+                        .child(Spinner::new().max_fps(LOADING_ANIMATION_MAX_FPS))
+                }))
             }
         }
 

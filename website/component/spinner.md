@@ -95,17 +95,19 @@ The Spinner component supports various loading and progress icons:
 
 ## Animation
 
-The Spinner component features a built-in rotation animation:
+The spinner turns once every 0.8 seconds at a constant speed, in a frame for each frame the display shows. It follows the app's shared clock, so spinners that show together turn together, and it holds still when the system asks for reduced motion.
 
-- **Duration**: 0.8 seconds (configurable via speed parameter)
-- **Easing**: Ease-in-out transition
-- **Repeat**: Infinite loop
-- **Transform**: 360-degree rotation
+- `.ease(curve)` sets the turning curve. The default is `linear`, and any other curve makes the spinner speed up and slow down once in each turn.
+- `.max_fps(n)` draws at most `n` frames a second. A cap below the display's rate draws on a timer, so some frames stay up longer than others.
 
-A spinner draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), on a
-timer, so one that stays up through a long request draws far less often than
-the display refreshes. It turns as it paints, so the view it is in is not built
-again for each step, and a view that the app keeps stays kept.
+```rust
+// Turn at 30 frames a second
+Spinner::new().max_fps(30.)
+```
+
+The default icon has eight spokes alike, so a step of more than 22.5 degrees in one frame looks like a step backwards. With that icon, draw at least 20 frames a second.
+
+The spinner turns as it paints, so the view it is in is not built again for each step, and a view that the app keeps stays kept.
 
 ## Size Reference
 
@@ -242,7 +244,7 @@ div()
 
 ## Performance Considerations
 
-- The animation uses CSS transforms for optimal performance
+- The spinner turns as it paints, so it costs little to draw in each frame
 - Multiple spinners on the same page share the same animation timing
 - The component is lightweight and suitable for frequent updates
 - Consider using smaller sizes for better performance with many spinners

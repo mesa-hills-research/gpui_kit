@@ -96,6 +96,16 @@ impl Render for SpinnerStory {
                     ),
             )
             .child(
+                section("Frame rate")
+                    .description(
+                        "A spinner draws in each frame the display shows. A cap draws less often.",
+                    )
+                    .gap_x_2()
+                    .child(Spinner::new().with_size(self.size))
+                    .child(Spinner::new().with_size(self.size).max_fps(30.))
+                    .child(Spinner::new().with_size(self.size).max_fps(12.)),
+            )
+            .child(
                 section("Easing")
                     .description("Customize the rotation timing curve.")
                     .gap_x_2()
