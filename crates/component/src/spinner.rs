@@ -1,7 +1,7 @@
 use crate::{Icon, IconName, LOADING_ANIMATION_MAX_FPS, Sizable, Size};
 use gpui::{
-    Animation, AnimationExt as _, App, Hsla, IntoElement, ParentElement, RenderOnce, Styled as _,
-    Transformation, Window, div, ease_in_out, percentage, prelude::FluentBuilder as _,
+    Animation, AnimationExt as _, App, Hsla, IntoElement, PaintEffect, ParentElement, RenderOnce,
+    Styled as _, Window, div, ease_in_out, percentage, prelude::FluentBuilder as _,
 };
 use instant::Duration;
 
@@ -64,13 +64,15 @@ impl RenderOnce for Spinner {
                 self.icon
                     .with_size(self.size)
                     .when_some(self.color, |this, color| this.text_color(color))
-                    .with_animation(
+                    // The icon turns as it paints, so the view around the spinner is not
+                    // drawn again for each step, and stays cached.
+                    .with_paint_animation(
                         "circle",
                         Animation::new(self.speed)
                             .repeat()
                             .with_easing(self.easing)
                             .with_max_fps(LOADING_ANIMATION_MAX_FPS),
-                        |this, delta| this.transform(Transformation::rotate(percentage(delta))),
+                        |delta| PaintEffect::rotation(percentage(delta).into()),
                     ),
             )
             .into_element()
@@ -80,7 +82,7 @@ impl RenderOnce for Spinner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Render, TestAppContext, px, size};
+    use gpui::{AppContext as _, Render, TestAppContext, px, size};
 
     struct SpinnerHost;
 
@@ -126,6 +128,74 @@ mod tests {
             (25..=31).contains(&redraws),
             "{redraws} redraws in a second"
         );
+    }
+
+    /// A pane that holds a spinner, and the values its easing was asked for.
+    struct Pane {
+        renders: std::rc::Rc<std::cell::Cell<usize>>,
+        eased: std::rc::Rc<std::cell::RefCell<Vec<f32>>>,
+    }
+
+    impl Render for Pane {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            self.renders.set(self.renders.get() + 1);
+            let eased = self.eased.clone();
+            Spinner::new().ease(move |delta| {
+                eased.borrow_mut().push(delta);
+                delta
+            })
+        }
+    }
+
+    /// A window whose root keeps the pane, as the panes of an app's window are kept.
+    struct PaneWindow {
+        pane: gpui::Entity<Pane>,
+    }
+
+    impl Render for PaneWindow {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                self.pane
+                    .clone()
+                    .cached(gpui::StyleRefinement::default().size_full()),
+            )
+        }
+    }
+
+    /// The view a spinner is in is not drawn again for each step of its turn.
+    #[gpui::test]
+    fn a_spinner_turns_in_a_view_that_is_kept(cx: &mut TestAppContext) {
+        let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+        let eased = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let window = cx.open_window(size(px(100.), px(100.)), {
+            let (renders, eased) = (renders.clone(), eased.clone());
+            move |_, cx| PaneWindow {
+                pane: cx.new(|_| Pane { renders, eased }),
+            }
+        });
+        cx.run_until_parked();
+        assert_eq!(renders.get(), 1);
+        eased.borrow_mut().clear();
+
+        for _ in 0..1000 {
+            cx.executor()
+                .advance_clock(std::time::Duration::from_millis(1));
+            cx.run_until_parked();
+        }
+        assert_eq!(renders.get(), 1, "the pane is drawn again");
+        let eased = eased.borrow();
+        assert!(
+            (28..=34).contains(&eased.len()),
+            "{} steps in a second",
+            eased.len()
+        );
+        // The turn goes round once in 0.8 s and starts again.
+        assert!(eased.iter().any(|delta| *delta > 0.9), "{eased:?}");
+        assert!(eased.windows(2).any(|pair| pair[1] < pair[0]), "{eased:?}");
+        drop(eased);
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
     }
 
     #[gpui::test]

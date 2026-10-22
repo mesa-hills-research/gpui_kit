@@ -104,7 +104,8 @@ The Spinner component features a built-in rotation animation:
 
 A spinner draws at most 30 frames a second (`LOADING_ANIMATION_MAX_FPS`), on a
 timer, so one that stays up through a long request draws far less often than
-the display refreshes.
+the display refreshes. It turns as it paints, so the view it is in is not built
+again for each step, and a view that the app keeps stays kept.
 
 ## Size Reference
 
