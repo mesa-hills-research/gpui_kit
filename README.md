@@ -192,8 +192,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   frames, so a window showing three draws 30 frames a second, not 90.
 - **A spinner that turns evenly** (`gpui-component`). `Spinner` turns at a constant speed in each
   frame the display shows, where it used to ease in and out once in each turn, which made it stall
-  and then jump, and `Spinner::max_fps` caps it. It turns as it paints, so the view around it is
-  not drawn again for each step.
+  and then jump. `Spinner::max_fps` caps it and `Spinner::duration` sets the time of a turn. It
+  turns as it paints, so the view around it is not drawn again for each step.
 - **Steady memory while a block streams** (`gpui-base`). The shaped text a block keeps for the
   next frame is released when the block is replaced, where every chunk of a long streamed block
   used to leave a copy of its layout behind.

@@ -98,6 +98,7 @@ The Spinner component supports various loading and progress icons:
 The spinner turns once every 0.8 seconds at a constant speed, in a frame for each frame the display shows. It follows the app's shared clock, so spinners that show together turn together, and it holds still when the system asks for reduced motion.
 
 - `.ease(curve)` sets the turning curve. The default is `linear`, and any other curve makes the spinner speed up and slow down once in each turn.
+- `.duration(time)` sets how long one turn takes. The default is 0.8 seconds.
 - `.max_fps(n)` draws at most `n` frames a second. A cap below the display's rate draws on a timer, so some frames stay up longer than others.
 
 ```rust

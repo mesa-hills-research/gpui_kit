@@ -57,6 +57,14 @@ impl Spinner {
         self
     }
 
+    /// Set how long one turn takes.
+    ///
+    /// The default is 0.8 seconds.
+    pub fn duration(mut self, duration: Duration) -> Self {
+        self.speed = duration;
+        self
+    }
+
     /// Draw at most `max_fps` frames a second.
     ///
     /// The default is a frame for each frame the display shows, which is the
@@ -197,6 +205,7 @@ mod tests {
         renders: std::rc::Rc<std::cell::Cell<usize>>,
         eased: std::rc::Rc<std::cell::RefCell<Vec<f32>>>,
         max_fps: Option<f32>,
+        duration: Option<Duration>,
     }
 
     impl Render for Pane {
@@ -207,6 +216,10 @@ mod tests {
                 eased.borrow_mut().push(delta);
                 delta
             });
+            let spinner = match self.duration {
+                Some(duration) => spinner.duration(duration),
+                None => spinner,
+            };
             match self.max_fps {
                 Some(max_fps) => spinner.max_fps(max_fps),
                 None => spinner,
@@ -232,7 +245,11 @@ mod tests {
     /// Turns a spinner in a kept pane for a second, with a frame every 1/60 s and the
     /// executor parked after each. Returns how often the pane was drawn and the values
     /// the spinner's easing was asked for.
-    fn turn_in_a_kept_pane(cx: &mut TestAppContext, max_fps: Option<f32>) -> (usize, Vec<f32>) {
+    fn turn_in_a_kept_pane(
+        cx: &mut TestAppContext,
+        max_fps: Option<f32>,
+        duration: Option<Duration>,
+    ) -> (usize, Vec<f32>) {
         let renders = std::rc::Rc::new(std::cell::Cell::new(0));
         let eased = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let window = cx.open_window(size(px(100.), px(100.)), {
@@ -242,6 +259,7 @@ mod tests {
                     renders,
                     eased,
                     max_fps,
+                    duration,
                 }),
             }
         });
@@ -267,7 +285,7 @@ mod tests {
     /// The view a spinner is in is not drawn again for each step of its turn.
     #[gpui::test]
     fn a_spinner_turns_in_a_view_that_is_kept(cx: &mut TestAppContext) {
-        let (renders, eased) = turn_in_a_kept_pane(cx, None);
+        let (renders, eased) = turn_in_a_kept_pane(cx, None, None);
         assert_eq!(renders, 1, "the pane is drawn again");
         assert!(
             (59..=61).contains(&eased.len()),
@@ -279,10 +297,20 @@ mod tests {
         assert!(eased.windows(2).any(|pair| pair[1] < pair[0]), "{eased:?}");
     }
 
+    /// A spinner given a longer turn goes round once in that time.
+    #[gpui::test]
+    fn a_spinner_turns_in_the_time_it_was_given(cx: &mut TestAppContext) {
+        let (_, eased) = turn_in_a_kept_pane(cx, None, Some(Duration::from_secs(2)));
+        let furthest = eased.iter().copied().fold(0., f32::max);
+        // A second into a turn of two seconds is halfway round, with a frame of slack.
+        assert!((0.47..=0.53).contains(&furthest), "{furthest}");
+        assert!(eased.windows(2).all(|pair| pair[1] > pair[0]), "{eased:?}");
+    }
+
     /// A capped spinner steps at its rate in a kept view too.
     #[gpui::test]
     fn a_capped_spinner_turns_in_a_view_that_is_kept(cx: &mut TestAppContext) {
-        let (renders, eased) = turn_in_a_kept_pane(cx, Some(30.));
+        let (renders, eased) = turn_in_a_kept_pane(cx, Some(30.), None);
         assert_eq!(renders, 1, "the pane is drawn again");
         assert!(
             (28..=34).contains(&eased.len()),
