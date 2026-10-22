@@ -825,6 +825,7 @@ impl TextViewState {
                     mode: ParseMode::Replace,
                     pending_text: self.text.clone(),
                     markdown_extensions: self.markdown_extensions.clone(),
+                    baseline: None,
                 });
             }
         }
@@ -1030,7 +1031,7 @@ impl TextViewState {
             self.selection_revision = self.selection_revision.wrapping_add(1);
         }
         let parse_synchronously = !append && text.len() <= MAX_SYNC_FULL_REPLACE_BYTES;
-        let update_options = UpdateOptions {
+        let mut update_options = UpdateOptions {
             revision: self.revision,
             append,
             mode: if append {
@@ -1042,6 +1043,7 @@ impl TextViewState {
             },
             pending_text: text.to_string(),
             markdown_extensions: self.markdown_extensions.clone(),
+            baseline: None,
         };
 
         // Keep small full replacements synchronous so their first layout has
@@ -1050,6 +1052,10 @@ impl TextViewState {
         if parse_synchronously {
             match parse_content(self.format, ParsedContent::default(), &update_options) {
                 Ok(content) => {
+                    // The background parser extends this very document, and
+                    // shares it, where it would otherwise parse the text again
+                    // and keep a second copy.
+                    update_options.baseline = Some(content.clone());
                     self.reconcile_range_highlights(&content.document, self.revision, false);
                     self.stream_fade.record(
                         &self.parsed_content.document,
@@ -1735,7 +1741,10 @@ impl Future for UpdateFuture {
                     let hit_coalesce_budget =
                         merge_pending_options(&mut options, self.rx.as_ref().get_ref());
 
-                    let res = parse_content(self.format, self.content.clone(), &options);
+                    let res = match options.baseline.take() {
+                        Some(baseline) if options.mode == ParseMode::BaselineAck => Ok(baseline),
+                        _ => parse_content(self.format, self.content.clone(), &options),
+                    };
                     if let Ok(content) = &res {
                         self.content = content.clone();
                     }
@@ -1766,11 +1775,17 @@ struct UpdateOptions {
     append: bool,
     mode: ParseMode,
     markdown_extensions: Arc<MarkdownExtensions>,
+    /// What the text was already parsed to, for a [`ParseMode::BaselineAck`]
+    /// update, so that the background parser takes it as its baseline instead
+    /// of parsing the text again.
+    baseline: Option<ParsedContent>,
 }
 
 impl UpdateOptions {
     fn merge(&mut self, next: UpdateOptions) {
         if next.append {
+            // The text is no longer the one the baseline was parsed from.
+            self.baseline = None;
             self.pending_text.push_str(&next.pending_text);
             self.revision = next.revision;
             // The text was parsed with these when it was set, unless the
@@ -2316,6 +2331,7 @@ mod tests {
             append: true,
             mode: ParseMode::Compatible,
             markdown_extensions: Arc::default(),
+            baseline: None,
         };
         ParsedUpdate {
             revision,
@@ -2598,6 +2614,7 @@ mod tests {
             append: true,
             mode: ParseMode::Compatible,
             markdown_extensions: Arc::default(),
+            baseline: None,
         };
 
         options.merge(UpdateOptions {
@@ -2606,6 +2623,7 @@ mod tests {
             append: false,
             mode: ParseMode::BaselineAck,
             markdown_extensions: Arc::default(),
+            baseline: None,
         });
         options.merge(UpdateOptions {
             revision: 3,
@@ -2613,6 +2631,7 @@ mod tests {
             append: true,
             mode: ParseMode::Compatible,
             markdown_extensions: Arc::default(),
+            baseline: None,
         });
 
         assert_eq!(options.revision, 3);
@@ -2628,6 +2647,7 @@ mod tests {
             append: false,
             mode: ParseMode::Replace,
             markdown_extensions: Arc::default(),
+            baseline: None,
         };
 
         options.merge(UpdateOptions {
@@ -2636,6 +2656,7 @@ mod tests {
             append: true,
             mode: ParseMode::Compatible,
             markdown_extensions: Arc::default(),
+            baseline: None,
         });
 
         assert_eq!(options.revision, 2);
@@ -2661,6 +2682,7 @@ mod tests {
                     ParseMode::Compatible
                 },
                 markdown_extensions: Arc::default(),
+                baseline: None,
             })
             .unwrap();
         }
@@ -2687,6 +2709,109 @@ mod tests {
         ));
         let parsed_update = rx_result.try_recv().expect("next parse result");
         assert_eq!(parsed_update.revision, total_updates);
+    }
+
+    /// A text view that parsed its text itself hands the document to the
+    /// background parser, which then extends it with appended text rather
+    /// than parsing the text again and keeping a second copy.
+    #[test]
+    fn the_background_parser_takes_the_baseline_it_is_given_and_extends_it() {
+        let (tx, rx) = unbounded::<UpdateOptions>();
+        let (tx_result, rx_result) = unbounded::<ParsedUpdate>();
+        let options = |revision, text: &str, append, mode, baseline| UpdateOptions {
+            revision,
+            pending_text: text.to_string(),
+            append,
+            mode,
+            markdown_extensions: Arc::default(),
+            baseline,
+        };
+        let baseline = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            &options(1, "first\n\nsecond", false, ParseMode::Replace, None),
+        )
+        .unwrap();
+        let mut future = Box::pin(UpdateFuture::new(TextViewFormat::Markdown, rx, tx_result));
+        let waker = futures::task::noop_waker();
+        let mut task_cx = std::task::Context::from_waker(&waker);
+
+        // Text that parses to something else shows if the update is parsed.
+        tx.try_send(options(
+            1,
+            "not what the baseline is",
+            false,
+            ParseMode::BaselineAck,
+            Some(baseline.clone()),
+        ))
+        .unwrap();
+        assert!(matches!(
+            std::future::Future::poll(future.as_mut(), &mut task_cx),
+            Poll::Pending
+        ));
+        let acknowledged = rx_result.try_recv().expect("the acknowledgement");
+        assert!(acknowledged.baseline_ack);
+        let Ok(acknowledged) = acknowledged.result else {
+            panic!("the baseline is acknowledged");
+        };
+        assert!(Arc::ptr_eq(
+            &acknowledged.document.blocks,
+            &baseline.document.blocks
+        ));
+
+        tx.try_send(options(2, "\n\nthird", true, ParseMode::Compatible, None))
+            .unwrap();
+        assert!(matches!(
+            std::future::Future::poll(future.as_mut(), &mut task_cx),
+            Poll::Pending
+        ));
+        let appended = rx_result.try_recv().expect("the appended text");
+        let Ok(appended) = appended.result else {
+            panic!("the append parses");
+        };
+        assert_eq!(appended.document.blocks.len(), 3);
+        assert_eq!(
+            appended.document.source.as_str(),
+            "first\n\nsecond\n\nthird"
+        );
+    }
+
+    /// An update that was merged with appended text was not parsed to the
+    /// baseline it carried.
+    #[test]
+    fn a_baseline_is_dropped_when_appended_text_is_merged_into_its_update() {
+        let baseline = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            &UpdateOptions {
+                revision: 1,
+                pending_text: "old".to_string(),
+                append: false,
+                mode: ParseMode::Replace,
+                markdown_extensions: Arc::default(),
+                baseline: None,
+            },
+        )
+        .unwrap();
+        let mut options = UpdateOptions {
+            revision: 1,
+            pending_text: "old".to_string(),
+            append: false,
+            mode: ParseMode::BaselineAck,
+            markdown_extensions: Arc::default(),
+            baseline: Some(baseline),
+        };
+        options.merge(UpdateOptions {
+            revision: 2,
+            pending_text: " more".to_string(),
+            append: true,
+            mode: ParseMode::Compatible,
+            markdown_extensions: Arc::default(),
+            baseline: None,
+        });
+
+        assert!(options.baseline.is_none());
+        assert_eq!(options.pending_text, "old more");
     }
 
     #[gpui::test]
@@ -2773,6 +2898,7 @@ mod tests {
             append: false,
             mode: ParseMode::Replace,
             markdown_extensions: Arc::default(),
+            baseline: None,
         };
         let content = parse_content(TextViewFormat::Markdown, ParsedContent::default(), &options)
             .expect("initial parse");
@@ -2785,6 +2911,7 @@ mod tests {
                 append: true,
                 mode: ParseMode::Compatible,
                 markdown_extensions: Arc::default(),
+                baseline: None,
             },
         )
         .expect("incremental parse");
@@ -2810,6 +2937,7 @@ mod tests {
                 append: false,
                 mode: ParseMode::Replace,
                 markdown_extensions: Arc::default(),
+                baseline: None,
             },
         )
         .expect("initial list parse");
@@ -2822,6 +2950,7 @@ mod tests {
                 append: true,
                 mode: ParseMode::Compatible,
                 markdown_extensions: Arc::default(),
+                baseline: None,
             },
         )
         .expect("streamed list continuation parse");
@@ -3962,6 +4091,7 @@ mod tests {
                 append: false,
                 mode: ParseMode::Replace,
                 markdown_extensions: Arc::default(),
+                baseline: None,
             };
             let new = parse_content(TextViewFormat::Markdown, ParsedContent::default(), &options)
                 .unwrap()
