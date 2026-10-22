@@ -190,7 +190,7 @@ On Windows and Linux the [AppMenuBar](#appmenubar) in the title bar answers the 
 - **Left** and **Right** move between titles, **Down**, **Enter** or **Space** open the focused menu, **Escape** goes back to where focus was.
 - **Alt** with a menu's underlined letter opens that menu. The letters are underlined while Alt is held or the bar has focus. Each menu takes the first letter of its name not taken by an earlier menu.
 
-The keys work while nothing in the window has focus too, as in a window not yet clicked, and leaving the bar then leaves nothing focused. Until something has focus, holding Alt doesn't underline the letters.
+The keys work while nothing in the window has focus too, as in a window not yet clicked, and leaving the bar then leaves nothing focused. Holding Alt underlines the letters then as well, a moment after Alt goes down, because the window checks its modifiers a few times a second while it's the active window and nothing has focus. With something focused the underline follows Alt at once.
 
 A tap of Alt is Alt pressed and released with nothing in between. Alt with a click, a drag or the wheel (Alt+click adds a caret in a text area) is no tap, even a drag begun before Alt. Neither is an Alt held while the window lost focus, as with Alt+Tab away and back, nor one already held when the window gains focus, as with a tiling compositor's Alt+key to switch windows. Either way, the window's modifier listeners see Alt let go. Clicking another control ends keyboard mode there, and the next tap starts it again. None of these keys reach the bar while a dialog, sheet or image viewer is open over the window.
 

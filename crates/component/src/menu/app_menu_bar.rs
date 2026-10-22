@@ -322,8 +322,8 @@ impl Render for AppMenuBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The window's root routes F10, Alt and Alt with a letter here.
         let this = cx.entity().downgrade();
-        crate::root::WindowState::try_update(window, cx, |state, _, _| {
-            state.register_app_menu_bar(this)
+        crate::root::WindowState::try_update(window, cx, |state, window, cx| {
+            state.register_app_menu_bar(this, window, cx)
         });
         if self._focus_out.is_none() {
             self._focus_out = Some(cx.on_focus_out(
@@ -650,6 +650,139 @@ mod tests {
                 .child(div().id("second").track_focus(&self.second_focus))
                 .child(self.menu_bar.clone())
         }
+    }
+
+    /// A window with File and Edit menus, with the document focused or
+    /// nothing focused, and the window active.
+    #[cfg(not(target_os = "macos"))]
+    fn open_with_menus(
+        focused: bool,
+        cx: &mut TestAppContext,
+    ) -> (Entity<AppMenuBar>, &mut gpui::VisualTestContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            GlobalState::global_mut(cx).set_app_menus(vec![
+                gpui::Menu::new("File")
+                    .items([gpui::MenuItem::action("Save a Copy", SaveDoc)])
+                    .owned(),
+                gpui::Menu::new("Edit")
+                    .items([gpui::MenuItem::action("Undo", SaveDoc)])
+                    .owned(),
+            ]);
+        });
+        let menu_bar = cx.update(AppMenuBar::new);
+        let (_, cx) = cx.add_window_view({
+            let menu_bar = menu_bar.clone();
+            move |window, cx| {
+                let doc = cx.focus_handle();
+                if focused {
+                    doc.focus(window, cx);
+                }
+                let view = cx.new(|_| DocRoot { menu_bar, doc });
+                crate::Root::new(view, window, cx)
+            }
+        });
+        cx.update(|window, cx| {
+            window.activate_window();
+            window.draw(cx).clear(cx);
+        });
+        cx.run_until_parked();
+        assert!(cx.update(|window, _| window.is_window_active()));
+        assert_eq!(
+            cx.update(|window, cx| window.focused(cx).is_some()),
+            focused
+        );
+        (menu_bar, cx)
+    }
+
+    /// Reports to the window that these modifiers are down.
+    #[cfg(not(target_os = "macos"))]
+    fn hold_modifiers(cx: &mut gpui::VisualTestContext, modifiers: gpui::Modifiers) {
+        cx.update(|window, cx| {
+            window.dispatch_event(
+                gpui::PlatformInput::ModifiersChanged(gpui::ModifiersChangedEvent {
+                    modifiers,
+                    capslock: gpui::Capslock { on: false },
+                }),
+                cx,
+            );
+        });
+    }
+
+    /// Lets the interval in which the window's modifiers are checked pass.
+    #[cfg(not(target_os = "macos"))]
+    fn let_modifiers_be_checked(cx: &mut gpui::VisualTestContext) {
+        cx.run_until_parked();
+        cx.executor()
+            .advance_clock(crate::root::ALT_WATCH_INTERVAL * 2);
+        cx.run_until_parked();
+    }
+
+    /// With nothing focused, GPUI sends modifier changes to no element of
+    /// the window. Alt held still underlines the access keys, and letting go
+    /// of it hides them again.
+    #[cfg(not(target_os = "macos"))]
+    #[gpui::test]
+    fn alt_underlines_the_access_keys_with_nothing_focused(cx: &mut TestAppContext) {
+        let (menu_bar, cx) = open_with_menus(false, cx);
+        let alt_held =
+            |cx: &mut gpui::VisualTestContext| menu_bar.read_with(cx, |bar, _| bar.alt_held);
+        assert!(!alt_held(cx));
+
+        hold_modifiers(cx, gpui::Modifiers::alt());
+        let_modifiers_be_checked(cx);
+        assert!(alt_held(cx), "Alt went down");
+
+        hold_modifiers(cx, gpui::Modifiers::default());
+        let_modifiers_be_checked(cx);
+        assert!(!alt_held(cx), "Alt was let go");
+
+        // Alt held with Shift is no Alt press.
+        hold_modifiers(
+            cx,
+            gpui::Modifiers {
+                alt: true,
+                shift: true,
+                ..Default::default()
+            },
+        );
+        let_modifiers_be_checked(cx);
+        assert!(!alt_held(cx));
+        hold_modifiers(cx, gpui::Modifiers::default());
+
+        // It goes on after the bar was used with the keyboard.
+        cx.simulate_keystrokes("f10 escape");
+        let_modifiers_be_checked(cx);
+        assert!(!alt_held(cx), "the bar closed");
+        hold_modifiers(cx, gpui::Modifiers::alt());
+        let_modifiers_be_checked(cx);
+        assert!(alt_held(cx), "Alt went down again");
+        hold_modifiers(cx, gpui::Modifiers::default());
+        let_modifiers_be_checked(cx);
+        assert!(!alt_held(cx));
+    }
+
+    /// The access keys stay hidden while the window isn't the active one.
+    #[cfg(not(target_os = "macos"))]
+    #[gpui::test]
+    fn alt_in_an_inactive_window_underlines_nothing(cx: &mut TestAppContext) {
+        let (menu_bar, cx) = open_with_menus(false, cx);
+        cx.deactivate_window();
+        let_modifiers_be_checked(cx);
+        hold_modifiers(cx, gpui::Modifiers::alt());
+        let_modifiers_be_checked(cx);
+        assert!(!menu_bar.read_with(cx, |bar, _| bar.alt_held));
+    }
+
+    /// With something focused the window's surface hears Alt itself, at once.
+    #[cfg(not(target_os = "macos"))]
+    #[gpui::test]
+    fn alt_underlines_the_access_keys_at_once_with_a_focus(cx: &mut TestAppContext) {
+        let (menu_bar, cx) = open_with_menus(true, cx);
+        hold_modifiers(cx, gpui::Modifiers::alt());
+        assert!(menu_bar.read_with(cx, |bar, _| bar.alt_held));
+        hold_modifiers(cx, gpui::Modifiers::default());
+        assert!(!menu_bar.read_with(cx, |bar, _| bar.alt_held));
     }
 
     #[test]
