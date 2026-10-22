@@ -62,13 +62,23 @@ mkdir -p "$repo_root/website/dist"
 
 git -C "$repo_root" worktree add --detach "$work_dir/main" origin/main >/dev/null
 
-# Documentation writes `{{gpui_pre_version}}` for the GPUI snapshot; each
-# build resolves it from the Cargo.toml of the revision it documents, because
-# the temporary website copies have no workspace manifest next to them.
-gpui_pre_version() {
-  git -C "$repo_root" show "$1:Cargo.toml" 2>/dev/null \
-    | sed -nE 's/^gpui[[:space:]]*=.*package[[:space:]]*=[[:space:]]*"gpui-pre".*version[[:space:]]*=[[:space:]]*"=?([^"]+)".*/\1/p' \
+# Documentation writes `{{gpui_version}}` for the `mhr-gpui` release, and
+# releases from before that move write `{{gpui_pre_version}}` for the
+# `gpui-pre` snapshot they pinned. Each build resolves both from the Cargo.toml
+# of the revision it documents, because the temporary website copies have no
+# workspace manifest next to them.
+gpui_pin() {
+  git -C "$repo_root" show "$2:Cargo.toml" 2>/dev/null \
+    | sed -nE "s/^gpui[[:space:]]*=.*package[[:space:]]*=[[:space:]]*\"$1\".*version[[:space:]]*=[[:space:]]*\"=?([^\"]+)\".*/\1/p" \
     | head -n 1
+}
+
+gpui_version() {
+  gpui_pin mhr-gpui "$1"
+}
+
+gpui_pre_version() {
+  gpui_pin gpui-pre "$1"
 }
 
 gpui_kit_version() {
@@ -96,6 +106,7 @@ ln -s "$repo_root/website/node_modules" "$latest_dir/node_modules"
 echo "Building $latest_release at /"
 (
   cd "$latest_dir"
+  GPUI_VERSION="$(gpui_version "$latest_release")" \
   GPUI_PRE_VERSION="$(gpui_pre_version "$latest_release")" \
   GPUI_KIT_VERSION="$(gpui_kit_version "$latest_release")" \
   PUBLIC_SITE_VERSION="$latest_release" \
@@ -120,6 +131,7 @@ echo "Building main at /versions/main"
 (
   cd "$main_dir"
   ln -s "$repo_root/website/node_modules" node_modules
+  GPUI_VERSION="$(gpui_version origin/main)" \
   GPUI_PRE_VERSION="$(gpui_pre_version origin/main)" \
   GPUI_KIT_VERSION="$(gpui_kit_version origin/main)" \
   PUBLIC_SITE_VERSION=main \
@@ -156,6 +168,7 @@ for tag in "${release_tags[@]:1}"; do
   echo "Building $tag at /versions/$tag"
   (
     cd "$version_dir"
+    GPUI_VERSION="$(gpui_version "$tag")" \
     GPUI_PRE_VERSION="$(gpui_pre_version "$tag")" \
     GPUI_KIT_VERSION="$(gpui_kit_version "$tag")" \
     PUBLIC_SITE_VERSION="$tag" \

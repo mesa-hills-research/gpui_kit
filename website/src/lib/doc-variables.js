@@ -3,13 +3,15 @@ import { resolve } from 'node:path';
 import { visit } from 'unist-util-visit';
 
 // Values that change with a release but appear throughout the documentation.
-// Pages write `{{gpui_kit_version}}` and `{{gpui_pre_version}}` instead of
+// Pages write `{{gpui_kit_version}}` and `{{gpui_version}}` instead of
 // literals, so prose, docs.rs links and both locales follow the documented
-// Kit release and its matching GPUI snapshot.
+// Kit release and its matching `mhr-gpui` release. Releases before the move
+// to `mhr-gpui` write `{{gpui_pre_version}}` for the `gpui-pre` snapshot they
+// pinned, and a versioned build of one still needs it.
 //
 // The workspace `Cargo.toml` is the single source. A versioned build copies
-// the website out of the checkout and sets `GPUI_PRE_VERSION` from the
-// `Cargo.toml` of the revision it documents.
+// the website out of the checkout and sets `GPUI_VERSION` (or
+// `GPUI_PRE_VERSION`) from the `Cargo.toml` of the revision it documents.
 // Versioned builds also set `GPUI_KIT_VERSION` from the selected release tag
 // or main's Kit manifest; local development reads the workspace manifest.
 
@@ -24,17 +26,26 @@ function readGpuiKitVersion() {
   return readFileSync(manifest, 'utf8').match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 }
 
-function readGpuiPreVersion() {
-  if (process.env.GPUI_PRE_VERSION) return process.env.GPUI_PRE_VERSION;
+/** The `=x.y.z` pin of the workspace's `gpui` dependency on `packageName`. */
+function readGpuiPin(packageName) {
   const manifest = resolve(process.cwd(), '..', 'Cargo.toml');
   if (!existsSync(manifest)) return undefined;
   const pin = readFileSync(manifest, 'utf8')
-    .match(/^gpui\s*=\s*\{[^}\n]*package\s*=\s*"gpui-pre"[^}\n]*version\s*=\s*"=?([^"]+)"/m);
+    .match(new RegExp(`^gpui\\s*=\\s*\\{[^}\\n]*package\\s*=\\s*"${packageName}"[^}\\n]*version\\s*=\\s*"=?([^"]+)"`, 'm'));
   return pin?.[1];
+}
+
+function readGpuiVersion() {
+  return process.env.GPUI_VERSION || readGpuiPin('mhr-gpui');
+}
+
+function readGpuiPreVersion() {
+  return process.env.GPUI_PRE_VERSION || readGpuiPin('gpui-pre');
 }
 
 const resolvers = {
   gpui_kit_version: readGpuiKitVersion,
+  gpui_version: readGpuiVersion,
   gpui_pre_version: readGpuiPreVersion,
 };
 

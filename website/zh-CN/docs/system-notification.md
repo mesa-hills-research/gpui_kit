@@ -62,7 +62,7 @@ GPUI 的 `show_system_notification` 返回 `()`，不返回投递结果。因此
 
 ## 使用底层 GPUI API 发送
 
-本项目固定使用 `gpui-pre {{gpui_pre_version}}`。其 [`App::show_system_notification`](https://docs.rs/gpui-pre/{{gpui_pre_version}}/gpui/struct.App.html#method.show_system_notification) 接收包含 `tag`、`title`、`body` 和 `actions` 的 `SystemNotification`：
+本项目固定使用 `mhr-gpui {{gpui_version}}`。其 [`App::show_system_notification`](https://docs.rs/mhr-gpui/{{gpui_version}}/gpui/struct.App.html#method.show_system_notification) 接收包含 `tag`、`title`、`body` 和 `actions` 的 `SystemNotification`：
 
 ```rust
 use gpui_kit::SystemNotification;

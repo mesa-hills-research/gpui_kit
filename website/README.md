@@ -43,13 +43,14 @@ reader in the version they are reading.
   resolves it inside the current version. A site-root path such as
   `/docs/entity` points at the default version and is rejected by
   `bun run test:docs`. A Chinese page links the Chinese page when one exists.
-- **Write `{{gpui_pre_version}}` for the GPUI snapshot version**, in prose,
+- **Write `{{gpui_version}}` for the `mhr-gpui` version**, in prose,
   code and links alike, for example
-  `https://docs.rs/gpui-pre/{{gpui_pre_version}}/gpui/struct.Window.html`.
+  `https://docs.rs/mhr-gpui/{{gpui_version}}/gpui/struct.Window.html`.
   The value comes from the `gpui` entry in the workspace `Cargo.toml`, so a
-  snapshot bump updates every page in both locales. `bun run test:docs`
-  rejects the pinned version written out by hand; a deliberate reference to
-  another snapshot is listed in `tests/doc-sources.test.ts`.
+  GPUI bump updates every page in both locales. `bun run test:docs`
+  rejects the pinned version written out by hand. A deliberate reference to
+  another release, such as the `gpui-pre` version the mobile fork pins, is
+  listed in `tests/doc-sources.test.ts`.
 - **Mark maturity in the frontmatter** of a page whose capability is not on
   the stable desktop path: `maturity: [preview]`, `[experimental]`,
   `[showcase-only]`, or `[platform-dependent]`, combined as needed. Unmarked pages are Stable. The

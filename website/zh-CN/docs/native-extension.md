@@ -21,7 +21,7 @@ Linux 的菜单回退实现保持 `NativeMenu` API，但内容由 GPUI 绘制，
 
 ## 源码与构建路径
 
-工作区根目录的 `Cargo.toml` 把 `gpui-pre` 固定为 `={{gpui_pre_version}}`。把 adapter 移植到其他 GPUI 版本前，请先核对当前 checkout 的源码。相关路径如下：
+工作区根目录的 `Cargo.toml` 把 `mhr-gpui` 固定为 `={{gpui_version}}`。把 adapter 移植到其他 GPUI 版本前，请先核对当前 checkout 的源码。相关路径如下：
 
 | 内容 | 本仓库源码 | 在仓库根目录构建或运行 |
 | --- | --- | --- |

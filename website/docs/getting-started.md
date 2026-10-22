@@ -26,7 +26,7 @@ This single dependency includes GPUI, GPUI Base, the styled GPUI Component libra
 
 ### macOS text rendering: `font-kit`
 
-**macOS needs the `font-kit` feature on `gpui-pre-platform` to render text.**
+**macOS needs the `font-kit` feature on `mhr-gpui-platform` to render text.**
 The `gpui-kit` dependency above already enables it, so this guide needs no
 additional dependency or feature setting.
 
@@ -36,21 +36,21 @@ the dependency entries are:
 
 ```toml
 [dependencies]
-gpui = { package = "gpui-pre", version = "={{gpui_pre_version}}" }
-gpui_platform = { package = "gpui-pre-platform", version = "={{gpui_pre_version}}", features = ["font-kit"] }
+gpui = { package = "mhr-gpui", version = "={{gpui_version}}" }
+gpui_platform = { package = "mhr-gpui-platform", version = "={{gpui_version}}", features = ["font-kit"] }
 ```
 
 Keep any other platform features your application uses, and keep the GPUI
-snapshot versions aligned. This is an alternative for direct GPUI users; keep
+crate versions aligned. This is an alternative for direct GPUI users; keep
 the single `gpui-kit` dependency for the Kit example below. Do not add
 `features = ["font-kit"]` to `gpui` or `gpui-kit`, or add a separate `font-kit`
-dependency: the feature belongs to `gpui-pre-platform` and enables
-`gpui-pre-macos/font-kit`.
+dependency: the feature belongs to `mhr-gpui-platform` and enables
+`mhr-gpui-macos/font-kit`.
 
-`gpui-pre-platform` does not enable `font-kit` by default. Without it, the macOS
+`mhr-gpui-platform` does not enable `font-kit` by default. Without it, the macOS
 backend uses `NoopTextSystem`: a window can open while no text is rendered,
 and `all_font_names()` returns an empty list. After updating your manifest,
-rebuild with `cargo run`. On macOS, `cargo tree -e features -i gpui-pre-macos`
+rebuild with `cargo run`. On macOS, `cargo tree -e features -i mhr-gpui-macos`
 shows which dependencies enable the backend's features; check for `font-kit`.
 
 ## Add a view

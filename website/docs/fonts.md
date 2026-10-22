@@ -110,7 +110,7 @@ div()
     .font_weight(FontWeight::BOLD)
 ```
 
-These are ordinary [`Styled`](https://docs.rs/gpui-pre/{{gpui_pre_version}}/gpui/trait.Styled.html)
+These are ordinary [`Styled`](https://docs.rs/mhr-gpui/{{gpui_version}}/gpui/trait.Styled.html)
 methods, so they compose with the rest of the style chain.
 
 ## Bundling custom fonts

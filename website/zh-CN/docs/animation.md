@@ -113,7 +113,7 @@ if sample.should_render() {
 
 ## GPUI 元素动画
 
-`Animation::new(duration)` 创建播放一次、线性变化的动画。`AnimationExt::with_animation(id, animation, animator)` 包装一个 `IntoElement`；回调收到元素及经过 easing 映射的进度值。GPUI 在布局阶段调用它，把返回元素的样式用于当前帧，并在结束前继续请求帧。回调可修改元素支持的属性，例如透明度或变换。包装器的播放规则可参见 [GPUI {{gpui_pre_version}} 动画源码](https://docs.rs/gpui-pre/{{gpui_pre_version}}/src/gpui/elements/animation.rs.html)。这里的 `gpui-pre` 仅是 GPUI 的发布与版本同步包名，并不是额外的应用层。
+`Animation::new(duration)` 创建播放一次、线性变化的动画。`AnimationExt::with_animation(id, animation, animator)` 包装一个 `IntoElement`；回调收到元素及经过 easing 映射的进度值。GPUI 在布局阶段调用它，把返回元素的样式用于当前帧，并在结束前继续请求帧。回调可修改元素支持的属性，例如透明度或变换。包装器的播放规则可参见 [GPUI {{gpui_version}} 动画源码](https://docs.rs/mhr-gpui/{{gpui_version}}/src/gpui/elements/animation.rs.html)。
 
 ```rust
 use std::time::Duration;

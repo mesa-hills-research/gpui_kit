@@ -56,9 +56,9 @@ gpui-kit = "{{gpui_kit_version}}"
 
 The `{{gpui_kit_version}}` requirement selects a compatible Kit release. Kit's default features include the styled components and default icon assets. It brings in matching GPUI crates, so an application using this setup does not need to list GPUI separately. `use gpui_kit::*;` imports GPUI's re-exported API; the layers are reachable as `gpui_kit::component`, `gpui_kit::base`, `gpui_kit::assets`, and `gpui_kit::platform`.
 
-### Why the dependency is named `gpui-pre`
+### Where GPUI comes from
 
-Throughout these docs, **GPUI** means [Zed's GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui). `gpui-pre` is the crates.io package name used to publish a snapshot of GPUI from a recorded Zed commit, alongside its related GPUI crates. It provides a reproducible publication and version alignment path for GPUI Kit; it is not another rendering implementation. The publication process adjusts package names and dependency manifests for crates.io, so API references in this manual target the GPUI version pinned by this Kit release. In this repository that is `gpui-pre = {{gpui_pre_version}}`; application code normally depends only on `gpui-kit` and imports GPUI through `gpui_kit::*`. A newer `gpui-pre` snapshot does not by itself mean that the current GPUI Kit release supports it.
+Throughout these docs, **GPUI** means the `mhr-gpui` crates, Mesa Hills Research's fork of [Zed's GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui). They keep GPUI's library names, so code writes `gpui::...` or, through the kit, `gpui_kit::*`. API references in this manual target the GPUI version pinned by this Kit release, which in this repository is `mhr-gpui = {{gpui_version}}`. Application code normally depends only on `gpui-kit` and imports GPUI through `gpui_kit::*`. A newer `mhr-gpui` release does not by itself mean that the current GPUI Kit release supports it.
 
 ## Verify the installation
 
@@ -81,8 +81,8 @@ For a new project instead, follow [Getting Started](./getting-started). It creat
 | Windows reports `link.exe` missing or cannot find a Windows SDK. | Confirm the Visual Studio C++ workload and SDK are installed, then build with an MSVC Rust toolchain from a Visual Studio Developer PowerShell if needed. |
 | Linux reports a missing `pkg-config` executable, X11, Wayland, fontconfig, or WebKit header. | Install the Ubuntu packages above, or their equivalents for your distribution. If `pkg-config` itself is missing, install the `pkg-config` package too. The error identifies the missing tool or system library. |
 | The program compiles but no window appears on Linux. | Check that the process is running in a graphical Wayland or X11 session and that a Vulkan driver works for that session. A headless shell or Vulkan loader without a driver is insufficient. |
-| A window opens on macOS, but no text is rendered. | If you depend on GPUI directly, enable `font-kit` on `gpui-pre-platform` and rebuild. `gpui-kit` already enables it. See [Getting Started](./getting-started.md#macos-text-rendering-font-kit) for the manifest and feature check. |
-| Cargo cannot resolve `gpui-pre` or APIs differ from these examples. | Keep the `gpui-kit` requirement and update dependencies together. Kit pins a matching `gpui-pre-*` snapshot; do not override one GPUI package to a different version. In a repository checkout, use the checked-in `Cargo.lock`. |
+| A window opens on macOS, but no text is rendered. | If you depend on GPUI directly, enable `font-kit` on `mhr-gpui-platform` and rebuild. `gpui-kit` already enables it. See [Getting Started](./getting-started.md#macos-text-rendering-font-kit) for the manifest and feature check. |
+| Cargo cannot resolve `mhr-gpui` or APIs differ from these examples. | Keep the `gpui-kit` requirement and update dependencies together. Kit pins matching `mhr-gpui*` releases; do not override one GPUI package to a different version. In a repository checkout, use the checked-in `Cargo.lock`. |
 
 For errors after a window opens, continue with [Getting Started](./getting-started) and inspect the relevant guide for the feature you are using.
 
@@ -102,12 +102,12 @@ or workspace:
 
 ```toml
 [profile.dev.package]
-gpui-pre = { opt-level = 3 }
+mhr-gpui = { opt-level = 3 }
 gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
-gpui-pre-macros = { opt-level = 3 }
-gpui-pre-platform = { opt-level = 3 }
+mhr-gpui-macros = { opt-level = 3 }
+mhr-gpui-platform = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }

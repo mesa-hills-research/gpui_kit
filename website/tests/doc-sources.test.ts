@@ -14,11 +14,12 @@ const files = contentFiles(root);
 const read = (file: string) => readFileSync(join(root, file), 'utf8');
 const ASSET = /\.(?:png|jpe?g|gif|svg|webp|avif|ico|pdf|zip|gz|txt|json|toml|ya?ml|rs|css|js|mjs|ts)$/i;
 
-// Deliberate references to a GPUI snapshot other than the one the workspace
-// pins. Anything else must use `{{gpui_pre_version}}`.
+// Deliberate references to a GPUI release other than the one the workspace
+// pins. Anything else must use `{{gpui_version}}`.
 const INTENTIONAL_GPUI_PINS: Record<string, string[]> = {
-  // The mobile platform fork is pinned to an older snapshot than Kit, and
-  // `gpui-pre-mobile` has its own crate version.
+  // The mobile platform fork still builds on an older `gpui-pre` snapshot than
+  // the `mhr-gpui` release Kit pins, and `gpui-pre-mobile` has its own crate
+  // version.
   'docs/mobile.md': ['0.3.4', '0.1.0'],
   'zh-CN/docs/mobile.md': ['0.3.4', '0.1.0'],
 };
@@ -68,23 +69,23 @@ test('relative documentation links resolve to a page in the same locale', () => 
   assert.deepEqual(failures, [], failures.join('\n'));
 });
 
-test('GPUI snapshot versions come from the workspace pin', () => {
-  const pinned = docVariable('gpui_pre_version');
+test('GPUI versions come from the workspace pin', () => {
+  const pinned = docVariable('gpui_version');
   const failures: string[] = [];
   for (const file of files) {
     const allowed = INTENTIONAL_GPUI_PINS[file] ?? [];
     read(file).split('\n').forEach((line, index) => {
       const at = `${file}:${index + 1}`;
       if (new RegExp(`(?<![\\d.])${pinned.replace(/\./g, '\\.')}(?!\\d|\\.\\d)`).test(line)) {
-        failures.push(`${at} writes the pinned ${pinned} — use {{gpui_pre_version}}`);
+        failures.push(`${at} writes the pinned ${pinned} — use {{gpui_version}}`);
       }
-      if (/docs\.rs\/(?:crate\/)?gpui-pre[\w-]*\/\d/.test(line)) {
-        failures.push(`${at} links a fixed gpui-pre version on docs.rs — use {{gpui_pre_version}}`);
+      if (/docs\.rs\/(?:crate\/)?(?:mhr-gpui|gpui-pre)[\w-]*\/\d/.test(line)) {
+        failures.push(`${at} links a fixed GPUI version on docs.rs — use {{gpui_version}}`);
       }
-      if (/gpui-pre/.test(line)) {
+      if (/gpui-pre|mhr-gpui/.test(line)) {
         for (const version of line.match(/(?<![\w.])\d+\.\d+\.\d+(?![\w-]|\.\d)/g) ?? []) {
           if (version !== pinned && !allowed.includes(version)) {
-            failures.push(`${at} names gpui-pre ${version} — use {{gpui_pre_version}}, or list an intentional pin in this test`);
+            failures.push(`${at} names a GPUI crate at ${version} — use {{gpui_version}}, or list an intentional pin in this test`);
           }
         }
       }

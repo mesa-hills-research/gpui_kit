@@ -5,8 +5,8 @@ This repository is Mesa Hills Research's fork of [GPUI Kit](https://github.com/l
 releases and adds the changes listed below.
 
 It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
-GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
-[Mesa Hills Research's fork of those crates](https://github.com/mesa-hills-research/gpui).
+GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates on crates.io,
+[Mesa Hills Research's fork of Zed's gpui](https://github.com/mesa-hills-research/gpui).
 
 ## Changes from upstream
 
@@ -259,15 +259,15 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from
   and narrowing it when the bar runs out of room, and `suffix` puts content just before the
   window buttons. See [Centered title](website/component/title-bar.md#centered-title) on the
   TitleBar page.
-- **GPUI from the gpui fork.** A `[patch.crates-io]` in `Cargo.toml` points the 25 `gpui-pre`
-  crates at one commit of the fork on GitHub. To work on both repositories together, see
-  [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
+- **GPUI from the gpui fork.** The kit pins the published `mhr-gpui` crates, each to an exact
+  version, where upstream pins the `gpui-pre` snapshots. To work on both repositories together,
+  see [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
 - **Golden screenshots** (`crates/kit/tests/screenshots.rs`). Buttons, inputs, a textarea and its
   suggestion menu, a text editor, its spelling menu and line-number gutters, a list and a popup
   menu render headlessly on Linux, in light and dark themes and at scale factors 2 and 2.625,
   and are compared with the PNGs in `crates/kit/tests/screenshots`. They run with the kit's
   tests and use the gpui fork's
-  `gpui-pre-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
+  `mhr-gpui-screenshot`. [crates/kit/TESTING.md](crates/kit/TESTING.md#golden-screenshots-on-linux)
   covers running them and updating the goldens.
 - **Tooltips that leave with their trigger** (`gpui-base`, `gpui-component`). A component's tooltip
   is drawn only on frames that draw the element it describes, so it disappears with a button
@@ -286,19 +286,11 @@ from:
 gpui-kit = { git = "https://github.com/mesa-hills-research/gpui_kit", rev = "<commit>" }
 ```
 
-Cargo applies only the app's own patches, so the app also points the `gpui-pre` crates at the
-gpui fork, at the commit this repository's `Cargo.toml` names. Otherwise it builds with their
-crates.io release, without the fork's fixes, such as variable fonts at the requested weight on
-Linux:
-
-```toml
-[patch.crates-io]
-gpui-pre = { git = "https://github.com/mesa-hills-research/gpui", rev = "<commit>" }
-# and each other gpui-pre crate in the app's Cargo.lock
-```
-
-The fork's [docs/using.md](https://github.com/mesa-hills-research/gpui/blob/main/docs/using.md)
-lists every entry, and apps from `gpui_new` come with them.
+The kit depends on the published `mhr-gpui` crates, which Cargo fetches from crates.io, so the app
+needs no `[patch]` and gets the fork's fixes, such as variable fonts at the requested weight on
+Linux. The app's code still writes `use gpui_kit::*;`. The fork's
+[docs/using.md](https://github.com/mesa-hills-research/gpui/blob/main/docs/using.md) covers
+using the crates without the kit, and apps from `gpui_new` start from this setup.
 
 ## Starting a new app
 
@@ -567,6 +559,6 @@ Software source and documentation code examples: [Apache-2.0](LICENSE-APACHE).
 
 Documentation prose and original illustrations in the Docs, Base, Component, and Shell sections (including Chinese translations) for which GPUI Kit holds licensing rights are also offered under [CC BY 4.0](LICENSE-DOCS.md). When copying or adapting that material, credit **GPUI Kit**, link to the source page and [CC BY 4.0 license](https://creativecommons.org/licenses/by/4.0/), and indicate changes. Existing Apache-2.0 permissions remain; earlier revisions retain their prior terms, and third-party contributions keep their own licenses unless separately authorized. Using facts or ideas without copying protected expression does not require attribution under CC BY 4.0.
 
-- Built on [GPUI](https://github.com/zed-industries/zed), the UI framework from Zed Industries, also Apache-2.0. The `gpui-pre-*` crates are snapshots of it, published with Zed's license and notices intact.
+- Built on [GPUI](https://github.com/zed-industries/zed), the UI framework from Zed Industries, also Apache-2.0. The `mhr-gpui` crates are a fork of it, published with Zed's license and notices intact.
 - UI design based on [shadcn/ui](https://ui.shadcn.com), some from [Reui](https://reui.io).
 - Icons from [Lucide](https://lucide.dev).

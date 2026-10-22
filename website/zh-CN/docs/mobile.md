@@ -56,7 +56,7 @@ gpui = { package = "gpui-pre", version = "=0.3.4", default-features = false }
 gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "7d9efcd2069f9eaa6eb3ba6345aac4aa7d87c9f7", default-features = false, features = ["component"] }
 ```
 
-这些提交固定了示例的依赖基线。Kit 提交包含移动平台条件编译支持，但尚未包含移动端 tooltip 禁用逻辑。当前 GPUI Kit 工作树使用 `gpui-pre {{gpui_pre_version}}`，而固定的移动平台及渲染器使用 `0.3.4`。Cargo 可能同时选出两个版本，导致 GPUI 类型不兼容；**只把 Kit 依赖替换为本地路径并不能完成升级**。需要先将移动平台及渲染器更新到与 Kit 相同的 GPUI 版本，并验证这一组合，之后才可使用如下路径依赖：
+这些提交固定了示例的依赖基线。Kit 提交包含移动平台条件编译支持，但尚未包含移动端 tooltip 禁用逻辑。当前 GPUI Kit 工作树使用 `mhr-gpui {{gpui_version}}`，而固定的移动平台及渲染器使用另一个包 `gpui-pre` `0.3.4`。Cargo 可能同时选出两个版本，导致 GPUI 类型不兼容；**只把 Kit 依赖替换为本地路径并不能完成升级**。需要先将移动平台及渲染器更新到与 Kit 相同的 GPUI 版本，并验证这一组合，之后才可使用如下路径依赖：
 
 ```toml
 gpui-kit = { path = "../gpui-kit/crates/kit", default-features = false, features = ["component"] }
@@ -161,6 +161,6 @@ Android 使用独立的 Activity 与渲染表面生命周期。仓库包含 Andr
 | --- | --- |
 | Xcode 找不到模拟器目标，或应用在另一台模拟器上启动 | 固定版本的 `build.sh` 默认面向 iOS 18.6 的 iPhone 16 Pro 构建。安装该运行时，或对照 `xcodebuild -showdestinations` 修改脚本中的 Xcode destination。随后运行 `xcrun simctl list devices available`：`_ios_run_simulator` 会独立选择第一个可用的 iPhone 安装应用。若它不是构建目标，请把 `sim_id` 选择改为目标模拟器的 UUID。 |
 | 真机构建签名或安装失败 | 替换 `example/ios/project.yml` 中的示例开发团队，重新生成 Xcode 工程，并确认 Xcode 能识别设备。脚本默认面向真机；使用本文路径时要显式传入 `--simulator`。 |
-| Rust 出现两个 GPUI 版本，或 `App`、`Window` 类型不匹配 | 检查解析出的 `gpui-pre` 包。固定的移动 fork 使用 `0.3.4`，当前工作树使用 `{{gpui_pre_version}}`；使用本地 Kit 路径前须统一整套移动平台与 Kit 依赖。 |
+| Rust 出现两个 GPUI 版本，或 `App`、`Window` 类型不匹配 | 检查解析出的 `gpui-pre` 和 `mhr-gpui` 包。固定的移动 fork 使用 `gpui-pre` `0.3.4`，当前工作树使用 `mhr-gpui` `{{gpui_version}}`；使用本地 Kit 路径前须统一整套移动平台与 Kit 依赖。 |
 | 应用启动后 GPUI 区域空白或画面停滞 | 检查 Rust 回调是否打开窗口、子控制器是否已加入容器、`layoutSubviews` 是否传递非零尺寸，以及界面可见时是否持续请求帧。查看 Xcode 控制台；示例将 Rust 日志与 panic 输出到 `NSLog`。 |
 | 文字、图标或图片缺失 | 核对字体及字形覆盖、已注册的 `AssetSource` 与图标键名，以及图片的打包路径或 HTTP 客户端。桌面端的字体与资源配置不会自动进入移动宿主。 |

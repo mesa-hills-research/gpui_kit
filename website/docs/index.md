@@ -6,7 +6,7 @@ description: A comprehensive Rust framework for building fantastic, high-perform
 # GPUI Kit
 
 GPUI Kit is a Rust desktop application framework built on GPUI.
-The `gpui-pre` dependency name refers to the published, version-pinned GPUI snapshot used by Kit, not a different rendering framework; see [Installation](./installation#why-the-dependency-is-named-gpui-pre).
+Kit takes GPUI from the published `mhr-gpui` crates at a pinned version. See [Installation](./installation#where-gpui-comes-from).
 
 GPUI Kit's core architecture has five layers:
 

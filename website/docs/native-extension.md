@@ -21,7 +21,7 @@ The Linux menu fallback preserves the `NativeMenu` API, but it is GPUI content r
 
 ## Source and build map
 
-The workspace pins `gpui-pre` to `={{gpui_pre_version}}` in the root `Cargo.toml`. Check the source in this checkout before copying an adapter to a different GPUI version. The relevant paths are:
+The workspace pins `mhr-gpui` to `={{gpui_version}}` in the root `Cargo.toml`. Check the source in this checkout before copying an adapter to a different GPUI version. The relevant paths are:
 
 | Concern | Source in this repository | Build or exercise from the repository root |
 | --- | --- | --- |

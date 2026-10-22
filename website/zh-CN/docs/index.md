@@ -6,7 +6,7 @@ description: 基于 GPUI 构建出色高性能桌面应用的综合性 Rust 开�
 # GPUI Kit 简介
 
 GPUI Kit 是一个基于 GPUI 的综合性 Rust 桌面应用开发框架。
-依赖名 `gpui-pre` 指 GPUI Kit 固定版本使用的 GPUI 发布快照，并非另一套渲染框架；详见[安装说明](./installation#为什么依赖名是-gpui-pre)。
+GPUI Kit 使用已发布的 `mhr-gpui` crate，并固定其版本。详见[安装说明](./installation#gpui-从哪里来)。
 
 GPUI Kit 的核心架构包含五个层次：
 

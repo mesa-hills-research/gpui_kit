@@ -56,9 +56,9 @@ gpui-kit = "{{gpui_kit_version}}"
 
 `{{gpui_kit_version}}` 要求会选择兼容的 Kit 版本。Kit 的默认特性包含带样式的组件和默认图标资源，并会引入配套的 GPUI crate；按此方式构建的应用无需单独声明 GPUI。`use gpui_kit::*;` 导入 Kit 重导出的 GPUI API；各层分别可通过 `gpui_kit::component`、`gpui_kit::base`、`gpui_kit::assets` 和 `gpui_kit::platform` 访问。
 
-### 为什么依赖名是 `gpui-pre`
+### GPUI 从哪里来
 
-本文中的 **GPUI** 指 [Zed 的 GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui)。`gpui-pre` 是将 Zed 指定提交的 GPUI crate 以一组配套版本发布到 crates.io 时使用的 Cargo 包名，供 GPUI Kit 固定可复现的依赖；它不是另一套渲染实现。发布过程会调整包名及依赖清单以适应 crates.io，所以本文的 API 说明以当前 GPUI Kit 固定的 GPUI 版本为准。本仓库固定 `gpui-pre = {{gpui_pre_version}}`；应用通常只依赖 `gpui-kit`，通过 `gpui_kit::*` 使用 GPUI。`gpui-pre` 发布了更新的快照，也不代表当前 GPUI Kit 版本已支持它。
+本文中的 **GPUI** 指 `mhr-gpui` 系列 crate，即 Mesa Hills Research 维护的 [Zed GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) 分支。它们沿用 GPUI 的库名，所以代码里写 `gpui::...`，通过 Kit 则写 `gpui_kit::*`。本文的 API 说明以当前 GPUI Kit 版本固定的 GPUI 版本为准，本仓库固定 `mhr-gpui = {{gpui_version}}`。应用通常只依赖 `gpui-kit`，通过 `gpui_kit::*` 使用 GPUI。`mhr-gpui` 发布了更新的版本，也不代表当前 GPUI Kit 版本已支持它。
 
 ## 验证安装
 
@@ -81,8 +81,8 @@ cargo run -p hello_world
 | Windows 提示缺少 `link.exe` 或 Windows SDK。 | 检查 Visual Studio C++ workload 和 SDK，并确认使用 MSVC Rust 工具链；必要时从 Visual Studio Developer PowerShell 构建。 |
 | Linux 提示缺少 `pkg-config` 命令、X11、Wayland、fontconfig 或 WebKit 头文件。 | 安装上面的 Ubuntu 开发包，或对应发行版的等价包。如果缺少 `pkg-config` 命令本身，还需安装 `pkg-config` 包；根据报错定位具体工具或系统库。 |
 | Linux 上编译成功，但没有出现窗口。 | 确认程序运行于 Wayland 或 X11 图形会话，并且会话中有可用的 Vulkan 驱动。无图形环境的终端或只有 Vulkan loader 都不够。 |
-| macOS 上窗口可以打开，但没有文字。 | 如果直接依赖 GPUI，请在 `gpui-pre-platform` 上启用 `font-kit` 并重新构建。`gpui-kit` 已经启用了它。配置示例和 feature 检查命令见 [Getting Started](./getting-started.md#macos-文字渲染font-kit)。 |
-| Cargo 无法解析 `gpui-pre`，或 API 与示例不一致。 | 保留 `gpui-kit` 依赖要求，并一起更新依赖。Kit 固定一组匹配的 `gpui-pre-*` 快照；不要把其中某个 GPUI 包单独覆盖为别的版本。在本仓库中使用已提交的 `Cargo.lock`。 |
+| macOS 上窗口可以打开，但没有文字。 | 如果直接依赖 GPUI，请在 `mhr-gpui-platform` 上启用 `font-kit` 并重新构建。`gpui-kit` 已经启用了它。配置示例和 feature 检查命令见 [Getting Started](./getting-started.md#macos-文字渲染font-kit)。 |
+| Cargo 无法解析 `mhr-gpui`，或 API 与示例不一致。 | 保留 `gpui-kit` 依赖要求，并一起更新依赖。Kit 固定一组匹配的 `mhr-gpui*` 版本；不要把其中某个 GPUI 包单独覆盖为别的版本。在本仓库中使用已提交的 `Cargo.lock`。 |
 
 窗口打开后的功能问题，可继续阅读[Getting Started](./getting-started)以及对应功能指南。
 
@@ -94,12 +94,12 @@ Rust Debug 构建下，GPUI、组件库、布局和文字渲染相关 crate 基�
 
 ```toml
 [profile.dev.package]
-gpui-pre = { opt-level = 3 }
+mhr-gpui = { opt-level = 3 }
 gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
-gpui-pre-macros = { opt-level = 3 }
-gpui-pre-platform = { opt-level = 3 }
+mhr-gpui-macros = { opt-level = 3 }
+mhr-gpui-platform = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }

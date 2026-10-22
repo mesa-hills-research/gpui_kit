@@ -8,25 +8,17 @@ Please submit **one PR that does one thing**, this is important, and helps us to
 
 ## GPUI and GPUI Kit
 
-GPUI Kit is built on top of GPUI. We do not aim to fork GPUI or maintain a separate GPUI implementation.
+GPUI Kit is built on top of GPUI. It does not carry a GPUI implementation of its own.
 
 GPUI provides the core rendering, windowing, and platform capabilities. GPUI Kit focuses on the application layer, including UI components, application frameworks, developer tooling, and native integrations.
 
-Changes to GPUI's core APIs or platform behavior should be contributed upstream. 
+Changes to GPUI's core APIs or platform behavior belong in the gpui crates, which are published as `mhr-gpui` from [Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui), or upstream in Zed. Extensions that can be implemented on top of GPUI without modifying it are welcome in GPUI Kit.
 
-Extensions that can be implemented on top of GPUI without modifying it are welcome in GPUI Kit.
+GPUI Kit pins every `mhr-*` crate to an exact version (`=x.y.z`) in the workspace `Cargo.toml`, and the published `gpui-kit` crates carry those requirements to crates.io. The gpui crates are released one by one, so their versions differ. A gpui-kit release therefore keeps building against the releases it was tested with, and a new gpui release only reaches applications through a gpui-kit release that bumps the pins. CI rejects a requirement that is not exact (`bun script/check-gpui-pin.ts`).
 
-The gpui-pre crates provide version-aligned releases of upstream GPUI. They must remain compatible with upstream and must not carry behavioral patches, so that we can continue updating directly from upstream and use the official GPUI crates when appropriate.
+The golden-image screenshot harness is not published, so `crates/kit/Cargo.toml` takes it from the gpui repository at the commit the published crates were cut from. The workspace `[patch."https://github.com/mesa-hills-research/gpui"]` gives it the published `mhr-gpui` and `mhr-gpui-wgpu`, so the build holds one copy of GPUI.
 
-The `gpui-pre` crates publish version-aligned snapshots of upstream GPUI, not a separately developed version.
-
-Our automated process checks Zed's crates/gpui* weekly and publishes a new snapshot when upstream changes are detected. Before publishing, the snapshot is built and tested against GPUI Kit; the result is reported on the release, and the snapshot is published either way.
-
-GPUI Kit pins the `gpui-pre` crates to an exact version (`=x.y.z`) in the workspace `Cargo.toml`, and the published `gpui-kit` crates carry that requirement to crates.io. A gpui-kit release therefore keeps building against the snapshot it was tested with, and a new snapshot only reaches applications through a gpui-kit release that bumps the pin. CI rejects a requirement that is not exact (`bun script/check-gpui-pin.ts`).
-
-To move GPUI Kit to a new snapshot, change the `=x.y.z` requirement of every `gpui-pre-*` crate in the workspace `Cargo.toml`, run `cargo update` for those crates, and adapt GPUI Kit to any upstream API change in the same pull request. We adapt GPUI Kit to upstream rather than patching GPUI or maintaining downstream behavior.
-
-This process allows the community to follow GPUI development with tested releases while keeping GPUI Kit aligned with upstream and compatible with official GPUI crates.
+To move GPUI Kit to a new gpui release, change the `=x.y.z` requirement of every `mhr-*` crate that the release changed in the workspace `Cargo.toml`, set the two patch entries to the same versions and the `gpui-screenshot` rev in `crates/kit/Cargo.toml` to the release's commit, run `cargo update` for those crates, and adapt GPUI Kit to any API change in the same pull request.
 
 ## AI-Assisted Contributions
 
