@@ -636,8 +636,11 @@ impl TextViewState {
         }
         self.revision += 1;
         self.reconcile_range_highlights(&new.document, self.revision, appended);
-        self.stream_fade
-            .record(&self.parsed_content.document, &new.document, Instant::now());
+        self.stream_fade.record(
+            &self.parsed_content.document,
+            &new.document,
+            cx.background_executor().now(),
+        );
         self.parsed_content = new;
         self.parsed_error = None;
         if appended {
@@ -1063,7 +1066,7 @@ impl TextViewState {
                     self.stream_fade.record(
                         &self.parsed_content.document,
                         &content.document,
-                        Instant::now(),
+                        cx.background_executor().now(),
                     );
                     self.parsed_content = content;
                     self.parsed_error = None;
@@ -1131,7 +1134,7 @@ impl TextViewState {
                 self.stream_fade.record(
                     &self.parsed_content.document,
                     &content.document,
-                    Instant::now(),
+                    cx.background_executor().now(),
                 );
                 // This result may cover only part of the queued appends.
                 // Keep the uncommitted tail pending from this document's end,
@@ -1620,7 +1623,9 @@ impl Render for TextViewState {
         }
         self.layout_text_style = Some(typography);
         let state = cx.entity();
-        let stream_fade = self.stream_fade.frame(Instant::now(), cx.reduce_motion());
+        let stream_fade = self
+            .stream_fade
+            .frame(cx.background_executor().now(), cx.reduce_motion());
         if stream_fade.is_some() && self.fade_tick.is_none() {
             self.fade_tick = Some(cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(STREAM_FADE_TICK).await;
@@ -1934,23 +1939,40 @@ mod tests {
         use super::super::*;
         use crate::{motion::Easing, text::stream_fade::TextLeafKey};
 
-        /// Long enough that a debug test cannot outrun the fade before it
-        /// samples the first frame.
+        /// The fade of most tests, long enough that stepping the test clock a few times
+        /// stays within it.
         const FADE: Duration = Duration::from_secs(10);
 
         fn fading_state(markdown: &str, cx: &mut TestAppContext) -> Entity<TextViewState> {
+            fading_state_lasting(markdown, FADE, cx)
+        }
+
+        fn fading_state_lasting(
+            markdown: &str,
+            fade: Duration,
+            cx: &mut TestAppContext,
+        ) -> Entity<TextViewState> {
             cx.update(crate::init);
             let state = cx.update(|cx| {
                 cx.new(|cx| {
                     TextViewState::markdown(markdown, cx).motion(
                         TextViewMotion::default()
-                            .with_stream_fade(FADE)
+                            .with_stream_fade(fade)
                             .with_stream_fade_easing(Easing::Linear),
                     )
                 })
             });
             cx.run_until_parked();
             state
+        }
+
+        /// A window whose root is a text view of `state`.
+        struct FadeRoot(Entity<TextViewState>);
+
+        impl Render for FadeRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                crate::text::TextView::new(&self.0)
+            }
         }
 
         /// The fade ranges of `key` sampled right now, or `None` when the
@@ -1960,8 +1982,10 @@ mod tests {
             key: TextLeafKey,
             cx: &mut TestAppContext,
         ) -> Option<Vec<Range<usize>>> {
-            state.update(cx, |state, _| {
-                let frame = state.stream_fade.frame(Instant::now(), false)?;
+            state.update(cx, |state, cx| {
+                let frame = state
+                    .stream_fade
+                    .frame(cx.background_executor().now(), false)?;
                 let fades = frame.fades(key)?;
                 assert!(
                     fades.iter().all(|(_, fade_out)| *fade_out > 0.9),
@@ -1979,10 +2003,11 @@ mod tests {
 
             assert_eq!(fades(&state, TextLeafKey::block(0), cx), Some(vec![5..11]));
 
-            state.update(cx, |state, _| {
-                let later = Instant::now() + FADE + Duration::from_secs(1);
+            state.update(cx, |state, cx| {
+                let now = cx.background_executor().now();
+                let later = now + FADE + Duration::from_secs(1);
                 assert!(state.stream_fade.frame(later, false).is_none());
-                assert!(state.stream_fade.frame(Instant::now(), false).is_none());
+                assert!(state.stream_fade.frame(now, false).is_none());
             });
         }
 
@@ -2088,10 +2113,10 @@ mod tests {
             state.update(cx, |state, cx| state.push_str(" one two three", cx));
             cx.run_until_parked();
 
-            state.update(cx, |state, _| {
+            state.update(cx, |state, cx| {
                 let frame = state
                     .stream_fade
-                    .frame(Instant::now() + stagger * 3, false)
+                    .frame(cx.background_executor().now() + stagger * 3, false)
                     .expect("words still fading");
                 let fades = frame.fades(TextLeafKey::block(0)).expect("paragraph fades");
                 let ranges: Vec<_> = fades.iter().map(|(range, _)| range.clone()).collect();
@@ -2144,8 +2169,9 @@ mod tests {
             state.update(cx, |state, cx| state.push_str(" world", cx));
             cx.run_until_parked();
 
-            state.update(cx, |state, _| {
-                assert!(state.stream_fade.frame(Instant::now(), false).is_none());
+            state.update(cx, |state, cx| {
+                let now = cx.background_executor().now();
+                assert!(state.stream_fade.frame(now, false).is_none());
             });
         }
 
@@ -2155,21 +2181,74 @@ mod tests {
             state.update(cx, |state, cx| state.push_str(" world", cx));
             cx.run_until_parked();
 
-            state.update(cx, |state, _| {
-                assert!(state.stream_fade.frame(Instant::now(), true).is_none());
-                assert!(state.stream_fade.frame(Instant::now(), false).is_none());
+            state.update(cx, |state, cx| {
+                let now = cx.background_executor().now();
+                assert!(state.stream_fade.frame(now, true).is_none());
+                assert!(state.stream_fade.frame(now, false).is_none());
             });
+        }
+
+        /// The fade goes by the clock of the frame, which a test moves by hand, not by the wall
+        /// clock, so it is the same on a machine that runs the test fast or slow. It ends on the
+        /// tick its time is up, and then no tick or frame is asked for.
+        #[gpui::test]
+        fn a_fade_follows_the_frame_clock_and_ends_with_it(cx: &mut TestAppContext) {
+            let fade = STREAM_FADE_TICK * 10;
+            let state = fading_state_lasting("hello", fade, cx);
+            let (_, cx) = cx.add_window_view(|_, _| FadeRoot(state.clone()));
+            let notifies = Rc::new(Cell::new(0));
+            let _subscription = cx.update(|_, cx| {
+                let notifies = notifies.clone();
+                cx.observe(&state, move |_, _| notifies.set(notifies.get() + 1))
+            });
+            let fade_out = |cx: &mut gpui::VisualTestContext| {
+                state.update(cx, |state, cx| {
+                    let frame = state
+                        .stream_fade
+                        .frame(cx.background_executor().now(), false)?;
+                    Some(frame.fades(TextLeafKey::block(0))?[0].1)
+                })
+            };
+
+            state.update(cx, |state, cx| state.push_str(" world", cx));
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+
+            // Wall-clock time passes and the test clock does not, so the fade has not moved.
+            std::thread::sleep(Duration::from_millis(100));
+            assert_eq!(fade_out(cx), Some(1.0));
+
+            for _ in 0..5 {
+                cx.executor().advance_clock(STREAM_FADE_TICK);
+                cx.run_until_parked();
+            }
+            let half = fade_out(cx).expect("still fading at half the time");
+            assert!((half - 0.5).abs() < 1e-4, "{half}");
+
+            for _ in 0..4 {
+                cx.executor().advance_clock(STREAM_FADE_TICK);
+                cx.run_until_parked();
+            }
+            let last = fade_out(cx).expect("still fading a tick before the end");
+            assert!((last - 0.1).abs() < 1e-4, "{last}");
+
+            cx.executor().advance_clock(STREAM_FADE_TICK);
+            cx.run_until_parked();
+            assert_eq!(fade_out(cx), None, "the fade ends when its time is up");
+
+            // Nothing asks for another tick or frame.
+            let after = notifies.get();
+            for _ in 0..10 {
+                cx.executor().advance_clock(STREAM_FADE_TICK);
+                cx.run_until_parked();
+                assert_eq!(cx.update(|window, cx| window.simulate_next_frame(cx)), 0);
+            }
+            assert_eq!(notifies.get(), after);
+            assert!(state.read_with(cx, |state, _| state.fade_tick.is_none()));
         }
 
         #[gpui::test]
         fn a_fade_repaints_on_a_timer_until_nothing_fades(cx: &mut TestAppContext) {
-            struct FadeRoot(Entity<TextViewState>);
-            impl Render for FadeRoot {
-                fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-                    crate::text::TextView::new(&self.0)
-                }
-            }
-
             let state = fading_state("hello", cx);
             let (_, cx) = cx.add_window_view(|_, _| FadeRoot(state.clone()));
             let notifies = Rc::new(Cell::new(0));

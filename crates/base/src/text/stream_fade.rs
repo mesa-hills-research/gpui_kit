@@ -43,6 +43,9 @@ impl Default for TextViewMotion {
 
 impl TextViewMotion {
     /// How long the text an update appends takes to reach full color.
+    ///
+    /// The fade is timed by the app's clock, the one the window's frames and paint animations
+    /// use, so a test that moves GPUI's test clock steps it.
     pub fn with_stream_fade(mut self, duration: Duration) -> Self {
         self.stream_fade = duration;
         self

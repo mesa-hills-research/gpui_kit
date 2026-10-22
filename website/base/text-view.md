@@ -269,7 +269,8 @@ bytes, so a `set_text` whose text extends the current one counts as an
 append, and Markdown that completes as it streams (`**bo` becoming bold
 `bold`) fades the changed glyphs rather than the whole paragraph. Only the
 blocks the update reaches are compared, and frames are requested only while
-something is still fading. Reduced motion skips the fade.
+something is still fading. Reduced motion skips the fade. The fade is timed by the
+clock the window's frames use, so a test that moves GPUI's test clock steps it.
 
 A long document can be shown as several views, each of some of its top-level
 blocks. `TextViewState::block_range(&document, blocks, cx)` makes a view of
