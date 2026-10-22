@@ -116,12 +116,13 @@ a pure Rust port, so these features build without a C compiler.
 
 To highlight another language, register a grammar from one of Mesquite's grammar
 crates with a highlight query, as `examples/editor` does for Haskell. Take the
-crate from the Mesquite commit that `gpui-component` uses, so the grammar and the
-kit's parser share one `tree_sitter` crate:
+crate from crates.io at the same `0.1` release series as the grammars
+`gpui-component` uses, so the grammar and the kit's parser share one
+`mesquite_language` crate:
 
 ```toml
 [dependencies]
-tree-sitter-haskell = { package = "mesquite_haskell", git = "https://github.com/mesa-hills-research/mesquite", rev = "fef5b10845abe8fb435b2c4192aec3920d3f1898" }
+tree-sitter-haskell = { package = "mesquite_haskell", version = "0.1" }
 ```
 
 ```rust
