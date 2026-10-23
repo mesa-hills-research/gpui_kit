@@ -1150,7 +1150,9 @@ pub(crate) struct Paragraph {
 /// same children, and every mutation of the children replaces the cache
 /// (`invalidate_render_cache`). A block is cloned when the view changes one
 /// it shares with the parser, such as the last block of a finished text, and
-/// an empty clone made that paragraph rebuild.
+/// an empty clone made that paragraph rebuild. A shared block has one cache,
+/// keyed on the style, so views that draw it under different styles rebuild
+/// it.
 #[derive(Default)]
 pub(super) struct ParagraphRenderCache(Mutex<Option<Arc<ParagraphRender>>>);
 
@@ -1578,7 +1580,9 @@ impl std::fmt::Debug for TableDataCache {
 }
 
 /// Like `TableDataCache`, derived widths survive clones of an unchanged
-/// parsed table. A newly parsed table starts with an empty cache.
+/// parsed table. A newly parsed table starts with an empty cache. A shared
+/// table has one cache, keyed on the style, so views that draw it under
+/// different styles rebuild it.
 #[derive(Default)]
 pub(crate) struct TableColumnWidthsCache(Mutex<Option<Arc<TableColumnWidths>>>);
 
