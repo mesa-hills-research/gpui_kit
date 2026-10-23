@@ -2,11 +2,11 @@ use crate::root::WindowState;
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Action, AnyElement, AnyView, App, AppContext, AvailableSpace, Bounds, ContentMask, Context,
-    Element, ElementId, Entity, GlobalElementId, InspectorElementId, InteractiveElement,
-    IntoElement, LayoutId, MouseButton, ParentElement, Pixels, Refineable as _, Render,
-    SharedString, StatefulInteractiveElement, Style, StyleRefinement, Styled, Window, div, point,
-    prelude::FluentBuilder, px, transparent_black,
+    AbsoluteLength, Action, AnyElement, AnyView, App, AppContext, AvailableSpace, Bounds,
+    ContentMask, Context, Element, ElementId, Entity, GlobalElementId, InspectorElementId,
+    InteractiveElement, IntoElement, LayoutId, MouseButton, ParentElement, Pixels, Refineable as _,
+    Render, SharedString, StatefulInteractiveElement, Style, StyleRefinement, Styled, Window, div,
+    point, prelude::FluentBuilder, px, transparent_black,
 };
 use gpui_base::{
     Interpolate as _, Sequence, Tooltip as BaseTooltip, TooltipOverlay as BaseTooltipOverlay,
@@ -98,9 +98,11 @@ impl Tooltip {
     }
 }
 
-/// The tooltip's box: its background, border, shadow and corners.
+/// The tooltip's box: its padding, background, border, shadow and corners.
 fn tooltip_box<E: Styled>(element: E, cx: &App) -> E {
     element
+        .py_0p5()
+        .px_2()
         .bg(cx.theme().tokens.popover)
         .border_1()
         .border_color(cx.theme().border)
@@ -136,8 +138,6 @@ impl Render for Tooltip {
             .when(!self.in_overlay, |this| this.m_3())
             .text_color(cx.theme().popover_foreground)
             .justify_between()
-            .py_0p5()
-            .px_2()
             .text_sm()
             .gap_3()
             .refine_style(&self.style)
@@ -266,9 +266,10 @@ impl TooltipBox {
                 handover.from = handover.painted.filter(|_| same_row);
             }
         });
-        let (outgoing, from) = {
+        let (outgoing, from, to) = {
             let handover = handover.read(cx);
-            (handover.outgoing.clone(), handover.from)
+            let to = handover.drawn.as_ref().map(|(_, bounds)| *bounds);
+            (handover.outgoing.clone(), handover.from, to)
         };
         let progress = match from {
             Some(_) => Sequence::new(
@@ -280,22 +281,55 @@ impl TooltipBox {
             .into_value(),
             None => 1.0,
         };
+        // A text shows only while the box holds it with half its padding
+        // around, so no frame cuts a glyph at the box's edge. The new tooltip's
+        // box is known from the switch's second frame on, when its text is
+        // still hidden.
+        let padding = tooltip.read(cx).box_style(cx).padding;
+        let rem_size = window.rem_size();
+        let text = |bounds: Bounds<Pixels>| {
+            let padding = padding.to_pixels(bounds.size.map(AbsoluteLength::Pixels), rem_size);
+            Bounds::from_corners(
+                point(
+                    bounds.left() + padding.left / 2.,
+                    bounds.top() + padding.top / 2.,
+                ),
+                point(
+                    bounds.right() - padding.right / 2.,
+                    bounds.bottom() - padding.bottom / 2.,
+                ),
+            )
+        };
+        let opacity = match (from, to) {
+            _ if progress >= 1.0 => 1.0,
+            (Some(from), Some(to)) => {
+                let start = SWITCH_FADE_OUT.max(progress_at(box_holds(from, to, text(to)).0));
+                ease_out_cubic((progress - start) / (1.0 - start))
+            }
+            _ => 0.0,
+        };
+        let fade_out_end = |bounds: Bounds<Pixels>| match (from, to) {
+            (Some(from), Some(to)) => match box_holds(from, to, text(bounds)) {
+                (start, _) if start > 0.0 => 0.0,
+                (_, end) => SWITCH_FADE_OUT.min(progress_at(end)),
+            },
+            _ => SWITCH_FADE_OUT,
+        };
         Self {
             content: div()
-                .opacity(ease_out_cubic(
-                    ((progress - SWITCH_FADE_OUT) / (1.0 - SWITCH_FADE_OUT)).clamp(0.0, 1.0),
-                ))
+                .opacity(opacity)
                 .child(tooltip.clone())
                 .into_any_element(),
-            outgoing: outgoing
-                .filter(|_| progress < SWITCH_FADE_OUT)
-                .map(|(view, bounds)| {
-                    let opacity = 1.0 - progress / SWITCH_FADE_OUT;
+            outgoing: outgoing.and_then(|(view, bounds)| {
+                let end = fade_out_end(bounds);
+                (progress < end).then(|| {
+                    let opacity = 1.0 - progress / end;
                     (
                         div().opacity(opacity).child(view).into_any_element(),
                         bounds,
                     )
-                }),
+                })
+            }),
             from: from.filter(|_| progress < 1.0),
             tooltip,
             progress,
@@ -303,6 +337,40 @@ impl TooltipBox {
             painted: Bounds::default(),
         }
     }
+}
+
+/// The span of the box's eased progress, within 0 to 1, in which the box
+/// moving from `from` to `to` holds `region`. Each edge moves linearly with
+/// the eased progress, so each holds the region on one side of a threshold.
+fn box_holds(from: Bounds<Pixels>, to: Bounds<Pixels>, region: Bounds<Pixels>) -> (f32, f32) {
+    let edges = [
+        (from.left(), to.left(), region.left(), -1.0),
+        (from.top(), to.top(), region.top(), -1.0),
+        (from.right(), to.right(), region.right(), 1.0),
+        (from.bottom(), to.bottom(), region.bottom(), 1.0),
+    ];
+    edges.into_iter().fold(
+        (0.0_f32, 1.0_f32),
+        |(start, end), (from, to, limit, outward)| {
+            // The edge holds the region where `held + gain * eased >= 0`.
+            let held = outward * f32::from(from - limit);
+            let gain = outward * f32::from(to - from);
+            if gain > 0. {
+                (start.max(-held / gain), end)
+            } else if gain < 0. {
+                (start, end.min(-held / gain))
+            } else if held < 0. {
+                (1.0, 0.0)
+            } else {
+                (start, end)
+            }
+        },
+    )
+}
+
+/// The switch's progress at which its `ease_out_cubic` reaches `eased`.
+fn progress_at(eased: f32) -> f32 {
+    1.0 - (1.0 - eased.clamp(0.0, 1.0)).cbrt()
 }
 
 impl IntoElement for TooltipBox {

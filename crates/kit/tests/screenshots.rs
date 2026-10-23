@@ -160,8 +160,9 @@ impl Render for IconButtons {
     }
 }
 
-/// The tooltip handing over from Edit to Branch 24, 60 and 120 ms into the switch. The box moves
-/// and widens on whole pixels while Edit fades out and then Branch fades in, each where it stays.
+/// The tooltip handing over from Edit to Branch 12, 84 and 120 ms into the switch. The box moves
+/// and widens on whole pixels while Edit fades out and then Branch fades in, each where it stays
+/// and only while the box holds it whole.
 #[test]
 fn tooltip_switch() {
     let mut app = app(ThemeMode::Light);
@@ -193,7 +194,7 @@ fn tooltip_switch() {
     app.advance_clock(Duration::from_millis(100));
     app.capture(window).unwrap();
     let mut elapsed = 0;
-    for ms in [24, 60, 120] {
+    for ms in [12, 84, 120] {
         app.advance_clock(Duration::from_millis(ms - elapsed));
         elapsed = ms;
         goldens().assert(
