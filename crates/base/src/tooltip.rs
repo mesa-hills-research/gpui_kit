@@ -194,6 +194,8 @@ pub struct TooltipOverlay {
     enabled: bool,
     content: Option<TooltipRequest>,
     previous_bounds: Option<Bounds<Pixels>>,
+    /// The trigger of the latest show request, until the pointer leaves it.
+    hovered: Option<Rc<TriggerState>>,
     epoch: usize,
     had_recent_tooltip: bool,
     animation_epoch: usize,
@@ -209,6 +211,7 @@ impl TooltipOverlay {
             enabled: !crate::is_mobile(),
             content: None,
             previous_bounds: None,
+            hovered: None,
             epoch: 0,
             had_recent_tooltip: false,
             animation_epoch: 0,
@@ -244,6 +247,7 @@ impl TooltipOverlay {
             return;
         }
         self.hide_task = None;
+        self.hovered = content.trigger.clone();
         let was_visible = self.content.is_some();
         if was_visible || self.had_recent_tooltip {
             self.previous_bounds = self.content.as_ref().map(|content| content.trigger_bounds);
@@ -272,8 +276,31 @@ impl TooltipOverlay {
         }));
     }
 
+    /// Hides the tooltip after the grace period, as [`Self::request_hide`]
+    /// does, when the pointer leaves `trigger`. GPUI may report the pointer
+    /// entering the next trigger before leaving this one, and then the hide is
+    /// left to the next trigger.
+    pub fn request_hide_for(
+        &mut self,
+        trigger: &TooltipTrigger,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let moved_on = self.hovered.as_ref().is_some_and(|hovered| {
+            !trigger
+                .0
+                .borrow()
+                .as_ref()
+                .is_some_and(|left| Rc::ptr_eq(left, hovered))
+        });
+        if !moved_on {
+            self.request_hide(window, cx);
+        }
+    }
+
     pub fn request_hide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_task = None;
+        self.hovered = None;
         if self.content.is_none() {
             return;
         }
@@ -300,6 +327,7 @@ impl TooltipOverlay {
             || self.hide_task.is_some();
         self.content = None;
         self.previous_bounds = None;
+        self.hovered = None;
         self.had_recent_tooltip = false;
         self.is_switching = false;
         self.show_task = None;

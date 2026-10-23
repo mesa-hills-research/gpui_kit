@@ -280,7 +280,7 @@ pub(crate) trait ManagedTooltipExt:
                         });
                     } else {
                         overlay.update(cx, |o: &mut BaseTooltipOverlay, cx| {
-                            o.request_hide(window, cx);
+                            o.request_hide_for(&trigger, window, cx);
                         });
                     }
                 }
@@ -309,7 +309,10 @@ mod tests {
         prelude::FluentBuilder as _, px, size,
     };
 
-    use crate::button::Button;
+    use crate::{
+        IconName, Sizable as _,
+        button::{Button, ButtonVariants as _},
+    };
 
     /// Longer than any show delay or grace period.
     const LONG: Duration = Duration::from_secs(2);
@@ -615,6 +618,61 @@ mod tests {
         assert!(painted(cx), "B's tooltip shows at once");
         wait(cx, LONG);
         assert!(painted(cx), "and stays while the pointer rests on B");
+    }
+
+    /// Icon buttons side by side, as under a message.
+    struct Actions;
+
+    impl Render for Actions {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().p(px(20.)).pl(px(200.)).flex().children(
+                ["Edit", "Branch", "Copy"].map(|name| {
+                    Button::new(name)
+                        .debug_selector(move || name.into())
+                        .ghost()
+                        .xsmall()
+                        .icon(IconName::Copy)
+                        .tooltip(name)
+                }),
+            )
+        }
+    }
+
+    /// Whether the tooltip painted is the one of the button named `name`.
+    fn shows_tooltip_of(name: &'static str, cx: &mut VisualTestContext) -> bool {
+        let button = cx.debug_bounds(name).expect("the button is painted");
+        cx.debug_bounds("tooltip")
+            .is_some_and(|tooltip| (tooltip.center().x - button.center().x).abs() < px(1.))
+    }
+
+    /// GPUI reports the pointer entering the next button before it reports the
+    /// pointer leaving the last one when the pointer moves right.
+    #[gpui::test]
+    fn moving_along_adjacent_buttons_shows_each_ones_tooltip(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| Actions);
+            crate::Root::new(view, window, cx)
+        });
+        cx.simulate_resize(size(px(500.), px(200.)));
+        draw(cx);
+
+        for name in ["Edit", "Branch", "Copy", "Branch", "Edit"] {
+            let center = cx
+                .debug_bounds(name)
+                .expect("the button is painted")
+                .center();
+            cx.simulate_mouse_move(center, None, Modifiers::default());
+            draw(cx);
+            wait(cx, LONG);
+            assert!(
+                shows_tooltip_of(name, cx),
+                "{name}'s tooltip shows while the pointer rests on it"
+            );
+        }
     }
 
     #[gpui::test]
