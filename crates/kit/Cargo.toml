@@ -159,6 +159,10 @@ name = "font_picker"
 required-features = ["test-support", "component"]
 
 [[test]]
+name = "font_picker_catalog"
+required-features = ["test-support", "component"]
+
+[[test]]
 name = "screenshots"
 required-features = ["test-support", "component", "assets"]
 
