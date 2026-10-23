@@ -139,17 +139,11 @@ pub(crate) struct WindowState {
     /// Whether the Alt down now was held when the window gained focus, so
     /// its release is no tap. Cleared once every modifier is let go.
     alt_held_from_before: bool,
-    /// Whether [`Self::watch_alt`] is checking the window's modifiers.
-    watching_alt: bool,
-    _alt_watch: Option<gpui::Task<()>>,
     _focus_just_gained: Option<gpui::Task<()>>,
     _window_activation: gpui::Subscription,
-    _focus_lost: gpui::Subscription,
+    /// Hears every change of the window's modifiers, whatever has focus.
+    _modifiers: gpui::Subscription,
 }
-
-/// How often the window's modifiers are checked while nothing has focus, to
-/// underline the menu bar's access keys while Alt is held.
-pub(crate) const ALT_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// How soon after a window gains focus an Alt reported down counts as held
 /// from before.
@@ -220,8 +214,6 @@ impl WindowState {
             surface_heard_alt_tap: false,
             focus_just_gained: false,
             alt_held_from_before: false,
-            watching_alt: false,
-            _alt_watch: None,
             _focus_just_gained: None,
             // Alt pressed before the window lost focus (Alt+Tab, say) is no
             // tap when it is let go after the window gets focus back, nor is
@@ -235,57 +227,36 @@ impl WindowState {
                         _ = state.update(cx, |state, _| state.focus_just_gained = false);
                     })
                 });
-                state.watch_alt(window, cx);
+                state.note_alt(window, cx);
             }),
-            _focus_lost: cx.on_focus_lost(window, |state, window, cx| state.watch_alt(window, cx)),
+            _modifiers: {
+                let state = cx.entity().downgrade();
+                window.observe_modifiers_changed(move |_, window, cx| {
+                    _ = state.update(cx, |state, cx| state.note_alt(window, cx));
+                })
+            },
         }
     }
 
-    /// Underlines the menu bar's access keys while Alt is held and nothing in
-    /// the window has focus.
+    /// Underlines the menu bar's access keys when Alt alone is down in the
+    /// active window, and hides them when it isn't. Nothing on macOS.
     ///
     /// GPUI sends modifier changes to the focused element's path, and to the
-    /// root view alone while nothing has focus, so then the window's surface
-    /// never hears Alt go down or up. The window's modifiers are checked a
-    /// few times a second instead, for as long as the window is active and
-    /// nothing has focus. Windows without a menu bar, and macOS, check
-    /// nothing.
-    fn watch_alt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if cfg!(target_os = "macos")
-            || self.watching_alt
-            || self.app_menu_bar.is_none()
-            || !window.is_window_active()
-            || window.focused(cx).is_some()
-        {
+    /// root view alone while nothing has focus, so the window's surface never
+    /// hears Alt then. The window's observer of modifier changes calls this
+    /// whatever has focus.
+    fn note_alt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if cfg!(target_os = "macos") {
             return;
         }
-        self.watching_alt = true;
-        self._alt_watch = Some(cx.spawn_in(window, async move |state, cx| {
-            loop {
-                cx.background_executor().timer(ALT_WATCH_INTERVAL).await;
-                let keeps_watching =
-                    state.update_in(cx, |state, window, cx| state.note_alt(window, cx));
-                if !keeps_watching.unwrap_or(false) {
-                    break;
-                }
-            }
-        }));
-    }
-
-    /// Underlines the access keys when Alt alone is down, or hides them when
-    /// it isn't, and returns whether the window is still one where nothing
-    /// hears the modifiers.
-    fn note_alt(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let watching = window.is_window_active() && window.focused(cx).is_none();
         let modifiers = window.modifiers();
-        let alt_only = watching && modifiers.alt && modifiers.number_of_modifiers() == 1;
+        let alt_only =
+            window.is_window_active() && modifiers.alt && modifiers.number_of_modifiers() == 1;
         if !self.has_modal_layer()
             && let Some(bar) = self.app_menu_bar.as_ref().and_then(WeakEntity::upgrade)
         {
             bar.update(cx, |bar, cx| bar.set_alt_held(alt_only, cx));
         }
-        self.watching_alt = watching;
-        watching
     }
 
     fn entity(window: &Window, cx: &App) -> Option<Entity<Self>> {
@@ -605,16 +576,10 @@ impl WindowState {
     }
 
     /// Route the window's menu-bar keys to `bar`, the bar it renders.
-    pub(crate) fn register_app_menu_bar(
-        &mut self,
-        bar: WeakEntity<AppMenuBar>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn register_app_menu_bar(&mut self, bar: WeakEntity<AppMenuBar>) {
         if self.app_menu_bar.as_ref().map(|bar| bar.entity_id()) != Some(bar.entity_id()) {
             self.app_menu_bar = Some(bar);
         }
-        self.watch_alt(window, cx);
     }
 
     /// The window's menu bar, unless a dialog, sheet or image viewer is
@@ -846,12 +811,7 @@ impl gpui_base::RootPlugin for WindowState {
                 }
             });
             interactivity.on_modifiers_changed(|event, window, cx| {
-                let modifiers = event.modifiers;
-                let alt_only = modifiers.alt && modifiers.number_of_modifiers() == 1;
-                Self::set_alt_tap_pending(window, cx, modifiers);
-                if let Some(bar) = Self::app_menu_bar(window, cx) {
-                    bar.update(cx, |bar, cx| bar.set_alt_held(alt_only, cx));
-                }
+                Self::set_alt_tap_pending(window, cx, event.modifiers);
             });
         }
     }

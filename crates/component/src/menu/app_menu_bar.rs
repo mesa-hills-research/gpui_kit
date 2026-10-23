@@ -322,8 +322,8 @@ impl Render for AppMenuBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The window's root routes F10, Alt and Alt with a letter here.
         let this = cx.entity().downgrade();
-        crate::root::WindowState::try_update(window, cx, |state, window, cx| {
-            state.register_app_menu_bar(this, window, cx)
+        crate::root::WindowState::try_update(window, cx, |state, _, _| {
+            state.register_app_menu_bar(this)
         });
         if self._focus_out.is_none() {
             self._focus_out = Some(cx.on_focus_out(
@@ -709,18 +709,9 @@ mod tests {
         });
     }
 
-    /// Lets the interval in which the window's modifiers are checked pass.
-    #[cfg(not(target_os = "macos"))]
-    fn let_modifiers_be_checked(cx: &mut gpui::VisualTestContext) {
-        cx.run_until_parked();
-        cx.executor()
-            .advance_clock(crate::root::ALT_WATCH_INTERVAL * 2);
-        cx.run_until_parked();
-    }
-
     /// With nothing focused, GPUI sends modifier changes to no element of
-    /// the window. Alt held still underlines the access keys, and letting go
-    /// of it hides them again.
+    /// the window. Alt held still underlines the access keys at once, with no
+    /// time passing, and letting go of it hides them again.
     #[cfg(not(target_os = "macos"))]
     #[gpui::test]
     fn alt_underlines_the_access_keys_with_nothing_focused(cx: &mut TestAppContext) {
@@ -730,11 +721,9 @@ mod tests {
         assert!(!alt_held(cx));
 
         hold_modifiers(cx, gpui::Modifiers::alt());
-        let_modifiers_be_checked(cx);
         assert!(alt_held(cx), "Alt went down");
 
         hold_modifiers(cx, gpui::Modifiers::default());
-        let_modifiers_be_checked(cx);
         assert!(!alt_held(cx), "Alt was let go");
 
         // Alt held with Shift is no Alt press.
@@ -746,19 +735,15 @@ mod tests {
                 ..Default::default()
             },
         );
-        let_modifiers_be_checked(cx);
         assert!(!alt_held(cx));
         hold_modifiers(cx, gpui::Modifiers::default());
 
         // It goes on after the bar was used with the keyboard.
         cx.simulate_keystrokes("f10 escape");
-        let_modifiers_be_checked(cx);
         assert!(!alt_held(cx), "the bar closed");
         hold_modifiers(cx, gpui::Modifiers::alt());
-        let_modifiers_be_checked(cx);
         assert!(alt_held(cx), "Alt went down again");
         hold_modifiers(cx, gpui::Modifiers::default());
-        let_modifiers_be_checked(cx);
         assert!(!alt_held(cx));
     }
 
@@ -768,9 +753,7 @@ mod tests {
     fn alt_in_an_inactive_window_underlines_nothing(cx: &mut TestAppContext) {
         let (menu_bar, cx) = open_with_menus(false, cx);
         cx.deactivate_window();
-        let_modifiers_be_checked(cx);
         hold_modifiers(cx, gpui::Modifiers::alt());
-        let_modifiers_be_checked(cx);
         assert!(!menu_bar.read_with(cx, |bar, _| bar.alt_held));
     }
 
