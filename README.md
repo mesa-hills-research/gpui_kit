@@ -278,6 +278,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   whose click closes its page or a row that re-renders away, and one waiting for its show delay
   never appears. `TooltipTrigger` and `TooltipRequest::for_trigger` give a custom trigger the
   same. See [Tooltip: when the trigger goes away](website/component/tooltip.md#when-the-trigger-goes-away).
+- **Tooltips along a row of buttons** (`gpui-base`). While a tooltip is up, the next button's
+  replaces it once the pointer rests there for a tenth of a second, so sweeping across a row of
+  buttons leaves the open tooltip in place instead of flashing each button's. See
+  [Tooltip: moving between tooltips](website/component/tooltip.md#moving-between-tooltips).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it

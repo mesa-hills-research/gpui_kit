@@ -578,7 +578,8 @@ mod tests {
 
     /// Moving from one button to the next in a reused view while something
     /// else redraws the window, such as streaming text: the first
-    /// tooltip stays through its grace period, and the second shows at once.
+    /// tooltip stays through its grace period and until the second replaces
+    /// it.
     #[gpui::test]
     fn a_redraw_elsewhere_keeps_a_reused_buttons_tooltip_through_its_grace(
         cx: &mut TestAppContext,
@@ -615,9 +616,14 @@ mod tests {
         wait(cx, Duration::from_millis(50));
         cx.simulate_mouse_move(b, None, Modifiers::default());
         draw(cx);
-        assert!(painted(cx), "B's tooltip shows at once");
+        cx.update(|_, cx| window_view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        assert!(painted(cx), "A's tooltip stays until B's replaces it");
         wait(cx, LONG);
-        assert!(painted(cx), "and stays while the pointer rests on B");
+        assert!(
+            shows_tooltip_of("b", cx),
+            "B's shows and stays while the pointer rests on B"
+        );
     }
 
     /// Icon buttons side by side, as under a message.

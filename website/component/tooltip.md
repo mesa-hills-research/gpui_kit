@@ -121,6 +121,14 @@ Radio::new("option")
     .tooltip("Select this option to enable feature X")
 ```
 
+### Moving Between Tooltips
+
+A component's tooltip shows once the pointer has rested on it for half a
+second. While a tooltip is up, and for 0.4 seconds after the pointer leaves
+every element with one, another element's tooltip replaces it once the pointer
+has rested there for a tenth of a second. Sweeping the pointer across a row of
+buttons leaves the open tooltip as it is instead of flashing each button's.
+
 ### When the Trigger Goes Away
 
 A tooltip shown by a component's `tooltip` or `tooltip_with_action` belongs to
@@ -133,9 +141,9 @@ appears. For example:
 - A list that re-renders and drops a row under the pointer.
 
 A trigger in a view GPUI reuses from the last frame counts as drawn while the
-pointer rests on it. After the pointer leaves, the tooltip stays for its short
-grace period whatever else redraws the window, so moving on to the next button
-still switches tooltips at once. Nothing needs to be set up for this. Tooltips
+pointer rests on it. After the pointer leaves, the tooltip stays for its grace
+period, or until the next button's replaces it, whatever else redraws the
+window. Nothing needs to be set up for this. Tooltips
 built with GPUI's own `.tooltip()` on a `div` are not managed by the overlay
 and keep GPUI's behavior.
 

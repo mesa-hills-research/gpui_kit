@@ -15,8 +15,16 @@ use crate::{Placement, Positioner};
 
 const TOOLTIP_PRIORITY: usize = 200;
 const WINDOW_MARGIN: Pixels = px(4.);
-const GRACE_PERIOD: Duration = Duration::from_millis(300);
+/// How long a tooltip stays up after the pointer leaves every trigger. A
+/// trigger the pointer reaches before then replaces it after
+/// [`SWITCH_DELAY`], and after it the next one waits [`SHOW_DELAY`].
+const GRACE_PERIOD: Duration = Duration::from_millis(400);
+/// How long the pointer rests on a trigger before its tooltip shows.
 const SHOW_DELAY: Duration = Duration::from_millis(500);
+/// How long the pointer rests on a trigger before its tooltip replaces one
+/// already up, so a pointer sweeping across a row of buttons leaves the open
+/// tooltip as it is instead of flashing each button's.
+const SWITCH_DELAY: Duration = Duration::from_millis(100);
 
 type TooltipBuilder = Rc<dyn Fn(&mut Window, &mut App) -> AnyView>;
 type TooltipRenderer = Rc<dyn Fn(AnyView, TooltipTransition, &mut Window, &mut App) -> AnyElement>;
@@ -160,6 +168,11 @@ impl TooltipRequest {
         }
     }
 
+    /// Whether both requests were made for one [`TooltipTrigger`].
+    fn same_trigger(&self, other: &Self) -> bool {
+        matches!((&self.trigger, &other.trigger), (Some(a), Some(b)) if Rc::ptr_eq(a, b))
+    }
+
     /// Clears the trigger's mark from frames before this request was shown.
     fn begin_showing(&self) {
         if let Some(trigger) = &self.trigger {
@@ -241,34 +254,38 @@ impl TooltipOverlay {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Gate both delayed display and the immediate grace-period switch.
+        // Gate both the show delay and the switch delay.
         // Keep this in Base so every managed component shares the policy.
         if !self.enabled {
             return;
         }
         self.hide_task = None;
         self.hovered = content.trigger.clone();
-        let was_visible = self.content.is_some();
-        if was_visible || self.had_recent_tooltip {
-            self.previous_bounds = self.content.as_ref().map(|content| content.trigger_bounds);
-            content.begin_showing();
-            self.content = Some(content);
+        if self
+            .content
+            .as_ref()
+            .is_some_and(|shown| shown.same_trigger(&content))
+        {
+            // The pointer came back to the trigger whose tooltip is up.
             self.show_task = None;
-            self.is_switching = was_visible;
-            self.animation_epoch += 1;
-            cx.notify();
+            self.content = Some(content);
             return;
         }
 
+        let delay = if self.content.is_some() || self.had_recent_tooltip {
+            SWITCH_DELAY
+        } else {
+            SHOW_DELAY
+        };
         let epoch = self.next_epoch();
         self.show_task = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor().timer(SHOW_DELAY).await;
+            cx.background_executor().timer(delay).await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if this.epoch == epoch {
                     content.begin_showing();
+                    this.previous_bounds = this.content.as_ref().map(|shown| shown.trigger_bounds);
+                    this.is_switching = this.previous_bounds.is_some();
                     this.content = Some(content);
-                    this.previous_bounds = None;
-                    this.is_switching = false;
                     this.animation_epoch += 1;
                     cx.notify();
                 }
@@ -381,7 +398,11 @@ impl Render for TooltipOverlay {
             .into_any_element();
         deferred(TriggerGate {
             trigger: content.trigger.clone(),
-            leaving: self.hide_task.is_some(),
+            leaving: !self
+                .hovered
+                .as_ref()
+                .zip(content.trigger.as_ref())
+                .is_some_and(|(hovered, shown)| Rc::ptr_eq(hovered, shown)),
             overlay: cx.entity().downgrade(),
             child: positioned,
         })
@@ -396,15 +417,15 @@ impl Render for TooltipOverlay {
 /// after GPUI has hit-tested the new frame, so by then the trigger has either
 /// marked itself or is missing from the frame.
 ///
-/// Once the pointer has left the trigger, the tooltip is in its grace period
-/// and the grace timer ends it. A trigger in a view GPUI reuses from the last
-/// frame is then found by nothing (it isn't prepainted, and the pointer is no
-/// longer on its hitbox), so a frame drawn for something else mustn't take it
-/// for gone: that would hide the tooltip at once and cost the next trigger
-/// its immediate switch.
+/// Once the pointer has left the trigger, the grace timer or the next
+/// trigger's switch ends the tooltip. A trigger in a view GPUI reuses from the
+/// last frame is then found by nothing (it isn't prepainted, and the pointer
+/// is no longer on its hitbox), so a frame drawn for something else mustn't
+/// take it for gone: that would hide the tooltip at once and cost the next
+/// trigger its quick switch.
 struct TriggerGate {
     trigger: Option<Rc<TriggerState>>,
-    /// The overlay is in its grace period: the pointer left the trigger.
+    /// The pointer left the trigger, for another trigger or for none.
     leaving: bool,
     overlay: WeakEntity<TooltipOverlay>,
     child: AnyElement,
@@ -513,16 +534,17 @@ impl IntoElement for TooltipPositioner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{AppContext as _, point, size};
+    use gpui::{AppContext as _, Entity, TestAppContext, VisualTestContext, point, size};
 
     fn bounds(x: f32, y: f32, width: f32, height: f32) -> Bounds<Pixels> {
         Bounds::new(point(px(x), px(y)), size(px(width), px(height)))
     }
 
     #[gpui::test]
-    fn provider_owns_grace_switch_and_dismiss(cx: &mut gpui::TestAppContext) {
-        let state = cx.update(|cx| cx.new(|_| TooltipOverlay::new()));
+    fn provider_owns_grace_switch_and_dismiss(cx: &mut TestAppContext) {
         let cx = cx.add_empty_window();
+        // Made in the window, as the overlay's timers update it there.
+        let state = cx.update(|_, cx| cx.new(|_| TooltipOverlay::new()));
         cx.update(|window, cx| {
             state.update(cx, |tooltip, cx| {
                 tooltip.had_recent_tooltip = true;
@@ -535,6 +557,9 @@ mod tests {
                 );
             });
         });
+        cx.run_until_parked();
+        cx.executor().advance_clock(SWITCH_DELAY);
+        cx.run_until_parked();
         cx.update(|_, cx| assert!(state.read(cx).content.is_some()));
 
         cx.update(|_, cx| {
@@ -543,13 +568,143 @@ mod tests {
         cx.update(|_, cx| assert!(state.read(cx).content.is_none()));
     }
 
+    /// A trigger as drawn once, which a pointer can reach.
+    fn drawn_trigger() -> TooltipTrigger {
+        let trigger = TooltipTrigger::new();
+        *trigger.0.borrow_mut() = Some(Rc::default());
+        trigger
+    }
+
+    /// Moves the pointer from `from` onto `to` in the order GPUI reports it
+    /// for a pointer moving right: entering `to` before leaving `from`.
+    fn move_pointer(
+        state: &Entity<TooltipOverlay>,
+        from: Option<&TooltipTrigger>,
+        to: Option<&TooltipTrigger>,
+        cx: &mut VisualTestContext,
+    ) {
+        cx.update(|window, cx| {
+            state.update(cx, |tooltip, cx| {
+                if let Some(to) = to {
+                    let request = TooltipRequest::for_trigger(to, |_, _| {
+                        panic!("content is not rendered by this lifecycle test")
+                    });
+                    tooltip.request_show(request, window, cx);
+                }
+                if let Some(from) = from {
+                    tooltip.request_hide_for(from, window, cx);
+                }
+            });
+        });
+        // Starts the timers.
+        cx.run_until_parked();
+    }
+
+    fn wait(cx: &mut VisualTestContext, duration: Duration) {
+        cx.executor().advance_clock(duration);
+        cx.run_until_parked();
+    }
+
+    /// Whether the tooltip up is `trigger`'s.
+    fn shows(
+        state: &Entity<TooltipOverlay>,
+        trigger: &TooltipTrigger,
+        cx: &mut VisualTestContext,
+    ) -> bool {
+        let trigger = trigger.0.borrow().clone().unwrap();
+        cx.update(|_, cx| {
+            state
+                .read(cx)
+                .content
+                .as_ref()
+                .and_then(|content| content.trigger.as_ref())
+                .is_some_and(|shown| Rc::ptr_eq(shown, &trigger))
+        })
+    }
+
+    fn is_up(state: &Entity<TooltipOverlay>, cx: &mut VisualTestContext) -> bool {
+        cx.update(|_, cx| state.read(cx).content.is_some())
+    }
+
+    /// A tooltip up after the pointer rested on `trigger`.
+    fn shown_for<'a>(
+        trigger: &TooltipTrigger,
+        cx: &'a mut TestAppContext,
+    ) -> (Entity<TooltipOverlay>, &'a mut VisualTestContext) {
+        let cx = cx.add_empty_window();
+        // Made in the window, as the overlay's timers update it there.
+        let state = cx.update(|_, cx| cx.new(|_| TooltipOverlay::new()));
+        move_pointer(&state, None, Some(trigger), cx);
+        wait(cx, SHOW_DELAY);
+        assert!(shows(&state, trigger, cx));
+        (state, cx)
+    }
+
+    #[gpui::test]
+    fn the_first_tooltip_waits_for_the_show_delay(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        // Made in the window, as the overlay's timers update it there.
+        let state = cx.update(|_, cx| cx.new(|_| TooltipOverlay::new()));
+        let edit = drawn_trigger();
+
+        move_pointer(&state, None, Some(&edit), cx);
+        wait(cx, SHOW_DELAY - Duration::from_millis(1));
+        assert!(!is_up(&state, cx));
+        wait(cx, Duration::from_millis(1));
+        assert!(shows(&state, &edit, cx));
+    }
+
+    #[gpui::test]
+    fn a_neighbour_replaces_the_open_tooltip_once_the_pointer_rests_on_it(cx: &mut TestAppContext) {
+        let (edit, branch) = (drawn_trigger(), drawn_trigger());
+        let (state, cx) = shown_for(&edit, cx);
+
+        move_pointer(&state, Some(&edit), Some(&branch), cx);
+        wait(cx, SWITCH_DELAY - Duration::from_millis(1));
+        assert!(shows(&state, &edit, cx), "the open tooltip stays meanwhile");
+        wait(cx, Duration::from_millis(1));
+        assert!(shows(&state, &branch, cx));
+        wait(cx, GRACE_PERIOD * 2);
+        assert!(
+            shows(&state, &branch, cx),
+            "for as long as the pointer rests"
+        );
+    }
+
+    #[gpui::test]
+    fn a_sweep_across_neighbours_shows_none_of_their_tooltips(cx: &mut TestAppContext) {
+        let (edit, branch, copy) = (drawn_trigger(), drawn_trigger(), drawn_trigger());
+        let (state, cx) = shown_for(&edit, cx);
+        let skim = SWITCH_DELAY / 2;
+
+        move_pointer(&state, Some(&edit), Some(&branch), cx);
+        wait(cx, skim);
+        move_pointer(&state, Some(&branch), Some(&copy), cx);
+        wait(cx, skim);
+        assert!(shows(&state, &edit, cx), "the open tooltip stays");
+        move_pointer(&state, Some(&copy), None, cx);
+        wait(cx, GRACE_PERIOD - Duration::from_millis(1));
+        assert!(shows(&state, &edit, cx), "until the grace period ends");
+        wait(cx, Duration::from_millis(1));
+        assert!(!is_up(&state, cx));
+
+        move_pointer(&state, None, Some(&branch), cx);
+        wait(cx, SHOW_DELAY - Duration::from_millis(1));
+        assert!(
+            !is_up(&state, cx),
+            "after it, the next one waits the show delay"
+        );
+        wait(cx, Duration::from_millis(1));
+        assert!(shows(&state, &branch, cx));
+    }
+
     #[test]
     fn tooltip_priority_exceeds_popup_layer() {
         assert!(TOOLTIP_PRIORITY > crate::POPUP_PRIORITY);
     }
 
     #[gpui::test]
-    fn disabled_provider_ignores_delayed_and_immediate_requests(cx: &mut gpui::TestAppContext) {
+    fn disabled_provider_ignores_delayed_and_immediate_requests(cx: &mut TestAppContext) {
         let state = cx.update(|cx| {
             cx.new(|_| TooltipOverlay {
                 enabled: false,
