@@ -9,6 +9,8 @@ The Clipboard component provides an easy way to copy text or other data to the u
 
 The icon button has a localized "Copy" accessible name by default. Use `accessibility_label` when the context needs a more specific name, such as "Copy API key". A tooltip is a separate hint and does not set the accessible name.
 
+`tab_stop(false)` takes the button out of the Tab order, as `Button::tab_stop` does, for a button that shows only on hover. Styles set on a `Clipboard` go to its button, so `text_color` sets the copy icon's color. To place or space it, use a parent element.
+
 ## Import
 
 ```rust

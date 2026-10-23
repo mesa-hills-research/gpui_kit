@@ -125,7 +125,11 @@ impl RenderOnce for Clipboard {
         let check = transition(
             (self.id.clone(), "copied"),
             if copied { 1. } else { 0. },
-            Transition::new(fade).easing(motion.easing_move.clone()),
+            Transition::new(fade).easing(if copied {
+                motion.easing_enter.clone()
+            } else {
+                motion.easing_exit.clone()
+            }),
             window,
             cx,
         );
