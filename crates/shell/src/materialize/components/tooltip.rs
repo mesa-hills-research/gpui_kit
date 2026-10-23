@@ -12,11 +12,13 @@
 //! [`crate::root::ShellRoot`] is a different root, so the shell writes it once
 //! more, here.
 //!
-//! The trigger is three listeners and no state. Prepaint records the box the
-//! popup is anchored to — the overlay is a sibling of the whole content tree
-//! and has no other way to learn where the trigger is. Hover asks the overlay
-//! to show or to hide. A press dismisses: a label explaining a button should
-//! not still be up while the button is being used.
+//! The trigger is three listeners and a [`TooltipTrigger`]. Prepaint records
+//! the box the popup is anchored to — the overlay is a sibling of the whole
+//! content tree and has no other way to learn where the trigger is. Hover asks
+//! the overlay to show or to hide, naming the trigger, because GPUI can report
+//! the pointer entering the next trigger before it leaves this one. A press
+//! dismisses, because a label explaining a button should not still be up
+//! while the button is being used.
 //!
 //! # Why the content is a Rust view rather than a script one
 //!
@@ -43,13 +45,11 @@
 //! the first bound form does not expose the one it does — a script that needs
 //! to choose a side is the case for adding it, not a reason to guess now.
 
-use std::{cell::Cell, rc::Rc};
-
 use gpui::{
-    AppContext as _, Bounds, Context, IntoElement, MouseButton, ParentElement, Pixels, Render,
-    SharedString, StatefulInteractiveElement, Styled as _, Window,
+    AppContext as _, Context, IntoElement, MouseButton, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled as _, Window,
 };
-use gpui_base::{ElementExt as _, Theme, Tooltip, TooltipRequest};
+use gpui_base::{ElementExt as _, Theme, Tooltip, TooltipRequest, TooltipTrigger};
 
 use crate::{materialize::Behavior, root::ShellRoot, spec::Component};
 
@@ -89,8 +89,8 @@ impl Render for TooltipLabel {
 /// Wires the hover trigger, when the script asked for one.
 ///
 /// Takes the whole [`Behavior`] rather than the text so that an element with no
-/// `tooltip` pays nothing: the listeners, the prepaint canvas and the shared
-/// cell are all built only on the branch that has something to show.
+/// `tooltip` pays nothing, since the listeners, the prepaint canvas and the
+/// trigger are all built only on the branch that has something to show.
 pub(in crate::materialize) fn with_tooltip<E>(element: E, behavior: &Behavior) -> E
 where
     E: StatefulInteractiveElement + ParentElement,
@@ -99,15 +99,15 @@ where
         return element;
     };
 
-    // The trigger's own box, written during prepaint and read when the pointer
-    // arrives. A cell rather than a value because the two happen in different
-    // passes: layout resolves the box, and the hover that needs it comes some
-    // frames later.
-    let trigger_bounds: Rc<Cell<Bounds<Pixels>>> = Rc::new(Cell::new(Bounds::default()));
-    let writer = Rc::clone(&trigger_bounds);
+    // Written during prepaint and read when the pointer arrives, some frames
+    // later.
+    let trigger = TooltipTrigger::new();
 
     element
-        .on_prepaint(move |bounds, _, _| writer.set(bounds))
+        .on_prepaint({
+            let trigger = trigger.clone();
+            move |bounds, window, _| trigger.prepaint(bounds, window)
+        })
         .on_hover(move |hovered, window, cx| {
             let Some(overlay) = ShellRoot::tooltip_overlay(window, cx) else {
                 // No overlay layer means the window's first view is not a
@@ -116,7 +116,9 @@ where
                 return;
             };
             if !*hovered {
-                overlay.update(cx, |overlay, cx| overlay.request_hide(window, cx));
+                overlay.update(cx, |overlay, cx| {
+                    overlay.request_hide_for(&trigger, window, cx)
+                });
                 return;
             }
 
@@ -125,8 +127,7 @@ where
             // create — and strand — a fresh entity on every frame the tooltip
             // is up.
             let label = cx.new(|_| TooltipLabel { text: text.clone() });
-            let request =
-                TooltipRequest::new(trigger_bounds.get(), move |_, _| label.clone().into());
+            let request = TooltipRequest::for_trigger(&trigger, move |_, _| label.clone().into());
             overlay.update(cx, |overlay, cx| overlay.request_show(request, window, cx));
         })
         .on_mouse_down(MouseButton::Left, |_, window, cx| {

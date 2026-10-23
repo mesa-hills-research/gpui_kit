@@ -63,16 +63,24 @@ div()
                 });
                 overlay.request_show(request, window, cx);
             });
+        } else {
+            overlay.update(cx, |overlay: &mut TooltipOverlay, cx| {
+                overlay.request_hide_for(&trigger, window, cx);
+            });
         }
     })
 ```
 
-A trigger in a view GPUI reuses from the last frame counts as drawn while the
-pointer rests on it, and during the grace period after `request_hide` the
-tooltip is drawn until the grace timer ends it. Call `prepaint` inside the
-trigger element's own element ID: the trigger's state is kept under it.
-`TooltipRequest::new` anchors a request to fixed bounds instead, and the
-tooltip stays until it is hidden.
+Hide it with `request_hide_for` when the pointer leaves. GPUI can report the
+pointer entering the next trigger before it leaves this one, and
+`request_hide` would then hide the next trigger's tooltip too. A trigger in a
+view GPUI reuses from the last frame counts as drawn while the pointer rests on
+it, and during the grace period after the pointer leaves the tooltip is drawn
+until the grace timer ends it. Call `prepaint` inside the trigger element's own
+element ID, because the trigger's state is kept under it.
+`TooltipRequest::new` anchors a request to fixed bounds instead. The tooltip
+stays until it is hidden, and another request made this way replaces it at
+once.
 
 ## Complete Rust example
 

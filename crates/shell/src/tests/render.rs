@@ -9463,6 +9463,80 @@ export default class Toolbar extends View {
     );
 }
 
+/// Moving the pointer straight from one button onto the next keeps the next
+/// one's tooltip up. GPUI reports the pointer entering the right-hand button
+/// before it reports the pointer leaving the left-hand one, and that late leave
+/// used to cancel the switch to the right-hand button's tooltip.
+#[gpui::test]
+fn a_tooltip_stays_up_after_the_pointer_moves_onto_the_next_button(cx: &mut TestAppContext) {
+    cx.update(|cx| crate::init(cx));
+
+    let runtime = ShellRuntime::new_isolated().expect("runtime");
+    cx.update(|cx| runtime.set_global(cx));
+    let source = r#"
+import { View } from "gpui-kit";
+import { h_flex, v_flex, Button } from "gpui-base";
+
+export default class Toolbar extends View {
+  render(cx) {
+    return v_flex()
+      .w(400)
+      .h(400)
+      .child(
+        h_flex()
+          .child(Button.new("edit").w(100).h(40).tooltip("Edit").child("Edit"))
+          .child(Button.new("branch").w(100).h(40).tooltip("Branch").child("Branch")));
+  }
+}
+"#;
+    let view_type = runtime.load_source("toolbar.js", source).expect("load");
+    let runtime_for_view = Rc::clone(&runtime);
+    let (_, context) = cx.add_window_view(move |window, cx| {
+        let object = runtime_for_view
+            .instantiate(&view_type, window, cx)
+            .expect("instantiate");
+        let view = cx.new(|_| ScriptView::new(runtime_for_view, object));
+        crate::root::ShellRoot::new(view.into(), window, cx)
+    });
+    context.update(|window, cx| window.draw(cx).clear(cx));
+
+    let overlay = context
+        .update(|window, cx| crate::root::ShellRoot::tooltip_overlay(window, cx))
+        .expect("a ShellRoot owns its window's tooltip layer");
+    let notified = Rc::new(Cell::new(0usize));
+    let counter = Rc::clone(&notified);
+    let _subscription =
+        context.update(|_, cx| cx.observe(&overlay, move |_, _| counter.set(counter.get() + 1)));
+
+    context.simulate_mouse_move(point(px(50.), px(20.)), None, Modifiers::default());
+    context.update(|window, cx| window.draw(cx).clear(cx));
+    context
+        .executor()
+        .advance_clock(std::time::Duration::from_millis(600));
+    context.run_until_parked();
+    context.update(|window, cx| window.draw(cx).clear(cx));
+    assert_eq!(notified.get(), 1, "Edit's tooltip shows");
+
+    context.simulate_mouse_move(point(px(150.), px(20.)), None, Modifiers::default());
+    context.update(|window, cx| window.draw(cx).clear(cx));
+    context
+        .executor()
+        .advance_clock(std::time::Duration::from_millis(200));
+    context.run_until_parked();
+    context.update(|window, cx| window.draw(cx).clear(cx));
+    assert_eq!(notified.get(), 2, "Branch's tooltip replaces Edit's");
+
+    context
+        .executor()
+        .advance_clock(std::time::Duration::from_secs(2));
+    context.run_until_parked();
+    assert_eq!(
+        notified.get(),
+        2,
+        "and stays up while the pointer rests on Branch"
+    );
+}
+
 /// A tooltip that is not a string is refused where it was written.
 ///
 /// Coercing it, or dropping it, would leave an element that looks tooltipped
