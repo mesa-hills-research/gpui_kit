@@ -1545,6 +1545,9 @@ pub(crate) struct Table {
     /// frames; see [`Table::cached_table_data`].
     pub(crate) table_data_cache: TableDataCache,
     pub(crate) column_widths_cache: TableColumnWidthsCache,
+    /// The text ends in the last row, which starts with a pipe and still
+    /// lacks a cell or its closing pipe.
+    pub(crate) last_row_open: bool,
 }
 
 /// Derived state, invisible to `Debug` and equality.
@@ -1607,6 +1610,8 @@ struct TableColumnWidths {
     mono_family: SharedString,
     mono_features: FontFeatures,
     inline_code: HighlightStyle,
+    /// The rows measured, all but an open last row while text streams in.
+    rows: usize,
     /// Maxima from ordinary text only. Custom cells may shrink after an update.
     widths: Vec<f32>,
     custom_cells: Vec<(usize, usize)>,
@@ -1678,6 +1683,16 @@ impl Table {
         }
 
         lines.join("\n")
+    }
+
+    /// The rows shown. While text streams in, a last row still being written
+    /// shows once it is whole: drawn as it comes, each word it got could
+    /// widen its column and re-wrap the cells of every row.
+    fn shown_rows(&self, streaming: bool) -> &[TableRow] {
+        match self.children.split_last() {
+            Some((_, rows)) if streaming && self.last_row_open => rows,
+            _ => &self.children,
+        }
     }
 
     /// Snapshot of this table for the [`crate::text::TextView::table_actions`]
@@ -2485,6 +2500,8 @@ pub(crate) struct NodeContext {
     pub(crate) range_highlights: Option<Arc<RangeHighlightFrame>>,
     /// The line being scrolled into view, when there is one.
     pub(crate) reveal: Option<RevealRequest>,
+    /// Text is still being appended to the end of the document.
+    pub(crate) streaming: bool,
 }
 
 impl Default for NodeContext {
@@ -2503,6 +2520,7 @@ impl Default for NodeContext {
             stream_fade: None,
             range_highlights: None,
             reveal: None,
+            streaming: false,
         }
     }
 }
@@ -3063,11 +3081,13 @@ fn measure_table_columns(
     let mono_family = cx.theme().tokens.typography.mono.clone();
     let mono_features = cx.theme().tokens.typography.mono_features.clone();
     let inline_code = node_cx.style.inline_code_highlight();
+    let rows = table.shown_rows(node_cx.streaming).len();
     let cached = table.column_widths_cache.0.lock().ok().and_then(|cache| {
         cache
             .as_ref()
             .filter(|cached| {
                 cached.widths.len() == col_count
+                    && cached.rows == rows
                     && cached.text_style == text_style
                     && cached.rem_size == rem_size
                     && cached.mono_family == mono_family
@@ -3084,6 +3104,7 @@ fn measure_table_columns(
         let (widths, custom_cells) =
             measure_table_text_columns(table, col_count, node_cx, window, cx);
         let measured = Arc::new(TableColumnWidths {
+            rows,
             text_system: Arc::downgrade(window.text_system()),
             text_style,
             rem_size,
@@ -3130,7 +3151,7 @@ fn measure_table_text_columns(
     let font_size = text_style.font_size.to_pixels(window.rem_size());
     let mut col_w = vec![CELL_MIN_PX; col_count];
     let mut custom_cells = Vec::new();
-    for (row_ix, row) in table.children.iter().enumerate() {
+    for (row_ix, row) in table.shown_rows(node_cx.streaming).iter().enumerate() {
         for (ix, cell) in row.children.iter().enumerate() {
             let Some(slot) = col_w.get_mut(ix) else {
                 continue;
@@ -3594,7 +3615,7 @@ impl BlockNode {
         // Per-column max text length (in chars), used to proportion the columns
         // in the default (wrap) layout.
         let mut col_lens: Vec<usize> = vec![];
-        for row in table.children.iter() {
+        for row in table.shown_rows(node_cx.streaming) {
             for (ix, cell) in row.children.iter().enumerate() {
                 if col_lens.len() <= ix {
                     col_lens.push(DEFAULT_LENGTH);
@@ -3670,10 +3691,11 @@ impl BlockNode {
             )
             .read(cx)
             .clone();
-        let row_count = table.children.len();
+        let shown = table.shown_rows(node_cx.streaming);
+        let row_count = shown.len();
         let mut rows = Vec::with_capacity(row_count);
         let mut cell_ordinal = 0;
-        for (row_ix, row) in table.children.iter().enumerate() {
+        for (row_ix, row) in shown.iter().enumerate() {
             let mut cells = Vec::with_capacity(row.children.len());
             for (ix, cell) in row.children.iter().enumerate() {
                 let fade_key = table
@@ -3786,10 +3808,11 @@ impl BlockNode {
         const MAX_LENGTH: usize = 150;
 
         let style = &node_cx.style;
-        let row_count = table.children.len();
+        let shown = table.shown_rows(node_cx.streaming);
+        let row_count = shown.len();
         let mut rows = Vec::with_capacity(row_count);
         let mut cell_ordinal = 0;
-        for (row_ix, row) in table.children.iter().enumerate() {
+        for (row_ix, row) in shown.iter().enumerate() {
             let mut cells = Vec::with_capacity(row.children.len());
             for (ix, cell) in row.children.iter().enumerate() {
                 let fade_key = table
@@ -4424,6 +4447,7 @@ mod tests {
             span: None,
             table_data_cache: TableDataCache::default(),
             column_widths_cache: TableColumnWidthsCache::default(),
+            last_row_open: false,
         };
         let node_cx = NodeContext::default();
 
@@ -5122,6 +5146,7 @@ mod tests {
             span: None,
             table_data_cache: TableDataCache::default(),
             column_widths_cache: TableColumnWidthsCache::default(),
+            last_row_open: false,
         };
         let block = BlockNode::Table(table);
         assert_eq!(
@@ -5149,6 +5174,7 @@ mod tests {
             span: None,
             table_data_cache: TableDataCache::default(),
             column_widths_cache: TableColumnWidthsCache::default(),
+            last_row_open: false,
         }
     }
 

@@ -237,6 +237,8 @@ TextView::new(&document).motion(
 
 不设错位时每次更新整块一起淡入。设了错位时，追加的文字按词拆分（词带上其后的空白），中日韩文字按字拆分；一次追加很长时会压缩错位，保证最后一个词在一个淡入时长内开始。追踪器比较的是渲染后的文字而不是源码字节，因此 `set_text` 传入以当前文本为前缀的更长文本会被视为追加；流式过程中被补齐的 Markdown 标记（`**bo` 变成粗体 `bold`）只让发生变化的字形重新淡入，不会整段闪烁。每次只比较更新触及的块，并且只在还有文字在淡入时才请求下一帧。系统开启减少动态效果时跳过淡入。淡入按窗口帧所用的时钟计时，因此移动 GPUI 测试时钟的测试可以逐步推进它。
 
+追加文字时，表格中以竖线开头的最后一行要等它的单元格齐全并有结尾的竖线，或者这一行结束，才会显示。如果逐词绘制，每个词都可能让所在的列变宽，使每一行重新换行，表格在流式输出时就会忽高忽低。文字停在某一行中间时，这一行会在 `TextViewState::finish` 标记文字结束后显示。一次性设置的文字会显示所有行。
+
 长文档可以拆成多个视图显示，每个视图显示其中部分顶层块。`TextViewState::block_range(&document, blocks, cx)` 创建一个显示 `document` 中第 `blocks` 个块（按序号）的视图，解析仍由文档负责。`TextViewState::blocks` 列出文档的顶层块，包括 id、块的类型、在源文本中的范围，以及追加文字后是否还会变化。`set_block_range` 把视图移到其他块。`TextView::code_block_max_lines` 只布局每个代码块的前几行。详见 [把长文档显示为多行](../component/text-view.md#把长文档显示为多行)。
 
 `TextViewState::set_range_highlights` 在 `rendered_text()`（与纯文本复制得到的文字一致）的指定范围后面绘制背景，应用可以借此显示搜索结果或引用位置，无需重新解析或修改文档样式。这些范围只参与绘制、不参与排版，因此不会改变布局。Markdown 源码里的范围（例如 `selected_source_range()` 返回的范围）可以用 `rendered_text().range_for_source(range)` 转换过来。`reveal_range` 通过视图自身的列表、外层 `gpui::list`，或者其他容器上的 `TextView::on_reveal`，把范围起点所在的行滚动到可见区域内；规则详见[高亮文本范围](../component/text-view.md#高亮文本范围)和[滚动到范围](../component/text-view.md#滚动到范围)。

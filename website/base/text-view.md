@@ -272,6 +272,13 @@ blocks the update reaches are compared, and frames are requested only while
 something is still fading. Reduced motion skips the fade. The fade is timed by the
 clock the window's frames use, so a test that moves GPUI's test clock steps it.
 
+While text is appended, a table's last row that starts with a pipe shows once
+it has all its cells and its closing pipe, or once its line ends. Drawn word
+by word, each word could widen its column and re-wrap every row, so the table
+would grow and shrink as it streams. A row the text stops in shows when
+`TextViewState::finish` marks the text finished, and text set at once shows
+every row.
+
 A long document can be shown as several views, each of some of its top-level
 blocks. `TextViewState::block_range(&document, blocks, cx)` makes a view of
 the blocks `blocks` (by index) of `document`, which keeps the parse.
