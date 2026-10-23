@@ -5,7 +5,7 @@ description: A button component that helps you copy text or other content to you
 
 # Clipboard
 
-The Clipboard component provides an easy way to copy text or other data to the user's clipboard. It renders as a button with a copy icon that changes to a checkmark when content is successfully copied. The component supports both static values and dynamic content through callback functions.
+The Clipboard component provides an easy way to copy text or other data to the user's clipboard. It renders as a button with a copy icon. A click copies the content, and the icon cross-fades to a check mark in the theme's success color for a second, then back. The component supports both static values and dynamic content through callback functions.
 
 The icon button has a localized "Copy" accessible name by default. Use `accessibility_label` when the context needs a more specific name, such as "Copy API key". A tooltip is a separate hint and does not set the accessible name.
 
