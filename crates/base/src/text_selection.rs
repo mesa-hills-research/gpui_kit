@@ -3409,7 +3409,16 @@ fn paint_text_selection(state: &Entity<WindowSelectionState>, window: &mut Windo
             dispatch_clear_handlers(handlers, cx);
         } else if event.click_count == 1 {
             if GlobalState::is_text_selection_suppressed(cx) {
-                state.update(cx, |state, _| state.pending_extension_anchor = None);
+                // The press kept the rows no longer drawn to extend the
+                // selection, and nothing extends it now.
+                let handlers = state.update(cx, |state, cx| {
+                    if state.pending_extension_anchor.take().is_some() {
+                        state.clear_state(cx)
+                    } else {
+                        Vec::new()
+                    }
+                });
+                dispatch_clear_handlers(handlers, cx);
                 return;
             }
             state.update(cx, |state, cx| {

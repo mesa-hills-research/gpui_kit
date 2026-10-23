@@ -3657,10 +3657,13 @@ mod tests {
             copied
         }
 
-        /// Rows of one document, of which a list draws `shown`.
+        /// Rows of one document, of which a list draws `shown`. With `control`,
+        /// a control under them takes a press, and `control` gets the text
+        /// copied once the selection has seen the press, before any frame.
         struct Scrolled {
             views: Vec<Entity<TextViewState>>,
             shown: std::ops::Range<usize>,
+            control: Option<std::rc::Rc<std::cell::RefCell<String>>>,
         }
 
         impl gpui::Render for Scrolled {
@@ -3669,7 +3672,8 @@ mod tests {
                 _: &mut gpui::Window,
                 _: &mut gpui::Context<Self>,
             ) -> impl gpui::IntoElement {
-                use gpui::{ParentElement as _, Styled as _};
+                use gpui::prelude::FluentBuilder as _;
+                use gpui::{InteractiveElement as _, ParentElement as _, Styled as _};
                 gpui::div()
                     .w(gpui::px(400.))
                     .flex()
@@ -3680,6 +3684,19 @@ mod tests {
                             .map(crate::text::TextView::new),
                     )
                     .child(crate::TextSelectionLayer)
+                    .when_some(self.control.clone(), |this, copied| {
+                        // The root hears the press after the selection does.
+                        this.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+                            *copied.borrow_mut() = crate::TextSelection::selected_text(window, cx);
+                        })
+                        .child(
+                            gpui::div()
+                                .h(gpui::px(20.))
+                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                    crate::GlobalState::suppress_text_selection(cx)
+                                }),
+                        )
+                    })
             }
         }
 
@@ -3700,6 +3717,7 @@ mod tests {
             let (root, cx) = cx.add_window_view(|_, _| Scrolled {
                 views: views.clone(),
                 shown: 0..4,
+                control: None,
             });
             cx.run_until_parked();
             let draw = |cx: &mut gpui::VisualTestContext| {
@@ -3755,11 +3773,15 @@ mod tests {
             assert_eq!(copied(cx), "");
         }
 
-        /// A shift-click extends a selection whose start scrolled out of the
-        /// list, from the start and the rows after it, where it began a new
-        /// selection at the click.
-        #[gpui::test]
-        fn shift_click_extends_a_selection_from_a_row_scrolled_away(cx: &mut TestAppContext) {
+        /// Drags from inside the first of four rows to the end of the third,
+        /// scrolls the first two out of the list and Shift-clicks the last row,
+        /// or, with `control`, a control under the rows that takes the press.
+        /// Returns what was copied before the press, right after it (with a
+        /// control) and one frame after the click.
+        fn shift_click_after_the_start_scrolled_away(
+            control: bool,
+            cx: &mut TestAppContext,
+        ) -> (String, String, String) {
             use gpui::{Modifiers, MouseButton, point, px};
 
             let parsed = document(
@@ -3769,9 +3791,11 @@ mod tests {
             let views = (0..4)
                 .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
                 .collect::<Vec<_>>();
+            let pressed = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
             let (root, cx) = cx.add_window_view(|_, _| Scrolled {
                 views: views.clone(),
                 shown: 0..4,
+                control: control.then(|| pressed.clone()),
             });
             cx.run_until_parked();
             let draw = |cx: &mut gpui::VisualTestContext| {
@@ -3791,6 +3815,7 @@ mod tests {
             draw(cx);
             cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
             draw(cx);
+            let selected = copied(cx);
 
             // The rows holding the start scroll out of the list.
             root.update(cx, |root, cx| {
@@ -3801,19 +3826,46 @@ mod tests {
                 draw(cx);
             }
             let fourth = views[3].read_with(cx, |view, _| view.bounds());
-            let end = point(fourth.right() - px(1.), fourth.bottom() - px(4.));
-            cx.simulate_click(
-                end,
-                Modifiers {
-                    shift: true,
-                    ..Default::default()
-                },
-            );
+            let target = if control {
+                point(fourth.left() + px(5.), fourth.bottom() + px(10.))
+            } else {
+                point(fourth.right() - px(1.), fourth.bottom() - px(4.))
+            };
+            let shift = Modifiers {
+                shift: true,
+                ..Default::default()
+            };
+            cx.simulate_mouse_down(target, MouseButton::Left, shift);
+            cx.simulate_mouse_up(target, MouseButton::Left, shift);
             draw(cx);
+            let pressed = pressed.borrow().clone();
+            (selected, pressed, copied(cx))
+        }
+
+        /// A shift-click extends a selection whose start scrolled out of the
+        /// list, from the start and the rows after it, where it began a new
+        /// selection at the click.
+        #[gpui::test]
+        fn shift_click_extends_a_selection_from_a_row_scrolled_away(cx: &mut TestAppContext) {
+            let (selected, _, extended) = shift_click_after_the_start_scrolled_away(false, cx);
+
+            assert!(selected.contains("Bravo two."));
             assert_eq!(
-                copied(cx),
-                "a one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.\n"
+                extended.trim_end(),
+                format!("{}\n\nDelta four.", selected.trim_end())
             );
+        }
+
+        /// A shift-click that a control takes ends the selection, with the
+        /// rows scrolled away that held it.
+        #[gpui::test]
+        fn a_shift_click_on_a_control_ends_a_selection_from_a_row_scrolled_away(
+            cx: &mut TestAppContext,
+        ) {
+            let (selected, pressed, _) = shift_click_after_the_start_scrolled_away(true, cx);
+
+            assert!(selected.contains("Bravo two."));
+            assert_eq!(pressed, "");
         }
 
         /// Messages, each a view of its own, that the application placed in
