@@ -174,6 +174,10 @@ impl Render for Tooltip {
 
 /// Duration of the slide-down enter animation.
 const ENTER_DURATION: Duration = Duration::from_millis(150);
+/// How long a switch along a row moves the box. Shorter than the theme's fast
+/// duration, because the new text can be read only once the box has
+/// uncovered it.
+const SWITCH_DURATION: Duration = Duration::from_millis(80);
 
 pub(crate) fn render_tooltip(
     content_view: AnyView,
@@ -272,12 +276,8 @@ impl TooltipBox {
                 ElementId::NamedInteger("tooltip-switch".into(), epoch as u64),
                 0.0,
             )
-            // The box moves for the theme's fast duration, eased with
-            // `ease_out_cubic` as it is painted.
-            .with_step(
-                1.0,
-                Transition::new(cx.theme().motion_tokens().duration_fast).ease(|t| t),
-            )
+            // The box eases with `ease_out_cubic` as it is painted.
+            .with_step(1.0, Transition::new(SWITCH_DURATION).ease(|t| t))
             .sample(window, cx)
             .into_value(),
             None => 1.0,

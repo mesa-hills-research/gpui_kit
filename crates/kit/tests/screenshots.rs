@@ -178,7 +178,7 @@ fn hover_icon_button(app: &mut ScreenshotApp, window: AnyWindowHandle, x: f32) {
     app.run_until_parked();
 }
 
-/// The tooltip handing over from Edit to Branch 12, 84 and 120 ms into the switch. The box moves
+/// The tooltip handing over from Edit to Branch 12, 56 and 80 ms into the switch. The box moves
 /// and widens on whole pixels and uncovers Branch, which shows whole where it stays from the
 /// switch's second frame.
 #[test]
@@ -197,7 +197,7 @@ fn tooltip_switch() {
     app.advance_clock(Duration::from_millis(100));
     app.capture(window).unwrap();
     let mut elapsed = 0;
-    for ms in [12, 84, 120] {
+    for ms in [12, 56, 80] {
         app.advance_clock(Duration::from_millis(ms - elapsed));
         elapsed = ms;
         goldens().assert(
@@ -218,7 +218,7 @@ fn tooltip_switch_with_reduced_motion() {
     hover_icon_button(&mut app, window, 150.);
     // The pointer rests on Branch for the switch delay.
     app.advance_clock(Duration::from_millis(100));
-    goldens().assert("tooltip-switch-120ms", &app.capture(window).unwrap());
+    goldens().assert("tooltip-switch-80ms", &app.capture(window).unwrap());
 }
 
 struct SelectableHighlights;
