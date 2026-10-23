@@ -14,6 +14,7 @@ use gpui_kit::{
     component::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Sizable as _, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
+        clipboard::Clipboard,
         font_picker::{FontCatalog, FontPicker, FontPickerState, FontSettings},
         input::{
             Editor, EditorState, Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest,
@@ -1068,6 +1069,43 @@ fn buttons_dark() {
 #[test]
 fn buttons_at_a_fractional_scale() {
     goldens().assert("buttons@2.625x", &buttons(ThemeMode::Light, 2.625));
+}
+
+struct Copies;
+
+impl Render for Copies {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(
+            div()
+                .flex()
+                .gap_2()
+                .child(Clipboard::new("idle").value("one"))
+                .child(Clipboard::new("copied").value("two")),
+        )
+    }
+}
+
+/// A Clipboard as it rests, and one just clicked, its check mark in the success color. Reduced
+/// motion shows the check at once.
+fn clipboard_copied(mode: ThemeMode) -> Screenshot {
+    let mut app = app(mode);
+    app.update(|cx| cx.set_reduce_motion(true));
+    let window = open(&mut app, (120., 60.), SCALE, |_, _| Copies);
+    act(&mut app, window, |window, cx| {
+        window.render_frame(cx);
+        window.click("copied", cx);
+    });
+    app.capture(window).unwrap()
+}
+
+#[test]
+fn clipboard_copied_light() {
+    goldens().assert("clipboard-copied", &clipboard_copied(ThemeMode::Light));
+}
+
+#[test]
+fn clipboard_copied_dark() {
+    goldens().assert("clipboard-copied-dark", &clipboard_copied(ThemeMode::Dark));
 }
 
 struct Meters;

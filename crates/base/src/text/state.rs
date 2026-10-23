@@ -215,6 +215,8 @@ struct BlockRange {
     synced: Option<(usize, usize, bool)>,
     /// The document's source length then, where text it appended starts.
     synced_len: usize,
+    /// The document's text is still being appended to.
+    streams: bool,
     _observe: Subscription,
 }
 
@@ -424,6 +426,7 @@ impl TextViewState {
             blocks: (blocks.start_bound().cloned(), blocks.end_bound().cloned()),
             synced: None,
             synced_len: 0,
+            streams: false,
             _observe: observe,
         });
         this.sync_block_range(document, cx);
@@ -490,9 +493,10 @@ impl TextViewState {
     }
 
     /// Marks the text finished. Nothing more will be appended, so the last
-    /// block is complete too, and a [`Self::block_range`] view of it is left
-    /// alone from then on like the others. Appending text, or setting text
-    /// that replaces it, opens it again.
+    /// block is complete too, a table row the text stopped in shows, and a
+    /// [`Self::block_range`] view of it is left alone from then on like the
+    /// others. Appending text, or setting text that replaces it, opens it
+    /// again.
     ///
     /// Text given just before, in the same frame or the same update, is
     /// parsed first, and the last block counts as complete once that parse
@@ -503,6 +507,7 @@ impl TextViewState {
         }
         self.finished = Some(self.revision);
         self.mark_last_block_complete();
+        self.remeasure_last_block();
         cx.notify();
     }
 
@@ -528,6 +533,30 @@ impl TextViewState {
     /// appended or set since.
     pub fn is_finished(&self) -> bool {
         self.finished.is_some()
+    }
+
+    /// Whether text is still being appended: it was appended since it was
+    /// last set, and isn't finished. A table's last row then shows once it
+    /// is whole. Text a `TextView` element hands over has nothing to finish
+    /// it, so it never counts.
+    fn streams(&self) -> bool {
+        match &self.block_range {
+            Some(block_range) => block_range.streams,
+            None => {
+                self.element_text.is_none()
+                    && self.finished.is_none()
+                    && self.revision > self.full_update_revision
+            }
+        }
+    }
+
+    /// Has the last block measured again, which a row held back while the
+    /// text streamed changes the height of.
+    fn remeasure_last_block(&self) {
+        let count = self.list_state.item_count();
+        if count > 0 {
+            self.list_state.remeasure_items(count - 1..count);
+        }
     }
 
     /// The index of the document's block the view starts with.
@@ -558,6 +587,14 @@ impl TextViewState {
 
     /// Takes the view's blocks from `document`'s latest parse.
     fn sync_block_range(&mut self, document: &Entity<TextViewState>, cx: &mut Context<Self>) {
+        let streams = document.read(cx).streams();
+        if let Some(block_range) = &mut self.block_range
+            && block_range.streams != streams
+        {
+            block_range.streams = streams;
+            self.remeasure_last_block();
+            cx.notify();
+        }
         let Some(block_range) = &self.block_range else {
             return;
         };
@@ -776,6 +813,11 @@ impl TextViewState {
     /// Push text to the document of a [`Self::block_range`] view rather than
     /// to the view, which would stop following its document and show the
     /// text.
+    ///
+    /// While text is appended, a table's last row that starts with a pipe
+    /// shows once it has all its cells and its closing pipe, or once its line
+    /// ends. Call [`Self::finish`] when the text is done, so a row it stopped
+    /// in shows. Setting text that replaces it shows the row too.
     pub fn push_str(&mut self, new_text: &str, cx: &mut Context<Self>) {
         if new_text.is_empty() {
             return;
@@ -1651,6 +1693,7 @@ impl Render for TextViewState {
             stream_fade,
             range_highlights: self.range_highlights.clone(),
             reveal,
+            streaming: self.streams(),
         };
 
         let content = v_flex()
@@ -3464,6 +3507,106 @@ mod tests {
             cx.run_until_parked();
             assert!(code_complete(&document, cx));
             assert!(code_complete(&row, cx), "the row takes the complete block");
+        }
+
+        /// While text streams in, a table grows a whole row at a time, in the
+        /// document's view and in a row's view of its table. A row cut off
+        /// shows once the text is finished, and text set at once shows all
+        /// its rows.
+        /// A view as tall as its text.
+        struct Fitted(Entity<TextViewState>);
+
+        impl gpui::Render for Fitted {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                use gpui::{ParentElement as _, Styled as _};
+                gpui::div()
+                    .w(gpui::px(400.))
+                    .flex()
+                    .flex_col()
+                    .child(crate::text::TextView::new(&self.0))
+            }
+        }
+
+        #[gpui::test]
+        fn a_streaming_table_grows_a_whole_row_at_a_time(cx: &mut TestAppContext) {
+            let table =
+                "Options:\n\n| Option | What it does |\n|---|---|\n| `-p` | One package |\n";
+            let row = "| `--offline` | Uses only the crates already downloaded |\n";
+            let cut = "| `-j N` | Runs at most";
+            let height = |view: &Entity<TextViewState>, cx: &mut gpui::VisualTestContext| {
+                cx.run_until_parked();
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+                view.read_with(cx, |view, _| view.bounds().size.height)
+            };
+            for in_a_row in [false, true] {
+                let document = document(table, cx);
+                let view = if in_a_row {
+                    cx.new(|cx| TextViewState::block_range(&document, 1.., cx))
+                } else {
+                    document.clone()
+                };
+                let (_, cx) = cx.add_window_view(|_, _| Fitted(view.clone()));
+                let before = height(&view, cx);
+                let mut heights = Vec::new();
+                for chunk in row.as_bytes().chunks(4) {
+                    let chunk = std::str::from_utf8(chunk).unwrap();
+                    document.update(cx, |document, cx| document.push_str(chunk, cx));
+                    heights.push(height(&view, cx));
+                }
+                let after = *heights.last().unwrap();
+                assert!(after > before, "in a row {in_a_row}: the row didn't show");
+                assert!(
+                    heights.iter().all(|h| *h == before || *h == after) && heights.is_sorted(),
+                    "in a row {in_a_row}: {heights:?}"
+                );
+                for chunk in cut.as_bytes().chunks(4) {
+                    let chunk = std::str::from_utf8(chunk).unwrap();
+                    document.update(cx, |document, cx| document.push_str(chunk, cx));
+                    assert_eq!(height(&view, cx), after, "in a row {in_a_row}");
+                }
+                document.update(cx, |document, cx| document.finish(cx));
+                let finished = height(&view, cx);
+                assert!(
+                    finished > after,
+                    "in a row {in_a_row}: the cut row didn't show"
+                );
+                document.update(cx, |document, cx| {
+                    document.set_text(&format!("{table}{row}{cut}"), cx)
+                });
+                assert_eq!(height(&view, cx), finished, "in a row {in_a_row}");
+                // A row with more cells than the header has its cells.
+                document.update(cx, |document, cx| {
+                    document.push_str("\n| `-q` | Quiet |", cx)
+                });
+                let whole = height(&view, cx);
+                assert!(whole > finished, "in a row {in_a_row}");
+                document.update(cx, |document, cx| document.push_str(" more", cx));
+                assert_eq!(height(&view, cx), whole, "in a row {in_a_row}");
+            }
+        }
+
+        /// Text a `TextView` element hands over has nothing to mark it
+        /// finished, so a table's rows show as they come.
+        #[gpui::test]
+        fn text_an_element_hands_over_shows_table_rows_as_they_come(cx: &mut TestAppContext) {
+            let table = "| Option | What it does |\n|---|---|\n| `-p` | One package |\n";
+            let state = document("", cx);
+            let mut text = gpui::SharedString::from(table);
+            state.update(cx, |state, cx| state.set_element_text(&text, cx));
+            let (_, cx) = cx.add_window_view(|_, _| Fitted(state.clone()));
+            let height = |cx: &mut gpui::VisualTestContext| {
+                cx.run_until_parked();
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+                state.read_with(cx, |state, _| state.bounds().size.height)
+            };
+            let before = height(cx);
+            text = format!("{table}| `-j N` | Runs at").into();
+            state.update(cx, |state, cx| state.set_element_text(&text, cx));
+            assert!(height(cx) > before, "the row being written didn't show");
         }
 
         /// A chat feed often ends a reply in the frame its last chunk arrives,

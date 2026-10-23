@@ -118,8 +118,9 @@ complete golden-image suite.
 `tests/screenshots.rs` renders components headlessly and compares the pixels with the PNGs in
 `tests/screenshots`: buttons, inputs and a textarea, a textarea's suggestion menu, a text editor,
 its spelling menu and line-number gutters, a list, a popup menu and one with shortcut key caps, a
-font picker in its full and compact layouts, and the smooth caret partway through a keystroke in a
-text editor and a single-line input, in light and dark themes (the single-line input in light).
+font picker in its full and compact layouts, a clipboard button showing its check mark, and the
+smooth caret partway through a keystroke in a text editor and a single-line input, in light and
+dark themes (the single-line input in light).
 It also checks that every bundled theme draws the text editor on its `editor.background`. It
 draws with the gpui fork's `mhr-gpui-screenshot` on Mesa's software Vulkan driver
 (`mesa-vulkan-drivers` on Debian and Ubuntu), so a display and a GPU are optional, and it runs

@@ -10,6 +10,17 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 
 ## Changes from upstream
 
+- **Streaming tables grow a row at a time** (`gpui-base`). While text is appended, a table's last
+  row that starts with a pipe shows once it is whole. Each word of a row drawn as it came could
+  widen its column and re-wrap every row, so a table kept at the bottom of a view jumped up and
+  down. Call `TextViewState::finish` when the text is done, so a row it stopped in shows. A
+  `TextView::markdown(id, text)` view shows rows as they come. See
+  [TextView: retained state and streaming updates](website/base/text-view.md#retained-state-and-streaming-updates).
+- **A copy button that confirms** (`gpui-component`). `Clipboard` cross-fades its copy icon to a
+  check mark in the theme's success color, holds it for a second and fades back, where the icon
+  swapped for two seconds with no motion. Reduced motion swaps them at once. `Clipboard::tab_stop`
+  and its styles, which go to the button, let an application use it for copy buttons that show on
+  hover. See [Clipboard](website/component/clipboard.md).
 - **Keys still reach a focused row scrolled out of view** (`gpui-base`). While the window has a
   selection, a text view holding focus keeps its keys when a list no longer draws it, so Cmd-C
   or Ctrl-C copies the whole selection, and Select All and the context menu keys still work. See

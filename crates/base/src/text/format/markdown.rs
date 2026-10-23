@@ -1102,6 +1102,20 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
                 }
             });
             table.span = new_span(val.position, cx);
+            // The text ends in a body row written between pipes, as models
+            // write them, that has fewer cells than the header, or as many and
+            // no closing pipe yet. One with more has its cells, as the extra
+            // ones are dropped.
+            if val.children.len() > 1
+                && let Some(Node::TableRow(row)) = val.children.last()
+                && let Some(position) = &row.position
+                && position.end.offset == source.len()
+            {
+                let line = source[position.start.offset..position.end.offset].trim();
+                let (cells, columns) = (row.children.len(), table.column_aligns.len());
+                table.last_row_open = line.starts_with('|')
+                    && (cells < columns || (cells == columns && !line.ends_with('|')));
+            }
 
             BlockNode::Table(table)
         }
