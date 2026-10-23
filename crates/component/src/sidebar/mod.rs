@@ -917,8 +917,8 @@ mod tests {
     mod keyboard_scroll {
         use super::*;
         use gpui::{
-            AppContext as _, Bounds, ScrollDelta, ScrollWheelEvent, TestAppContext,
-            VisualTestContext, point,
+            AppContext as _, Bounds, ScrollDelta, ScrollHandle, ScrollWheelEvent,
+            StatefulInteractiveElement as _, TestAppContext, VisualTestContext, point,
         };
 
         /// A sidebar 200px tall holding one menu of 30 items, which is far
@@ -959,6 +959,51 @@ mod tests {
                                         })
                                 })),
                             )),
+                    )
+            }
+        }
+
+        /// A menu of 30 items without a sidebar, in a scroll container of the
+        /// application's own, 200px tall and named "sidebar" for the helpers
+        /// below. The menu sits under a heading, so it isn't the container's
+        /// first child.
+        struct MenuInOwnContainer {
+            scroll_handle: ScrollHandle,
+            before: gpui::FocusHandle,
+            focused_before: bool,
+        }
+
+        impl gpui::Render for MenuInOwnContainer {
+            fn render(
+                &mut self,
+                window: &mut Window,
+                cx: &mut gpui::Context<Self>,
+            ) -> impl IntoElement {
+                if !std::mem::replace(&mut self.focused_before, true) {
+                    self.before.focus(window, cx);
+                }
+                let menu = SidebarMenu::new()
+                    .track_scroll(&self.scroll_handle)
+                    .children((0..30).map(|ix| {
+                        SidebarMenuItem::new(format!("Item {ix}")).suffix(move |_, _| {
+                            div()
+                                .w(px(2.))
+                                .h(px(2.))
+                                .debug_selector(move || format!("item-{ix}"))
+                        })
+                    }));
+                v_flex()
+                    .child(div().id("before").size_0().track_focus(&self.before))
+                    .child(
+                        div()
+                            .id("container")
+                            .w(px(255.))
+                            .h(px(200.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .debug_selector(|| "sidebar".into())
+                            .child(div().h(px(40.)).child("Menu"))
+                            .child(menu.render("menu", window, cx)),
                     )
             }
         }
@@ -1036,6 +1081,30 @@ mod tests {
             assert!(in_view(cx, 29), "Up from the first item wraps to the last");
             press(cx, "up");
             assert!(in_view(cx, 28));
+        }
+
+        #[gpui::test]
+        fn a_menu_in_the_applications_own_container_scrolls_to_the_focused_item(
+            cx: &mut TestAppContext,
+        ) {
+            cx.update(crate::init);
+            let (_, cx) = cx.add_window_view(|window, cx| {
+                let view = cx.new(|cx| MenuInOwnContainer {
+                    scroll_handle: ScrollHandle::new(),
+                    before: cx.focus_handle().tab_stop(true),
+                    focused_before: false,
+                });
+                crate::Root::new(view, window, cx)
+            });
+            draw(cx);
+            press(cx, "tab");
+            assert!(in_view(cx, 0));
+            assert!(!in_view(cx, 29));
+
+            press(cx, "end");
+            assert!(in_view(cx, 29), "End goes to the last item");
+            press(cx, "home");
+            assert!(in_view(cx, 0), "Home goes to the first item");
         }
 
         #[gpui::test]

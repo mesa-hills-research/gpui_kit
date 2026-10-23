@@ -70,7 +70,7 @@ impl Render for Preferences {
 
 其他各项共用一个 Tab 停靠点的复合控件（例如纵向列表）也可以直接使用 `RovingFocus`，在按键处理中调用 `move_focus`。
 
-位于可滚动容器中的控件可以把获得焦点的项滚动到视野内。`track_scroll` 接收每项对应一个子元素的容器的 `ScrollHandle`。`track_list_scroll` 接收 GPUI `list` 的 `ListState`，这种列表的每一项可能包含控件的许多项（例如 Sidebar），各项通过 `item_prepainted` 报告自己绘制的位置。通过键盘获得焦点的项会被滚动到刚好进入视野，已在视野内时不会滚动。
+位于可滚动容器中的控件可以把获得焦点的项滚动到视野内。`track_scroll` 接收每项对应一个子元素的容器的 `ScrollHandle`。`track_list_scroll` 接收 GPUI `list` 的 `ListState`，这种列表的每一项可能包含控件的许多项（例如 Sidebar）。`track_container_scroll` 接收容器的 `ScrollHandle`，控件可以位于该容器内的任意层级，与其他内容并存。无论用哪一个，各项都通过 `item_prepainted` 报告自己绘制的位置。通过键盘获得焦点的项会被滚动到刚好进入视野，已在视野内时不会滚动。
 
 ## 可访问性
 

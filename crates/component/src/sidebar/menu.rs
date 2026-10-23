@@ -10,8 +10,9 @@ use crate::{
 };
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, Entity, InteractiveElement as _, IntoElement,
-    KeyBinding, ParentElement as _, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, canvas, div, percentage, prelude::FluentBuilder,
+    KeyBinding, ParentElement as _, Role, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, canvas, div, percentage,
+    prelude::FluentBuilder,
 };
 use gpui_base::{RovingFocus, RovingStep, TestSupportExt as _};
 use std::rc::Rc;
@@ -161,6 +162,7 @@ pub struct SidebarMenu {
     style: StyleRefinement,
     collapsed: bool,
     items: Vec<SidebarMenuItem>,
+    scroll_handle: Option<ScrollHandle>,
 }
 
 impl SidebarMenu {
@@ -170,7 +172,20 @@ impl SidebarMenu {
             style: StyleRefinement::default(),
             items: Vec::new(),
             collapsed: false,
+            scroll_handle: None,
         }
+    }
+
+    /// Scroll the item that takes focus from the keyboard into view in the
+    /// scroll container that `scroll_handle` tracks.
+    ///
+    /// A menu in a [`super::Sidebar`] does this without it. Pass the handle
+    /// of the container when the menu is used on its own in a scrolling
+    /// element of the application. The menu may sit anywhere inside the
+    /// container.
+    pub fn track_scroll(mut self, scroll_handle: &ScrollHandle) -> Self {
+        self.scroll_handle = Some(scroll_handle.clone());
+        self
     }
 
     /// Add a [`SidebarMenuItem`] child menu item to the sidebar menu.
@@ -219,8 +234,11 @@ impl SidebarItem for SidebarMenu {
 
         // The menu is one Tab stop, on its active item.
         let focus = RovingFocus::keyed(SharedString::from(format!("{id}-focus")), window, cx);
-        // In a sidebar, the item that takes focus scrolls into view.
-        if let Some(list_state) = super::current_list() {
+        // The item that takes focus scrolls into view, in the application's
+        // container or in the sidebar.
+        if let Some(scroll_handle) = &self.scroll_handle {
+            focus.track_container_scroll(scroll_handle);
+        } else if let Some(list_state) = super::current_list() {
             focus.track_list_scroll(&list_state);
         }
         let mut entries = Vec::new();

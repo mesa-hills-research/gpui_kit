@@ -2,7 +2,9 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use gpui::{App, Bounds, ElementId, FocusHandle, ListState, Pixels, ScrollHandle, Window, px};
+use gpui::{
+    App, Bounds, ElementId, FocusHandle, ListState, Pixels, ScrollHandle, Window, point, px,
+};
 
 /// Where an arrow key moves focus among the items of a [`RovingFocus`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,8 +41,10 @@ pub enum RovingStep {
 ///
 /// A control in a scrolling container scrolls the item that takes focus into
 /// view. [`RovingFocus::track_scroll`] does it for a container with one child
-/// per item, and [`RovingFocus::track_list_scroll`] for the items of a GPUI
-/// `list`, which may each be only a small part of a list item.
+/// per item, [`RovingFocus::track_list_scroll`] for the items of a GPUI
+/// `list`, which may each be only a small part of a list item, and
+/// [`RovingFocus::track_container_scroll`] for a container that holds the
+/// control at any depth, among other content.
 #[derive(Clone, Default)]
 pub struct RovingFocus {
     state: Rc<RefCell<RovingFocusState>>,
@@ -53,6 +57,7 @@ struct RovingFocusState {
     tab_stop: Option<usize>,
     scroll_handle: Option<ScrollHandle>,
     list_state: Option<ListState>,
+    container: Option<ScrollHandle>,
     /// The item that has focus and was already scrolled to, so that a later
     /// frame leaves the scroll position to the user.
     revealed: Option<usize>,
@@ -111,14 +116,24 @@ impl RovingFocus {
         self.state.borrow_mut().list_state = Some(list_state.clone());
     }
 
+    /// Reveals the item that takes focus from the keyboard in `scroll_handle`,
+    /// a scroll container that holds the control at any depth, as one child
+    /// among others or inside another element. Each item reports where it's
+    /// drawn to [`RovingFocus::item_prepainted`], as for
+    /// [`RovingFocus::track_list_scroll`].
+    pub fn track_container_scroll(&self, scroll_handle: &ScrollHandle) {
+        self.state.borrow_mut().container = Some(scroll_handle.clone());
+    }
+
     /// Tells the control where item `ix` is drawn, in window coordinates.
     /// Call it from the prepaint of every enabled item, for example from a
     /// [`gpui::canvas`] that fills the item.
     ///
     /// When the item has just taken focus from the keyboard, the list given
-    /// to [`RovingFocus::track_list_scroll`] scrolls by the least distance
-    /// that brings the item into view, and doesn't scroll when the item is
-    /// in view already. It scrolls once for each time the item takes focus,
+    /// to [`RovingFocus::track_list_scroll`] and the container given to
+    /// [`RovingFocus::track_container_scroll`] scroll by the least distance
+    /// that brings the item into view, and don't scroll when the item is in
+    /// view already. They scroll once for each time the item takes focus,
     /// so the user's own scrolling is left alone while it keeps focus. Focus
     /// that a pointer press gave to the item scrolls nothing.
     pub fn item_prepainted(
@@ -128,7 +143,7 @@ impl RovingFocus {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let list_state = {
+        let (list_state, container) = {
             let mut state = self.state.borrow_mut();
             let focused = state
                 .handles
@@ -144,18 +159,34 @@ impl RovingFocus {
                 return;
             }
             state.revealed = Some(ix);
-            match state.list_state.clone() {
-                Some(list_state) if window.last_input_was_keyboard() => list_state,
-                _ => return,
+            if !window.last_input_was_keyboard() {
+                return;
             }
+            (state.list_state.clone(), state.container.clone())
         };
-        // The list is laying out its items right now. Once the frame is
-        // drawn, it knows the viewport that `bounds` is in.
+        if list_state.is_none() && container.is_none() {
+            return;
+        }
+        // The list or the container is laying out its items right now. Once
+        // the frame is drawn, it knows the viewport that `bounds` is in.
         window.defer(cx, move |window, _| {
-            let distance = reveal_distance(list_state.viewport_bounds(), bounds);
-            if distance != px(0.) {
-                list_state.scroll_by(distance);
-                window.refresh();
+            if let Some(list_state) = list_state {
+                let distance = reveal_distance(list_state.viewport_bounds(), bounds);
+                if distance != px(0.) {
+                    list_state.scroll_by(distance);
+                    window.refresh();
+                }
+            }
+            if let Some(container) = container {
+                let distance = reveal_distance(container.bounds(), bounds);
+                if distance != px(0.) {
+                    // The offset is zero at the top and goes negative as the
+                    // content moves up.
+                    let offset = container.offset();
+                    let y = (offset.y - distance).clamp(-container.max_offset().y, px(0.));
+                    container.set_offset(point(offset.x, y));
+                    window.refresh();
+                }
             }
         });
     }

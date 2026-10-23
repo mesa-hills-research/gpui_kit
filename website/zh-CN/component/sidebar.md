@@ -189,6 +189,24 @@ Sidebar::new()
 
 禁用的项会被跳过。用指针点击某项也会让它获得焦点，只有键盘焦点才显示焦点环。比窗口更高的 Sidebar 会在某项通过键盘获得焦点时滚动到它，滚动距离以刚好让它进入视野为限。该项已在视野内时不会滚动，焦点停留在该项期间也不会干预滚轮和滚动条。
 
+位于 `Sidebar` 之外、放在应用自己的可滚动元素中的 `SidebarMenu`，传入该元素的 `ScrollHandle` 后也会这样滚动。菜单可以位于该元素内的任意位置。
+
+```rust
+use gpui_kit::component::sidebar::SidebarItem as _;
+
+div()
+    .id("nav")
+    .h(px(300.))
+    .overflow_y_scroll()
+    .track_scroll(&self.scroll_handle)
+    .child(
+        SidebarMenu::new()
+            .track_scroll(&self.scroll_handle)
+            .children(items)
+            .render("menu", window, cx),
+    )
+```
+
 ## 主题
 
 Sidebar 使用一组独立的主题颜色：

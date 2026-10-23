@@ -335,6 +335,24 @@ Each `SidebarMenu` is one Tab stop. Tab and Shift-Tab reach it on its active ite
 
 Disabled items are skipped. Pressing an item with the pointer focuses it too, and only keyboard focus shows a ring. A sidebar taller than its window scrolls to an item that takes focus from the keyboard, by the least distance that brings it into view. It doesn't scroll when the item is in view already, and it leaves the wheel and the scrollbar alone while focus stays on the item.
 
+A `SidebarMenu` outside a `Sidebar`, in a scrolling element of your own, scrolls the same way once you give it that element's `ScrollHandle`. The menu can sit anywhere inside the element.
+
+```rust
+use gpui_kit::component::sidebar::SidebarItem as _;
+
+div()
+    .id("nav")
+    .h(px(300.))
+    .overflow_y_scroll()
+    .track_scroll(&self.scroll_handle)
+    .child(
+        SidebarMenu::new()
+            .track_scroll(&self.scroll_handle)
+            .children(items)
+            .render("menu", window, cx),
+    )
+```
+
 ## Theming
 
 The sidebar uses dedicated theme colors:
