@@ -154,7 +154,9 @@ impl TooltipRequest {
         }
     }
 
-    /// A request anchored to `trigger` and shown only while it is drawn.
+    /// A request anchored to `trigger` and shown only while it is drawn. Hide
+    /// it with [`TooltipOverlay::request_hide_for`] when the pointer leaves
+    /// the trigger.
     pub fn for_trigger(
         trigger: &TooltipTrigger,
         build: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -327,6 +329,9 @@ impl TooltipOverlay {
         }
     }
 
+    /// Hides the tooltip after the grace period. A trigger whose requests are
+    /// made with [`TooltipRequest::for_trigger`] hides with
+    /// [`Self::request_hide_for`] instead.
     pub fn request_hide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_task = None;
         self.hovered = None;
@@ -433,7 +438,7 @@ impl Render for TooltipOverlay {
 /// trigger's switch ends the tooltip. A trigger in a view GPUI reuses from the
 /// last frame is then found by nothing (it isn't prepainted, and the pointer
 /// is no longer on its hitbox), so a frame drawn for something else mustn't
-/// take it for gone: that would hide the tooltip at once and cost the next
+/// take it for gone, which would hide the tooltip at once and cost the next
 /// trigger its quick switch.
 struct TriggerGate {
     trigger: Option<Rc<TriggerState>>,
@@ -588,7 +593,7 @@ mod tests {
     }
 
     /// Moves the pointer from `from` onto `to` in the order GPUI reports it
-    /// for a pointer moving right: entering `to` before leaving `from`.
+    /// for a pointer moving right, entering `to` before leaving `from`.
     fn move_pointer(
         state: &Entity<TooltipOverlay>,
         from: Option<&TooltipTrigger>,

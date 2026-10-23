@@ -98,7 +98,7 @@ impl Tooltip {
     }
 }
 
-/// The tooltip's box: its padding, background, border, shadow and corners.
+/// The tooltip's box, with its padding, background, border, shadow and corners.
 fn tooltip_box<E: Styled>(element: E, cx: &App) -> E {
     element
         .py_0p5()
@@ -224,7 +224,7 @@ struct Handover {
 /// A tooltip of the kit's own, whose box the overlay draws.
 ///
 /// On a switch along a row, the box moves and resizes from the last tooltip's
-/// to this one's, on whole device pixels. The texts never move: the old one
+/// to this one's, on whole device pixels. The texts never move. The old one
 /// fades out at its place and then the new one fades in at its own, both
 /// clipped by the box.
 struct TooltipBox {

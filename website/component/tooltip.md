@@ -131,7 +131,8 @@ buttons leaves the open tooltip as it is instead of flashing each button's.
 
 Between two tooltips built with `Tooltip` on the same row, the box moves and
 resizes from one to the other while the old text fades out and the new text
-fades in, each where it stays. With reduced motion the tooltip switches at once.
+fades in, each where it stays. With reduced motion the box doesn't move and the
+new tooltip replaces the old one without fading.
 
 ### When the Trigger Goes Away
 

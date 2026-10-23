@@ -17,8 +17,8 @@
 //! content tree and has no other way to learn where the trigger is. Hover asks
 //! the overlay to show or to hide, naming the trigger, because GPUI can report
 //! the pointer entering the next trigger before it leaves this one. A press
-//! dismisses: a label explaining a button should not still be up while the
-//! button is being used.
+//! dismisses, because a label explaining a button should not still be up
+//! while the button is being used.
 //!
 //! # Why the content is a Rust view rather than a script one
 //!
@@ -89,8 +89,8 @@ impl Render for TooltipLabel {
 /// Wires the hover trigger, when the script asked for one.
 ///
 /// Takes the whole [`Behavior`] rather than the text so that an element with no
-/// `tooltip` pays nothing: the listeners, the prepaint canvas and the trigger
-/// are all built only on the branch that has something to show.
+/// `tooltip` pays nothing, since the listeners, the prepaint canvas and the
+/// trigger are all built only on the branch that has something to show.
 pub(in crate::materialize) fn with_tooltip<E>(element: E, behavior: &Behavior) -> E
 where
     E: StatefulInteractiveElement + ParentElement,
