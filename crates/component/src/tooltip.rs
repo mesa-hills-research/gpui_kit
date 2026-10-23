@@ -926,13 +926,11 @@ mod tests {
             .is_some_and(|tooltip| (tooltip.center().x - button.center().x).abs() < px(1.))
     }
 
-    /// GPUI reports the pointer entering the next button before it reports the
-    /// pointer leaving the last one when the pointer moves right.
-    #[gpui::test]
-    fn moving_along_adjacent_buttons_shows_each_ones_tooltip(cx: &mut TestAppContext) {
+    /// A window with the icon buttons, and motion as `reduce_motion` says.
+    fn actions(cx: &mut TestAppContext, reduce_motion: bool) -> &mut VisualTestContext {
         cx.update(|cx| {
             crate::init(cx);
-            cx.set_reduce_motion(true);
+            cx.set_reduce_motion(reduce_motion);
         });
         let (_, cx) = cx.add_window_view(|window, cx| {
             let view = cx.new(|_| Actions);
@@ -940,20 +938,51 @@ mod tests {
         });
         cx.simulate_resize(size(px(500.), px(200.)));
         draw(cx);
+        cx
+    }
+
+    /// Moves the pointer onto the middle of the button named `name`.
+    fn point_at(name: &'static str, cx: &mut VisualTestContext) -> Point<Pixels> {
+        let center = cx
+            .debug_bounds(name)
+            .expect("the button is painted")
+            .center();
+        cx.simulate_mouse_move(center, None, Modifiers::default());
+        draw(cx);
+        center
+    }
+
+    /// GPUI reports the pointer entering the next button before it reports the
+    /// pointer leaving the last one when the pointer moves right.
+    #[gpui::test]
+    fn moving_along_adjacent_buttons_shows_each_ones_tooltip(cx: &mut TestAppContext) {
+        let cx = actions(cx, true);
 
         for name in ["Edit", "Branch", "Copy", "Branch", "Edit"] {
-            let center = cx
-                .debug_bounds(name)
-                .expect("the button is painted")
-                .center();
-            cx.simulate_mouse_move(center, None, Modifiers::default());
-            draw(cx);
+            point_at(name, cx);
             wait(cx, LONG);
             assert!(
                 shows_tooltip_of(name, cx),
                 "{name}'s tooltip shows while the pointer rests on it"
             );
         }
+    }
+
+    /// Hiding never waits for the switch's animation.
+    #[gpui::test]
+    fn a_click_during_a_switch_hides_the_tooltip_at_once(cx: &mut TestAppContext) {
+        let cx = actions(cx, false);
+        point_at("Edit", cx);
+        wait(cx, LONG);
+        let branch = point_at("Branch", cx);
+        // The switch delay, then partway through the switch.
+        wait(cx, Duration::from_millis(100));
+        wait(cx, Duration::from_millis(30));
+        assert!(painted(cx), "the tooltip is switching");
+
+        cx.simulate_mouse_down(branch, MouseButton::Left, Modifiers::default());
+        draw(cx);
+        assert!(!painted(cx), "the next frame has no tooltip");
     }
 
     #[gpui::test]
