@@ -49,11 +49,15 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   every line, and text streamed onto its end lays out again only the lines it can change.
   Streaming into a 20 KB one went from about 15 to 4 ms a frame, and into an 80 KB one from 65 to
   8 ms (p50).
+- **Streamed Markdown parses an append in the same time at any length** (`gpui-base`). The
+  parser and the view share the blocks of the parsed document, so an append copies pointers and
+  parses only the last block again. In an unoptimized build an append to 162 KB of Markdown takes
+  0.6 ms where it took 2.1 ms.
 - **A selection across rows survives scrolling** (`gpui-base`). A selection across the rows of
   one document, shown as views in a list, keeps its rows as they scroll out of view. Its ends
   hold, the rows are copied, and they show as selected when they come back. A plain text run
   that holds an end copies only the part that is selected, and a row's position can be any
-  `u64`.
+  `u64`. Shift-click extends the selection from an end scrolled out of view.
   `TextSelectionRegistration::with_document_position` gives other participants the same. See
   [TextView](website/component/text-view.md#a-long-document-as-rows).
 - **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
@@ -61,7 +65,7 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.
 - **Less memory for parsed Markdown** (`gpui-base`). A text view parsed a short text twice, kept
   both documents, and held about 28 KB before it had any text. 160 answers (318 KB of Markdown)
-  now take 5.5 MB parsed, where they took 26.8 MB, and parse in half the time. `cargo bench -p
+  now take 5.7 MB parsed, where they took 26.8 MB, and parse in half the time. `cargo bench -p
   gpui-base --bench text_view_memory` prints the numbers.
 - **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
   a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus

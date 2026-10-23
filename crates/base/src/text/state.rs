@@ -525,7 +525,7 @@ impl TextViewState {
             && self.block_range.is_none()
             && let Some(last) = Arc::make_mut(&mut self.parsed_content.document.blocks).last_mut()
         {
-            last.mark_code_complete();
+            Arc::make_mut(last).mark_code_complete();
         }
     }
 
@@ -2408,7 +2408,7 @@ mod tests {
                 .blocks
                 .iter()
                 .flat_map(|block| {
-                    let super::super::node::BlockNode::Paragraph(paragraph) = block else {
+                    let super::super::node::BlockNode::Paragraph(paragraph) = &**block else {
                         panic!()
                     };
                     paragraph
@@ -3081,7 +3081,7 @@ mod tests {
             },
         )
         .expect("incremental parse");
-        let BlockNode::Paragraph(paragraph) = &content.document.blocks[2] else {
+        let BlockNode::Paragraph(paragraph) = &*content.document.blocks[2] else {
             panic!("expected appended paragraph");
         };
         let mut state = paragraph.state.lock().unwrap();
@@ -3090,6 +3090,44 @@ mod tests {
         drop(state);
 
         assert_eq!(content.document.selected_source_range(), Some(17..22));
+    }
+
+    /// The parser keeps its document and the view shows the same one, so an
+    /// append that copied the blocks would copy the whole document each time.
+    #[test]
+    fn an_append_shares_the_blocks_it_keeps() {
+        let options = |append, text: &str| UpdateOptions {
+            revision: 1,
+            pending_text: text.to_string(),
+            append,
+            mode: ParseMode::Compatible,
+            markdown_extensions: Arc::default(),
+            baseline: None,
+        };
+        let before = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            &options(false, "first\n\nsecond"),
+        )
+        .expect("initial parse");
+        let after = parse_content(
+            TextViewFormat::Markdown,
+            before.clone(),
+            &options(true, " more\n\nthird"),
+        )
+        .expect("incremental parse");
+
+        assert_eq!(after.document.blocks.len(), 3);
+        assert!(Arc::ptr_eq(
+            &before.document.blocks[0],
+            &after.document.blocks[0]
+        ));
+        // The last block takes the appended text, so it is parsed again.
+        assert!(!Arc::ptr_eq(
+            &before.document.blocks[1],
+            &after.document.blocks[1]
+        ));
+        assert_eq!(before.document.blocks.len(), 2);
     }
 
     #[test]
@@ -3123,7 +3161,7 @@ mod tests {
 
         let BlockNode::List {
             start, children, ..
-        } = &continued.document.blocks[0]
+        } = &*continued.document.blocks[0]
         else {
             panic!("expected streamed ordered list");
         };
@@ -3152,7 +3190,7 @@ mod tests {
             cx.run_until_parked();
             state.read_with(cx, |state, _| {
                 let node::BlockNode::Paragraph(paragraph) =
-                    &state.parsed_content.document.blocks[0]
+                    &*state.parsed_content.document.blocks[0]
                 else {
                     panic!()
                 };
@@ -3193,7 +3231,7 @@ mod tests {
         cx.run_until_parked();
 
         state.read_with(cx, |state, _| {
-            let node::BlockNode::Custom(node) = &state.parsed_content.document.blocks[0] else {
+            let node::BlockNode::Custom(node) = &*state.parsed_content.document.blocks[0] else {
                 panic!("expected custom markdown node");
             };
             assert_eq!(node.name(), "ticker");
@@ -3496,7 +3534,13 @@ mod tests {
             let row = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
             let code_complete = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
                 state.read_with(cx, |state, _| {
-                    match state.parsed_content.document.blocks.last() {
+                    match state
+                        .parsed_content
+                        .document
+                        .blocks
+                        .last()
+                        .map(std::sync::Arc::as_ref)
+                    {
                         Some(BlockNode::CodeBlock(code)) => code.is_complete(),
                         _ => panic!("a code block last"),
                     }
@@ -3756,10 +3800,13 @@ mod tests {
             copied
         }
 
-        /// Rows of one document, of which a list draws `shown`.
+        /// Rows of one document, of which a list draws `shown`. With `control`,
+        /// a control under them takes a press, and `control` gets the text
+        /// copied once the selection has seen the press, before any frame.
         struct Scrolled {
             views: Vec<Entity<TextViewState>>,
             shown: std::ops::Range<usize>,
+            control: Option<std::rc::Rc<std::cell::RefCell<String>>>,
         }
 
         impl gpui::Render for Scrolled {
@@ -3768,7 +3815,8 @@ mod tests {
                 _: &mut gpui::Window,
                 _: &mut gpui::Context<Self>,
             ) -> impl gpui::IntoElement {
-                use gpui::{ParentElement as _, Styled as _};
+                use gpui::prelude::FluentBuilder as _;
+                use gpui::{InteractiveElement as _, ParentElement as _, Styled as _};
                 gpui::div()
                     .w(gpui::px(400.))
                     .flex()
@@ -3779,6 +3827,19 @@ mod tests {
                             .map(crate::text::TextView::new),
                     )
                     .child(crate::TextSelectionLayer)
+                    .when_some(self.control.clone(), |this, copied| {
+                        // The root hears the press after the selection does.
+                        this.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+                            *copied.borrow_mut() = crate::TextSelection::selected_text(window, cx);
+                        })
+                        .child(
+                            gpui::div()
+                                .h(gpui::px(20.))
+                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                    crate::GlobalState::suppress_text_selection(cx)
+                                }),
+                        )
+                    })
             }
         }
 
@@ -3799,6 +3860,7 @@ mod tests {
             let (root, cx) = cx.add_window_view(|_, _| Scrolled {
                 views: views.clone(),
                 shown: 0..4,
+                control: None,
             });
             cx.run_until_parked();
             let draw = |cx: &mut gpui::VisualTestContext| {
@@ -3852,6 +3914,101 @@ mod tests {
             cx.simulate_click(fourth.center(), Modifiers::default());
             draw(cx);
             assert_eq!(copied(cx), "");
+        }
+
+        /// Drags from inside the first of four rows to the end of the third,
+        /// scrolls the first two out of the list and Shift-clicks the last row,
+        /// or, with `control`, a control under the rows that takes the press.
+        /// Returns what was copied before the press, right after it (with a
+        /// control) and one frame after the click.
+        fn shift_click_after_the_start_scrolled_away(
+            control: bool,
+            cx: &mut TestAppContext,
+        ) -> (String, String, String) {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            let parsed = document(
+                "Alpha one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.",
+                cx,
+            );
+            let views = (0..4)
+                .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
+                .collect::<Vec<_>>();
+            let pressed = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+            let (root, cx) = cx.add_window_view(|_, _| Scrolled {
+                views: views.clone(),
+                shown: 0..4,
+                control: control.then(|| pressed.clone()),
+            });
+            cx.run_until_parked();
+            let draw = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+            };
+            let copied = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| crate::TextSelection::selected_text(window, cx))
+            };
+            draw(cx);
+            let first = views[0].read_with(cx, |view, _| view.bounds());
+            let third = views[2].read_with(cx, |view, _| view.bounds());
+            let start = point(first.left() + px(40.), first.top() + px(4.));
+            let end = point(third.right() - px(1.), third.bottom() - px(4.));
+            cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            let selected = copied(cx);
+
+            // The rows holding the start scroll out of the list.
+            root.update(cx, |root, cx| {
+                root.shown = 2..4;
+                cx.notify();
+            });
+            for _ in 0..3 {
+                draw(cx);
+            }
+            let fourth = views[3].read_with(cx, |view, _| view.bounds());
+            let target = if control {
+                point(fourth.left() + px(5.), fourth.bottom() + px(10.))
+            } else {
+                point(fourth.right() - px(1.), fourth.bottom() - px(4.))
+            };
+            let shift = Modifiers {
+                shift: true,
+                ..Default::default()
+            };
+            cx.simulate_mouse_down(target, MouseButton::Left, shift);
+            cx.simulate_mouse_up(target, MouseButton::Left, shift);
+            draw(cx);
+            let pressed = pressed.borrow().clone();
+            (selected, pressed, copied(cx))
+        }
+
+        /// A shift-click extends a selection whose start scrolled out of the
+        /// list, from the start and the rows after it, where it began a new
+        /// selection at the click.
+        #[gpui::test]
+        fn shift_click_extends_a_selection_from_a_row_scrolled_away(cx: &mut TestAppContext) {
+            let (selected, _, extended) = shift_click_after_the_start_scrolled_away(false, cx);
+
+            assert!(selected.contains("Bravo two."));
+            assert_eq!(
+                extended.trim_end(),
+                format!("{}\n\nDelta four.", selected.trim_end())
+            );
+        }
+
+        /// A shift-click that a control takes ends the selection, with the
+        /// rows scrolled away that held it.
+        #[gpui::test]
+        fn a_shift_click_on_a_control_ends_a_selection_from_a_row_scrolled_away(
+            cx: &mut TestAppContext,
+        ) {
+            let (selected, pressed, _) = shift_click_after_the_start_scrolled_away(true, cx);
+
+            assert!(selected.contains("Bravo two."));
+            assert_eq!(pressed, "");
         }
 
         /// Messages, each a view of its own, that the application placed in

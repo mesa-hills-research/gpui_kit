@@ -703,7 +703,7 @@ impl<'a> LeafRemap<'a> {
         let tail_start = tail_only.then(|| {
             old.blocks
                 .last()
-                .and_then(BlockNode::span)
+                .and_then(|block| block.span())
                 .map_or(old_len, |span| span.start)
         });
         let (unchanged_prefix, unchanged_suffix) = if tail_only {
@@ -754,7 +754,9 @@ impl<'a> LeafRemap<'a> {
 
         let mut table_rows = Vec::new();
         if !tail_only {
-            table_row_source_ends(&old.blocks, &mut table_rows);
+            for block in old.blocks.iter() {
+                table_row_source_ends(std::slice::from_ref::<BlockNode>(block), &mut table_rows);
+            }
             table_rows.sort_by_key(|(key, _)| *key);
         }
 
@@ -1386,7 +1388,9 @@ mod tests {
             );
         }
         let mut leaves = Vec::new();
-        leaf_nodes(&document.blocks, &mut leaves);
+        for block in document.blocks.iter() {
+            leaf_nodes(std::slice::from_ref::<BlockNode>(block), &mut leaves);
+        }
         let spans = &text.index().leaves;
         assert_eq!(leaves.len(), spans.len(), "leaves of {markdown:?}");
         let leaves = leaves
