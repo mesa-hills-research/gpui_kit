@@ -73,10 +73,12 @@ story = { path = "crates/story" }
 # other gpui crates and gpui-component were not built with. Crates that changed in a
 # release carry its version and the others keep the version they were published at.
 # `script/check-gpui-pin.ts` fails CI when a pin is not exact.
-gpui = { package = "mhr-gpui", version = "=0.1.5" }
-gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.5", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-gpui_web = { package = "mhr-gpui-web", version = "=0.1.5" }
-gpui_macros = { package = "mhr-gpui-macros", version = "=0.1.0" }
+gpui = { package = "mhr-gpui", version = "=0.1.6" }
+gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.6", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui_web = { package = "mhr-gpui-web", version = "=0.1.6" }
+gpui_macros = { package = "mhr-gpui-macros", version = "=0.1.6" }
+# The golden-image harness for crates/kit/tests/screenshots.rs.
+gpui-screenshot = { package = "mhr-gpui-screenshot", version = "=0.1.6" }
 reqwest_client = { package = "mhr-reqwest-client", version = "=0.1.0" }
 sum-tree = { package = "mhr-sum-tree", version = "=0.1.0" }
 reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
@@ -182,16 +184,6 @@ cap-std = { opt-level = 3 }
 # `rquickjs`. Route those dependencies through a source-compatible facade so
 # the shell and LLRT share the exact same quickjs-jit types and VM.
 rquickjs = { path = "crates/shell/rquickjs-compat" }
-
-# The golden-image harness for crates/kit/tests/screenshots.rs is not published, so
-# `gpui-screenshot` in crates/kit/Cargo.toml takes it from the gpui repository, and its
-# dependencies on `mhr-gpui` and `mhr-gpui-wgpu` would otherwise build a second copy of
-# GPUI from git. These entries give it the published crates the rest of the workspace
-# uses, so the harness and the kit share one set of GPUI types. The versions are the
-# harness's own requirements, so move them with `gpui-screenshot`'s rev.
-[patch."https://github.com/mesa-hills-research/gpui"]
-mhr-gpui = "=0.1.5"
-mhr-gpui-wgpu = "=0.1.5"
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]

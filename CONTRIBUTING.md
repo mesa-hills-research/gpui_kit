@@ -14,11 +14,9 @@ GPUI provides the core rendering, windowing, and platform capabilities. GPUI Kit
 
 Changes to GPUI's core APIs or platform behavior belong in the gpui crates, which are published as `mhr-gpui` from [Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui), or upstream in Zed. Extensions that can be implemented on top of GPUI without modifying it are welcome in GPUI Kit.
 
-GPUI Kit pins every `mhr-*` crate to an exact version (`=x.y.z`) in the workspace `Cargo.toml`, and the published `mhr-gpui-kit` crates carry those requirements to crates.io. The gpui crates are released one by one, so their versions differ. A gpui-kit release therefore keeps building against the releases it was tested with, and a new gpui release only reaches applications through a gpui-kit release that bumps the pins. CI rejects a requirement that is not exact (`bun script/check-gpui-pin.ts`).
+GPUI Kit pins every `mhr-*` crate to an exact version (`=x.y.z`) in the workspace `Cargo.toml`, and the published `mhr-gpui-kit` crates carry those requirements to crates.io. The gpui crates are released one by one, so their versions differ. A gpui-kit release therefore keeps building against the releases it was tested with, and a new gpui release only reaches applications through a gpui-kit release that bumps the pins. The six published `mhr-gpui-kit*` crates share one version and pin each other the same way. CI rejects a requirement that is not exact (`bun script/check-gpui-pin.ts`).
 
-The golden-image screenshot harness is not published, so `crates/kit/Cargo.toml` takes it from the gpui repository at the commit the published crates were cut from. The workspace `[patch."https://github.com/mesa-hills-research/gpui"]` gives it the published `mhr-gpui` and `mhr-gpui-wgpu`, so the build holds one copy of GPUI.
-
-To move GPUI Kit to a new gpui release, change the `=x.y.z` requirement of every `mhr-*` crate that the release changed in the workspace `Cargo.toml`, set the two patch entries to the same versions and the `gpui-screenshot` rev in `crates/kit/Cargo.toml` to the release's commit, run `cargo update` for those crates, and adapt GPUI Kit to any API change in the same pull request.
+To move GPUI Kit to a new gpui release, change the `=x.y.z` requirement of every `mhr-*` crate that the release changed in the workspace `Cargo.toml`, including `mhr-gpui-screenshot`, run `cargo update` for those crates, and adapt GPUI Kit to any API change in the same pull request.
 
 ## AI-Assisted Contributions
 
@@ -180,6 +178,8 @@ When we are ready to release a new version, please follow the steps below:
    ```bash
    cargo set-version x.y.z
    ```
+
+   Then set the same `=x.y.z` in the workspace `Cargo.toml` requirements of the six `mhr-gpui-kit*` crates.
 
 2. Git Commit the changes with message `Bump vx.y.z`.
 3. Create a new git tag with the version `vx.y.z` and push `main` branch and the tag to remote.
