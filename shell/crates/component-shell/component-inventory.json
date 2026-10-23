@@ -2232,12 +2232,6 @@
     },
     {
       "source": "story",
-      "name": "shell",
-      "classification": "infrastructure",
-      "explanation": "Story application shell and navigation infrastructure; it is not a gpui-component constructor."
-    },
-    {
-      "source": "story",
       "name": "sidebar",
       "classification": "component",
       "registration": {

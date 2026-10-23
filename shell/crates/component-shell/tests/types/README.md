@@ -3,8 +3,8 @@
 Run from the repository root:
 
 ```sh
-npm --prefix crates/component-shell/tests/types ci
-npm --prefix crates/component-shell/tests/types test
+npm --prefix shell/crates/component-shell/tests/types ci
+npm --prefix shell/crates/component-shell/tests/types test
 ```
 
 The harness generates fresh declarations with the styled host, compiles the strict positive TypeScript fixture and executes its emitted JavaScript, checks a separate strict negative fixture, checks the shipped registered-component JavaScript gallery, and runs valid and invalid scripts through the actual CLI. Temporary declarations and applications are removed after each run. Set `GPUI_COMPONENT_SHELL_BIN` to use an already built host; otherwise the harness uses `cargo run --locked`.

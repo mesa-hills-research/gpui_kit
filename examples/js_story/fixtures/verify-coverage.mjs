@@ -14,7 +14,7 @@ const fail = (message) => {
 };
 
 const inventory = JSON.parse(
-  read("crates/component-shell/component-inventory.json"),
+  read("shell/crates/component-shell/component-inventory.json"),
 );
 const catalogSource = read("examples/js_story/catalog.js");
 const coverageSource = read("examples/js_story/stories/coverage.js");
@@ -72,12 +72,6 @@ const renderableRegistrations = [...inventorySurfaces.keys()].sort();
 // excuse a Story that has no component to show and cannot quietly excuse one
 // that does.
 const NOT_MIRRORED = new Map([
-  [
-    "shell",
-    "ShellStory embeds a gpui-shell script view inside a Rust story. This " +
-      "gallery is already such a view, so a route for it would demonstrate " +
-      "the gallery to itself.",
-  ],
   [
     "theme",
     "Theme is not a component. Every route already renders through the " +

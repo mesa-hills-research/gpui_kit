@@ -316,8 +316,9 @@ pub fn init(cx: &mut App) {
     cx.activate(true);
 }
 
+/// A titled box of examples. Public for the Shell story in `shell/crates/story`.
 #[derive(IntoElement)]
-struct StorySection {
+pub struct StorySection {
     base: Div,
     title: SharedString,
     description: Option<SharedString>,
@@ -413,7 +414,7 @@ impl RenderOnce for StorySection {
     }
 }
 
-pub(crate) fn section(title: impl Into<SharedString>) -> StorySection {
+pub fn section(title: impl Into<SharedString>) -> StorySection {
     StorySection {
         title: title.into(),
         description: None,

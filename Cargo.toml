@@ -39,10 +39,10 @@ members = [
     "examples/markdown_table",
     "examples/ai_recipes",
     "examples/speech",
-    "crates/shell",
-    "crates/shell/rquickjs-compat",
-    "crates/component-shell",
 ]
+# The scripting shell has its own workspace, because its git dependencies would
+# otherwise be fetched by every build here.
+exclude = ["shell"]
 resolver = "2"
 
 [workspace.package]
@@ -61,9 +61,7 @@ gpui-component-macros = { package = "mhr-gpui-kit-component-macros", path = "cra
 gpui-kit-assets = { package = "mhr-gpui-kit-assets", path = "crates/assets", version = "=0.7.2" }
 gpui-kit-writing = { package = "mhr-gpui-kit-writing", path = "crates/writing", version = "=0.7.2" }
 gpui-fps = { path = "crates/fps", version = "0.7.1" }
-gpui-shell = { path = "crates/shell", version = "0.7.1" }
 gpui-wry = { path = "crates/webview", version = "0.7.1" }
-gpui-component-shell = { path = "crates/component-shell", version = "0.7.1" }
 story = { path = "crates/story" }
 
 # GPUI comes from the `mhr-gpui` crates, Mesa Hills Research's fork of Zed's gpui,
@@ -168,22 +166,6 @@ lsp-types = { opt-level = 3 }
 mhr-reqwest-client = { opt-level = 3 }
 markdown = { opt-level = 3 }
 xml5ever = { opt-level = 3 }
-# `quickjs-jit` is a facade that re-exports `quickjs-jit-core`, so naming it alone
-# optimises neither the interpreter nor the bindings. `quickjs-jit-sys` builds
-# QuickJS itself through `cc`, which reads this package's opt-level; without
-# these two a debug build spends roughly three times as long in every script
-# render. See `website/shell/hosting.md`.
-quickjs-jit = { opt-level = 3 }
-quickjs-jit-runtime = { opt-level = 3 }
-quickjs-jit-sys = { opt-level = 3 }
-quickjs-jit-core = { opt-level = 3 }
-cap-std = { opt-level = 3 }
-
-[patch.crates-io]
-# LLRT's public modules still name their compatible binding dependency
-# `rquickjs`. Route those dependencies through a source-compatible facade so
-# the shell and LLRT share the exact same quickjs-jit types and VM.
-rquickjs = { path = "crates/shell/rquickjs-compat" }
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]

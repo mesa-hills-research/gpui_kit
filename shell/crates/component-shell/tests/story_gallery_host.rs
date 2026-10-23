@@ -8,7 +8,7 @@ struct ScriptRoot(Entity<gpui_shell::ScriptView>);
 fn input_group_comment_story_posts_once_and_cancels_the_next_draft(cx: &mut TestAppContext) {
     cx.update(gpui_component_shell::init);
     let runtime = gpui_component_shell::new_isolated_runtime().expect("runtime");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/js_story");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/js_story");
     let loaded = runtime
         .load_application(&root, "fixtures/input-group.js")
         .expect("load Input Group Story");
@@ -81,7 +81,7 @@ impl gpui::Render for ScriptRoot {
 fn interactive_examples_keep_their_state_across_redraws(cx: &mut TestAppContext) {
     cx.update(gpui_component_shell::init);
     let runtime = gpui_component_shell::new_isolated_runtime().expect("runtime");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/js_story");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/js_story");
     let loaded = runtime
         .load_application(&root, "fixtures/interaction.js")
         .expect("load Story interaction fixture");
@@ -126,7 +126,7 @@ fn interactive_examples_keep_their_state_across_redraws(cx: &mut TestAppContext)
 fn input_story_accepts_text_and_keeps_it_across_redraws(cx: &mut TestAppContext) {
     cx.update(gpui_component_shell::init);
     let runtime = gpui_component_shell::new_isolated_runtime().expect("runtime");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/js_story");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/js_story");
     let loaded = runtime
         .load_application(&root, "fixtures/input.js")
         .expect("load Input Story fixture");
@@ -163,7 +163,7 @@ fn input_story_accepts_text_and_keeps_it_across_redraws(cx: &mut TestAppContext)
 fn dock_story_materializes_real_panels_dock_and_tabs(cx: &mut TestAppContext) {
     cx.update(gpui_component_shell::init);
     let runtime = gpui_component_shell::new_isolated_runtime().expect("runtime");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/js_story");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/js_story");
     let loaded = runtime
         .load_application(&root, "fixtures/dock.js")
         .expect("load Dock Story fixture");
@@ -227,7 +227,7 @@ fn every_registered_story_example_materializes(cx: &mut TestAppContext) {
     }
     let _fixture_module = FixtureModule;
     let runtime = gpui_component_shell::new_isolated_runtime().expect("runtime");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/js_story");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/js_story");
     let loaded = runtime
         .load_application(&root, "fixtures/all-examples.js")
         .expect("load all Story examples fixture");

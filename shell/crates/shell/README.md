@@ -65,7 +65,7 @@ on `gpui-base` instead of `gpui-component`. Colors are named as semantic theme
 tokens, so a shared visual language stays available without the runtime making
 visual decisions on the application's behalf. Applications that want ready-made
 product visuals use the `gpui-component-shell` host and its `gpui-component`
-script module. Run `cargo run -p gpui-component-shell -- examples/js_story`
+script module. Run `cargo run --manifest-path shell/Cargo.toml -p gpui-component-shell -- examples/js_story`
 for the styled gallery. Use this crate's bare host for Base-first applications.
 
 ## Quick Start
@@ -73,7 +73,7 @@ for the styled gallery. Use this crate's bare host for Base-first applications.
 Run the bundled example from the repository root:
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 The runtime loads `main.js` from the given directory, takes the view class it
@@ -125,9 +125,9 @@ JavaScript has no compiler, so the runtime provides what would otherwise be
 missing:
 
 ```bash
-cargo run -p gpui-shell -- check examples/js_todolist    # exit 0 or 1
-cargo run -p gpui-shell -- check examples/js_todolist --print-spec
-cargo run -p gpui-shell -- types examples/js_todolist    # writes gpui-kit.d.ts
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check examples/js_todolist    # exit 0 or 1
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check examples/js_todolist --print-spec
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- types examples/js_todolist    # writes gpui-kit.d.ts
 ```
 
 `check` loads the application, builds its description, and materializes eager
@@ -142,8 +142,8 @@ can catch invalid calls before execution.
 ### Working on an application
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist --watch
-cargo run -p gpui-shell -- examples/js_todolist --dev    # implies --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist --dev    # implies --watch
 ```
 
 A reload re-reads every module, entry included. If the new code fails to load,
@@ -479,9 +479,9 @@ each directory that imports a built-in module, from the runtime it is about to
 use:
 
 ```bash
-cargo run -p gpui-shell -- path/to/app           # runs it, and writes them
-cargo run -p gpui-shell -- check path/to/app     # checks it, and writes them
-cargo run -p gpui-shell -- types path/to/app     # writes them and nothing else
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- path/to/app           # runs it, and writes them
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check path/to/app     # checks it, and writes them
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- types path/to/app     # writes them and nothing else
 ```
 
 One file, built-in modules for each runtime layer: `"gpui-kit"` for GPUI's own elements and what the runtime
@@ -542,7 +542,7 @@ than an editor completing something that is gone. Declaring nothing is allowed
 and yields `(...args: any[]) => any` signatures, which still check the module
 name and every export name.
 
-`crates/story/js/quotes/` has a `jsconfig.json` that turns on checking, and is
+`shell/crates/story/js/quotes/` has a `jsconfig.json` that turns on checking, and is
 the shape to copy.
 
 ### Keeping it current

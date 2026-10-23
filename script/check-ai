@@ -19,11 +19,11 @@ PROFILES = {
          "--lib", "form::form::tests"],
     ],
     "shell": [
-        ["cargo", "test", "--locked", "-p", "gpui-shell", "--lib", "typings"],
-        ["cargo", "test", "--locked", "-p", "gpui-shell", "--lib", "tests::render"],
-        ["cargo", "test", "--locked", "-p", "gpui-component-shell", "--all-targets"],
-        ["npm", "--prefix", "crates/component-shell/tests/types", "ci"],
-        ["npm", "--prefix", "crates/component-shell/tests/types", "test"],
+        ["cargo", "test", "--locked", "--manifest-path", "shell/Cargo.toml", "-p", "gpui-shell", "--lib", "typings"],
+        ["cargo", "test", "--locked", "--manifest-path", "shell/Cargo.toml", "-p", "gpui-shell", "--lib", "tests::render"],
+        ["cargo", "test", "--locked", "--manifest-path", "shell/Cargo.toml", "-p", "gpui-component-shell", "--all-targets"],
+        ["npm", "--prefix", "shell/crates/component-shell/tests/types", "ci"],
+        ["npm", "--prefix", "shell/crates/component-shell/tests/types", "test"],
     ],
 }
 

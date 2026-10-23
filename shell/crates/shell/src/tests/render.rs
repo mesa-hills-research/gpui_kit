@@ -3987,7 +3987,7 @@ fn the_bundled_example_application_loads_and_renders(cx: &mut TestAppContext) {
     // The example is the contract with users: if it stops rendering, the
     // quickstart in the README is wrong.
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/js_todolist")
+        .join("../../../examples/js_todolist")
         .canonicalize()
         .expect("example directory");
 
@@ -5572,7 +5572,7 @@ fn the_todolist_example_exercises_the_runtime(cx: &mut TestAppContext) {
     cx.update(|cx| runtime.set_global(cx));
 
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/js_todolist")
+        .join("../../../examples/js_todolist")
         .canonicalize()
         .expect("example directory");
 

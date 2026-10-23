@@ -1,0 +1,124 @@
+# The scripting shell and everything built on it, in a workspace of their own.
+#
+# gpui-shell depends on QuickJS and LLRT, which are git sources. Cargo fetches
+# every git source in a workspace's lock before it builds anything, so keeping
+# them out of the kit's workspace is what lets a build there touch no git
+# repository. The kit crates come in by path. Build from the repository root
+# with `cargo <command> --manifest-path shell/Cargo.toml`.
+[workspace]
+members = [
+    "crates/shell",
+    "crates/shell/rquickjs-compat",
+    "crates/component-shell",
+    "crates/story",
+]
+default-members = ["crates/shell"]
+resolver = "2"
+
+[workspace.package]
+publish = false
+edition = "2024"
+
+[workspace.dependencies]
+gpui-kit = { package = "mhr-gpui-kit", path = "../crates/kit" }
+gpui-component = { package = "mhr-gpui-kit-component", path = "../crates/component" }
+gpui-base = { package = "mhr-gpui-kit-base", path = "../crates/base" }
+gpui-fps = { path = "../crates/fps" }
+gpui-component-story = { path = "../crates/story" }
+gpui-shell = { path = "crates/shell" }
+
+# The same exact GPUI pins as the root Cargo.toml, which `script/check-gpui-pin.ts`
+# checks in both files. A different release here would build the kit crates
+# against one GPUI and the shell against another.
+gpui = { package = "mhr-gpui", version = "=0.1.6" }
+gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.6", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    "multipart",
+    "rustls-tls-native-roots",
+    "socks",
+    "stream",
+] }
+
+anyhow = "1"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+schemars = "1"
+semver = "1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1"
+smallvec = "1"
+smol = "2"
+tracing = "0.1.41"
+
+[workspace.dependencies.windows]
+features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices"]
+version = "0.58.0"
+
+# The same lints as the root Cargo.toml.
+[workspace.lints.clippy]
+almost_complete_range = "allow"
+arc_with_non_send_sync = "allow"
+borrowed_box = "allow"
+dbg_macro = "deny"
+let_underscore_future = "allow"
+manual_is_multiple_of = "allow"
+map_entry = "allow"
+module_inception = "allow"
+non_canonical_partial_ord_impl = "allow"
+reversed_empty_ranges = "allow"
+single_range_in_vec_init = "allow"
+style = { level = "allow", priority = -1 }
+todo = "deny"
+type_complexity = "allow"
+# Temporarily allow this until we can migrate to the new APIs.
+# https://github.com/longbridge/gpui-kit/pull/2149
+useless_conversion = "allow"
+
+# Profiles apply from the workspace root only, so these repeat the root
+# Cargo.toml's and add the QuickJS packages.
+[profile.dev]
+codegen-units = 16
+debug = "limited"
+split-debuginfo = "unpacked"
+
+[profile.dev.package]
+resvg = { opt-level = 3 }
+# Decoding and scaling images in debug builds: a thumbnail of a screenshot
+# takes half a second unoptimized. Apps building with GPUI Kit want it too.
+image = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+smol = { opt-level = 3 }
+mhr-gpui = { opt-level = 3 }
+mhr-gpui-platform = { opt-level = 3 }
+mhr-gpui-macros = { opt-level = 3 }
+mesquite = { opt-level = 3 }
+mesquite_language = { opt-level = 3 }
+mhr-sum-tree = { opt-level = 3 }
+ropey = { opt-level = 3 }
+lsp-types = { opt-level = 3 }
+mhr-reqwest-client = { opt-level = 3 }
+markdown = { opt-level = 3 }
+xml5ever = { opt-level = 3 }
+# `quickjs-jit` is a facade that re-exports `quickjs-jit-core`, so naming it alone
+# optimises neither the interpreter nor the bindings. `quickjs-jit-sys` builds
+# QuickJS itself through `cc`, which reads this package's opt-level; without
+# these two a debug build spends roughly three times as long in every script
+# render. See `website/shell/hosting.md`.
+quickjs-jit = { opt-level = 3 }
+quickjs-jit-runtime = { opt-level = 3 }
+quickjs-jit-sys = { opt-level = 3 }
+quickjs-jit-core = { opt-level = 3 }
+cap-std = { opt-level = 3 }
+
+[patch.crates-io]
+# LLRT's public modules still name their compatible binding dependency
+# `rquickjs`. Route those dependencies through a source-compatible facade so
+# the shell and LLRT share the exact same quickjs-jit types and VM.
+rquickjs = { path = "crates/shell/rquickjs-compat" }
+
+[workspace.metadata.cargo-machete]
+ignored = ["log", "anyhow", "serde"]

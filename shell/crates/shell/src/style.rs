@@ -27,7 +27,7 @@
 //! # Availability
 //!
 //! Reflection lives behind `#[cfg(any(feature = "inspector", debug_assertions))]`
-//! in both `gpui-base` and `gpui`. `crates/shell` enables `gpui-base/inspector`
+//! in both `gpui-base` and `gpui`. `shell/crates/shell` enables `gpui-base/inspector`
 //! (which forwards to `gpui/inspector`), so the table is populated in release
 //! builds too. [`tests::the_reflection_table_is_populated`] is the assertion
 //! that keeps it that way; run it with `--release` in CI.

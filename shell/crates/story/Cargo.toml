@@ -1,0 +1,18 @@
+[package]
+name = "gpui-shell-story"
+description = "The gallery's Shell story, run in a window of its own."
+version = "0.7.1"
+publish = false
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+gpui-kit.workspace = true
+gpui-component-story.workspace = true
+gpui-shell.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

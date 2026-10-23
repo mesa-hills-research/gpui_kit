@@ -80,7 +80,7 @@
 //! That is why the declarations live in Rust beside the registration rather
 //! than in a `.d.ts` beside the script: two files describing one boundary
 //! drift, and this one is checked against the registry before it is written.
-//! `install_host_modules` in `crates/story/src/stories/shell_story.rs` is the
+//! `install_host_modules` in `shell/crates/story/src/shell_story.rs` is the
 //! worked example.
 
 use std::fmt::Write as _;

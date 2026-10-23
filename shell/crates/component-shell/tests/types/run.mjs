@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const directory = dirname(fileURLToPath(import.meta.url));
-const workspace = resolve(directory, '../../../..');
+const workspace = resolve(directory, '../../../../..');
 const temporary = mkdtempSync(join(tmpdir(), 'gpui-shell-types-'));
 const shell = process.env.GPUI_COMPONENT_SHELL_BIN
   ? [resolve(process.env.GPUI_COMPONENT_SHELL_BIN)]
-  : ['cargo', 'run', '--locked', '-p', 'gpui-component-shell', '--bin', 'gpui-component-shell', '--'];
+  : ['cargo', 'run', '--locked', '--manifest-path', 'shell/Cargo.toml', '-p', 'gpui-component-shell', '--bin', 'gpui-component-shell', '--'];
 const compiler = [
   process.execPath, join(directory, 'node_modules/typescript/bin/tsc'),
   // Match the generated editor config: ambient runtime library checking is

@@ -2,8 +2,8 @@
 //!
 //! The left panel is ordinary Rust built from `gpui-component`. The right panel
 //! is a `gpui-shell` script view whose JavaScript lives in
-//! `crates/story/js/quotes/` and is read from disk when the story opens. A
-//! separate `crates/story/js/motion/` view demonstrates native motion without
+//! `shell/crates/story/js/quotes/` and is read from disk when the story opens. A
+//! separate `shell/crates/story/js/motion/` view demonstrates native motion without
 //! becoming part of the quote-board performance comparison.
 //! Neither half owns the data: a single `Entity<Market>` does, and the script
 //! reaches it through the **`market` host module** this story registers before the
@@ -43,7 +43,7 @@
 //! a runtime change:
 //!
 //! ```bash
-//! cargo run -p gpui-shell -- types crates/story/js/quotes
+//! cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- types shell/crates/story/js/quotes
 //! ```
 //!
 //! Nothing but plain data crosses. `quotes()` returns an array of records;
@@ -75,7 +75,7 @@ use gpui_shell::{
     host_modules::{HostError, HostModule, HostObject, HostValue},
 };
 
-use crate::section;
+use gpui_component_story::{Story, section};
 
 /// One instrument on the board. The only data either half of the window reads.
 #[derive(Clone)]
@@ -637,7 +637,7 @@ pub struct ShellStory {
     script_paused: bool,
 }
 
-impl super::Story for ShellStory {
+impl Story for ShellStory {
     fn title() -> &'static str {
         "Shell"
     }

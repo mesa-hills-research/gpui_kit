@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Verify that the workspace pins every GPUI crate to an exact version.
+ * Verify that the workspaces pin every GPUI crate to an exact version.
  *
  * The published mhr-gpui-kit crates carry the workspace's requirements to
  * crates.io. A caret requirement lets a new release of one `mhr-gpui*` crate
@@ -10,15 +10,18 @@
  * with. The crates are released one by one, so their versions may differ.
  * The kit's own `mhr-gpui-kit*` crates release together and are pinned the
  * same way. The `gpui-pre-reqwest` fork of reqwest that GPUI's HTTP client
- * builds on only needs to be exact too.
+ * builds on only needs to be exact too. The scripting shell has a workspace
+ * of its own in `shell/` and repeats the GPUI pins, so both manifests are
+ * checked. A path dependency without a version, like the shell's kit crates,
+ * is not resolved from a registry and has nothing to pin.
  *
  *     bun script/check-gpui-pin.ts [path/to/Cargo.toml]
  */
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
-const MANIFEST = "Cargo.toml";
+const MANIFESTS = ["Cargo.toml", "shell/Cargo.toml"];
 const GPUI_PREFIX = "mhr-";
 const EXTRA_PINNED = new Set(["gpui-pre-reqwest"]);
 const EXACT_VERSION = /^=(\d+\.\d+\.\d+)$/;
@@ -54,7 +57,9 @@ function gpuiDependencies(manifest: Manifest): Dependency[] {
     if (typeof spec !== "object" || spec === null) continue;
     const { package: pkg } = spec as { package?: unknown };
     if (typeof pkg !== "string" || !isPinned(pkg)) continue;
-    dependencies.push({ alias, package: pkg, version: versionOf(spec) });
+    const version = versionOf(spec);
+    if (version === undefined && typeof (spec as { path?: unknown }).path === "string") continue;
+    dependencies.push({ alias, package: pkg, version });
   }
   return dependencies;
 }
@@ -74,12 +79,17 @@ function problems(dependencies: Dependency[]): string[] {
   return found;
 }
 
-const manifestPath = process.argv[2] ?? join(REPO_ROOT, MANIFEST);
-const manifest = readManifest(manifestPath);
-const found = problems(gpuiDependencies(manifest));
-if (found.length > 0) {
-  for (const problem of found) console.error(`::error file=${MANIFEST}::${problem}`);
-  console.error(`\n${MANIFEST} must pin every GPUI crate to the exact release gpui-kit was built against.`);
-  process.exit(1);
+const manifestPaths = process.argv[2] ? [process.argv[2]] : MANIFESTS.map((name) => join(REPO_ROOT, name));
+let failed = false;
+for (const manifestPath of manifestPaths) {
+  const name = relative(REPO_ROOT, resolve(manifestPath));
+  const found = problems(gpuiDependencies(readManifest(manifestPath)));
+  if (found.length > 0) {
+    failed = true;
+    for (const problem of found) console.error(`::error file=${name}::${problem}`);
+    console.error(`\n${name} must pin every GPUI crate to the exact release gpui-kit was built against.`);
+  } else {
+    console.log(`${name} pins the GPUI crates exactly`);
+  }
 }
-console.log(`${MANIFEST} pins the GPUI crates exactly`);
+if (failed) process.exit(1);

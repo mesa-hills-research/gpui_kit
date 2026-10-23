@@ -56,7 +56,7 @@ jobs:
       # Lints every member and, as a side effect, type-checks the example
       # crates that the `test` job leaves out.
       - name: Lint
-        run: cargo clippy --workspace --exclude gpui-shell --locked -- --deny warnings
+        run: cargo clippy --workspace --locked -- --deny warnings
 
   no-default-features:
     name: No default features
@@ -124,13 +124,13 @@ jobs:
       # `crates/kit/tests`.
       - name: Test
         run: >-
-          cargo test --workspace --exclude gpui-shell
+          cargo test --workspace
           --features gpui-component-story/test-support --locked
           $TEST_EXCLUDES
       - name: Doc tests
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: >-
-          cargo test --workspace --exclude gpui-shell
+          cargo test --workspace
           --features gpui-component-story/test-support --locked
           $TEST_EXCLUDES --doc
       # `crates/kit/tests/rendering.rs` needs a real Metal device and is opted
@@ -139,7 +139,7 @@ jobs:
       - name: Metal UI rendering tests
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: >-
-          cargo test --workspace --exclude gpui-shell
+          cargo test --workspace
           --features gpui-component-story/test-support --locked
           $TEST_EXCLUDES --test rendering
 
@@ -151,6 +151,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
+          cache-workspaces: shell
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-shared-key: gpui-shell-release
       # Replaces the system `ld` on Linux and is a no-op elsewhere.
@@ -159,16 +160,48 @@ jobs:
         run: script/bootstrap
       - name: Test runtime core without standard-library integration cases
         run: |
-          cargo test -p gpui-shell --release --lib -- \
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib --locked -- \
             --skip tests::standard_runtime \
             --skip tests::network \
             --skip tests::fs \
             --skip tests::process \
             --skip tests::benchmark
-          cargo test -p gpui-shell --release tests::benchmark
-          cargo test -p gpui-shell --release --doc
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::benchmark
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked --doc
       - name: Lint GPUI Shell
-        run: cargo clippy -p gpui-shell --all-targets -- -D warnings
+        run: cargo clippy --manifest-path shell/Cargo.toml -p gpui-shell --all-targets --locked -- -D warnings
+
+  # The shell lives in its own workspace, so the `test` job does not reach it.
+  # This runs the shell tests that job used to cover on every platform: the
+  # component bindings and the Shell story.
+  gpui-shell-test:
+    name: GPUI Shell Test (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            run_on: macos-latest
+          - target: x86_64-linux-gnu
+            run_on: ubuntu-latest
+          - target: x86_64-windows-msvc
+            run_on: windows-latest
+    runs-on: ${{ matrix.run_on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-workspaces: shell
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Replaces the system `ld` on Linux and is a no-op elsewhere.
+      - uses: rui314/setup-mold@v1
+      - name: Install system dependencies
+        if: ${{ matrix.run_on != 'windows-latest' }}
+        run: script/bootstrap
+      - name: Test
+        run: >-
+          cargo test --manifest-path shell/Cargo.toml --workspace
+          --exclude gpui-shell --locked
 
   gpui-component-shell:
     name: GPUI Component Shell
@@ -178,6 +211,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
+          cache-workspaces: shell
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v4
         with:
@@ -186,14 +220,15 @@ jobs:
       - uses: rui314/setup-mold@v1
       - name: Install system dependencies
         run: script/bootstrap
-      - name: Test component bindings
-        run: cargo test -p gpui-component-shell --all-targets
       - name: Verify generated TypeScript contracts
         run: |
-          npm --prefix crates/component-shell/tests/types ci
-          npm --prefix crates/component-shell/tests/types test
-      - name: Lint component bindings
-        run: cargo clippy -p gpui-component-shell --all-targets -- -D warnings
+          npm --prefix shell/crates/component-shell/tests/types ci
+          npm --prefix shell/crates/component-shell/tests/types test
+      - name: Lint component bindings and the Shell story
+        run: >-
+          cargo clippy --manifest-path shell/Cargo.toml
+          -p gpui-component-shell -p gpui-shell-story --all-targets --locked
+          -- -D warnings
       # The inventory test proves every public component is registered or
       # explicitly deferred; this proves the JavaScript gallery covers what the
       # inventory claims. Without it the two drift silently.
@@ -217,6 +252,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          cache-workspaces: shell
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-shared-key: gpui-shell-release
       # Replaces the system `ld` on Linux and is a no-op elsewhere.
@@ -226,11 +262,11 @@ jobs:
         run: script/bootstrap
       - name: Test LLRT module integration
         run: |
-          cargo test -p gpui-shell --release tests::standard_runtime
-          cargo test -p gpui-shell --release tests::fs
-          cargo test -p gpui-shell --release tests::process
-          cargo test -p gpui-shell --release tests::network
-          cargo test -p gpui-shell --release tests::render
-          cargo test -p gpui-shell --release tests::snapshot
-          cargo test -p gpui-shell --release tests::host_api
-          cargo test -p gpui-shell --release tests::http_request
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::standard_runtime
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::fs
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::process
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::network
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::render
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::snapshot
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::host_api
+          cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --locked tests::http_request
