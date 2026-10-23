@@ -2,19 +2,21 @@ use crate::root::WindowState;
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Action, AnyElement, AnyView, App, AppContext, Context, ElementId, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
+    Action, AnyElement, AnyView, App, AppContext, AvailableSpace, Bounds, ContentMask, Context,
+    Element, ElementId, Entity, GlobalElementId, InspectorElementId, InteractiveElement,
+    IntoElement, LayoutId, MouseButton, ParentElement, Pixels, Refineable as _, Render,
+    SharedString, StatefulInteractiveElement, Style, StyleRefinement, Styled, Window, div, point,
+    prelude::FluentBuilder, px, transparent_black,
 };
 use gpui_base::{
-    Tooltip as BaseTooltip, TooltipOverlay as BaseTooltipOverlay,
+    Interpolate as _, Sequence, Tooltip as BaseTooltip, TooltipOverlay as BaseTooltipOverlay,
     TooltipRequest as BaseTooltipRequest, TooltipTransition as BaseTooltipTransition,
-    TooltipTrigger,
+    TooltipTrigger, Transition,
 };
 
 use crate::{
     ActiveTheme, Placement, StyledExt,
-    animation::{EffectTransition, ease_in_out_cubic, ease_out_cubic},
+    animation::{EffectTransition, ease_out_cubic},
     kbd::Kbd,
     text::Text,
 };
@@ -37,6 +39,8 @@ pub struct Tooltip {
     content: TooltipContext,
     key_binding: Option<Kbd>,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
+    /// Shown by the tooltip overlay, which draws the box itself.
+    in_overlay: bool,
 }
 
 impl Tooltip {
@@ -47,6 +51,7 @@ impl Tooltip {
             content: TooltipContext::Text(text.into()),
             key_binding: None,
             action: None,
+            in_overlay: false,
         }
     }
 
@@ -60,6 +65,7 @@ impl Tooltip {
             style: StyleRefinement::default(),
             key_binding: None,
             action: None,
+            in_overlay: false,
             content: TooltipContext::Element(Box::new(move |window, cx| {
                 builder(window, cx).into_any_element()
             })),
@@ -82,6 +88,24 @@ impl Tooltip {
     pub fn build(self, _: &mut Window, cx: &mut App) -> AnyView {
         cx.new(|_| self).into()
     }
+
+    /// The style of the tooltip's box, for the overlay to draw it.
+    fn box_style(&self, cx: &App) -> Style {
+        let mut element = tooltip_box(div(), cx).refine_style(&self.style);
+        let mut style = Style::default();
+        style.refine(element.style());
+        style
+    }
+}
+
+/// The tooltip's box: its background, border, shadow and corners.
+fn tooltip_box<E: Styled>(element: E, cx: &App) -> E {
+    element
+        .bg(cx.theme().tokens.popover)
+        .border_1()
+        .border_color(cx.theme().border)
+        .shadow_md()
+        .rounded(cx.theme().radius)
 }
 
 impl FluentBuilder for Tooltip {}
@@ -106,41 +130,43 @@ impl Render for Tooltip {
             }
         };
 
-        div().child(
+        let popup = tooltip_box(BaseTooltip::new("tooltip-popup"), cx)
+            .h_flex()
+            .font_family(cx.theme().font_family.clone())
+            .when(!self.in_overlay, |this| this.m_3())
+            .text_color(cx.theme().popover_foreground)
+            .justify_between()
+            .py_0p5()
+            .px_2()
+            .text_sm()
+            .gap_3()
+            .refine_style(&self.style)
+            .when(self.in_overlay, |this| {
+                this.bg(transparent_black())
+                    .border_color(transparent_black())
+                    .shadow(Vec::new())
+            })
+            .map(|this| {
+                this.child(div().map(|this| match self.content {
+                    TooltipContext::Text(ref text) => this.child(text.clone()),
+                    TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
+                }))
+            })
+            .when_some(key_binding, |this, kbd| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .flex_shrink_0()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(kbd),
+                )
+            });
+        if self.in_overlay {
+            popup.into_any_element()
+        } else {
             // Wrap in a child, to ensure the left margin is applied to the tooltip
-            BaseTooltip::new("tooltip-popup")
-                .h_flex()
-                .font_family(cx.theme().font_family.clone())
-                .m_3()
-                .bg(cx.theme().tokens.popover)
-                .text_color(cx.theme().popover_foreground)
-                .bg(cx.theme().tokens.popover)
-                .border_1()
-                .border_color(cx.theme().border)
-                .shadow_md()
-                .rounded(cx.theme().radius)
-                .justify_between()
-                .py_0p5()
-                .px_2()
-                .text_sm()
-                .gap_3()
-                .refine_style(&self.style)
-                .map(|this| {
-                    this.child(div().map(|this| match self.content {
-                        TooltipContext::Text(ref text) => this.child(text.clone()),
-                        TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
-                    }))
-                })
-                .when_some(key_binding, |this, kbd| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .flex_shrink_0()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(kbd),
-                    )
-                }),
-        )
+            div().child(popup).into_any_element()
+        }
     }
 }
 
@@ -148,38 +174,29 @@ impl Render for Tooltip {
 
 /// Duration of the slide-down enter animation.
 const ENTER_DURATION: Duration = Duration::from_millis(150);
-/// Duration of the position-slide animation when switching tooltips.
-const SLIDE_DURATION: Duration = Duration::from_millis(200);
+/// How long the box takes to move onto the next tooltip on the same row.
+const SWITCH_DURATION: Duration = Duration::from_millis(120);
+/// The part of [`SWITCH_DURATION`] in which the last tooltip's text fades
+/// out. The new text fades in over the rest, so the two never overlap.
+const SWITCH_FADE_OUT: f32 = 0.3;
+
 pub(crate) fn render_tooltip(
     content_view: AnyView,
     transition: BaseTooltipTransition,
-    _: &mut Window,
-    _: &mut App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
     // The selector lets tests see whether a tooltip was painted.
     div()
         .debug_selector(|| "tooltip".into())
-        .child(content_view)
+        .map(|this| match content_view.downcast::<Tooltip>() {
+            Ok(tooltip) => this
+                .p_3()
+                .child(TooltipBox::new(tooltip, transition, window, cx)),
+            Err(view) => this.child(view),
+        })
         .map(|element| match transition {
-            BaseTooltipTransition::Switch {
-                epoch,
-                previous,
-                current,
-            } => {
-                let same_row = (current.origin.y - previous.origin.y).abs() < px(10.);
-                if !same_row {
-                    return element.into_any_element();
-                }
-                let dx = current.center().x - previous.center().x;
-                EffectTransition::new(SLIDE_DURATION)
-                    .ease(ease_in_out_cubic)
-                    .slide_x(-dx, px(0.))
-                    .apply(
-                        element,
-                        ElementId::NamedInteger("tooltip-slide".into(), epoch as u64),
-                    )
-                    .into_any_element()
-            }
+            BaseTooltipTransition::Switch { .. } => element.into_any_element(),
             BaseTooltipTransition::Enter { epoch } => EffectTransition::new(ENTER_DURATION)
                 .ease(ease_out_cubic)
                 .slide_y(px(4.), px(0.))
@@ -190,6 +207,193 @@ pub(crate) fn render_tooltip(
                 )
                 .into_any_element(),
         })
+}
+
+/// What a switch hands over from the tooltip drawn before it.
+#[derive(Default)]
+struct Handover {
+    epoch: usize,
+    /// The view drawn last frame and its box as laid out.
+    drawn: Option<(AnyView, Bounds<Pixels>)>,
+    /// The box painted last frame, which a switch moves on from.
+    painted: Option<Bounds<Pixels>>,
+    /// The tooltip being replaced and the box it was laid out in.
+    outgoing: Option<(AnyView, Bounds<Pixels>)>,
+    /// The box the switch moves from.
+    from: Option<Bounds<Pixels>>,
+}
+
+/// A tooltip of the kit's own, whose box the overlay draws.
+///
+/// On a switch along a row, the box moves and resizes from the last tooltip's
+/// to this one's, on whole device pixels. The texts never move: the old one
+/// fades out at its place and then the new one fades in at its own, both
+/// clipped by the box.
+struct TooltipBox {
+    tooltip: Entity<Tooltip>,
+    content: AnyElement,
+    outgoing: Option<(AnyElement, Bounds<Pixels>)>,
+    from: Option<Bounds<Pixels>>,
+    progress: f32,
+    handover: Entity<Handover>,
+    painted: Bounds<Pixels>,
+}
+
+impl TooltipBox {
+    fn new(
+        tooltip: Entity<Tooltip>,
+        transition: BaseTooltipTransition,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        tooltip.update(cx, |tooltip, _| tooltip.in_overlay = true);
+        let (epoch, same_row) = match transition {
+            BaseTooltipTransition::Enter { epoch } => (epoch, false),
+            BaseTooltipTransition::Switch {
+                epoch,
+                previous,
+                current,
+            } => (
+                epoch,
+                (current.origin.y - previous.origin.y).abs() < px(10.),
+            ),
+        };
+        let handover = window.use_keyed_state("tooltip-handover", cx, |_, _| Handover::default());
+        handover.update(cx, |handover, _| {
+            if handover.epoch != epoch {
+                handover.epoch = epoch;
+                handover.outgoing = handover.drawn.take().filter(|_| same_row);
+                handover.from = handover.painted.filter(|_| same_row);
+            }
+        });
+        let (outgoing, from) = {
+            let handover = handover.read(cx);
+            (handover.outgoing.clone(), handover.from)
+        };
+        let progress = match from {
+            Some(_) => Sequence::new(
+                ElementId::NamedInteger("tooltip-switch".into(), epoch as u64),
+                0.0,
+            )
+            .with_step(1.0, Transition::new(SWITCH_DURATION).ease(|t| t))
+            .sample(window, cx)
+            .into_value(),
+            None => 1.0,
+        };
+        Self {
+            content: div()
+                .opacity(ease_out_cubic(
+                    ((progress - SWITCH_FADE_OUT) / (1.0 - SWITCH_FADE_OUT)).clamp(0.0, 1.0),
+                ))
+                .child(tooltip.clone())
+                .into_any_element(),
+            outgoing: outgoing
+                .filter(|_| progress < SWITCH_FADE_OUT)
+                .map(|(view, bounds)| {
+                    let opacity = 1.0 - progress / SWITCH_FADE_OUT;
+                    (
+                        div().opacity(opacity).child(view).into_any_element(),
+                        bounds,
+                    )
+                }),
+            from: from.filter(|_| progress < 1.0),
+            tooltip,
+            progress,
+            handover,
+            painted: Bounds::default(),
+        }
+    }
+}
+
+impl IntoElement for TooltipBox {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for TooltipBox {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (self.content.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        self.content.prepaint(window, cx);
+        let shown = self.from.map_or(bounds, |from| {
+            from.interpolate(&bounds, ease_out_cubic(self.progress))
+        });
+        // Whole device pixels keep the box's edges crisp while it moves.
+        let scale = window.scale_factor();
+        let snap = |value: Pixels| px((f32::from(value) * scale).round() / scale);
+        self.painted = Bounds::from_corners(
+            point(snap(shown.left()), snap(shown.top())),
+            point(snap(shown.right()), snap(shown.bottom())),
+        );
+        if let Some((outgoing, laid_out)) = &mut self.outgoing {
+            window.with_element_namespace("outgoing", |window| {
+                outgoing.prepaint_as_root(
+                    laid_out.origin,
+                    laid_out.size.map(AvailableSpace::Definite),
+                    window,
+                    cx,
+                );
+            });
+        }
+        let (view, painted) = (AnyView::from(self.tooltip.clone()), self.painted);
+        self.handover.update(cx, |handover, _| {
+            handover.drawn = Some((view, bounds));
+            handover.painted = Some(painted);
+        });
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        _: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let style = self.tooltip.read(cx).box_style(cx);
+        style.paint(self.painted, window, cx, |_, _| {});
+        let mask = ContentMask {
+            bounds: self.painted,
+        };
+        window.with_content_mask(Some(mask), |window| {
+            if let Some((outgoing, _)) = &mut self.outgoing {
+                window.with_element_namespace("outgoing", |window| outgoing.paint(window, cx));
+            }
+            self.content.paint(window, cx);
+        });
+    }
 }
 
 // ── Extension trait for managed tooltips ─────────────────────────────────────

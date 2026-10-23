@@ -135,6 +135,74 @@ fn input_token_tooltip() {
     }
 }
 
+/// Two icon buttons side by side, as under a message.
+struct IconButtons;
+
+impl Render for IconButtons {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).pl(px(120.)).child(
+            gpui_kit::component::h_flex()
+                .child(
+                    Button::new("edit")
+                        .ghost()
+                        .xsmall()
+                        .icon(IconName::Undo)
+                        .tooltip("Edit"),
+                )
+                .child(
+                    Button::new("branch")
+                        .ghost()
+                        .xsmall()
+                        .icon(IconName::Redo)
+                        .tooltip("Branch"),
+                ),
+        )
+    }
+}
+
+/// The tooltip handing over from Edit to Branch 24, 60 and 120 ms into the switch. The box moves
+/// and widens on whole pixels while Edit fades out and then Branch fades in, each where it stays.
+#[test]
+fn tooltip_switch() {
+    let mut app = app(ThemeMode::Light);
+    app.update(|cx| cx.set_reduce_motion(false));
+    let window = open(&mut app, (300., 90.), SCALE, |_, _| IconButtons);
+    let hover = |x: f32, app: &mut ScreenshotApp| {
+        act(app, window, |window, cx| {
+            window.dispatch_event(
+                gpui_kit::MouseMoveEvent {
+                    position: gpui_kit::point(px(x), px(26.)),
+                    pressed_button: None,
+                    modifiers: Modifiers::default(),
+                }
+                .to_platform_input(),
+                cx,
+            );
+        });
+        // Starts the show timer before the clock moves.
+        app.run_until_parked();
+    };
+    hover(130., &mut app);
+    app.advance_clock(Duration::from_secs(2));
+    app.capture(window).unwrap();
+    // Edit's entrance animation runs on the wall clock, and the switch starts where it ends.
+    std::thread::sleep(Duration::from_millis(300));
+    app.capture(window).unwrap();
+    hover(150., &mut app);
+    // The pointer rests on Branch for the switch delay.
+    app.advance_clock(Duration::from_millis(100));
+    app.capture(window).unwrap();
+    let mut elapsed = 0;
+    for ms in [24, 60, 120] {
+        app.advance_clock(Duration::from_millis(ms - elapsed));
+        elapsed = ms;
+        goldens().assert(
+            &format!("tooltip-switch-{ms}ms"),
+            &app.capture(window).unwrap(),
+        );
+    }
+}
+
 struct SelectableHighlights;
 
 impl Render for SelectableHighlights {

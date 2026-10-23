@@ -129,6 +129,10 @@ every element with one, another element's tooltip replaces it once the pointer
 has rested there for a tenth of a second. Sweeping the pointer across a row of
 buttons leaves the open tooltip as it is instead of flashing each button's.
 
+Between two tooltips built with `Tooltip` on the same row, the box moves and
+resizes from one to the other while the old text fades out and the new text
+fades in, each where it stays. With reduced motion the tooltip switches at once.
+
 ### When the Trigger Goes Away
 
 A tooltip shown by a component's `tooltip` or `tooltip_with_action` belongs to
