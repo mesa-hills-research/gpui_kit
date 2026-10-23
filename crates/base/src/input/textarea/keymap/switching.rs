@@ -193,7 +193,8 @@ fn no_cua_binding_resolves_in_emacs_or_vim(cx: &mut TestAppContext) {
         for binding in Keymap::Cua.bindings(platform) {
             let keystrokes = binding.keystrokes();
             for context in &contexts {
-                let (resolved, _) = keymap.bindings_for_input(keystrokes, &[context.clone()]);
+                let (resolved, _) =
+                    keymap.bindings_for_input(keystrokes, std::slice::from_ref(context));
                 for found in resolved {
                     let predicate = found.predicate().map(|predicate| predicate.to_string());
                     assert!(
