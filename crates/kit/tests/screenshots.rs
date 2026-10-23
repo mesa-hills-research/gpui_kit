@@ -179,8 +179,8 @@ fn hover_icon_button(app: &mut ScreenshotApp, window: AnyWindowHandle, x: f32) {
 }
 
 /// The tooltip handing over from Edit to Branch 12, 84 and 120 ms into the switch. The box moves
-/// and widens on whole pixels while Edit fades out and then Branch fades in, each where it stays
-/// and only while the box holds it whole.
+/// and widens on whole pixels and uncovers Branch, which shows whole where it stays from the
+/// switch's second frame.
 #[test]
 fn tooltip_switch() {
     let mut app = app(ThemeMode::Light);

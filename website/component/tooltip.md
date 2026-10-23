@@ -130,9 +130,9 @@ has rested there for a tenth of a second. Sweeping the pointer across a row of
 buttons leaves the open tooltip as it is instead of flashing each button's.
 
 Between two tooltips built with `Tooltip` on the same row, the box moves and
-resizes from one to the other while the old text fades out and the new text
-fades in, each where it stays. With reduced motion the box doesn't move and the
-new tooltip replaces the old one without fading.
+resizes from one to the other and uncovers the new text, which stays where it
+is. With reduced motion the box doesn't move and the new tooltip replaces the
+old one at once.
 
 ### When the Trigger Goes Away
 

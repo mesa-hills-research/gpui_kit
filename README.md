@@ -304,8 +304,8 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 - **Tooltips along a row of buttons** (`gpui-base`, `gpui-component`, `gpui-shell`). While a
   tooltip is up, the next button's replaces it once the pointer rests there for a tenth of a
   second, so sweeping across a row of buttons leaves the open tooltip in place instead of flashing
-  each button's. The box then moves and resizes to the new tooltip while the texts fade across,
-  each where it stays. See
+  each button's. The box then moves and resizes to the new tooltip and uncovers its text, which
+  stays where it is. See
   [Tooltip: moving between tooltips](website/component/tooltip.md#moving-between-tooltips).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
