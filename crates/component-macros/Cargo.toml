@@ -1,12 +1,17 @@
 [package]
-name = "gpui-component-macros"
+name = "mhr-gpui-kit-component-macros"
 description = "Procedural macros for GPUI Component, the styled layer of GPUI Kit."
-version = "0.7.1"
+version = "0.7.2"
 license = "Apache-2.0"
+repository = "https://github.com/mesa-hills-research/gpui_kit"
+keywords = ["gpui", "macros", "ui"]
+categories = ["gui", "development-tools::procedural-macro-helpers"]
+readme = "README.md"
 publish = true
 edition.workspace = true
 
 [lib]
+name = "gpui_component_macros"
 proc-macro = true
 
 [lints]

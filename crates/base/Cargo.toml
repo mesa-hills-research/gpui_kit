@@ -1,19 +1,20 @@
 [package]
 description = "Behavior, interaction, and infrastructure foundations for GPUI applications."
 keywords = ["desktop", "gpui", "ui", "foundation"]
+categories = ["gui"]
 license = "Apache-2.0"
-name = "gpui-base"
+name = "mhr-gpui-kit-base"
 # The examples are development tools that read fixtures from `crates/story`;
 # they stay out of the published package.
 exclude = ["examples/"]
-repository = "https://github.com/longbridge/gpui-kit"
+repository = "https://github.com/mesa-hills-research/gpui_kit"
 homepage = "https://gpui-kit.com"
-documentation = "https://docs.rs/gpui-base"
-version = "0.7.1"
+version = "0.7.2"
 publish = true
 edition.workspace = true
 
 [lib]
+name = "gpui_base"
 doctest = false
 
 [[bench]]

@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 chrono = "0.4.38"
 gpui.workspace = true
-gpui-base = { path = "../.." }
+gpui-base = { package = "mhr-gpui-kit-base", path = "../.." }
 gpui_platform.workspace = true
 reqwest_client.workspace = true
 syntect.workspace = true

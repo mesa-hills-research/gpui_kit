@@ -1,16 +1,18 @@
 [package]
-name = "gpui-kit"
-version = "0.7.1"
+name = "mhr-gpui-kit"
+version = "0.7.2"
 description = "GPUI Kit: one dependency for building desktop applications with GPUI, GPUI Base, GPUI Component and default assets."
 keywords = ["desktop", "gpui", "shadcn", "ui", "uikit"]
 categories = ["gui"]
 license = "Apache-2.0"
-documentation = "https://docs.rs/gpui-kit"
 homepage = "https://gpui-kit.com"
-repository = "https://github.com/longbridge/gpui-kit"
+repository = "https://github.com/mesa-hills-research/gpui_kit"
 readme = "README.md"
 publish = true
 edition.workspace = true
+
+[lib]
+name = "gpui_kit"
 
 [lints]
 workspace = true
