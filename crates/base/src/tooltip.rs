@@ -138,8 +138,10 @@ pub struct TooltipRequest {
 }
 
 impl TooltipRequest {
-    /// A request anchored to `trigger_bounds`, shown until it is hidden. Prefer
-    /// [`Self::for_trigger`], which also hides the tooltip with its trigger.
+    /// A request anchored to `trigger_bounds`, shown until it is hidden. It
+    /// replaces another request made this way at once, without the switch
+    /// delay. Prefer [`Self::for_trigger`], which also hides the tooltip with
+    /// its trigger.
     pub fn new(
         trigger_bounds: Bounds<Pixels>,
         build: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -261,15 +263,20 @@ impl TooltipOverlay {
         }
         self.hide_task = None;
         self.hovered = content.trigger.clone();
-        if self
-            .content
-            .as_ref()
-            .is_some_and(|shown| shown.same_trigger(&content))
-        {
-            // The pointer came back to the trigger whose tooltip is up.
-            self.show_task = None;
-            self.content = Some(content);
-            return;
+        if let Some(shown) = &self.content {
+            if shown.same_trigger(&content) {
+                // The pointer came back to the trigger whose tooltip is up.
+                self.show_task = None;
+                self.content = Some(content);
+                return;
+            }
+            // A request anchored to fixed bounds, which a caller may make again
+            // on every pointer move, replaces another such request at once.
+            if shown.trigger.is_none() && content.trigger.is_none() {
+                self.show_task = None;
+                self.show(content, cx);
+                return;
+            }
         }
 
         let delay = if self.content.is_some() || self.had_recent_tooltip {
@@ -282,15 +289,20 @@ impl TooltipOverlay {
             cx.background_executor().timer(delay).await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if this.epoch == epoch {
-                    content.begin_showing();
-                    this.previous_bounds = this.content.as_ref().map(|shown| shown.trigger_bounds);
-                    this.is_switching = this.previous_bounds.is_some();
-                    this.content = Some(content);
-                    this.animation_epoch += 1;
-                    cx.notify();
+                    this.show(content, cx);
                 }
             });
         }));
+    }
+
+    /// Shows `content`, replacing the tooltip that is up.
+    fn show(&mut self, content: TooltipRequest, cx: &mut Context<Self>) {
+        content.begin_showing();
+        self.previous_bounds = self.content.as_ref().map(|shown| shown.trigger_bounds);
+        self.is_switching = self.previous_bounds.is_some();
+        self.content = Some(content);
+        self.animation_epoch += 1;
+        cx.notify();
     }
 
     /// Hides the tooltip after the grace period, as [`Self::request_hide`]
@@ -638,6 +650,38 @@ mod tests {
         wait(cx, SHOW_DELAY);
         assert!(shows(&state, trigger, cx));
         (state, cx)
+    }
+
+    #[gpui::test]
+    fn a_request_without_a_trigger_replaces_another_at_once(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        let state = cx.update(|_, cx| cx.new(|_| TooltipOverlay::new()));
+        let show = |bounds: Bounds<Pixels>, cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                state.update(cx, |tooltip, cx| {
+                    let request = TooltipRequest::new(bounds, |_, _| {
+                        panic!("content is not rendered by this lifecycle test")
+                    });
+                    tooltip.request_show(request, window, cx);
+                });
+            });
+            cx.run_until_parked();
+        };
+        let shown = |cx: &mut VisualTestContext| {
+            cx.update(|_, cx| {
+                state
+                    .read(cx)
+                    .content
+                    .as_ref()
+                    .map(|content| content.trigger_bounds)
+            })
+        };
+
+        show(bounds(0., 0., 20., 20.), cx);
+        wait(cx, SHOW_DELAY);
+        assert_eq!(shown(cx), Some(bounds(0., 0., 20., 20.)));
+        show(bounds(5., 0., 20., 20.), cx);
+        assert_eq!(shown(cx), Some(bounds(5., 0., 20., 20.)));
     }
 
     #[gpui::test]
