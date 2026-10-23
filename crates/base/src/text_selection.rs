@@ -3595,9 +3595,11 @@ fn paint_text_selection(state: &Entity<WindowSelectionState>, window: &mut Windo
         }
     });
 
+    // On capture, so a drop target or any other handler that stops the
+    // release can't leave the selection following the pointer.
     let mouse_up_state = state.downgrade();
     window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-        if phase.bubble()
+        if phase.capture()
             && let Some(state) = mouse_up_state.upgrade()
         {
             state.update(cx, |state, cx| {
@@ -3665,8 +3667,9 @@ mod tests {
     use crate::ElementExt as _;
     use gpui::{
         Bounds, ContentMask, Context, Hitbox, HitboxBehavior, HitboxId, InteractiveElement as _,
-        IntoElement, ParentElement as _, Render, SharedString, Styled as _, StyledText,
-        TestAppContext, TextLayout, Window, div, point, prelude::FluentBuilder as _, px, size,
+        IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+        Styled as _, StyledText, TestAppContext, TextLayout, Window, div, point,
+        prelude::FluentBuilder as _, px, size,
     };
     use std::{
         cell::{Cell, RefCell},
@@ -3697,6 +3700,58 @@ mod tests {
 
     struct FirstFrameScopedSelectionView {
         selection: TextSelectionHandle,
+    }
+
+    /// A splitter handle on the left and selectable text on the right, under a
+    /// root that takes the drop, the way an application resizes a pane.
+    struct SplitterView {
+        selection: TextSelectionHandle,
+        drops: Rc<Cell<usize>>,
+    }
+
+    struct SplitterDrag;
+
+    impl Render for SplitterDrag {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    impl Render for SplitterView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let selection = self.selection.clone();
+            let drops = self.drops.clone();
+            div().size_full().child(TextSelectionLayer).child(
+                div()
+                    .size_full()
+                    .on_drop(move |_: &SplitterDrag, _, _| drops.set(drops.get() + 1))
+                    .child(
+                        div()
+                            .id("handle")
+                            .absolute()
+                            .left(px(90.))
+                            .w(px(10.))
+                            .h_full()
+                            .on_drag(SplitterDrag, |_, _, _, cx| cx.new(|_| SplitterDrag)),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(100.))
+                            .w(px(100.))
+                            .h_full()
+                            .on_prepaint(move |bounds, window, cx| {
+                                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+                                selection.register(
+                                    TextSelectionRegistration::new(hitbox, bounds)
+                                        .with_text_bounds(vec![bounds]),
+                                    window,
+                                    cx,
+                                );
+                            }),
+                    ),
+            )
+        }
     }
 
     struct PlainRunLayoutView {
@@ -5257,5 +5312,32 @@ mod tests {
             selection.update_runs(&[text_run(0, text, layout)], cx);
             assert_eq!(TextSelection::selected_text(window, cx), "alpha beta");
         });
+    }
+
+    #[gpui::test]
+    fn a_drag_that_drops_on_an_ancestor_does_not_leave_the_selection_following_the_pointer(
+        cx: &mut TestAppContext,
+    ) {
+        let drops = Rc::new(Cell::new(0));
+        let (_, cx) = cx.add_window_view(|_, cx| SplitterView {
+            selection: TextSelectionHandle::new("text", cx),
+            drops: drops.clone(),
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let modifiers = gpui::Modifiers::default();
+        let handle = point(px(95.), px(10.));
+
+        cx.simulate_mouse_down(handle, MouseButton::Left, modifiers);
+        cx.simulate_mouse_move(point(px(60.), px(10.)), Some(MouseButton::Left), modifiers);
+        cx.simulate_mouse_move(point(px(40.), px(10.)), Some(MouseButton::Left), modifiers);
+        // The ancestor's drop takes the release.
+        cx.simulate_mouse_up(point(px(40.), px(10.)), MouseButton::Left, modifiers);
+        assert_eq!(drops.get(), 1);
+        cx.simulate_mouse_move(point(px(150.), px(10.)), None, modifiers);
+        cx.simulate_mouse_move(point(px(180.), px(10.)), None, modifiers);
+
+        cx.update(|window, cx| assert!(!TextSelection::has_selection(window, cx)));
     }
 }

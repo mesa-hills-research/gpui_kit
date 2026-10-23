@@ -10,6 +10,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 
 ## Changes from upstream
 
+- **A selection ends on every release** (`gpui-base`). The window's text selection sees the button
+  come up even when a drop target stops the release, as the end of a pane resized by dragging
+  does. Text no longer highlights as the pointer moves over it afterwards.
 - **Keys still reach a focused row scrolled out of view** (`gpui-base`). While the window has a
   selection, a text view holding focus keeps its keys when a list no longer draws it, so Cmd-C
   or Ctrl-C copies the whole selection, and Select All and the context menu keys still work. See
