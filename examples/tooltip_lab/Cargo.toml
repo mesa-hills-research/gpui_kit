@@ -1,0 +1,12 @@
+[package]
+name = "tooltip_lab"
+description = "A window for comparing ways a tooltip's text can change between neighbouring buttons."
+version = "0.7.1"
+publish = false
+edition.workspace = true
+
+[dependencies]
+gpui-kit.workspace = true
+
+[lints]
+workspace = true
