@@ -174,10 +174,8 @@ impl Render for Tooltip {
 
 /// Duration of the slide-down enter animation.
 const ENTER_DURATION: Duration = Duration::from_millis(150);
-/// How long the box takes to move onto the next tooltip on the same row.
-const SWITCH_DURATION: Duration = Duration::from_millis(120);
-/// The part of [`SWITCH_DURATION`] in which the last tooltip's text fades
-/// out. The new text fades in over the rest, so the two never overlap.
+/// The part of a switch in which the last tooltip's text fades out. The new
+/// text fades in over the rest, so the two never overlap.
 const SWITCH_FADE_OUT: f32 = 0.3;
 
 pub(crate) fn render_tooltip(
@@ -276,7 +274,12 @@ impl TooltipBox {
                 ElementId::NamedInteger("tooltip-switch".into(), epoch as u64),
                 0.0,
             )
-            .with_step(1.0, Transition::new(SWITCH_DURATION).ease(|t| t))
+            // The box moves for the theme's fast duration. Its easing stays
+            // `ease_out_cubic`, which `progress_at` inverts.
+            .with_step(
+                1.0,
+                Transition::new(cx.theme().motion_tokens().duration_fast).ease(|t| t),
+            )
             .sample(window, cx)
             .into_value(),
             None => 1.0,
