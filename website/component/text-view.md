@@ -189,7 +189,10 @@ selection stay. `block_count()` tells, without building the list, whether the
 document gained blocks since the last look, and `blocks_from(ix)` lists only
 the blocks from `ix` on. The last block stays incomplete until
 `TextViewState::finish` marks the answer finished and the text pushed before
-it is parsed, and its row is then left alone like the others.
+it is parsed, and its row is then left alone like the others. Call `finish`
+when the answer is done. While text is pushed, a table row it is still
+writing shows once it is whole, so a row the answer stopped in shows only
+after `finish`.
 A selection runs across rows as it runs across separate text views, and each
 view selects its own blocks. Copied, the rows of one document join as the
 blocks of one view of it do, a blank line apart, and a blank line sets them

@@ -229,6 +229,10 @@ impl TextView {
     }
 
     /// Create a new markdown text view.
+    ///
+    /// Text that grows from one frame to the next is appended, as with
+    /// [`TextViewState::push_str`], but a table's rows show as they come,
+    /// since nothing marks the text finished.
     pub fn markdown(id: impl Into<ElementId>, markdown: impl Into<SharedString>) -> Self {
         Self {
             id: id.into(),

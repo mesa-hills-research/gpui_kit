@@ -275,9 +275,11 @@ clock the window's frames use, so a test that moves GPUI's test clock steps it.
 While text is appended, a table's last row that starts with a pipe shows once
 it has all its cells and its closing pipe, or once its line ends. Drawn word
 by word, each word could widen its column and re-wrap every row, so the table
-would grow and shrink as it streams. A row the text stops in shows when
-`TextViewState::finish` marks the text finished, and text set at once shows
-every row.
+would grow and shrink as it streams. Call `TextViewState::finish` when the
+text is done, so a row it stopped in shows. Until then, or until text that
+replaces it is set, that row stays hidden. Text set at once shows every row.
+A `TextView::markdown(id, text)` view has nothing to mark its growing text
+finished, so its tables show rows as they come.
 
 A long document can be shown as several views, each of some of its top-level
 blocks. `TextViewState::block_range(&document, blocks, cx)` makes a view of
