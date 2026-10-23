@@ -3755,6 +3755,67 @@ mod tests {
             assert_eq!(copied(cx), "");
         }
 
+        /// A shift-click extends a selection whose start scrolled out of the
+        /// list, from the start and the rows after it, where it began a new
+        /// selection at the click.
+        #[gpui::test]
+        fn shift_click_extends_a_selection_from_a_row_scrolled_away(cx: &mut TestAppContext) {
+            use gpui::{Modifiers, MouseButton, point, px};
+
+            let parsed = document(
+                "Alpha one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.",
+                cx,
+            );
+            let views = (0..4)
+                .map(|ix| cx.new(|cx| TextViewState::block_range(&parsed, ix..=ix, cx)))
+                .collect::<Vec<_>>();
+            let (root, cx) = cx.add_window_view(|_, _| Scrolled {
+                views: views.clone(),
+                shown: 0..4,
+            });
+            cx.run_until_parked();
+            let draw = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| window.draw(cx).clear(cx));
+            };
+            let copied = |cx: &mut gpui::VisualTestContext| {
+                cx.update(|window, cx| crate::TextSelection::selected_text(window, cx))
+            };
+            draw(cx);
+            let first = views[0].read_with(cx, |view, _| view.bounds());
+            let third = views[2].read_with(cx, |view, _| view.bounds());
+            let start = point(first.left() + px(40.), first.top() + px(4.));
+            let end = point(third.right() - px(1.), third.bottom() - px(4.));
+            cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+            draw(cx);
+
+            // The rows holding the start scroll out of the list.
+            root.update(cx, |root, cx| {
+                root.shown = 2..4;
+                cx.notify();
+            });
+            for _ in 0..3 {
+                draw(cx);
+            }
+            let fourth = views[3].read_with(cx, |view, _| view.bounds());
+            let end = point(fourth.right() - px(1.), fourth.bottom() - px(4.));
+            cx.simulate_click(
+                end,
+                Modifiers {
+                    shift: true,
+                    ..Default::default()
+                },
+            );
+            draw(cx);
+            assert_eq!(
+                copied(cx),
+                "a one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.\n"
+            );
+        }
+
         /// Messages, each a view of its own, that the application placed in
         /// one document.
         struct Messages {

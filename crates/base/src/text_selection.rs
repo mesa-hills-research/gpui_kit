@@ -1780,6 +1780,10 @@ impl WindowSelectionState {
 
     fn prepare_for_mouse_down(&mut self, extend: bool, cx: &mut App) -> Vec<ClearHandler> {
         let pending_extension_anchor = extend.then(|| self.anchor.clone()).flatten();
+        // A selection that is extended goes on from the rows no longer drawn.
+        // They can't paint it again, so they keep it, and the anchor in one
+        // of them stays registered.
+        let extending = pending_extension_anchor.is_some();
         self.stop_anchor_auto_scroll(cx);
         self.anchor = None;
         self.cursor = None;
@@ -1793,10 +1797,13 @@ impl WindowSelectionState {
         let handlers = self
             .participants
             .values()
+            .filter(|registration| !(extending && registration.offscreen))
             .filter_map(|registration| registration.participant.upgrade())
             .filter_map(|participant| participant.update(cx, |state, cx| state.clear_state(cx)))
             .collect();
-        self.drop_offscreen_participants(cx);
+        if !extending {
+            self.drop_offscreen_participants(cx);
+        }
         self.pending_extension_anchor = pending_extension_anchor;
         handlers
     }
