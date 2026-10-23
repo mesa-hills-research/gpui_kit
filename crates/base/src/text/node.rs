@@ -1148,8 +1148,9 @@ pub(crate) struct Paragraph {
 /// A clone carries what was cached so far: the cached value is a pure
 /// function of the children and the style it is keyed on, a clone has the
 /// same children, and every mutation of the children replaces the cache
-/// (`invalidate_render_cache`). Streaming reparses deep-clone the document on
-/// every append, and an empty clone made every paragraph rebuild.
+/// (`invalidate_render_cache`). A block is cloned when the view changes one
+/// it shares with the parser, such as the last block of a finished text, and
+/// an empty clone made that paragraph rebuild.
 #[derive(Default)]
 pub(super) struct ParagraphRenderCache(Mutex<Option<Arc<ParagraphRender>>>);
 
@@ -1551,9 +1552,9 @@ pub(crate) struct Table {
 ///
 /// A clone carries what was cached so far: a parsed table does not change
 /// after parsing (cell mutations only touch selection state, which
-/// [`TableData`] does not read), so a clone has the same data. Streaming
-/// reparses deep-clone the document on every append, and an empty clone made
-/// every table rebuild.
+/// [`TableData`] does not read), so a clone has the same data. A block is
+/// cloned when the view changes one it shares with the parser, and an empty
+/// clone made that table rebuild.
 #[derive(Default)]
 pub(crate) struct TableDataCache(Mutex<Option<Arc<TableData>>>);
 
@@ -4383,7 +4384,7 @@ mod tests {
                 for (text, expected) in [("longer cell", 126.), ("x", CELL_MIN_PX)] {
                     let source = format!("| h |\n| - |\n| {text} |\n");
                     let document = markdown::parse(&source, &mut node_cx).unwrap();
-                    let BlockNode::Table(table) = &document.blocks[0] else {
+                    let BlockNode::Table(table) = &*document.blocks[0] else {
                         panic!("expected a parsed table");
                     };
                     assert!(table.column_widths_cache.0.lock().unwrap().is_none());
@@ -5229,8 +5230,8 @@ mod tests {
 
     #[test]
     fn cloned_table_keeps_cached_table_data() {
-        // Streaming appends deep-clone every block; the clone must reuse the
-        // cached snapshot instead of rebuilding it.
+        // A block cloned to be changed must reuse the cached snapshot instead
+        // of rebuilding it.
         let table = table_of(
             vec![vec![plain_cell("Name")], vec![plain_cell("Alice")]],
             vec![ColumnumnAlign::Left],
@@ -5379,6 +5380,9 @@ mod tests {
                 },
                 BlockNode::Paragraph(selected_paragraph("end")),
             ]
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>()
             .into(),
         };
 
@@ -5411,6 +5415,9 @@ mod tests {
                 BlockNode::Paragraph(image),
                 BlockNode::Paragraph(selected_paragraph("after")),
             ]
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>()
             .into(),
         };
         assert_eq!(
@@ -5431,6 +5438,9 @@ mod tests {
                 BlockNode::Paragraph(selected_paragraph("before")),
                 BlockNode::Paragraph(image_paragraph("alt", "u")),
             ]
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>()
             .into(),
         };
         assert_eq!(
@@ -5525,6 +5535,9 @@ mod tests {
                     ],
                 },
             ]
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>()
             .into(),
         };
 

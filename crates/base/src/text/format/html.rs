@@ -76,7 +76,7 @@ pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument
 
     Ok(ParsedDocument {
         source: source.to_string().into(),
-        blocks: Arc::new(vec![node]),
+        blocks: Arc::new(vec![Arc::new(node)]),
     })
 }
 
@@ -781,7 +781,7 @@ mod tests {
             node,
             ParsedDocument {
                 source: html.to_string().into(),
-                blocks: Arc::new(vec![BlockNode::Paragraph(Paragraph {
+                blocks: Arc::new(vec![Arc::new(BlockNode::Paragraph(Paragraph {
                     span: None,
                     children: vec![InlineNode::image(ImageNode {
                         url: "https://example.com/image.png".to_string().into(),
@@ -792,7 +792,7 @@ mod tests {
                         ..Default::default()
                     })],
                     ..Default::default()
-                })])
+                }))])
             }
         );
 
@@ -802,7 +802,7 @@ mod tests {
             node,
             ParsedDocument {
                 source: html.to_string().into(),
-                blocks: Arc::new(vec![BlockNode::Paragraph(Paragraph {
+                blocks: Arc::new(vec![Arc::new(BlockNode::Paragraph(Paragraph {
                     span: None,
                     children: vec![InlineNode::image(ImageNode {
                         url: "https://example.com/image.png".to_string().into(),
@@ -813,7 +813,7 @@ mod tests {
                         ..Default::default()
                     })],
                     ..Default::default()
-                })])
+                }))])
             }
         );
     }

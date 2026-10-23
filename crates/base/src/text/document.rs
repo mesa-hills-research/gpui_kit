@@ -13,10 +13,14 @@ use crate::text::{
 };
 
 /// The parsed document AST.
+///
+/// The blocks are shared, so a copy of the document (the background parser
+/// keeps one and the view another) copies pointers and not the AST, and a
+/// streamed append replaces only the blocks it re-parses.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ParsedDocument {
     pub(crate) source: SharedString,
-    pub(crate) blocks: Arc<Vec<BlockNode>>,
+    pub(crate) blocks: Arc<Vec<Arc<BlockNode>>>,
 }
 
 #[derive(Default, Clone, Copy)]

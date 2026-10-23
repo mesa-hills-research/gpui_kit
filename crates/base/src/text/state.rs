@@ -520,7 +520,7 @@ impl TextViewState {
             && self.block_range.is_none()
             && let Some(last) = Arc::make_mut(&mut self.parsed_content.document.blocks).last_mut()
         {
-            last.mark_code_complete();
+            Arc::make_mut(last).mark_code_complete();
         }
     }
 
@@ -2365,7 +2365,7 @@ mod tests {
                 .blocks
                 .iter()
                 .flat_map(|block| {
-                    let super::super::node::BlockNode::Paragraph(paragraph) = block else {
+                    let super::super::node::BlockNode::Paragraph(paragraph) = &**block else {
                         panic!()
                     };
                     paragraph
@@ -3038,7 +3038,7 @@ mod tests {
             },
         )
         .expect("incremental parse");
-        let BlockNode::Paragraph(paragraph) = &content.document.blocks[2] else {
+        let BlockNode::Paragraph(paragraph) = &*content.document.blocks[2] else {
             panic!("expected appended paragraph");
         };
         let mut state = paragraph.state.lock().unwrap();
@@ -3047,6 +3047,44 @@ mod tests {
         drop(state);
 
         assert_eq!(content.document.selected_source_range(), Some(17..22));
+    }
+
+    /// The parser keeps its document and the view shows the same one, so an
+    /// append that copied the blocks would copy the whole document each time.
+    #[test]
+    fn an_append_shares_the_blocks_it_keeps() {
+        let options = |append, text: &str| UpdateOptions {
+            revision: 1,
+            pending_text: text.to_string(),
+            append,
+            mode: ParseMode::Compatible,
+            markdown_extensions: Arc::default(),
+            baseline: None,
+        };
+        let before = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            &options(false, "first\n\nsecond"),
+        )
+        .expect("initial parse");
+        let after = parse_content(
+            TextViewFormat::Markdown,
+            before.clone(),
+            &options(true, " more\n\nthird"),
+        )
+        .expect("incremental parse");
+
+        assert_eq!(after.document.blocks.len(), 3);
+        assert!(Arc::ptr_eq(
+            &before.document.blocks[0],
+            &after.document.blocks[0]
+        ));
+        // The last block takes the appended text, so it is parsed again.
+        assert!(!Arc::ptr_eq(
+            &before.document.blocks[1],
+            &after.document.blocks[1]
+        ));
+        assert_eq!(before.document.blocks.len(), 2);
     }
 
     #[test]
@@ -3080,7 +3118,7 @@ mod tests {
 
         let BlockNode::List {
             start, children, ..
-        } = &continued.document.blocks[0]
+        } = &*continued.document.blocks[0]
         else {
             panic!("expected streamed ordered list");
         };
@@ -3109,7 +3147,7 @@ mod tests {
             cx.run_until_parked();
             state.read_with(cx, |state, _| {
                 let node::BlockNode::Paragraph(paragraph) =
-                    &state.parsed_content.document.blocks[0]
+                    &*state.parsed_content.document.blocks[0]
                 else {
                     panic!()
                 };
@@ -3150,7 +3188,7 @@ mod tests {
         cx.run_until_parked();
 
         state.read_with(cx, |state, _| {
-            let node::BlockNode::Custom(node) = &state.parsed_content.document.blocks[0] else {
+            let node::BlockNode::Custom(node) = &*state.parsed_content.document.blocks[0] else {
                 panic!("expected custom markdown node");
             };
             assert_eq!(node.name(), "ticker");
@@ -3453,7 +3491,13 @@ mod tests {
             let row = cx.new(|cx| TextViewState::block_range(&document, 1.., cx));
             let code_complete = |state: &Entity<TextViewState>, cx: &mut TestAppContext| {
                 state.read_with(cx, |state, _| {
-                    match state.parsed_content.document.blocks.last() {
+                    match state
+                        .parsed_content
+                        .document
+                        .blocks
+                        .last()
+                        .map(std::sync::Arc::as_ref)
+                    {
                         Some(BlockNode::CodeBlock(code)) => code.is_complete(),
                         _ => panic!("a code block last"),
                     }

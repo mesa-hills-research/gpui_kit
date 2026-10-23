@@ -850,9 +850,7 @@ fn parse_paragraph(
         }
         Node::Html(val) => match super::html::parse(&val.value, cx) {
             Ok(el) => {
-                if let Some(inline_text) =
-                    append_inline_html_blocks(paragraph, Arc::unwrap_or_clone(el.blocks))
-                {
+                if let Some(inline_text) = append_inline_html_blocks(paragraph, into_blocks(el)) {
                     text = inline_text;
                 } else {
                     if cfg!(debug_assertions) {
@@ -915,12 +913,20 @@ fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> Par
     let blocks = root
         .children
         .into_iter()
-        .map(|c| ast_to_node(source, c, cx))
+        .map(|c| Arc::new(ast_to_node(source, c, cx)))
         .collect();
     ParsedDocument {
         source: source.to_string().into(),
         blocks: Arc::new(blocks),
     }
+}
+
+/// The blocks of a document parsed just now, which nothing else shares.
+fn into_blocks(document: ParsedDocument) -> Vec<BlockNode> {
+    Arc::unwrap_or_clone(document.blocks)
+        .into_iter()
+        .map(Arc::unwrap_or_clone)
+        .collect()
 }
 
 fn new_span(pos: Option<markdown::unist::Position>, cx: &NodeContext) -> Option<Span> {
@@ -1044,7 +1050,7 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
         }
         Node::Html(val) => match super::html::parse(&val.value, cx) {
             Ok(el) => BlockNode::Root {
-                children: Arc::unwrap_or_clone(el.blocks),
+                children: into_blocks(el),
                 span: new_span(val.position, cx),
             },
             Err(err) => {
@@ -1160,7 +1166,7 @@ mod tests {
             document
                 .blocks
                 .iter()
-                .filter_map(|block| match block {
+                .filter_map(|block| match &**block {
                     BlockNode::CodeBlock(code) => Some(code.is_complete()),
                     _ => None,
                 })
@@ -1185,7 +1191,7 @@ mod tests {
         let paragraph = document
             .blocks
             .iter()
-            .find_map(first_paragraph)
+            .find_map(|block| first_paragraph(block))
             .expect("expected paragraph");
 
         assert!(paragraph.children.len() > 6);
@@ -1233,7 +1239,7 @@ mod tests {
         let paragraph = document
             .blocks
             .iter()
-            .find_map(first_paragraph)
+            .find_map(|block| first_paragraph(block))
             .expect("expected paragraph");
         let rendered = paragraph.text();
         let mut state = paragraph.state.lock().unwrap();
@@ -1253,7 +1259,7 @@ mod tests {
         let code = document
             .blocks
             .iter()
-            .find_map(first_code_block)
+            .find_map(|block| first_code_block(block))
             .expect("expected code block");
         code.set_selection(selection);
         document.selected_source_range()
@@ -1268,7 +1274,7 @@ mod tests {
         let paragraph = document
             .blocks
             .iter()
-            .find_map(first_paragraph)
+            .find_map(|block| first_paragraph(block))
             .expect("expected MDX paragraph");
         let rendered = paragraph.text();
         let mut state = paragraph.state.lock().unwrap();
@@ -1287,7 +1293,7 @@ mod tests {
         let code = document
             .blocks
             .iter()
-            .find_map(first_code_block)
+            .find_map(|block| first_code_block(block))
             .expect("expected MDX code block");
         let code_text = code.code();
         let start = code_text.find(selected_text).expect("selected MDX code");
@@ -1303,7 +1309,7 @@ mod tests {
             &mut cx,
         )
         .unwrap();
-        let BlockNode::Table(table) = &document.blocks[0] else {
+        let BlockNode::Table(table) = &*document.blocks[0] else {
             panic!("expected table");
         };
         assert_eq!(table.column_aligns.len(), 3);
@@ -1629,8 +1635,8 @@ mod tests {
         let source = "mapped\n\nA &amp; B";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let [BlockNode::Paragraph(mapped), BlockNode::Paragraph(entity)] =
-            document.blocks.as_slice()
+        let (BlockNode::Paragraph(mapped), BlockNode::Paragraph(entity)) =
+            (&*document.blocks[0], &*document.blocks[1])
         else {
             panic!("expected two paragraphs");
         };
@@ -1648,7 +1654,7 @@ mod tests {
         let source = "```rust\nrust\n```";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::CodeBlock(code) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code) = &*document.blocks[0] else {
             panic!("expected code block");
         };
         code.set_selection(0..4);
@@ -1678,7 +1684,7 @@ mod tests {
         let source = "````text\n```\n````";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::CodeBlock(code) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code) = &*document.blocks[0] else {
             panic!("expected code block");
         };
         code.set_selection(0..3);
@@ -1691,7 +1697,7 @@ mod tests {
         let source = "    rust";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::CodeBlock(code) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code) = &*document.blocks[0] else {
             panic!("expected code block");
         };
         code.set_selection(0..4);
@@ -1794,7 +1800,7 @@ mod tests {
         let source = "before ![alt](image.png)";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         let image = paragraph
@@ -1815,7 +1821,7 @@ mod tests {
         let source = "![alt](image.png) after";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         let mut state = paragraph.state.lock().unwrap();
@@ -1831,7 +1837,7 @@ mod tests {
         let source = "before ![alt](image.png) after";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         let image = paragraph
@@ -1856,7 +1862,7 @@ mod tests {
         let source = "before ![alt](image.png) after";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         let image = paragraph
@@ -1889,7 +1895,7 @@ mod tests {
         let source = "![first](one.png)![second](two.png) after";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         let mut state = paragraph.state.lock().unwrap();
@@ -1905,7 +1911,7 @@ mod tests {
         let source = "A &amp; B";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
         assert_eq!(paragraph.text(), "A & B");
@@ -1959,7 +1965,7 @@ mod tests {
         let mut cx = NodeContext::default();
         let document = parse("This has **_bold and italic_** text.", &mut cx).unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -1987,7 +1993,7 @@ mod tests {
         )
         .unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -2013,7 +2019,7 @@ mod tests {
         )
         .unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -2050,7 +2056,7 @@ mod tests {
             let mut cx = NodeContext::default();
             let document = parse(source, &mut cx).unwrap();
 
-            let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
                 panic!("expected paragraph");
             };
 
@@ -2073,7 +2079,7 @@ mod tests {
         let mut cx = NodeContext::default();
         let document = parse("a\nb  \nc", &mut cx).unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -2096,7 +2102,7 @@ mod tests {
             let mut cx = NodeContext::default();
             let document = parse(source, &mut cx).unwrap();
 
-            let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+            let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
                 panic!("expected paragraph");
             };
 
@@ -2114,12 +2120,12 @@ mod tests {
         let document = parse(source, &mut cx).unwrap();
 
         assert!(matches!(
-            document.blocks[0],
+            *document.blocks[0],
             BlockNode::HorizontalRule { .. }
         ));
         let BlockNode::Heading {
             level, children, ..
-        } = &document.blocks[1]
+        } = &*document.blocks[1]
         else {
             panic!("expected setext heading");
         };
@@ -2136,7 +2142,7 @@ mod tests {
         };
         let document = parse("---\n- name: example\n---", &mut cx).unwrap();
 
-        let BlockNode::CodeBlock(code_block) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code_block) = &*document.blocks[0] else {
             panic!("expected YAML code block fallback");
         };
         assert_eq!(code_block.lang().as_deref(), Some("yml"));
@@ -2148,7 +2154,7 @@ mod tests {
         let mut cx = NodeContext::default();
         let document = parse("```yaml\nname: example\n```", &mut cx).unwrap();
 
-        let BlockNode::CodeBlock(code_block) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code_block) = &*document.blocks[0] else {
             panic!("expected fenced YAML code block");
         };
         assert_eq!(code_block.lang().as_deref(), Some("yaml"));
@@ -2187,7 +2193,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom(node) = &*document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");
@@ -2224,7 +2230,7 @@ mod tests {
         };
         let document = parse(r"$x$ `$code$` \$escaped\$", &mut cx).unwrap();
         assert_eq!(document.text(), "formula $code$ $escaped$\n");
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         assert_eq!(
@@ -2255,7 +2261,7 @@ mod tests {
             ..Default::default()
         };
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         let objects: Vec<_> = paragraph
@@ -2282,7 +2288,7 @@ mod tests {
         let source = "$$\n\\sum_{i=1}^{n} i\n$$";
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
-        let BlockNode::CodeBlock(code) = &document.blocks[0] else {
+        let BlockNode::CodeBlock(code) = &*document.blocks[0] else {
             panic!("expected a code block fallback")
         };
         assert_eq!(code.code(), "\\sum_{i=1}^{n} i");
@@ -2316,7 +2322,7 @@ mod tests {
             document.text(),
             "EPS of $1.56 beat the $1.50 consensus, up $2\n"
         );
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         assert_eq!(bold_runs(paragraph), ["$1.56", "$1.50"]);
@@ -2352,7 +2358,7 @@ mod tests {
         let mut cx = NodeContext::default();
         let document = parse(source, &mut cx).unwrap();
         assert_eq!(document.text(), "a b c d e f g h \n unclosed\n");
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         assert_eq!(bold_runs(paragraph), ["b c d", "f"]);
@@ -2383,7 +2389,7 @@ mod tests {
         let document = parse(source, &mut cx).unwrap();
         assert_eq!(document.text(), "spent $5 and $10 today\n");
         assert!(document.to_markdown().contains("spent $5 and $10 today"));
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         assert!(paragraph.children.iter().all(|node| node.custom.is_none()));
@@ -2414,10 +2420,10 @@ mod tests {
             let original = parse(source, &mut cx).unwrap();
             let markdown = original.to_markdown();
             let reparsed = parse(&markdown, &mut cx).unwrap();
-            let BlockNode::Paragraph(before) = &original.blocks[0] else {
+            let BlockNode::Paragraph(before) = &*original.blocks[0] else {
                 panic!()
             };
-            let BlockNode::Paragraph(after) = &reparsed.blocks[0] else {
+            let BlockNode::Paragraph(after) = &*reparsed.blocks[0] else {
                 panic!()
             };
             let before_object = before
@@ -2454,7 +2460,7 @@ mod tests {
             ..Default::default()
         };
         let document = parse("`原子`", &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!()
         };
         let node = paragraph.children[0].custom.as_ref().unwrap();
@@ -2502,7 +2508,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom(node) = &*document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");
