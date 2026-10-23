@@ -31,7 +31,7 @@ gets them without writing its own:
 Enable the `writing` feature of `gpui-kit`:
 
 ```toml
-gpui-kit = { version = "...", features = ["writing"] }
+mhr-gpui-kit = { version = "...", features = ["writing"] }
 ```
 
 ## Setting it up

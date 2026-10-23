@@ -39,5 +39,5 @@ traits itself, which is what makes it worth reading: it is the smallest complete
 dock's renderer seam.
 
 ```bash
-cargo run -p gpui-base dock
+cargo run -p mhr-gpui-kit-base dock
 ```

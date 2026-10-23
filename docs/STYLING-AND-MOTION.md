@@ -452,7 +452,7 @@ benchmark samples batches of 1,000 values and enforces a `0.10 ms` median
 ceiling for scalar timing/easing on the reference machine. It is run with:
 
 ```bash
-cargo bench -p gpui-base --bench motion
+cargo bench -p mhr-gpui-kit-base --bench motion
 ```
 
 At 120 Hz the full application has about 8.33 ms per frame. Motion sampling is

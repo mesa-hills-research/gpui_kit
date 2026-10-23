@@ -62,7 +62,7 @@ its `.cargo/config.toml`:
 
 ```toml
 [patch."https://github.com/mesa-hills-research/gpui_kit"]
-gpui-kit = { path = "../gpui_kit/crates/kit" }
+mhr-gpui-kit = { path = "../gpui_kit/crates/kit" }
 ```
 
 ## Changing the template

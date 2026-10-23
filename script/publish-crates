@@ -6,13 +6,12 @@ trap 'rm -f "$publish_log"' EXIT
 
 # Publish dependencies first so a partially completed release can be resumed.
 for package in \
-  gpui-kit-assets \
-  gpui-component-macros \
-  gpui-base \
-  gpui-fps \
-  gpui-component \
-  gpui-wry \
-  gpui-kit
+  mhr-gpui-kit-assets \
+  mhr-gpui-kit-component-macros \
+  mhr-gpui-kit-base \
+  mhr-gpui-kit-writing \
+  mhr-gpui-kit-component \
+  mhr-gpui-kit
 do
   # CI forces colored Cargo output; keep diagnostics plain for matching below.
   if cargo publish -p "$package" --color never 2>&1 | tee "$publish_log"; then

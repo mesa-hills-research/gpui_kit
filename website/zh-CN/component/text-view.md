@@ -119,7 +119,7 @@ let extensions = MarkdownExtensions::default().plugin(FrontmatterPlugin);
 let answer = cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(extensions));
 ```
 
-在一篇两万 token 的回复末尾流式输出时，一块一行每帧需要 0.9 ms，而整篇作为一行需要 12.5 ms（`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`）。
+在一篇两万 token 的回复末尾流式输出时，一块一行每帧需要 0.9 ms，而整篇作为一行需要 12.5 ms（`cargo bench -p mhr-gpui-kit-component --features tree-sitter-rust --bench transcript_stream`）。
 
 `code_block_max_lines` 只显示每个代码块的前几行，适合需要读者手动展开的代码块。超出的行既不布局也不高亮，所以长代码块的开销只取决于显示的行数。`CodeBlock::code` 和块在源文本中的范围仍然包含全部内容，可用于复制按钮或统计行数：
 

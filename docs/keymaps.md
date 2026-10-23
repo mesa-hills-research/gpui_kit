@@ -141,7 +141,7 @@ fn ctrl_k_kills_to_the_end_of_the_line(cx: &mut TestAppContext) {
 scheme's tests with:
 
 ```sh
-cargo test -p gpui-base --lib --locked -- input::keymap::emacs
+cargo test -p mhr-gpui-kit-base --lib --locked -- input::keymap::emacs
 ```
 
 ## CUA
@@ -373,5 +373,5 @@ replacements, patterns across lines in `:s`, `.` after a block insert, command-l
 Run Vim's tests with:
 
 ```sh
-cargo test -p gpui-base --lib --locked -- input::keymap::vim
+cargo test -p mhr-gpui-kit-base --lib --locked -- input::keymap::vim
 ```

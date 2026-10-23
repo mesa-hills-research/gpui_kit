@@ -3,7 +3,7 @@
 //! Ignored by default. Run it in release, one test at a time, with
 //!
 //! ```text
-//! cargo test --release -p gpui-component --features tree-sitter-languages --lib \
+//! cargo test --release -p mhr-gpui-kit-component --features tree-sitter-languages --lib \
 //!     code_block_perf -- --ignored --nocapture --test-threads 1
 //! ```
 //!

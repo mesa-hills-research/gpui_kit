@@ -28,7 +28,7 @@ Start with the first two steps, then inspect the semantic tree and operate the r
 Run the repository's [Profile UI test](https://github.com/longbridge/gpui-kit/blob/main/crates/kit/tests/ui.rs) from the workspace root:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test ui saves_a_profile_through_the_ui -- --exact
+cargo test -p mhr-gpui-kit --features test-support --test ui saves_a_profile_through_the_ui -- --exact
 ```
 
 The test opens a headless window, enters a name, activates **Save**, and checks both application state and accessibility properties written by the rendered GPUI elements. This gives you a concrete path from the model to a visible control and its AccessKit node. For setup of your own test crate, continue with [Testing](./test).

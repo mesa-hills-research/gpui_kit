@@ -233,7 +233,7 @@ let answer = cx.new(|cx| TextViewState::markdown("", cx).markdown_extensions(ext
 
 Streaming a 20,000-token answer at its end, a frame takes 0.9 ms with a row
 per block where the answer as one row took 12.5 ms
-(`cargo bench -p gpui-component --features tree-sitter-rust --bench transcript_stream`).
+(`cargo bench -p mhr-gpui-kit-component --features tree-sitter-rust --bench transcript_stream`).
 
 `code_block_max_lines` shows the first lines of each code block, for blocks a
 reader expands on request. The lines past the cap are neither laid out nor

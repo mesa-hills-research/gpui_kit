@@ -59,7 +59,7 @@ gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "7d9efcd2069f
 这些提交固定了示例的依赖基线。Kit 提交包含移动平台条件编译支持，但尚未包含移动端 tooltip 禁用逻辑。当前 GPUI Kit 工作树使用 `mhr-gpui {{gpui_version}}`，而固定的移动平台及渲染器使用另一个包 `gpui-pre` `0.3.4`。Cargo 可能同时选出两个版本，导致 GPUI 类型不兼容；**只把 Kit 依赖替换为本地路径并不能完成升级**。需要先将移动平台及渲染器更新到与 Kit 相同的 GPUI 版本，并验证这一组合，之后才可使用如下路径依赖：
 
 ```toml
-gpui-kit = { path = "../gpui-kit/crates/kit", default-features = false, features = ["component"] }
+mhr-gpui-kit = { path = "../gpui-kit/crates/kit", default-features = false, features = ["component"] }
 ```
 
 路径相对于应用的 Cargo 清单，请按实际目录调整。GPUI 核心、渲染器、平台和 Kit 必须使用相容的同一版本。

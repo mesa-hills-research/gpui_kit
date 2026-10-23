@@ -117,7 +117,7 @@ Transition、spring、keyframes、presence 和 reveal 控件都遵守 GPUI 的 r
 benchmark 覆盖的纯稳定采样路径——timing/easing、关键帧查找、解析式 spring 积分和 stagger delay 计算——均为零分配。Keyed transition、spring、presence 和 reveal 生命周期由 GPUI retained state 与 frame-request 测试覆盖，因为这些更新属于框架生命周期，而不是纯采样器。采样使用绝对时间，关键帧查找使用二分搜索。运行 release benchmark：
 
 ```bash
-cargo bench -p gpui-base --bench motion
+cargo bench -p mhr-gpui-kit-base --bench motion
 ```
 
 选择最小且合适的 primitive：固定时长目标使用 `transition`，频繁变化的空间目标使用 `spring`，编排序列使用 keyframes，卸载前退出使用 `Presence`，前后相继的步骤使用 `Sequence`，列表错峰使用 `Stagger`。

@@ -26,16 +26,16 @@ natural Chinese rather than word-for-word translation.
 
 ## Project Overview
 
-GPUI Kit is a Rust desktop application framework built on GPUI, published at <https://gpui-kit.com>. It ships as three crates: `gpui-base` (unstyled behavior and infrastructure), `gpui-shell` (JavaScript extensions for a Rust host), and `gpui-component` (GPUI Component, the styled component library with 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design). Applications depend on the umbrella crate `gpui-kit` (`crates/kit`), which pins the matching `mhr-gpui` crates and puts GPUI at its root (`use gpui_kit::*;`) with `gpui_kit::platform`, `gpui_kit::base`, `gpui_kit::component` and `gpui_kit::assets` reachable by name, so they never list GPUI itself. `gpui-shell` is not part of `gpui-kit` and is not published yet (its `llrt_*` dependencies are git-only); use it as a git dependency.
+GPUI Kit is a Rust desktop application framework built on GPUI, published at <https://gpui-kit.com>. It ships as three crates: `gpui-base` (unstyled behavior and infrastructure), `gpui-shell` (JavaScript extensions for a Rust host), and `gpui-component` (GPUI Component, the styled component library with 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design). Applications depend on the umbrella crate `gpui-kit` (`crates/kit`, published as `mhr-gpui-kit` because crates.io's `gpui-kit`, `gpui-base` and `gpui-component` belong to other projects, with the library names unchanged), which pins the matching `mhr-gpui` crates and puts GPUI at its root (`use gpui_kit::*;`) with `gpui_kit::platform`, `gpui_kit::base`, `gpui_kit::component` and `gpui_kit::assets` reachable by name, so they never list GPUI itself. `gpui-shell` is not part of `gpui-kit` and is not published yet (its `llrt_*` dependencies are git-only); use it as a git dependency.
 
 This is a Rust workspace project with the following main crates:
 
-- `crates/kit` - Umbrella crate applications depend on (published as `gpui-kit`)
-- `crates/component` - Core UI component library (published as `gpui-component`)
+- `crates/kit` - Umbrella crate applications depend on (published as `mhr-gpui-kit`)
+- `crates/component` - Core UI component library (published as `mhr-gpui-kit-component`)
 - `crates/story` - Gallery application for showcasing and testing components
 - `crates/story-web` - Web version of the story gallery (using WebAssembly)
-- `crates/component-macros` - Procedural macros (`IntoPlot` derive)
-- `crates/assets` - Static assets
+- `crates/component-macros` - Procedural macros (`IntoPlot` derive, published as `mhr-gpui-kit-component-macros`)
+- `crates/assets` - Static assets (published as `mhr-gpui-kit-assets`)
 - `crates/webview` - WebView component support
 - `examples/` - Various example applications
 
@@ -80,10 +80,10 @@ interaction, data flow, or prevents a meaningful regression.
 cargo test --all
 
 # Run tests for a specific crate
-cargo test -p gpui-component
+cargo test -p mhr-gpui-kit-component
 
 # Run doc tests
-cargo test -p gpui-component --doc
+cargo test -p mhr-gpui-kit-component --doc
 ```
 
 ### Performance Profiling

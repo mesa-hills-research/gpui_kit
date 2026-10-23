@@ -10,7 +10,7 @@
 //! text fading in, which draws frames until the fade ends.
 //!
 //! Run with
-//! `cargo bench -p gpui-component --features tree-sitter-languages --bench transcript_stream`.
+//! `cargo bench -p mhr-gpui-kit-component --features tree-sitter-languages --bench transcript_stream`.
 
 use std::{cell::RefCell, fmt::Write as _, rc::Rc};
 

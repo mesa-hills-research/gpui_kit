@@ -25,7 +25,7 @@ Linux 的菜单回退实现保持 `NativeMenu` API，但内容由 GPUI 绘制，
 
 | 内容 | 本仓库源码 | 在仓库根目录构建或运行 |
 | --- | --- | --- |
-| 菜单公共 API 与平台选择 | `gpui-component` crate 中的 `crates/component/src/native_menu/mod.rs` | `cargo check -p gpui-component`；`cargo test -p gpui-component native_menu` 检查 builder 和图标测试 |
+| 菜单公共 API 与平台选择 | `gpui-component` crate 中的 `crates/component/src/native_menu/mod.rs` | `cargo check -p mhr-gpui-kit-component`；`cargo test -p mhr-gpui-kit-component native_menu` 检查 builder 和图标测试 |
 | AppKit、Win32 菜单 adapter 与 GPUI 回退实现 | `crates/component/src/native_menu/{macos,windows,fallback}.rs`；回退 overlay 由 `crates/component/src/root.rs` 持有 | `cargo run -p gpui-component-story`，然后在目标系统中打开 **NativeMenu** story |
 | Wry wrapper 与自定义 element | `gpui-wry` crate 中的 `crates/webview/src/lib.rs` | `cargo check -p gpui-wry` 检查当前目标平台的 wrapper |
 | 子视图创建与 renderer 设置 | `examples/webview/src/main.rs`，依赖定义在 `examples/webview/Cargo.toml` | 在 macOS 或 Windows 上运行 `cargo run -p webview` |
@@ -128,7 +128,7 @@ wrapper 在普通 GPUI element tree 中渲染一个自定义 `Element`。`reques
 
 ## 调试与验证原生边界
 
-先在目标机器运行 `cargo check -p gpui-component` 或 `cargo check -p gpui-wry`。再运行上面的 NativeMenu story 或 WebView 例子，分别检查普通与高缩放倍率下的行为。Cargo 检查成功仅说明当前目标平台通过类型检查；它不会链接或运行应用，也不能证明原生输入和层级正确。
+先在目标机器运行 `cargo check -p mhr-gpui-kit-component` 或 `cargo check -p gpui-wry`。再运行上面的 NativeMenu story 或 WebView 例子，分别检查普通与高缩放倍率下的行为。Cargo 检查成功仅说明当前目标平台通过类型检查；它不会链接或运行应用，也不能证明原生输入和层级正确。
 
 | 现象 | 在本仓库中检查 |
 | --- | --- |

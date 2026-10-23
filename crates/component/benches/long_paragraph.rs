@@ -5,7 +5,7 @@
 //! stream costs. The paragraph is plain text, or has bold words and inline
 //! code in every sentence.
 //!
-//! Run with `cargo bench -p gpui-component --bench long_paragraph`.
+//! Run with `cargo bench -p mhr-gpui-kit-component --bench long_paragraph`.
 
 use gpui::{
     AppContext as _, BenchAppContext, Context, Entity, IntoElement, ParentElement as _, Render,

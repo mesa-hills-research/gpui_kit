@@ -1,4 +1,4 @@
-# gpui-kit-writing
+# mhr-gpui-kit-writing
 
 Spell checking and learned word suggestions for GPUI Kit's `TextareaState`.
 
@@ -12,7 +12,7 @@ Spell checking and learned word suggestions for GPUI Kit's `TextareaState`.
 - `Writing` holds what an application's textareas share, and
   `WritingOptions` says where its files live.
 
-Applications usually enable it through `gpui-kit`'s `writing` feature and
+Applications usually enable it through `mhr-gpui-kit`'s `writing` feature and
 reach it as `gpui_kit::writing`. See
 [Spell Checking and Word Suggestions](../../website/docs/writing.md).
 

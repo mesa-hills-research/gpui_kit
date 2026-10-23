@@ -28,7 +28,7 @@ GPUI 通过 [AccessKit](https://accesskit.dev/) 向平台辅助技术提供无�
 在工作区根目录运行仓库中的 [Profile UI 测试](https://github.com/longbridge/gpui-kit/blob/main/crates/kit/tests/ui.rs)：
 
 ```sh
-cargo test -p gpui-kit --features test-support --test ui saves_a_profile_through_the_ui -- --exact
+cargo test -p mhr-gpui-kit --features test-support --test ui saves_a_profile_through_the_ui -- --exact
 ```
 
 测试打开无头窗口，输入姓名，激活 **Save**，再检查应用状态与已渲染 GPUI 元素写出的无障碍属性。这样可以沿着一条实际路径，理解模型、可见控件和对应 AccessKit 节点如何连接。在自己的测试 crate 中配置环境的方法见[测试](./test)。

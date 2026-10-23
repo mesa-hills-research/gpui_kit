@@ -67,7 +67,7 @@ GPUI Kit 通过 `gpui_kit::assets` 和 `gpui_kit::component` 提供 [IconName] �
 
 ```toml
 [dependencies]
-gpui-kit = "{{gpui_kit_version}}"
+mhr-gpui-kit = "{{gpui_kit_version}}"
 ```
 
 对于原生桌面应用，应在打开窗口前注册资源源。下面是可作为 `src/main.rs` 使用的完整示例：
@@ -186,7 +186,7 @@ assets/images/cover.png
 
 ```toml
 [dependencies]
-gpui-kit = "{{gpui_kit_version}}"
+mhr-gpui-kit = "{{gpui_kit_version}}"
 rust-embed = { version = "8.7", features = ["include-exclude"] }
 ```
 

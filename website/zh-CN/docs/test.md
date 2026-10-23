@@ -61,7 +61,7 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
+mhr-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
 ```
 
 已有应用可以在自己的 package 中添加这个开发依赖。普通 `gpui-kit` 依赖必须解析到相同来源和版本，测试时 feature 才能合并。将 `test-support` 放在开发依赖中，让普通应用构建不启用观察功能。直接使用组件 crate 的应用也可以启用 `gpui-component/test-support`。
@@ -89,7 +89,7 @@ cargo test --test ui --locked
 将 `Cargo.lock` 一起提交。在自己的应用中，应从 library crate 导入生产视图及其构造函数，替换示例中的 `Profile`，继续沿用窗口设置与交互写法。另写一份测试视图容易与应用实现脱节。在 GPUI Kit 源码目录中，可以直接运行同一个测试：
 
 ```sh
-cargo test -p gpui-kit --features test-support --test ui --locked
+cargo test -p mhr-gpui-kit --features test-support --test ui --locked
 ```
 
 ## 选择稳定的测试目标
@@ -310,9 +310,9 @@ Base motion 则可以响应公开的 `cx.set_reduce_motion(true)` 偏好，用�
 
 ```sh
 script/test-input # 完整回归入口：Base、Component 和 Kit（使用 Bash）
-cargo test -p gpui-kit --features test-support --test input --test input_focus --locked
-cargo test -p gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
-cargo test -p gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
+cargo test -p mhr-gpui-kit --features test-support --test input --test input_focus --locked
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
+cargo test -p mhr-gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
 ```
 
 在合并运行命令后追加 `-- --list`，可列出用例而不执行。
@@ -364,7 +364,7 @@ GPUI 没有公开未观察祖先的继承绘制透明度，因此无法推断该
 平台 crate 仅在 macOS 提供 Metal 离屏渲染器。在支持 Metal 的 Mac 上执行：
 
 ```sh
-cargo test -p gpui-kit --features test-support --test rendering --locked
+cargo test -p mhr-gpui-kit --features test-support --test rendering --locked
 ```
 
 该目标设置了 `test = false`，默认 Cargo 命令不会选择它。macOS CI job 已增加必须
@@ -401,8 +401,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: ./script/bootstrap
-      - run: cargo test -p gpui-kit --features test-support --locked
-      - run: cargo test -p gpui-kit --features test-support --test rendering --locked
+      - run: cargo test -p mhr-gpui-kit --features test-support --locked
+      - run: cargo test -p mhr-gpui-kit --features test-support --test rendering --locked
 ```
 
 应用仓库需要安装自身的平台依赖，并改为在测试 package 中运行 `cargo test --test ui --locked`。将锁定版本的 Kit 源码放到 manifest 声明的路径，再按照普通原生构建的环境配置增加 Linux 和 Windows job。

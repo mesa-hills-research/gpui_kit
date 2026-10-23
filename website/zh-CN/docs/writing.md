@@ -14,7 +14,7 @@ order: -9.04
 启用 `gpui-kit` 的 `writing` feature：
 
 ```toml
-gpui-kit = { version = "...", features = ["writing"] }
+mhr-gpui-kit = { version = "...", features = ["writing"] }
 ```
 
 ## 设置

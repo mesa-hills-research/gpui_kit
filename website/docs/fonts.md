@@ -148,7 +148,7 @@ GPUI Kit can embed two families for you: Work Sans for the interface and
 JetBrains Mono for code. Turn on the `fonts` feature:
 
 ```toml
-gpui-kit = { version = "…", features = ["fonts"] }
+mhr-gpui-kit = { version = "…", features = ["fonts"] }
 ```
 
 Each is a variable font, upright and italic, so every weight from regular to

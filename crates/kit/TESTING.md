@@ -22,7 +22,7 @@ Tab/Shift-Tab traversal, addon button focus and activation, and Textarea/Editor
 body clicks. Run both from the repository root:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test input --test input_focus --locked
+cargo test -p mhr-gpui-kit --features test-support --test input --test input_focus --locked
 ```
 
 For a focused investigation, select a module such as
@@ -91,8 +91,8 @@ before checking final bounds. Preserve real hit testing for hover-only close con
 ## Verification
 
 ```sh
-cargo test -p gpui-kit --features test-support --locked
-cargo test -p gpui-kit --no-default-features --features test-support --locked
+cargo test -p mhr-gpui-kit --features test-support --locked
+cargo test -p mhr-gpui-kit --no-default-features --features test-support --locked
 ```
 
 Regression coverage includes real form controls and selection, immutable snapshots,
@@ -106,7 +106,7 @@ and stale registration cleanup when a 1,000-element list shrinks to 10 elements.
 The full command runs in the existing CI platform matrix. Large-list cases check
 correctness, not rendering performance. The `rendering` target additionally checks
 real Metal images on macOS, using a main-thread harness. It is opt-in (`test = false`):
-run `cargo test -p gpui-kit --features test-support --test rendering --locked` on a
+run `cargo test -p mhr-gpui-kit --features test-support --test rendering --locked` on a
 Metal-capable runner. The macOS CI job runs this command as a required step;
 Linux and Windows run the portable interaction/layout suite. It detects missing checkbox
 marks and invisible input text even when native state stays correct. Other platforms
@@ -128,7 +128,7 @@ draws with the gpui fork's `mhr-gpui-screenshot` on Mesa's software Vulkan drive
 with the kit's other tests on Linux:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test screenshots --locked
+cargo test -p mhr-gpui-kit --features test-support --test screenshots --locked
 ```
 
 Matches allow each channel of each pixel to differ by up to 2 levels, since Mesa and LLVM releases

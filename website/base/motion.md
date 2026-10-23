@@ -139,7 +139,7 @@ The preference is the operating system's. `gpui_base::init` (and so `gpui_compon
 The pure steady sampling paths measured by the benchmark—timing/easing, keyframe lookup, analytic spring integration, and stagger delay calculation—are allocation-free. Keyed transition, spring, presence, and reveal lifecycles are covered by GPUI retained-state and frame-request tests because those updates belong to the framework lifecycle rather than the pure sampler. Sampling uses absolute elapsed time, and keyframe lookup uses binary search. Run the release benchmark with:
 
 ```bash
-cargo bench -p gpui-base --bench motion
+cargo bench -p mhr-gpui-kit-base --bench motion
 ```
 
 Choose the smallest suitable primitive: `transition` for duration-based targets, `spring` for changing spatial targets, keyframes for authored sequences, `Presence` for exit-before-unmount, `Sequence` for steps that follow one another, and `Stagger` for list choreography.

@@ -19,21 +19,21 @@ targets also run in the existing Linux, macOS and Windows CI matrix.
 For a quicker editing/focus iteration:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test input --test input_focus --locked
+cargo test -p mhr-gpui-kit --features test-support --test input --test input_focus --locked
 ```
 
 To investigate one area, add its module name after `--`, for example:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test input --locked -- history::
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- history::
 ```
 
 To list the selected cases without executing them, append `-- --list` to the
 combined command above. To rerun one workflow with an exact name:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
-cargo test -p gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
+cargo test -p mhr-gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
 ```
 
 These commands are reproduction instructions, not a record of passing results.
@@ -63,8 +63,8 @@ three keymaps, and a failure names the keymap it failed with.
 Reproduce each contract independently from the repository root:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test input --locked -- constraints::disabled_single_and_double_click_do_not_focus_the_editor --exact
-cargo test -p gpui-kit --features test-support --test input --locked -- textarea::selection_across_soft_wraps_copies_and_replaces_buffer_text --exact
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- constraints::disabled_single_and_double_click_do_not_focus_the_editor --exact
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- textarea::selection_across_soft_wraps_copies_and_replaces_buffer_text --exact
 ```
 
 These and the additional regressions below run in the full `input` target,

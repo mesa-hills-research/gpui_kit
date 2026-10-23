@@ -4,10 +4,10 @@ One dependency for building desktop applications with GPUI:
 
 ```toml
 [dependencies]
-gpui-kit = "0.7"
+mhr-gpui-kit = "0.7"
 ```
 
-`gpui-kit` depends on the matching set of GPUI crates, so an application
+`mhr-gpui-kit` depends on the matching set of GPUI crates, so an application
 never lists GPUI itself. `use gpui_kit::*;` is GPUI, and each layer is
 reachable by name:
 

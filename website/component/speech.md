@@ -26,7 +26,7 @@ The microphone and the system recognizer are behind the `speech` feature:
 
 ```toml
 [dependencies]
-gpui-kit = { version = "{{gpui_kit_version}}", features = ["speech"] }
+mhr-gpui-kit = { version = "{{gpui_kit_version}}", features = ["speech"] }
 ```
 
 The feature adds [cpal](https://crates.io/crates/cpal) for audio capture. On

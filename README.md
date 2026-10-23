@@ -10,6 +10,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 
 ## Changes from upstream
 
+- **Published as `mhr-gpui-kit`**. The published crates are `mhr-gpui-kit`, `mhr-gpui-kit-base`,
+  `mhr-gpui-kit-component`, `mhr-gpui-kit-component-macros`, `mhr-gpui-kit-assets` and
+  `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
+  to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
+  `gpui_component` work as before. The rest of this page still calls the crates by those names.
 - **Streaming tables grow a row at a time** (`gpui-base`). While text is appended, a table's last
   row that starts with a pipe shows once it is whole. Each word of a row drawn as it came could
   widen its column and re-wrap every row, so a table kept at the bottom of a view jumped up and
@@ -306,12 +311,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 
 ## Using it
 
-The crates keep upstream's names, so an app moves to the fork by changing where `gpui-kit` comes
-from:
-
 ```toml
 [dependencies]
-gpui-kit = { git = "https://github.com/mesa-hills-research/gpui_kit", rev = "<commit>" }
+mhr-gpui-kit = "0.7"
 ```
 
 The kit depends on the published `mhr-gpui` crates, which Cargo fetches from crates.io, so the app
@@ -364,9 +366,9 @@ optional JavaScript extension runtime.
 Documentation: <https://gpui-kit.com>
 
 ```text
-gpui-kit             The one crate applications depend on
-├── gpui-base        Unstyled behavior, state, and infrastructure
-└── gpui-component   GPUI Component: the complete styled UI system
+mhr-gpui-kit                 The one crate applications depend on
+├── mhr-gpui-kit-base        Unstyled behavior, state, and infrastructure
+└── mhr-gpui-kit-component   GPUI Component: the complete styled UI system
 ```
 
 `gpui-kit` pins the matching GPUI release and re-exports GPUI, base, component,
@@ -463,7 +465,7 @@ commercial desktop application rather than designed in isolation.
 
 ```toml
 [dependencies]
-gpui-kit = "0.7"
+mhr-gpui-kit = "0.7"
 ```
 
 `gpui-kit` always brings in GPUI and `gpui-base`; `gpui-component` and the

@@ -18,7 +18,7 @@ Speech 模块把用户说的话转成文本。`SpeechState` 管理一次语音�
 
 ```toml
 [dependencies]
-gpui-kit = { version = "{{gpui_kit_version}}", features = ["speech"] }
+mhr-gpui-kit = { version = "{{gpui_kit_version}}", features = ["speech"] }
 ```
 
 该 feature 会引入 [cpal](https://crates.io/crates/cpal) 采集音频。在 Linux 上构建需要 ALSA 开发包（Debian 和 Ubuntu 上为 `libasound2-dev`）。

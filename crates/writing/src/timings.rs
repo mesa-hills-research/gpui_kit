@@ -3,7 +3,7 @@
 //! them in an optimized build, one at a time:
 //!
 //! ```sh
-//! cargo test -p gpui-kit-writing --lib --release timings -- --ignored --nocapture --test-threads=1
+//! cargo test -p mhr-gpui-kit-writing --lib --release timings -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! The text is made up from the bundled word list, with word frequencies

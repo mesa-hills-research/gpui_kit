@@ -11,7 +11,7 @@
 //! node for every line, is generated the same way every time, so the numbers
 //! can be compared across commits.
 //!
-//! Run with `cargo bench -p gpui-component --features
+//! Run with `cargo bench -p mhr-gpui-kit-component --features
 //! tree-sitter-rust,tree-sitter-python --bench code_block_stream`.
 
 use gpui::{

@@ -1,12 +1,12 @@
-# gpui-base
+# mhr-gpui-kit-base
 
-[![Crates.io](https://img.shields.io/crates/v/gpui-base.svg)](https://crates.io/crates/gpui-base)
-[![Documentation](https://docs.rs/gpui-base/badge.svg)](https://docs.rs/gpui-base)
-[![License](https://img.shields.io/crates/l/gpui-base.svg)](../../LICENSE-APACHE)
+[![Crates.io](https://img.shields.io/crates/v/mhr-gpui-kit-base.svg)](https://crates.io/crates/mhr-gpui-kit-base)
+[![Documentation](https://docs.rs/mhr-gpui-kit-base/badge.svg)](https://docs.rs/mhr-gpui-kit-base)
+[![License](https://img.shields.io/crates/l/mhr-gpui-kit-base.svg)](../../LICENSE-APACHE)
 
 `gpui-base` is the reusable foundation of the [GPUI Component](https://github.com/longbridge/gpui-kit) Rust desktop application framework, built on GPUI. It is intended for applications that want to build and own their own design systems. It provides interaction behavior, focus management, accessibility semantics, animation, virtual lists, theme tokens, and other foundational capabilities without imposing a visual style.
 
-> Use [`gpui-component`](https://crates.io/crates/gpui-component) if you want ready-to-use components with a complete visual design. Use `gpui-base` if your application should own its component source and visual styles while reusing stable, shared behavior.
+> Use [`gpui-component`](https://crates.io/crates/mhr-gpui-kit-component) if you want ready-to-use components with a complete visual design. Use `gpui-base` if your application should own its component source and visual styles while reusing stable, shared behavior.
 
 ## Where It Fits in GPUI Component
 
@@ -45,18 +45,18 @@ For example, `Button::new("save")` has no padding, background, radius, or size b
 
 ## Installation
 
-Depend on `gpui-kit`, which pins the GPUI crates `gpui-base` was built
+Depend on `mhr-gpui-kit`, which pins the GPUI crates `gpui-base` was built
 against and re-exports them as `gpui_kit::gpui` and `gpui_kit::platform`, with
 `gpui-base` itself always available at `gpui_kit::base`. Turn off the default
 features to skip the styled layers:
 
 ```toml
 [dependencies]
-gpui-kit = { version = "0.7", default-features = false }
+mhr-gpui-kit = { version = "0.7", default-features = false }
 ```
 
 If Cargo reports incompatible GPUI types, check whether your application pulls
-GPUI in from somewhere other than `gpui-kit`.
+GPUI in from somewhere other than `mhr-gpui-kit`.
 
 ### Optional Features
 
@@ -303,16 +303,16 @@ Run these commands from the GPUI Component repository root:
 
 ```bash
 # Check the foundation crate
-cargo check -p gpui-base
+cargo check -p mhr-gpui-kit-base
 
 # Run the foundation crate tests
-cargo test -p gpui-base
+cargo test -p mhr-gpui-kit-base
 
 # Check formatting
 cargo fmt --check
 
 # Run Clippy
-cargo clippy -p gpui-base -- --deny warnings
+cargo clippy -p mhr-gpui-kit-base -- --deny warnings
 ```
 
 The current Rust interface is defined by the source code and generated API
@@ -325,8 +325,8 @@ style and motion contracts.
 
 - [GPUI Kit repository](https://github.com/longbridge/gpui-kit)
 - [GPUI Kit documentation](https://gpui-kit.com)
-- [`gpui-component` crate](https://crates.io/crates/gpui-component)
-- [`gpui-base` API documentation](https://docs.rs/gpui-base)
+- [`mhr-gpui-kit-component` crate](https://crates.io/crates/mhr-gpui-kit-component)
+- [`mhr-gpui-kit-base` API documentation](https://docs.rs/mhr-gpui-kit-base)
 - GPUI
 - [Contributing guide](../../CONTRIBUTING.md)
 

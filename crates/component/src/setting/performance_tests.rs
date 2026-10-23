@@ -1,4 +1,4 @@
-//! Run the ignored timing test with `cargo test -p gpui-component --lib --release
+//! Run the ignored timing test with `cargo test -p mhr-gpui-kit-component --lib --release
 //! settings_typing_and_change_cost -- --ignored --nocapture`.
 use super::*;
 use crate::{

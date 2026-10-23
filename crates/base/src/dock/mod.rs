@@ -163,7 +163,7 @@
 //! ```
 //!
 //! `crates/base/examples/showcase/components/dock.rs` is that program in full,
-//! renderers included — run it with `cargo run -p gpui-base dock`.
+//! renderers included — run it with `cargo run -p mhr-gpui-kit-base dock`.
 //! `crates/component/src/dock` is the production skin over the same seam.
 
 mod active;

@@ -14,9 +14,9 @@ GPUI Kit 是一个综合性的 Rust 桌面应用开发框架。它将生产级 U
 文档：<https://gpui-kit.com>
 
 ```text
-gpui-kit             应用唯一需要依赖的 crate
-├── gpui-base        无样式的行为、状态与基础设施
-└── gpui-component   GPUI Component：完整的带样式 UI 系统
+mhr-gpui-kit                 应用唯一需要依赖的 crate
+├── mhr-gpui-kit-base        无样式的行为、状态与基础设施
+└── mhr-gpui-kit-component   GPUI Component：完整的带样式 UI 系统
 ```
 
 `gpui-kit` 会固定配套的 GPUI 版本并导出 GPUI、base、component 和 assets，Rust 应用只需声明这一个依赖。JavaScript 扩展宿主另行依赖 `gpui-shell`；`gpui-component-shell` 提供带样式的组件目录。
@@ -100,7 +100,7 @@ GPUI Kit 从第一天起就用于构建 [Longbridge Pro](https://longbridge.com/
 
 ```toml
 [dependencies]
-gpui-kit = "0.7"
+mhr-gpui-kit = "0.7"
 ```
 
 `gpui-kit` 始终引入 GPUI 和 `gpui-base`；`gpui-component` 和默认图标集默认开启。只想保留部分层时关闭默认 feature 按需选择即可。`gpui-component` 的 feature（`inspector`、`decimal`、`tree-sitter` 及各 `tree-sitter-<language>`）在 `gpui-kit` 上同名可用。

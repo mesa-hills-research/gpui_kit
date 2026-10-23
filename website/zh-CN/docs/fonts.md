@@ -113,7 +113,7 @@ Theme::update(cx, |theme| theme.font_family = "MyFont".into());
 GPUI Kit 可以替你嵌入两个字体族：界面用的 Work Sans 和代码用的 JetBrains Mono。开启 `fonts` feature：
 
 ```toml
-gpui-kit = { version = "…", features = ["fonts"] }
+mhr-gpui-kit = { version = "…", features = ["fonts"] }
 ```
 
 两者都是可变字体，各有正体和斜体，所以从常规到粗体的每个字重都来自字体本身的设计，而不是合成的粗体。在打开第一个窗口之前注册它们，再在主题中使用它们的名称：

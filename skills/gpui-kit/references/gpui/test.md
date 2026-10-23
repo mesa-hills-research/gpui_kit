@@ -36,13 +36,13 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
+mhr-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
 ```
 
 Headless tests still need the platform's native build dependencies. Run
 `cargo generate-lockfile` once for the new package, then
 `cargo test --test ui --locked`. In the Kit repository the equivalent command
-is `cargo test -p gpui-kit --features test-support --test ui --locked`.
+is `cargo test -p mhr-gpui-kit --features test-support --test ui --locked`.
 
 ## UI integration workflow
 
@@ -241,7 +241,7 @@ appropriate to that production animation before asserting final geometry.
 - These tests run in-process. Pixel comparisons need GPUI's separate renderer;
   packaged-app behavior and full OS IME composition need other coverage. Kit's
   explicit macOS rendering target is
-  `cargo test -p gpui-kit --features test-support --test rendering --locked`.
+  `cargo test -p mhr-gpui-kit --features test-support --test rendering --locked`.
 
 ## Additional resources
 

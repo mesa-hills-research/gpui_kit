@@ -59,7 +59,7 @@ gpui-kit = { git = "https://github.com/longbridge/gpui-kit", rev = "7d9efcd2069f
 These revisions reproduce the example's dependency baseline. The Kit revision includes mobile platform gating but predates mobile tooltip suppression. The current GPUI Kit checkout uses `mhr-gpui {{gpui_version}}`, while this pinned mobile platform and renderer use `gpui-pre` `0.3.4`, a different package. Cargo can select both versions, producing incompatible GPUI types; replacing the Kit dependency with a local path is **not** a working upgrade by itself. First update the mobile platform and renderer to the same GPUI version as Kit and validate that combination. Only then can you use a path dependency such as:
 
 ```toml
-gpui-kit = { path = "../gpui-kit/crates/kit", default-features = false, features = ["component"] }
+mhr-gpui-kit = { path = "../gpui-kit/crates/kit", default-features = false, features = ["component"] }
 ```
 
 Adjust the path relative to your application's manifest. Keep the GPUI core, renderer, platform, and Kit on one compatible release.

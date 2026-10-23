@@ -10,7 +10,7 @@ Use the [tested application recipe](recipes.md) for complete examples and their 
 
 ```toml
 [dependencies]
-gpui-kit = "0.7" # re-exports GPUI, platform, base, component and the default icons; Shell is a separate host dependency
+mhr-gpui-kit = "0.7" # re-exports GPUI, platform, base, component and the default icons; Shell is a separate host dependency
 ```
 
 ### 2. Initialization

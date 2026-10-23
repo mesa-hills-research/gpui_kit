@@ -71,7 +71,7 @@ Add the umbrella crate to `Cargo.toml`; its default features include `component`
 
 ```toml
 [dependencies]
-gpui-kit = "{{gpui_kit_version}}"
+mhr-gpui-kit = "{{gpui_kit_version}}"
 ```
 
 For a native desktop app, register the source before opening a window. This complete `src/main.rs` renders a default icon:
@@ -190,7 +190,7 @@ Add [rust-embed] alongside `gpui-kit`:
 
 ```toml
 [dependencies]
-gpui-kit = "{{gpui_kit_version}}"
+mhr-gpui-kit = "{{gpui_kit_version}}"
 rust-embed = { version = "8.7", features = ["include-exclude"] }
 ```
 

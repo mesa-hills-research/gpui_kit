@@ -71,7 +71,7 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
+mhr-gpui-kit = { path = "../gpui-kit/crates/kit", features = ["test-support"] }
 ```
 
 For an existing application, add this development dependency to its package.
@@ -116,7 +116,7 @@ drift from the application. Inside the GPUI Kit checkout, run this exact test
 with:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test ui --locked
+cargo test -p mhr-gpui-kit --features test-support --test ui --locked
 ```
 
 ## Choose stable test targets
@@ -363,9 +363,9 @@ repository root, run both editing and focus targets, or select one workflow:
 
 ```sh
 script/test-input # Complete Input gate: Base, Component and Kit workflows (Bash).
-cargo test -p gpui-kit --features test-support --test input --test input_focus --locked
-cargo test -p gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
-cargo test -p gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
+cargo test -p mhr-gpui-kit --features test-support --test input --test input_focus --locked
+cargo test -p mhr-gpui-kit --features test-support --test input --locked -- history::paste_is_atomic_and_separate_from_surrounding_typing --exact
+cargo test -p mhr-gpui-kit --features test-support --test input_focus --locked -- reverse_tab_cycles_three_inputs_with_passive_addons --exact
 ```
 
 Append `-- --list` to the combined command to list cases without executing them.
@@ -427,7 +427,7 @@ pinned platform crate supplies its headless renderer on macOS (Metal) only. Run
 this target on a Mac with Metal available:
 
 ```sh
-cargo test -p gpui-kit --features test-support --test rendering --locked
+cargo test -p mhr-gpui-kit --features test-support --test rendering --locked
 ```
 
 The target uses `test = false`, so the default Cargo command does not select it.
@@ -468,8 +468,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: ./script/bootstrap
-      - run: cargo test -p gpui-kit --features test-support --locked
-      - run: cargo test -p gpui-kit --features test-support --test rendering --locked
+      - run: cargo test -p mhr-gpui-kit --features test-support --locked
+      - run: cargo test -p mhr-gpui-kit --features test-support --test rendering --locked
 ```
 
 For an application repository, install its platform dependencies and run

@@ -14,8 +14,8 @@
 //!   next frame, so a paragraph laid out again in the same place is not
 //!   shaped again.
 //!
-//! Run with `cargo bench -p gpui-base --bench text_view_memory`. The heap
-//! numbers are the same in a debug build, which `cargo test -p gpui-base
+//! Run with `cargo bench -p mhr-gpui-kit-base --bench text_view_memory`. The heap
+//! numbers are the same in a debug build, which `cargo test -p mhr-gpui-kit-base
 //! --bench text_view_memory` runs. The times are not.
 
 use std::time::Instant;
