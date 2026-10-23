@@ -219,7 +219,7 @@ which still checks the module name and every export name — and is honest about
 
 ## A real one
 
-The gallery's Shell story registers one market module, and it is the entire extension surface its script has. Theme values come from `cx.theme()` instead. This is the host side:
+The Shell story registers one market module, and it is the entire extension surface its script has. Theme values come from `cx.theme()` instead. This is the host side:
 
 ```rust
 fn market_module(market: &Entity<Market>) -> HostModule {
@@ -255,7 +255,7 @@ const rows = quotes();
 const watched = rows.filter((quote) => quote.watched).length;
 ```
 
-Run it with `cargo run -- shell`. The two panels read one entity through two paths, which is what makes a mismatch between them visible immediately.
+Run it with `cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story`. The two panels read one entity through two paths, which is what makes a mismatch between them visible immediately.
 
 ## Not there yet
 

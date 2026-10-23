@@ -29,7 +29,7 @@ Rust Host 二进制——见
 ## Todo list
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 `examples/js_todolist/` 的目的是把整个运行时都跑一遍，而不是做到最小——`gpui-shell` 哪里坏了，通常先在这里露出来。
@@ -80,7 +80,7 @@ export function load() {
 ## 工作区
 
 ```bash
-cargo run -p gpui-shell -- examples/js_dock
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_dock
 ```
 
 `examples/js_dock/` 是一个可停靠的工作区——左边是文件列表，中间是文档，布局会以你离开时的样子回来。
@@ -103,10 +103,10 @@ ui.js                     chrome：标签页、dock 外框、落点提示
 ## 报价面板
 
 ```bash
-cargo run -- shell
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story
 ```
 
-gallery 的 Shell story 并排跑着两块面板：左边那块由 Rust 的 `shell_story.rs` 画，右边那块由 JavaScript 的 `crates/story/js/quotes/main.js` 画，两边读的是同一份数据。
+Shell story 并排跑着两块面板：左边那块由 Rust 的 `shell_story.rs` 画，右边那块由 JavaScript 的 `shell/crates/story/js/quotes/main.js` 画，两边读的是同一份数据。
 
 脚本自己不持有任何状态。这块行情板是一个 Rust 的 `Entity<Market>`，从 story 在运行时启动前注册的 [HostModule](./host-module.md) import 进来：
 
@@ -122,7 +122,7 @@ import { quotes, ticks, watch, watch_all } from "market";
 
 ## 原生动画
 
-`crates/story/js/motion/main.js` 刻意使用与 quote benchmark 分离的 `ScriptView`，避免动画活动污染 render-frequency 测量。它可以在 `.transition(...)` 与 `.spring(...)` 之间切换，再重新设定 opacity 以及像素值的 width、height、left 与 top。
+`shell/crates/story/js/motion/main.js` 刻意使用与 quote benchmark 分离的 `ScriptView`，避免动画活动污染 render-frequency 测量。它可以在 `.transition(...)` 与 `.spring(...)` 之间切换，再重新设定 opacity 以及像素值的 width、height、left 与 top。
 
 脚本只运行一次来发布新目标。后续每一个动画帧都由 GPUI 原生调度与采样，不会重新进入 JavaScript。示例只使用数值像素目标——没有 `rem`、百分比或 `auto`——并使用稳定 id，让留存通道能够跨 description 重建继续存在。
 
@@ -130,4 +130,4 @@ import { quotes, ticks, watch, watch_all } from "market";
 
 把 `examples/js_todolist` 复制到你自己的目录里跑起来——它是一个类型都配好了的完整应用。把 `main.js` 削回到一个只有 `init` 与 `render` 的 `View`，留着 `ui.js`，再从那里往上加。
 
-要写 Host 的话，`crates/story/src/stories/shell_story.rs` 是另一侧的可用参考：它构建运行时、注册 HostModule 、挂载一个 `ScriptView`，并按需重载它。[Hosting](./hosting.md) 走的是同样这几个调用。
+要写 Host 的话，`shell/crates/story/src/shell_story.rs` 是另一侧的可用参考：它构建运行时、注册 HostModule 、挂载一个 `ScriptView`，并按需重载它。[Hosting](./hosting.md) 走的是同样这几个调用。

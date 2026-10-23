@@ -219,7 +219,7 @@ declare module "audit" {
 
 ## 一个真实的例子
 
-Gallery 的 Shell story 注册了一个 market 模块，这就是它那段脚本拥有的全部扩展面。主题值走的是 `cx.theme()`。 Host 侧长这样：
+Shell story 注册了一个 market 模块，这就是它那段脚本拥有的全部扩展面。主题值走的是 `cx.theme()`。 Host 侧长这样：
 
 ```rust
 fn market_module(market: &Entity<Market>) -> HostModule {
@@ -255,7 +255,7 @@ const rows = quotes();
 const watched = rows.filter((quote) => quote.watched).length;
 ```
 
-`cargo run -- shell` 跑起来。两个面板通过两条路径读同一个 entity，一旦对不上就会立刻看出来。
+`cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story` 跑起来。两个面板通过两条路径读同一个 entity，一旦对不上就会立刻看出来。
 
 ## 还没有的东西
 

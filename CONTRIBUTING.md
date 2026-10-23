@@ -124,6 +124,16 @@ Standalone examples live in `examples/`. Run a package directly; see [the exampl
 cargo run -p example-editor
 ```
 
+### Run the scripting shell
+
+The scripting shell (`gpui-shell`, `gpui-component-shell`) and the Shell story live in `shell/`, a workspace of their own. They depend on QuickJS and LLRT from git, and a build in the repository root never fetches those. Add `--manifest-path shell/Cargo.toml` to reach them.
+
+```bash
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story
+cargo test --manifest-path shell/Cargo.toml --workspace --exclude gpui-shell
+```
+
 ## UI Guides
 
 GPUI Component is inspired by macOS and Windows controls, combined with shadcn/ui design for a modern experience.

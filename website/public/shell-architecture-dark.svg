@@ -88,7 +88,7 @@
   <text class="layer"     x="24" y="132">JavaScript</text>
   <text class="layer-sub" x="24" y="148">main.js</text>
   <text class="layer"     x="24" y="342">gpui-shell</text>
-  <text class="layer-sub" x="24" y="358">crates/shell</text>
+  <text class="layer-sub" x="24" y="358">shell/crates/shell</text>
   <text class="layer"     x="24" y="522">gpui-base</text>
   <text class="layer-sub" x="24" y="538">behavior only</text>
   <text class="layer"     x="24" y="614">gpui</text>

@@ -5,7 +5,7 @@
 // storage, and a filter that has to survive every mutation. If something in
 // gpui-shell is broken, this is where it shows.
 //
-//   cargo run -p gpui-shell -- examples/js_todolist
+//   cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 
 import { View } from "gpui-kit";
 import { v_flex, h_flex, InputState } from "gpui-base";

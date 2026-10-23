@@ -37,6 +37,7 @@ This is a Rust workspace project with the following main crates:
 - `crates/component-macros` - Procedural macros (`IntoPlot` derive, published as `mhr-gpui-kit-component-macros`)
 - `crates/assets` - Static assets (published as `mhr-gpui-kit-assets`)
 - `crates/webview` - WebView component support
+- `shell/` - A second workspace with its own `Cargo.lock` for the scripting shell (`gpui-shell`, `gpui-component-shell`) and the Shell story (`gpui-shell-story`). It holds the QuickJS and LLRT git dependencies, so the root `Cargo.lock` has no git source. Never add a git dependency to the root workspace.
 - `examples/` - Various example applications
 
 ## Common Commands
@@ -65,6 +66,11 @@ typos
 
 # Check for unused dependencies
 cargo machete
+
+# Scripting shell (a separate workspace in shell/)
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib
+cargo test --manifest-path shell/Cargo.toml --workspace --exclude gpui-shell
 ```
 
 ### Testing

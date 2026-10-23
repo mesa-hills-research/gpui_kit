@@ -5,7 +5,7 @@
 // area with no chrome still docks, drags, resizes and persists; it simply
 // paints nothing but the panels. Everything you can see here is in `ui.js`.
 //
-//   cargo run -p gpui-shell -- examples/js_dock
+//   cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_dock
 
 import { View, div } from "gpui-kit";
 import { DockArea, dock_area, dock_content, v_flex } from "gpui-base";

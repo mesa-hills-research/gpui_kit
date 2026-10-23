@@ -96,7 +96,7 @@ export default class Hello extends View {
 ```
 
 ```bash
-cargo run -p gpui-shell -- hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello
 ```
 
 Four things in that file are worth naming now, because everything else builds on them.
@@ -114,7 +114,7 @@ Four things in that file are worth naming now, because everything else builds on
 A script directory can also be run directly, without writing a host. This is how the bundled example runs, and how a script is usually developed before it is loaded by the application that will own it. `gpui-shell` is not published to crates.io, so clone the repository and run it from the root:
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 That opens a window with a working todo list: a text field with retained state, controlled checkboxes, a confirmation dialog, a toast, icons loaded from the application's own directory, and storage that falls back to memory when it has not been granted. It exists to exercise the runtime rather than to be minimal — if something is broken, it shows there first.
@@ -126,7 +126,7 @@ The argument is a **directory**, not a file. The runtime resolves that directory
 JavaScript has no compiler, and this runtime does not add one. What it adds is the thing a compiler would have done for you:
 
 ```bash
-cargo run -p gpui-shell -- check hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check hello
 ```
 
 `check` loads the application and renders one frame into a window that is never shown, then exits `0` on success and `1` on failure. Because the script surface is dynamic — an unknown style method, a wrongly typed argument and a reused element are all runtime facts — building and rendering once is the only honest way to check it. What it catches:
@@ -143,7 +143,7 @@ It opens no window, so it is usable from an editor, from CI, or from an agent lo
 Add `--print-spec` to print the element description that was built:
 
 ```bash
-cargo run -p gpui-shell -- check hello --print-spec
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check hello --print-spec
 ```
 
 That output is the arena's own debug dump — the tree of components and recorded operations, before anything is materialized. It is useful when the question is "what did my chain actually record?".
@@ -151,7 +151,7 @@ That output is the arena's own debug dump — the tree of components and recorde
 ## Generate TypeScript declarations
 
 ```bash
-cargo run -p gpui-shell -- types hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- types hello
 ```
 
 This writes `gpui-kit.d.ts` next to the application. Put `// @ts-check` at the top of a script and an editor will complete the whole API and reject a mistyped style method, a colour token that does not exist, or `.p("auto")` — at the call site, before it runs.
@@ -171,8 +171,8 @@ Regenerate the file after upgrading the runtime; the output is deterministic, so
 ## Hot-reload
 
 ```bash
-cargo run -p gpui-shell -- hello --watch
-cargo run -p gpui-shell -- hello --dev      # implies --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello --dev      # implies --watch
 ```
 
 `--watch` polls the application directory four times a second, debounces a burst of writes for 200 ms, and reloads. A reload re-reads **every** module, entry point included — a hot-reload that quietly served a stale import would be worse than none, because it looks like it worked.

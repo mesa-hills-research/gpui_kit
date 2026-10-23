@@ -95,7 +95,7 @@ export default class Hello extends View {
 ```
 
 ```bash
-cargo run -p gpui-shell -- hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello
 ```
 
 这个文件里有四件事值得现在就点明，因为后面所有内容都建立在它们之上。
@@ -113,7 +113,7 @@ cargo run -p gpui-shell -- hello
 一个脚本目录也可以直接跑起来，不必先写 Host 。自带的示例就是这么运行的；一段脚本在被它将来所属的那个应用加载之前，通常也是这样开发的。`gpui-shell` 没有发布到 crates.io，所以先克隆仓库，再在仓库根目录运行：
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 窗口里会出现一个可用的 todo list：带留存状态的输入框、受控 checkbox、一个确认 dialog、一个 toast、从应用自身目录加载的图标，以及在未获授权时退化为内存存储的持久化。它的目的是把整个运行时都跑一遍，而不是做到最小——哪里坏了，通常先在这里露出来。
@@ -125,7 +125,7 @@ cargo run -p gpui-shell -- examples/js_todolist
 JavaScript 没有编译器，这个运行时也不打算造一个。它补上的是编译器本该替你做的那件事：
 
 ```bash
-cargo run -p gpui-shell -- check hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check hello
 ```
 
 `check` 会加载应用，并向一个永远不显示的窗口渲染一帧，成功退出 `0`，失败退出 `1`。因为脚本接口是动态的——未知的样式方法、类型不对的参数、被重复使用的元素，都是运行期事实——所以“构建并渲染一次”是唯一诚实的检查方式。它能报出：
@@ -142,7 +142,7 @@ cargo run -p gpui-shell -- check hello
 加上 `--print-spec` 可以顺带打印构建出的元素描述：
 
 ```bash
-cargo run -p gpui-shell -- check hello --print-spec
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- check hello --print-spec
 ```
 
 这份输出是 arena 自己的调试输出——在它变成真实元素之前，由组件与记录操作构成的那棵树。当问题是“我这条链到底记录了什么”时，它很有用。
@@ -150,7 +150,7 @@ cargo run -p gpui-shell -- check hello --print-spec
 ## 生成 TypeScript 声明
 
 ```bash
-cargo run -p gpui-shell -- types hello
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- types hello
 ```
 
 它会在应用旁边写出 `gpui-kit.d.ts`。在脚本顶部加上 `// @ts-check`，编辑器就会补全整套 API，并在运行之前、在调用点上直接拒绝拼错的样式方法、不存在的颜色 token，或者 `.p("auto")`。
@@ -170,8 +170,8 @@ cargo run -p gpui-shell -- types hello
 ## Hot-reload
 
 ```bash
-cargo run -p gpui-shell -- hello --watch
-cargo run -p gpui-shell -- hello --dev      # 隐含 --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello --watch
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- hello --dev      # 隐含 --watch
 ```
 
 `--watch` 每秒轮询应用目录四次，对一串连续写入去抖 200 ms，然后重载。一次重载会重新读取**每一个**模块，入口也在内——一个悄悄用了旧 import 的 hot-reload 比没有更糟，因为它看起来是成功的。

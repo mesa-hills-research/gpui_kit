@@ -10,7 +10,7 @@ status panels rather than fabricated constructors.
 ## Coverage audit
 
 The independent coverage check derives all tracked component-shell surfaces
-from `crates/component-shell/component-inventory.json` and checks them against
+from `shell/crates/component-shell/component-inventory.json` and checks them against
 the explicit imports, routes, and `coveredBy` metadata in `stories/coverage.js`:
 
 ```bash
@@ -50,10 +50,9 @@ render.
 `NativeMenuTrigger` provides the registered native-menu surface used by the
 JavaScript story under the inventory's `platform-integration` category.
 
-Two Rust Stories are deliberately not mirrored, and `verify-coverage.mjs` holds
-the list with a reason for each: `ShellStory`, which embeds a script view inside
-a Rust story and would demonstrate this gallery to itself, and
-`ThemeColorsStory`, since every route already renders through the active theme.
+`ThemeColorsStory` is the one Rust Story deliberately not mirrored, since every
+route already renders through the active theme. `verify-coverage.mjs` holds the
+list of exclusions with a reason for each.
 The verifier refuses an exclusion that is not `infrastructure` in the inventory,
 so the list cannot quietly hide a component that has something to show.
 
@@ -63,7 +62,7 @@ so the list cannot quietly hide a component that has something to show.
 API and is not hand-authored by this example:
 
 ```bash
-cargo run -p gpui-component-shell --bin gpui-component-shell -- types examples/js_story
+cargo run --manifest-path shell/Cargo.toml -p gpui-component-shell --bin gpui-component-shell -- types examples/js_story
 ```
 
 `jsconfig.json` enables strict JSDoc checking for the gallery and all family

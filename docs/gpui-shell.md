@@ -7,9 +7,9 @@
 
 ## Status and Scope
 
-This document describes the architecture implemented by `crates/shell`. It is a
+This document describes the architecture implemented by `shell/crates/shell`. It is a
 source-derived reference, not a proposal. The public exports in
-`crates/shell/src/lib.rs`, the Rust API documentation, and the generated
+`shell/crates/shell/src/lib.rs`, the Rust API documentation, and the generated
 `gpui-kit.d.ts` remain authoritative for individual methods.
 
 `gpui-shell` is a scriptable application runtime built on `gpui-base`. The host
@@ -21,7 +21,7 @@ Two documents come before this one: [Architecture](ARCHITECTURE.md) for the
 `gpui-base` seam this runtime sits on, and [Styling and
 Motion](STYLING-AND-MOTION.md) for the token model it exposes to scripts.
 
-The runtime is real and runnable — `cargo run -p gpui-shell -- examples/js_todolist`
+The runtime is real and runnable — `cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist`
 opens a working application — but it is not complete. §26 states plainly what
 exists and what does not.
 
@@ -67,7 +67,7 @@ depending on and initializing GPUI Shell:
 
 ```toml
 [dependencies]
-gpui-shell = { path = "crates/shell" }
+gpui-shell = { path = "shell/crates/shell" }
 ```
 
 ```rust
@@ -196,7 +196,7 @@ Seven things are deliberately absent, and will stay absent:
    main-thread only (§12.4). There is no `Worker`.
 5. **There is no dynamic native plugin loading.** Rust has no stable ABI, and
    `dlopen`ed native code inside the process defeats the sandbox outright.
-6. **`gpui-base` is not modified.** Everything lives in `crates/shell`.
+6. **`gpui-base` is not modified.** Everything lives in `shell/crates/shell`.
 7. **There is no Node.js or browser compatibility layer.** There is no DOM,
    CommonJS `require`, general Node module resolution, or `node:` namespace. The
    Standard Runtime deliberately exposes selected bare modules plus a
@@ -214,7 +214,7 @@ Seven things are deliberately absent, and will stay absent:
      JS application            main.js · views · styles · business logic
               │  import ... from "gpui-kit" · "gpui-base" · "gpui-fps"
               ▼
-     crates/shell ── gpui-shell
+     shell/crates/shell ── gpui-shell
      ┌──────────────────────────────────────────────┐
      │ engine/ seam: QuickJS                        │
      ├──────────────────────────────────────────────┤
@@ -231,7 +231,7 @@ Seven things are deliberately absent, and will stay absent:
 ```
 
 Against the dependency diagram in [ARCHITECTURE.md](ARCHITECTURE.md),
-`crates/shell` plus a script application occupies the **application-owned UI**
+`shell/crates/shell` plus a script application occupies the **application-owned UI**
 branch: parallel to `gpui-component`, not downstream of it. The seam is one thin
 line in that picture, and everything above it is language-independent (§6.5).
 
@@ -277,7 +277,7 @@ without a single existing name changing meaning.
 ### 4.3 What base-first makes the shell carry
 
 Four costs follow from binding base rather than a styled component library.
-They are real, and all four are paid in `crates/shell`.
+They are real, and all four are paid in `shell/crates/shell`.
 
 **The default color tokens are transparent, so the shell installs a fallback.**
 `gpui_base::Theme`'s `ColorTokens` derives `Default`, meaning every color starts
@@ -307,12 +307,12 @@ described in §15, and it is not done.
 
 ### 4.4 Constraints on existing crates
 
-`crates/base` and `crates/component` are unchanged; `crates/shell` depends on
+`crates/base` and `crates/component` are unchanged; `shell/crates/shell` depends on
 `gpui-base` (with its `inspector` feature) and `gpui`, and on neither
-`gpui-component` nor `crates/component`. Consumers who do not add `crates/shell` see no
+`gpui-component` nor `crates/component`. Consumers who do not add `shell/crates/shell` see no
 change to their build output or dependency tree.
 
-`crates/shell` enables `gpui-base/inspector` unconditionally, which forwards to
+`shell/crates/shell` enables `gpui-base/inspector` unconditionally, which forwards to
 `gpui/inspector`. That is not optional: the style reflection tables are behind
 `#[cfg(any(feature = "inspector", debug_assertions))]`, so without the feature a
 release build would expose an empty style surface (§13.1).
@@ -584,7 +584,7 @@ lifetimes.
 
 ### 6.5 The engine seam
 
-`crates/shell/src/engine/mod.rs` defines the contract. An engine module exports
+`shell/crates/shell/src/engine/mod.rs` defines the contract. An engine module exports
 one `ShellRuntime` type plus two handle types, `ViewType` and `ViewObject`, that
 are opaque to every caller:
 
@@ -1759,7 +1759,7 @@ the `fn(self) -> Self` shape. Anything taking an argument has to be bound by
 hand (§13.2).
 
 Reflection is behind `#[cfg(any(feature = "inspector", debug_assertions))]` in
-both crates, so `crates/shell` enables `gpui-base/inspector` unconditionally and
+both crates, so `shell/crates/shell` enables `gpui-base/inspector` unconditionally and
 `style.rs` carries a test asserting the table has more than a hundred entries —
 a test that is meaningful only when CI runs it in release.
 
@@ -2096,7 +2096,7 @@ import { Button } from "gpui-component"; // product visuals, ready-made
 Four points decided it then, and all four held. The protocol is one thing and
 the registries are two, which is exactly what separating the render protocol
 from component bindings bought. The crate dependency stays out of the runtime
-entirely: it lives in `crates/component-shell`, so linking `gpui-shell` alone
+entirely: it lives in `shell/crates/component-shell`, so linking `gpui-shell` alone
 keeps `gpui-component` out of the tree. The two module names are distinct,
 because both export `Button` with overlapping method names and different
 semantics, and in JavaScript they can be imported into the same file — the
@@ -2107,8 +2107,8 @@ change, the business logic and the state do not.
 ### 14.7 The component registry
 
 §14.6 described a second registry as the natural next step. It exists.
-`crates/component-shell` registers the `gpui-component` catalog against a
-registry API that `crates/shell` owns and that names no component. The
+`shell/crates/component-shell` registers the `gpui-component` catalog against a
+registry API that `shell/crates/shell` owns and that names no component. The
 dependency runs one way and only one way: the adapter uses both the runtime and
 the component library, and the runtime uses neither. `gpui_shell::init`
 installs the base layer; `gpui_component_shell::init` installs the catalog and
@@ -3294,7 +3294,7 @@ costs and reporting one was what hid the coupling — and a fourth, D, which tak
 one recorded call apart so that A can be acted on rather than only watched:
 
 ```bash
-cargo test -p gpui-shell --release --test benchmark -- --nocapture
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --test benchmark -- --nocapture
 ```
 
 |       | Path                    | 443 nodes                        | Paid                         |
@@ -4512,7 +4512,7 @@ window.open_dialog(confirmClear(count, onConfirm));
 ### Appendix B: Crate layout
 
 ```text
-crates/shell/                 # gpui-shell — depends on gpui-base + gpui only
+shell/crates/shell/           # gpui-shell — depends on gpui-base + gpui only
   Cargo.toml                  # features: quickjs (default)
   src/
     lib.rs                    # init, capability and storage entry points, re-exports
@@ -4587,6 +4587,6 @@ Following `AGENTS.md`:
   `plugin.rs` still documents it as `script:<id>/<panel>`, which `dock.rs` does
   not implement; the two should be reconciled before either is public.
 
-Module documentation in `crates/shell/src` should say "script" wherever it means
+Module documentation in `shell/crates/shell/src` should say "script" wherever it means
 "whatever the engine is", and name QuickJS only inside `engine/quickjs`. The
 batch that used to say "Lua" has been corrected.

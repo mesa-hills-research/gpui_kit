@@ -104,7 +104,7 @@ export default class Counter extends View {
 
 `render` **不是**每帧跑一次。脚本 View 失效时，它把界面描述进一份 Snapshot；之后 GPUI 请求新帧时，可以复用这份 Snapshot，而不执行该 View 的 `render`。指针 hover、光标闪烁、列表滚动和原生动画不一定使脚本 View 失效；虚拟列表项渲染器等帧路径回调另当别论。空闲窗口请求多少帧，不由屏幕刷新率直接决定。
 
-运行时把两件事分开计数，gallery 的 Shell story（`cargo run -- shell`）把这两个数摆在界面上：
+运行时把两件事分开计数，Shell story（`cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story`）把这两个数摆在界面上：
 
 <img class="architecture-light" src="/shell-render-frequency-light.svg" alt="示意的一秒时间线，假设期间请求了 60 帧。脚本数据没有变化时，该 View 的 JavaScript render 轨道为空；价格每 50 毫秒变化一次时，该 View 重建约 20 次，其余帧复用 Snapshot。图中没有描述空闲时的帧频。">
 <img class="architecture-dark" src="/shell-render-frequency-dark.svg" alt="示意的一秒时间线，假设期间请求了 60 帧。脚本数据没有变化时，该 View 的 JavaScript render 轨道为空；价格每 50 毫秒变化一次时，该 View 重建约 20 次，其余帧复用 Snapshot。图中没有描述空闲时的帧频。">
@@ -214,4 +214,4 @@ GPUI 的元素是**被消费**的值：`RenderOnce::render` 按值取走 `self`�
 
 该 crate 处于 **M0** 里程碑：一条可行性基线，而不是稳定接口。它没有发布到 crates.io，脚本 API 预计还会变化。本节文档写到的都是已经实现并可用的部分；缺失的部分，会写在你最可能去找它的那一页上。
 
-设计详见 [GPUI Shell 设计文档](https://github.com/longbridge/gpui-kit/blob/main/docs/gpui-shell.md)，代码位于 [`crates/shell`](https://github.com/longbridge/gpui-kit/tree/main/crates/shell)。
+设计详见 [GPUI Shell 设计文档](https://github.com/longbridge/gpui-kit/blob/main/docs/gpui-shell.md)，代码位于 [`shell/crates/shell`](https://github.com/longbridge/gpui-kit/tree/main/shell/crates/shell)。

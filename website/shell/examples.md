@@ -29,7 +29,7 @@ JavaScript, and it is the largest thing written against this runtime.
 ## The todo list
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 `examples/js_todolist/` exists to exercise the whole runtime rather than to be minimal — if something in `gpui-shell` is broken, this is where it shows first.
@@ -84,7 +84,7 @@ export function load() {
 ## The workspace
 
 ```bash
-cargo run -p gpui-shell -- examples/js_dock
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_dock
 ```
 
 `examples/js_dock/` is a dockable workspace — a file list on the left, documents in the center, and a layout that comes back the way you left it.
@@ -107,10 +107,10 @@ See [Dock and Panels](./dock.md) for the whole surface.
 ## The quote board
 
 ```bash
-cargo run -- shell
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story
 ```
 
-The gallery's Shell story runs two panels side by side: the left one drawn by `shell_story.rs` in Rust, the right one by `crates/story/js/quotes/main.js` in JavaScript, reading the same data.
+The Shell story runs two panels side by side: the left one drawn by `shell_story.rs` in Rust, the right one by `shell/crates/story/js/quotes/main.js` in JavaScript, reading the same data.
 
 The script owns no state at all. The board is a Rust `Entity<Market>`, imported from the [HostModule](./host-module.md) the story registered before the runtime started:
 
@@ -126,7 +126,7 @@ Underneath sits the counter readout this documentation quotes throughout: script
 
 ## Native motion
 
-`crates/story/js/motion/main.js` is intentionally a separate `ScriptView` from the quote benchmark, so animation activity cannot contaminate the render-frequency measurement. It lets you switch between `.transition(...)` and `.spring(...)`, then retargets opacity and pixel-valued width, height, left, and top.
+`shell/crates/story/js/motion/main.js` is intentionally a separate `ScriptView` from the quote benchmark, so animation activity cannot contaminate the render-frequency measurement. It lets you switch between `.transition(...)` and `.spring(...)`, then retargets opacity and pixel-valued width, height, left, and top.
 
 The script runs once to publish the new target. GPUI schedules and samples every following animation frame natively, with no JavaScript re-entry. The example uses only numeric pixel targets — no `rem`, percentages, or `auto` — and stable ids so retained channels survive description rebuilds.
 
@@ -134,4 +134,4 @@ The script runs once to publish the new target. GPUI schedules and samples every
 
 Copy `examples/js_todolist` into a directory of your own and run it — it is a complete application with types already wired. Strip `main.js` back to a `View` with an `init` and a `render`, keep `ui.js`, and build up from there.
 
-For a host, `crates/story/src/stories/shell_story.rs` is a working reference for the other side: it builds a runtime, exports HostModule registrations, mounts a `ScriptView`, and reloads it on demand. [Hosting](./hosting.md) walks through the same calls.
+For a host, `shell/crates/story/src/shell_story.rs` is a working reference for the other side: it builds a runtime, exports HostModule registrations, mounts a `ScriptView`, and reloads it on demand. [Hosting](./hosting.md) walks through the same calls.

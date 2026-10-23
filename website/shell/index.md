@@ -104,7 +104,7 @@ Around that: `--watch` hot-reloads on save, `gpui-shell.json` declares identity 
 
 `render` does **not** run once per frame. It describes a script View into a Snapshot when that View is invalidated. On a later requested frame, GPUI can use the Snapshot without running that View's `render`. Pointer hover, cursor blinking, scrolling and native animation need not invalidate the script View; frame-path callbacks such as virtual-list item renderers are separate. The display's refresh rate does not determine how many frames an idle window requests.
 
-The runtime counts the two events separately, and the gallery's Shell story (`cargo run -- shell`) puts both counters on screen:
+The runtime counts the two events separately, and the Shell story (`cargo run --manifest-path shell/Cargo.toml -p gpui-shell-story`) puts both counters on screen:
 
 <img class="architecture-light" src="/shell-render-frequency-light.svg" alt="Illustrative one-second timeline with 60 requested frames. If script data does not change, the View's JavaScript render track stays empty. If prices change every 50 milliseconds, the View is rebuilt about 20 times while other frames reuse its Snapshot. This does not describe idle frame cadence.">
 <img class="architecture-dark" src="/shell-render-frequency-dark.svg" alt="Illustrative one-second timeline with 60 requested frames. If script data does not change, the View's JavaScript render track stays empty. If prices change every 50 milliseconds, the View is rebuilt about 20 times while other frames reuse its Snapshot. This does not describe idle frame cadence.">
@@ -214,4 +214,4 @@ What the script gains in exchange for the extra typing is the whole application 
 
 The crate is at milestone **M0**: a feasibility baseline, not a stable interface. It is not published to crates.io, and the script API is expected to change. What is documented here exists and works; what is missing is called out on the page where you would go looking for it.
 
-The design is specified in the [GPUI Shell design document](https://github.com/longbridge/gpui-kit/blob/main/docs/gpui-shell.md), and the crate lives at [`crates/shell`](https://github.com/longbridge/gpui-kit/tree/main/crates/shell).
+The design is specified in the [GPUI Shell design document](https://github.com/longbridge/gpui-kit/blob/main/docs/gpui-shell.md), and the crate lives at [`shell/crates/shell`](https://github.com/longbridge/gpui-kit/tree/main/shell/crates/shell).

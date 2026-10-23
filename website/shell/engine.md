@@ -10,7 +10,7 @@ maturity: [preview]
 The scripting engine sits behind one internal interface. Everything above it — the element description arena, the materializer, the call scope, the style table, the theme, the capability model, the overlay host, hot-reload — is engine independent, and only the engine module knows what a script value is.
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 [QuickJS](https://github.com/quickjs-ng/quickjs), via [`rquickjs`](https://github.com/DelSkayn/rquickjs) — which vendors the `quickjs-ng` fork — is the engine that ships and the only one today. It sits behind a `quickjs` cargo feature all the same, and building with no engine is a **compile error** rather than a crate that exports nothing.
@@ -34,7 +34,7 @@ The cost is stated rather than glossed over. QuickJS **has no JIT** — it is a 
 There are three costs here, and treating them as one was the original mistake. The benchmark describes a 40 × 5 grid of styled cells — 443 description nodes, roughly ten recorded operations each — and reports each cost separately:
 
 ```bash
-cargo test -p gpui-shell --release --lib benchmark -- --nocapture
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib benchmark -- --nocapture
 ```
 
 | | What it measures | 443 nodes | Paid |
@@ -50,7 +50,7 @@ Run it in release or the figures mean nothing. Every absolute number on this pag
 One size cannot show which of the three costs scale, so a fourth test walks the same panel up to 8,403 nodes. It sits behind `--ignored` because the largest size takes seconds:
 
 ```bash
-cargo test -p gpui-shell --release --lib benchmark -- --ignored --nocapture
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib benchmark -- --ignored --nocapture
 ```
 
 Describing costs 1.1 ms at 443 nodes, then 5.1, 10.3 and 20.5 ms as the panel grows to 2,103, 4,203 and 8,403. A measured cached repaint — including GPUI layout and paint — costs 1.3, 5.9, 12.0 and 27.0 ms. Both timings grow roughly with node count. The cached repaints in this test do not rerun the View's JavaScript. Three things that shows for this workload:

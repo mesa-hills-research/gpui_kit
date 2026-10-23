@@ -10,7 +10,7 @@ maturity: [preview]
 脚本引擎位于一条内部接口之后。这条分界线（seam）之上的一切——元素描述 arena、把描述变成真实元素的 `materialize`、CallScope、样式表、主题、能力模型、浮层 Host 、hot-reload——都与引擎无关，只有引擎模块知道脚本值长什么样。
 
 ```bash
-cargo run -p gpui-shell -- examples/js_todolist
+cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist
 ```
 
 [QuickJS](https://github.com/quickjs-ng/quickjs) 经由 [`rquickjs`](https://github.com/DelSkayn/rquickjs) 随发行版一起提供——后者 vendored 的是 `quickjs-ng` 这个分支——它也是今天唯一的引擎。它仍然放在 `quickjs` 这个 cargo feature 之后，不启用任何引擎构建是**编译错误**，而不是编出一个什么都不导出的 crate。
@@ -34,7 +34,7 @@ JavaScript 是默认，理由只有一条，而且是产品理由不是技术理
 这里有三笔不同的成本，把它们当成一笔正是最初的错误。基准测试描述一个 40 × 5 的样式化单元格网格——443 个描述节点，每个约十次记录操作——并把每笔成本分开报告：
 
 ```bash
-cargo test -p gpui-shell --release --lib benchmark -- --nocapture
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib benchmark -- --nocapture
 ```
 
 | | 测的是什么 | 443 个节点 | 什么时候付 |
@@ -50,7 +50,7 @@ cargo test -p gpui-shell --release --lib benchmark -- --nocapture
 只测一个规模，看不出这三笔成本里哪几笔会随规模增长，所以第四个测试把同一个面板一路放大到 8,403 个节点。它挂在 `--ignored` 之后，因为最大的那一档要跑好几秒：
 
 ```bash
-cargo test -p gpui-shell --release --lib benchmark -- --ignored --nocapture
+cargo test --manifest-path shell/Cargo.toml -p gpui-shell --release --lib benchmark -- --ignored --nocapture
 ```
 
 描述一次，443 个节点是 1.1 ms；面板放大到 2,103、4,203、8,403 个节点，则依次是 5.1、10.3、20.5 ms。而一次实测的缓存重绘（包含 GPUI 布局与绘制）对应是 1.3、5.9、12.0、27.0 ms。两笔耗时都大致随节点数增长；本测试的缓存重绘不会重新执行该 View 的 JavaScript。对这个负载，可以得出三点：
