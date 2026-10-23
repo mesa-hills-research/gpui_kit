@@ -21,6 +21,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   swapped for two seconds with no motion. Reduced motion swaps them at once. `Clipboard::tab_stop`
   and its styles, which go to the button, let an application use it for copy buttons that show on
   hover. See [Clipboard](website/component/clipboard.md).
+- **A selection ends on every release** (`gpui-base`). The window's text selection sees the button
+  come up even when a drop target stops the release, as the end of a pane resized by dragging
+  does. Text no longer highlights as the pointer moves over it afterwards.
 - **Keys still reach a focused row scrolled out of view** (`gpui-base`). While the window has a
   selection, a text view holding focus keeps its keys when a list no longer draws it, so Cmd-C
   or Ctrl-C copies the whole selection, and Select All and the context menu keys still work. See
