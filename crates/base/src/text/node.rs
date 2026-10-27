@@ -3758,7 +3758,7 @@ impl BlockNode {
         }
 
         div()
-            .pb(rems(1.))
+            .when(!options.is_last, |this| this.pb(style.paragraph_gap()))
             .w_full()
             .child(
                 // Scroll viewport owns the visible frame, including any
@@ -3872,7 +3872,7 @@ impl BlockNode {
         }
 
         div()
-            .pb(rems(1.))
+            .when(!options.is_last, |this| this.pb(style.paragraph_gap()))
             .w_full()
             .child(
                 div()

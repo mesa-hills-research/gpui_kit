@@ -73,6 +73,8 @@ let style = TextViewStyle::default()
 TextView::markdown("themed", source).style(style)
 ```
 
+`with_paragraph_gap(rems(...))` 设置段落间距，也用于自动换行和横向滚动布局的表格下方。文档末尾的表格和段落一样，不保留额外的底部间距。
+
 代码块默认没有轮廓。`with_code_border(color)` 为代码块加 1 px 边框，适用于代码背景可能与页面相同的应用。组件主题使用主题的 `border` 颜色设置它。
 
 `TextViewStyle::from_theme(&theme)` 可读取 `gpui_kit::base::Theme` 的语义颜色。使用上层组件主题时，可调用 `gpui_kit::component::text::text_view_style(cx.theme())`。

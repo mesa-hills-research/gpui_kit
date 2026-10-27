@@ -15,6 +15,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
+- **Tables end at their content** (`gpui-base`). A final Markdown table has no outside bottom
+  gap, like a final paragraph. Tables before another block use `TextViewStyle`'s paragraph gap
+  in both wrapping and horizontal-scroll layouts.
 - **Managed tooltips on custom elements** (`gpui-component`). Import
   `tooltip::ManagedTooltipExt` and call `.managed_tooltip(...)` on a `div` with an id to use
   Kit's tooltip timing, positioning and open-menu suppression.

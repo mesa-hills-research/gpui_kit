@@ -34,6 +34,8 @@ use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
 #[path = "screenshots/settings.rs"]
 mod settings;
+#[path = "screenshots/table_spacing.rs"]
+mod table_spacing;
 #[path = "screenshots/text_field_focus.rs"]
 mod text_field_focus;
 
