@@ -9,12 +9,12 @@ A versatile tooltip component that displays helpful information when hovering ov
 
 ## Mobile behavior
 
-On iOS and Android, tooltips managed by the GPUI Base overlay are disabled. Shared components may keep their tooltip configuration, but mobile actions still need visible or accessible labels. Direct GPUI `.tooltip()` calls, including the basic `div()` example below, bypass this overlay and are not disabled by this policy. See [Mobile](../docs/mobile.md) for integration guidance.
+On iOS and Android, Kit-managed tooltips are disabled. Keep visible or accessible labels for mobile actions. GPUI's own `.tooltip()` bypasses this policy. Use `.managed_tooltip()` on custom elements to follow it. See [Mobile](../docs/mobile.md).
 
 ## Import
 
 ```rust
-use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::tooltip::{ManagedTooltipExt as _, Tooltip};
 ```
 
 ## Usage
@@ -26,7 +26,7 @@ use gpui_kit::component::tooltip::Tooltip;
 div()
     .child("Hover me")
     .id("basic-tooltip")
-    .tooltip(|window, cx| {
+    .managed_tooltip(|window, cx| {
         Tooltip::new("This is a helpful tooltip").build(window, cx)
     })
 ```
@@ -59,7 +59,7 @@ Button::new("save-btn")
 div()
     .child("Hover for rich content")
     .id("rich-tooltip")
-    .tooltip(|window, cx| {
+    .managed_tooltip(|window, cx| {
         Tooltip::element(|_, cx| {
             h_flex()
                 .gap_x_1()
@@ -86,7 +86,7 @@ div()
 div()
     .child("Custom keybinding")
     .id("custom-kb")
-    .tooltip(|window, cx| {
+    .managed_tooltip(|window, cx| {
         Tooltip::new("Delete item")
             .key_binding(Some(Kbd::new("Delete")))
             .build(window, cx)
@@ -215,6 +215,20 @@ v_flex()
 ```
 
 ## API Reference
+
+### ManagedTooltipExt
+
+Import `ManagedTooltipExt` for custom elements such as tree headings. Give a `div` an
+id before adding a managed tooltip. It then follows the same lifetime and open-menu
+rules as a Button's tooltip.
+
+| Method | Description |
+| --- | --- |
+| `managed_tooltip(builder)` | Show a tooltip with automatic placement |
+| `managed_tooltip_at(placement, builder)` | Prefer a placement that fits the window |
+| `managed_tooltip_with_placement(placement, builder)` | Accept an optional preferred placement |
+
+The builder returns an `AnyView`, usually from `Tooltip::build`.
 
 ### Tooltip
 

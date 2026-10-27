@@ -430,11 +430,13 @@ impl ComponentTooltip {
     }
 }
 
-// ── Internal managed tooltip trait ──────────────────────────────────────────
-
-pub(crate) trait ManagedTooltipExt:
-    StatefulInteractiveElement + crate::ElementExt + Sized
-{
+/// Kit-managed tooltips for any stateful interactive element, including a `div` with an id.
+///
+/// These tooltips share the window's timing, placement and lifecycle rules. They hide
+/// while their trigger's menu or popover is open and are disabled on mobile platforms.
+/// GPUI's `InteractiveElement::tooltip` uses a separate tooltip system.
+pub trait ManagedTooltipExt: StatefulInteractiveElement + crate::ElementExt + Sized {
+    /// Show a tooltip on hover, with placement chosen to fit the window.
     fn managed_tooltip(
         self,
         build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -442,6 +444,7 @@ pub(crate) trait ManagedTooltipExt:
         self.managed_tooltip_with_placement(None, build_tooltip)
     }
 
+    /// Show a tooltip on hover, preferring `placement` when it fits the window.
     fn managed_tooltip_at(
         self,
         placement: Placement,
@@ -450,6 +453,7 @@ pub(crate) trait ManagedTooltipExt:
         self.managed_tooltip_with_placement(Some(placement), build_tooltip)
     }
 
+    /// Show a tooltip with an optional preferred placement. `None` chooses automatically.
     fn managed_tooltip_with_placement(
         self,
         preferred_placement: Option<Placement>,
