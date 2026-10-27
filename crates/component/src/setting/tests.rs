@@ -401,3 +401,25 @@ fn the_search_field_menu_follows_the_app_default(cx: &mut TestAppContext) {
     });
     assert!(menu.is_some(), "the drawn menu opened");
 }
+
+/// The search field Settings builds for itself follows the smooth caret the
+/// application chose for every text field, as it changes.
+#[gpui::test]
+fn the_search_field_follows_the_app_smooth_caret(cx: &mut TestAppContext) {
+    use crate::input::set_app_smooth_caret;
+
+    let (host, cx) = setup(cx);
+    let search_input = cx.update(|_, cx| {
+        let state = host.read(cx).state.clone().unwrap();
+        state.read(cx).search_input.clone()
+    });
+    let glides =
+        |cx: &mut VisualTestContext| cx.update(|_, cx| search_input.read(cx).has_smooth_caret());
+    assert!(!glides(cx));
+    cx.update(|_, cx| set_app_smooth_caret(true, cx));
+    draw(cx);
+    assert!(glides(cx));
+    cx.update(|_, cx| set_app_smooth_caret(false, cx));
+    draw(cx);
+    assert!(!glides(cx));
+}

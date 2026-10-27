@@ -28,10 +28,40 @@ use std::time::Instant;
 #[cfg(target_family = "wasm")]
 use web_time::Instant;
 
-use gpui::{App, Pixels, Window, px};
+use gpui::{App, Context, Global, Pixels, Window, px};
 
 use super::{InputBaseState, display_map::LineLayout, kind::InputModeKind, layout::LastLayout};
 use crate::input::{InputExtras as _, RopeExt as _};
+
+/// The smooth caret [`set_app_smooth_caret`] chose for every input.
+pub(crate) struct AppSmoothCaret(bool);
+
+impl Global for AppSmoothCaret {}
+
+/// Turn the smooth caret on or off in every input, textarea and code editor
+/// that doesn't choose for itself with `smooth_caret` or `set_smooth_caret`.
+///
+/// This reaches the fields that other components build for themselves, such
+/// as the search field of Settings, a number input or the filter of a
+/// searchable Select, which an application can't reach one by one. Fields
+/// already on screen follow at once, so a setting can call this whenever it
+/// changes.
+///
+/// ```ignore
+/// gpui_kit::init(cx);
+/// gpui_kit::component::input::set_app_smooth_caret(true, cx);
+/// ```
+pub fn set_app_smooth_caret(enabled: bool, cx: &mut App) {
+    if app_smooth_caret(cx) != Some(enabled) {
+        cx.set_global(AppSmoothCaret(enabled));
+    }
+}
+
+/// What [`set_app_smooth_caret`] chose, or `None` when the application chose
+/// nothing.
+pub fn app_smooth_caret(cx: &App) -> Option<bool> {
+    cx.try_global::<AppSmoothCaret>().map(|caret| caret.0)
+}
 
 /// A glide ends once the caret is this close to its target, in pixels.
 const SETTLED: f32 = 0.5;
@@ -587,7 +617,11 @@ struct Drawn {
 /// The smooth caret of one input: its options and the glide in progress.
 #[derive(Default)]
 pub(crate) struct SmoothCaret {
+    /// Whether the caret glides, by the input's own choice or else the
+    /// application's.
     pub(crate) enabled: bool,
+    /// The input's own choice, which wins over the application's.
+    pub(crate) own: Option<bool>,
     pub(crate) options: SmoothCaretOptions,
     steps: Vec<Step>,
     /// Edits since the open step began, or `None` outside a step.
@@ -604,6 +638,23 @@ pub(crate) struct SmoothCaret {
 }
 
 impl SmoothCaret {
+    /// The smooth caret of a new input, following the application's choice.
+    pub(crate) fn new(cx: &App) -> Self {
+        Self {
+            enabled: app_smooth_caret(cx).unwrap_or(false),
+            ..Self::default()
+        }
+    }
+
+    /// Turns the caret's glide on or off, ending any glide in progress when
+    /// it goes off.
+    pub(crate) fn turn(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        if !enabled {
+            self.stop();
+        }
+    }
+
     /// Called for every edit, with its range in the text before it and the
     /// length of what it put there.
     pub(crate) fn note_edit(&mut self, range: Range<usize>, len: usize) {
@@ -671,6 +722,16 @@ pub(crate) struct CaretFrame {
 }
 
 impl<M: InputModeKind> InputBaseState<M> {
+    /// Follows the application's smooth caret, as [`set_app_smooth_caret`]
+    /// changes it, unless the input chose for itself.
+    pub(super) fn follow_app_smooth_caret(&mut self, cx: &mut Context<Self>) {
+        let enabled = app_smooth_caret(cx).unwrap_or(false);
+        if self.smooth_caret.own.is_none() && self.smooth_caret.enabled != enabled {
+            self.smooth_caret.turn(enabled);
+            cx.notify();
+        }
+    }
+
     /// The caret and the document now.
     pub(crate) fn caret_stamp(&self) -> CaretStamp {
         CaretStamp {

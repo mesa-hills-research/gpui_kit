@@ -164,7 +164,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   inactive and resumes when its focused input becomes active again.
 - **A smooth caret** (`gpui-base`). `smooth_caret(true)` on any input (a single-line input, a
   textarea or the code editor) glides the caret to where it moves. A typed character is
-  uncovered by the caret as it passes, and the rest of the line follows it. Off by default. See
+  uncovered by the caret as it passes, and the rest of the line follows it. Off by default, and
+  `set_app_smooth_caret` turns it on for every field that doesn't choose for itself, the ones
+  inside other components too, such as the Settings search field. See
   [Textarea: smooth caret](website/component/textarea.md#smooth-caret) and
   [Input: smooth caret](website/component/input.md#smooth-caret).
 - **The system's reduced-motion setting, followed** (`gpui-base`). `gpui_base::init` reads it on
