@@ -17,6 +17,8 @@ pub struct TextViewStyle {
     link: Hsla,
     selection: Hsla,
     code_background: Hsla,
+    /// The 1 px outline of a fenced code block, or none.
+    code_border: Option<Hsla>,
     border: Hsla,
     paragraph_gap: Rems,
     heading: Arc<dyn Fn(u8) -> StyleRefinement + Send + Sync + 'static>,
@@ -40,6 +42,7 @@ impl PartialEq for TextViewStyle {
             && self.link == other.link
             && self.selection == other.selection
             && self.code_background == other.code_background
+            && self.code_border == other.code_border
             && self.border == other.border
             && (1..=6).all(|level| (self.heading)(level) == (other.heading)(level))
             && self.code_block == other.code_block
@@ -89,6 +92,7 @@ impl TextViewStyle {
             link: colors.primary,
             selection: colors.selection,
             code_background: colors.accent,
+            code_border: None,
             border: colors.border,
             paragraph_gap: rems(1.),
             heading: Arc::new(|_| StyleRefinement::default()),
@@ -135,6 +139,16 @@ impl TextViewStyle {
     /// Sets the background of fenced code blocks and table header rows.
     pub fn with_code_background(mut self, color: Hsla) -> Self {
         self.code_background = color;
+        self
+    }
+
+    /// Outlines fenced code blocks with a 1 px border in `color`.
+    ///
+    /// A code block has no outline by default. An application whose code
+    /// background can match the page it sits on sets one, so the block keeps
+    /// an edge.
+    pub fn with_code_border(mut self, color: Hsla) -> Self {
+        self.code_border = Some(color);
         self
     }
 
@@ -239,6 +253,12 @@ impl TextViewStyle {
         self.code_background
     }
 
+    /// The color of the 1 px outline of fenced code blocks, or `None` for
+    /// blocks without one.
+    pub fn code_border(&self) -> Option<Hsla> {
+        self.code_border
+    }
+
     /// The color of borders and horizontal rules.
     pub fn border(&self) -> Hsla {
         self.border
@@ -330,6 +350,7 @@ impl TextViewStyle {
             })
             .with_table_head(table_head)
             .with_dark(!self.is_dark);
+        style.code_border = self.code_border.map(|_| color.opacity(0.2));
         style.table_background = Some(gpui::transparent_black());
         style
     }
@@ -418,6 +439,17 @@ mod tests {
     }
 
     #[test]
+    fn code_blocks_have_no_outline_until_one_is_set() {
+        let style = TextViewStyle::default();
+        assert_eq!(style.code_border(), None);
+
+        let outlined = style.clone().with_code_border(gpui::rgb(0x123456).into());
+        assert_eq!(outlined.code_border(), Some(gpui::rgb(0x123456).into()));
+        assert!(outlined != style);
+        assert_eq!(outlined.border(), style.border());
+    }
+
+    #[test]
     fn heading_refinement_defaults_empty_and_resolves_by_level() {
         let base = TextViewStyle::default();
         assert_eq!(base.heading(1), StyleRefinement::default());
@@ -477,6 +509,12 @@ mod tests {
                 Some(text.opacity(0.12))
             );
             assert_eq!(adapted.border(), text.opacity(0.2));
+            assert_eq!(adapted.code_border(), None);
+            let outlined = style
+                .clone()
+                .with_code_border(colors.border)
+                .on_text_color(text);
+            assert_eq!(outlined.code_border(), Some(text.opacity(0.2)));
             assert_eq!(adapted.selection(), text.opacity(0.25));
             assert_eq!(adapted.table_background(), Some(gpui::transparent_black()));
             assert_eq!(adapted.table_head().text.color, Some(text));

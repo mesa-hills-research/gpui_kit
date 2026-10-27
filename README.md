@@ -15,10 +15,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
-- **Code blocks on the editor surface** (`gpui-component`). Markdown code blocks sit on the
-  theme's `editor.background`, where they sat on the muted color, so syntax colors keep the
-  contrast the editor gives them in every bundled theme. `Theme::editor_background()` is public,
-  so an application that draws code of its own can fill the same surface. See
+- **Code blocks on the editor surface** (`gpui-base`, `gpui-component`). Markdown code blocks sit
+  on the theme's `editor.background`, where they sat on the muted color, so syntax colors keep the
+  contrast the editor gives them in every bundled theme. A 1 px outline in the theme's `border`
+  color keeps the edge where that surface matches the page, and `TextViewStyle::with_code_border`
+  sets it for other styles. `Theme::editor_background()` is public, so an application that draws
+  code of its own can fill the same surface. See
   [Theme: editor colors](website/component/theme.md#editor-colors).
 - **Streaming tables grow a row at a time** (`gpui-base`). While text is appended, a table's last
   row that starts with a pipe shows once it is whole. Each word of a row drawn as it came could

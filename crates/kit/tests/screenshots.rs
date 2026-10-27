@@ -263,6 +263,31 @@ fn selectable_highlights() {
     }
 }
 
+/// Markdown with a fenced code block, which sits on the theme's editor surface with a hairline
+/// edge, so it shows where that surface matches the page.
+struct MarkdownCode;
+
+impl Render for MarkdownCode {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(gpui_kit::component::text::TextView::markdown(
+            "markdown-code",
+            "Run `cargo test` and read this.\n\n```\nfn main() {\n    run();\n}\n```\n\nThen it passes.",
+        ))
+    }
+}
+
+#[test]
+fn markdown_code_block() {
+    for (mode, name) in [
+        (ThemeMode::Light, "markdown-code-block"),
+        (ThemeMode::Dark, "markdown-code-block-dark"),
+    ] {
+        let mut app = app(mode);
+        let window = open(&mut app, (320., 190.), SCALE, |_, _| MarkdownCode);
+        goldens().assert(name, &app.capture(window).unwrap());
+    }
+}
+
 struct Buttons;
 
 impl Render for Buttons {

@@ -2383,6 +2383,9 @@ impl CodeBlock {
             .min_w_0()
             .p_3()
             .bg(style.code_background())
+            .when_some(style.code_border(), |this, color| {
+                this.border_1().border_color(color)
+            })
             .font_family(cx.theme().tokens.typography.mono.clone())
             .font_features(cx.theme().tokens.typography.mono_features.clone())
             .text_size(cx.theme().tokens.typography.mono_md.size)

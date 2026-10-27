@@ -52,6 +52,7 @@ pub(crate) fn base_text_view_style(theme: &crate::Theme) -> gpui_base::TextViewS
         .with_link(theme.link)
         .with_selection(theme.selection)
         .with_code_background(theme.editor_background())
+        .with_code_border(theme.border)
         .with_border(theme.border)
         .with_code_block(code_block)
         .with_table(table)
@@ -323,6 +324,7 @@ mod tests {
         assert_eq!(style.link(), theme.link);
         assert_eq!(style.selection(), theme.selection);
         assert_eq!(style.code_background(), theme.editor_background());
+        assert_eq!(style.code_border(), Some(theme.border));
         assert_eq!(style.inline_code().background_color, Some(theme.accent));
         let radius = theme.semantic_tokens().radius.md;
         assert_eq!(style.table().corner_radii.top_left, Some(radius.into()));

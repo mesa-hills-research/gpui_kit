@@ -73,6 +73,8 @@ let style = TextViewStyle::default()
 TextView::markdown("themed", source).style(style)
 ```
 
+代码块默认没有轮廓。`with_code_border(color)` 为代码块加 1 px 边框，适用于代码背景可能与页面相同的应用。组件主题使用主题的 `border` 颜色设置它。
+
 `TextViewStyle::from_theme(&theme)` 可读取 `gpui_kit::base::Theme` 的语义颜色。使用上层组件主题时，可调用 `gpui_kit::component::text::text_view_style(cx.theme())`。
 
 没有显式设置 `.style()` 的 TextView 可以跟随容器设置的文字颜色，这样放在聊天气泡这类有填充底色的容器里也能看清。在应用默认值里开启：
