@@ -11,24 +11,14 @@ fn validation_takes_precedence_over_focus_and_remains_visible_when_disabled() {
         };
         let focused = GroupAppearance::new(&theme, true, false, false);
         assert_eq!(focused.border, theme.ring);
-        assert_eq!(focused.ring, Some(theme.ring.opacity(0.5)));
 
         let disabled = GroupAppearance::new(&theme, true, true, false);
         assert_eq!(disabled.border, theme.input);
-        assert_eq!(disabled.ring, None);
 
         for focused in [false, true] {
             for disabled in [false, true] {
                 let invalid = GroupAppearance::new(&theme, focused, disabled, true);
                 assert_eq!(invalid.border, theme.danger);
-                assert_eq!(
-                    invalid.ring,
-                    Some(
-                        theme
-                            .danger
-                            .opacity(if theme.is_dark() { 0.4 } else { 0.2 })
-                    )
-                );
             }
         }
     }

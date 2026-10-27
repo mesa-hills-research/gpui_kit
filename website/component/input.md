@@ -11,6 +11,10 @@ A single-line text input with validation, masking, prefix/suffix elements, and
 different visual states. Use [Textarea](./textarea.md) for ordinary multi-line
 text and [Editor](./editor.md) for source code.
 
+Focused text fields tint their one-pixel border with the theme's `ring` color.
+There is no outside band to clip in scroll areas. Textareas, number inputs,
+OTP cells, input groups and time fields use the same focus treatment.
+
 ## Import
 
 ```rust

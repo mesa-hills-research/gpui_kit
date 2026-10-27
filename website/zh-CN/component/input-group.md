@@ -103,7 +103,7 @@ cx.notify();
 
 `InputGroupInput` 和 `InputGroupTextarea` 就是普通的 `Input` 和 `Textarea`，只是以组合中的名字出现，
 所以这两个控件的全部 builder——`aria_label`、`content_type`、`on_paste`、`cleanable`、`mask_toggle`
-以及 `Styled` 方法——在组合里都可以使用。组合会去掉控件自身的边框、背景和焦点环，改为绘制在整个外框上。
+以及 `Styled` 方法——在组合里都可以使用。组合会去掉控件自身的边框和背景，改为绘制在整个外框上。获得焦点时，外框的一像素边框会变色。
 
 用 `.input(...)` 设置输入控件，用 `.addon(...)` 添加附加区域，
 在附加区域中通过 `.child(...)` 或 `.children(...)` 放置内容。
@@ -270,7 +270,7 @@ impl Render for MessageComposer {
 
 组合的默认尺寸为 Medium。导入 `Sizable` 后，可以使用 `.xsmall()`、`.small()`、
 `.large()` 或 `.with_size(Size::Medium)`；尺寸决定外框高度、文字大小，以及附加区域与控件共用的内边距。
-颜色、圆角、焦点环和错误外环遵循当前 [Theme](./theme.md)，宽度、间距等外观可通过 `Styled` 方法调整。
+颜色和圆角遵循当前 [Theme](./theme.md)。焦点边框使用 `ring` 颜色，验证错误使用 `danger`，都不绘制外环。宽度、间距等外观可通过 `Styled` 方法调整。
 
 控件本身的 `Styled` 方法作用于它编辑的文字，附加区域、按钮和文字部件也各自用同样的方式设置样式：
 
@@ -291,7 +291,7 @@ InputGroup::new("styled-search")
             .on_click(cx.listener(Self::clear))))
 ```
 
-占位提示、光标和选区颜色遵循 Theme。导入 `FocusableExt` 后，可以用 `.focus_ring(false)` 隐藏默认外环。
+占位提示、光标和选区颜色遵循 Theme。导入 `FocusableExt` 后，可以用 `.focus_ring(false)` 关闭焦点边框变色。
 
 ## JavaScript
 

@@ -9,6 +9,9 @@ description: 带校验、掩码和多种扩展能力的文本输入组件。
 
 Input 是一个单行文本输入组件，支持校验、输入掩码、前后缀元素以及多种交互状态。普通多行文本请使用 [Textarea](./textarea.md)，源代码编辑请使用 [Editor](./editor.md)。
 
+文本输入框获得焦点时，一像素边框使用主题的 `ring` 颜色，不绘制会被滚动区域裁切的外环。
+Textarea、NumberInput、OTP 单元格、InputGroup 和 TimeField 采用同样的焦点样式。
+
 ## 导入
 
 ```rust

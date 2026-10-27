@@ -15,6 +15,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
+- **One focus border on text fields** (`gpui-component`). Inputs, textareas, number inputs,
+  OTP cells, input groups and time fields tint their one-pixel border with the theme's `ring`
+  color when focused. They draw no outside band, so focus stays visible inside scroll areas.
+  Buttons and other controls keep their focus-visible rings.
 - **Code blocks on the editor surface** (`gpui-base`, `gpui-component`). Markdown code blocks sit
   on the theme's `editor.background`, where they sat on the muted color, so syntax colors keep the
   contrast the editor gives them in every bundled theme. A 1 px outline in the theme's `border`

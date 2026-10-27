@@ -106,8 +106,8 @@ refresh after a programmatic update.
 `Textarea` types under the names the group uses for them, so every builder
 those controls have — `aria_label`, `content_type`, `on_paste`, `cleanable`,
 `mask_toggle`, `Styled` methods — works inside a group. The group removes the
-control's own border, background, and focus ring and draws them around the
-whole frame instead.
+control's own border and background and draws them around the whole frame
+instead. Focus tints the frame's one-pixel border.
 
 Pass the input to `.input(...)` and each addon to `.addon(...)`. Use `.child(...)`
 or `.children(...)` inside an addon. A later `.input(...)` replaces the earlier
@@ -280,9 +280,10 @@ example and web limitations.
 
 The default group size is Medium. Import `Sizable` to use `.xsmall()`, `.small()`,
 `.large()`, or `.with_size(Size::Medium)`; the size sets the frame height, the
-text size, and the insets the addons share with the control. Colors, corners,
-the focus ring, and the invalid ring follow your [Theme](./theme.md). Use
-`Styled` methods to set the group's width, spacing, and other appearance.
+text size, and the insets the addons share with the control. Colors and corners
+follow your [Theme](./theme.md). Focus uses the `ring` border color and validation
+uses `danger`, without an outside band. Use `Styled` methods to set the group's
+width, spacing, and other appearance.
 
 The control keeps its own `Styled` methods for the text it edits, and each
 addon, button, and text part styles itself the same way:
@@ -305,7 +306,7 @@ InputGroup::new("styled-search")
 ```
 
 Placeholder, caret, and selection colors follow the Theme. Import
-`FocusableExt` and use `.focus_ring(false)` to hide the default ring.
+`FocusableExt` and use `.focus_ring(false)` to disable the focused border color.
 
 ## JavaScript
 
