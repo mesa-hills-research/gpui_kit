@@ -526,9 +526,13 @@ impl Theme {
         }
     }
 
-    /// Get the editor background color, if not set, use the input background color.
+    /// The surface of a code editor and of Markdown code blocks.
+    ///
+    /// This is the highlight theme's `editor.background`, or
+    /// [`Theme::input_background`] when the theme sets none. An application that
+    /// draws code of its own can fill it with this color to match them.
     #[inline]
-    pub(crate) fn editor_background(&self) -> Hsla {
+    pub fn editor_background(&self) -> Hsla {
         self.highlight_theme
             .style
             .editor_background

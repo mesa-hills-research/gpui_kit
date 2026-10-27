@@ -72,7 +72,7 @@ color, as shown with `SelectableText` in the Label story.
 
 ## Editor colors
 
-In a theme's `highlight` section, `editor.background` is the background of a code editor and a text editor, the input background by default. `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.
+In a theme's `highlight` section, `editor.background` is the background of a code editor, a text editor and Markdown code blocks, the input background by default. `Theme::editor_background()` returns it, so an application that draws code of its own can use the same surface. `editor.foreground` colors a code editor's text, and `editor.line_number` and `editor.active_line_number` color the line numbers and the caret line's number. They default to `foreground`, `muted.foreground` and the editor's text color.
 
 `editor.gutter.border` colors the line between an editor's line numbers and its text. It defaults to `border`.
 
