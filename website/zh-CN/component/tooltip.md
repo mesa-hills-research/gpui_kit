@@ -108,6 +108,10 @@ div()
 
 GPUI 沿用上一帧的视图中的触发元素，在指针停留其上时算作已绘制。指针离开后，无论窗口中其他部分如何重绘，Tooltip 都会保留到宽限期结束，或者被下一个按钮的 Tooltip 取代。这一行为无需任何设置。直接在 `div` 上调用 GPUI 自带的 `.tooltip()` 不经过这个覆盖层，保持 GPUI 原有的行为。
 
+### 菜单打开时
+
+`dropdown_menu`、`Popover` 或 `context_menu` 打开期间，它的触发元素以及触发元素内的所有元素都不显示 Tooltip，因此不会有 Tooltip 遮住菜单。菜单打开时，已经显示的 Tooltip 随之隐藏。指针离开触发元素后再移回来，在菜单关闭之前也不会显示 Tooltip。菜单关闭后，悬停时照常显示。菜单或 Popover 内部元素的 Tooltip 仍然正常显示。
+
 ## API 参考
 
 ### Tooltip

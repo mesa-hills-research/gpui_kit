@@ -140,6 +140,8 @@ pub struct ContextMenuState {
     /// copies of one `PopupMenu` share an item's pending-click state, and the
     /// covered copies clear it on mouse up before the visible one fires.
     draws_menu: Rc<Cell<bool>>,
+    /// Whether the menu is open with items to draw this frame.
+    shows_menu: bool,
     shared_state: Rc<RefCell<ContextMenuSharedState>>,
 }
 
@@ -148,6 +150,7 @@ impl Default for ContextMenuState {
         Self {
             element: None,
             draws_menu: Rc::default(),
+            shows_menu: false,
             shared_state: Rc::new(RefCell::new(ContextMenuSharedState {
                 menu_view: None,
                 open: false,
@@ -317,6 +320,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         anchor,
                         menu: None,
                     });
+                let shows_menu = menu_element.is_some();
 
                 let mut element = this
                     .element
@@ -332,6 +336,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                     ContextMenuState {
                         element: Some(element),
                         draws_menu,
+                        shows_menu,
                         shared_state: state.shared_state.clone(),
                     },
                 )
@@ -357,9 +362,12 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
             window.set_focus_handle(trigger_focus, cx);
         }
         let position = request_layout.shared_state.borrow().position;
-        request_layout.draws_menu.set(bounds.contains(&position));
+        let draws_menu = bounds.contains(&position);
+        request_layout.draws_menu.set(draws_menu);
         if let Some(element) = &mut request_layout.element {
-            element.prepaint(window, cx);
+            gpui_base::prepaint_popup_trigger(request_layout.shows_menu && draws_menu, || {
+                element.prepaint(window, cx)
+            });
         }
         window.insert_hitbox(bounds, HitboxBehavior::Normal)
     }

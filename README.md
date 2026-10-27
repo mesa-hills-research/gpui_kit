@@ -314,6 +314,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   each button's. The box then moves and resizes to the new tooltip and uncovers its text, which
   stays where it is. See
   [Tooltip: moving between tooltips](website/component/tooltip.md#moving-between-tooltips).
+- **No tooltip over an open menu** (`gpui-base`, `gpui-component`). While a dropdown menu,
+  popover or context menu is open, its trigger and the elements inside it show no tooltip, so none
+  covers the menu when the pointer comes back to the trigger. `prepaint_popup_trigger` gives a
+  custom popup host the same. See
+  [Tooltip: while a menu is open](website/component/tooltip.md#while-a-menu-is-open).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it

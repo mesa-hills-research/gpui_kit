@@ -1,12 +1,13 @@
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{
-    Anchor, AnyElement, App, Bounds, Div, ElementId, InteractiveElement, Interactivity,
-    IntoElement, ParentElement, Pixels, Point, RenderOnce, StatefulInteractiveElement,
-    StyleRefinement, Styled, Window, canvas, deferred, div, point, px,
+    Anchor, AnyElement, App, Bounds, Div, Element, ElementId, GlobalElementId, InspectorElementId,
+    InteractiveElement, Interactivity, IntoElement, LayoutId, ParentElement, Pixels, Point,
+    RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled, Window, canvas, deferred, div,
+    point, px,
 };
 
-use crate::{Positioner, ResolvedPosition, StyledExt as _};
+use crate::{Positioner, ResolvedPosition, StyledExt as _, prepaint_popup_trigger};
 
 /// Distance kept between a popup and the window edge.
 const WINDOW_MARGIN: Pixels = px(8.);
@@ -142,7 +143,10 @@ impl RenderOnce for Popup {
 
         let root = self
             .base
-            .child(self.trigger)
+            .child(PopupTrigger {
+                open: self.content.is_some(),
+                trigger: self.trigger,
+            })
             .child(
                 canvas(
                     {
@@ -197,6 +201,69 @@ impl RenderOnce for Popup {
             )
             .with_priority(POPUP_PRIORITY),
         )
+    }
+}
+
+/// The trigger of a [`Popup`], which shows no tooltips while the popup is
+/// open. See [`prepaint_popup_trigger`].
+struct PopupTrigger {
+    open: bool,
+    trigger: AnyElement,
+}
+
+impl IntoElement for PopupTrigger {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for PopupTrigger {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (self.trigger.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        prepaint_popup_trigger(self.open, || self.trigger.prepaint(window, cx));
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        _: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.trigger.paint(window, cx);
     }
 }
 

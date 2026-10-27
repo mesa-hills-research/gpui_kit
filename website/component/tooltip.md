@@ -152,6 +152,15 @@ window. Nothing needs to be set up for this. Tooltips
 built with GPUI's own `.tooltip()` on a `div` are not managed by the overlay
 and keep GPUI's behavior.
 
+### While a Menu Is Open
+
+While a `dropdown_menu`, a `Popover` or a `context_menu` is open, its trigger
+and every element inside the trigger show no tooltip, so none covers the menu.
+A tooltip already up hides as the menu opens, and the pointer leaving the
+trigger and coming back shows nothing until the menu closes. After that,
+tooltips show on hover as usual. Tooltips inside the menu or popover itself
+still show.
+
 ### Complex Tooltip Content
 
 ```rust

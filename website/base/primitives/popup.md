@@ -30,7 +30,7 @@ The authoritative module is [`components/popup.rs`](https://github.com/longbridg
 
 ## State and events
 
-The caller owns trigger, anchor, open state, content, and dismissal policy.
+The caller owns trigger, anchor, open state, content, and dismissal policy. While the popup has content, tooltips inside its trigger don't show, so none covers the popup.
 
 Keep controlled state on the parent render type or in a GPUI entity. Update it in callbacks and call `cx.notify()`; do not recreate persistent entities during every render.
 
