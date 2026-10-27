@@ -21,6 +21,14 @@ pub enum TabVariant {
 }
 
 impl TabVariant {
+    pub(super) fn segmented_outline(disabled: bool, cx: &App) -> Hsla {
+        if disabled {
+            cx.theme().muted_foreground.opacity(0.65)
+        } else {
+            cx.theme().foreground
+        }
+    }
+
     fn height(&self, size: Size) -> Pixels {
         match size {
             Size::XSmall => match self {
@@ -36,6 +44,7 @@ impl TabVariant {
                 _ => px(36.),
             },
             _ => match self {
+                TabVariant::Segmented => px(34.),
                 TabVariant::Underline => px(36.),
                 _ => px(32.),
             },
@@ -62,7 +71,7 @@ impl TabVariant {
             _ => match self {
                 TabVariant::Tab => px(30.),
                 TabVariant::Outline | TabVariant::Pill => px(26.),
-                TabVariant::Segmented => px(24.),
+                TabVariant::Segmented => px(28.),
                 TabVariant::Underline => px(26.),
             },
         }
@@ -151,8 +160,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().tab_foreground,
-                bg: cx.theme().transparent.into(),
+                fg: cx.theme().foreground,
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -195,12 +203,11 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().tab_active_foreground,
-                bg: cx.theme().transparent.into(),
+                fg: cx.theme().foreground,
                 inner_bg: if selected {
-                    cx.theme().tokens.background.into()
-                } else {
                     cx.theme().transparent.into()
+                } else {
+                    cx.theme().foreground.opacity(0.05).into()
                 },
                 ..Default::default()
             },
@@ -244,10 +251,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().tab_active_foreground,
-                bg: cx.theme().transparent.into(),
-                inner_bg: cx.theme().tokens.background.into(),
-                shadow: true,
+                fg: cx.theme().foreground,
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -305,13 +309,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().muted_foreground,
-                bg: cx.theme().tokens.tab_bar.into(),
-                inner_bg: if selected {
-                    cx.theme().tokens.background.into()
-                } else {
-                    cx.theme().transparent.into()
-                },
+                fg: Self::segmented_outline(true, cx),
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -660,26 +658,12 @@ impl RenderOnce for Tab {
                 .as_ref()
                 .is_some_and(|focus_handle| focus_handle.is_focused(window));
 
-        let segmented_indicator_active =
-            self.variant == TabVariant::Segmented && self.indicator_active;
-        let has_inline_inner_bg =
-            self.selected && segmented_indicator_active && !self.indicator_ready;
-        let inline_inner_bg = tab_style.inner_bg;
-        let (inner_bg, hover_inner_bg) = if segmented_indicator_active && self.indicator_ready {
-            (cx.theme().transparent.into(), cx.theme().transparent.into())
-        } else if has_inline_inner_bg {
-            (inline_inner_bg, inline_inner_bg)
-        } else {
-            (tab_style.inner_bg, hover_style.inner_bg)
-        };
-        let inner_shadow = tab_style.shadow && !segmented_indicator_active;
+        let inline_segmented_outline = self.variant == TabVariant::Segmented
+            && self.selected
+            && !(self.indicator_active && self.indicator_ready);
 
-        // When a sliding indicator is active and ready, it alone represents the
-        // selected state. Suppress the selected tab's own active background/border
-        // so the two don't overlap during the switch animation (Segmented already
-        // does this for its `inner_bg` above). Skip disabled tabs so a
-        // disabled-selected tab keeps its dimmed styling instead of the
-        // full-strength indicator color.
+        // The sliding indicator alone represents selection once it is ready.
+        // Disabled tabs keep their dimmed styling.
         let suppress_active_visual =
             self.selected && !self.disabled && self.indicator_active && self.indicator_ready;
         // Pill paints its active state via the outer `bg`.
@@ -753,10 +737,17 @@ impl RenderOnce for Tab {
                     })
                     .children(self.children),
             })
-            .bg(inner_bg)
+            .bg(tab_style.inner_bg)
             .rounded(inner_radius)
-            .when(inner_shadow, |this| this.shadow_xs())
-            .hover(|this| this.bg(hover_inner_bg).rounded(inner_radius));
+            .when(self.variant == TabVariant::Segmented, |this| {
+                this.border_1().border_color(if inline_segmented_outline {
+                    TabVariant::segmented_outline(self.disabled, cx)
+                } else {
+                    cx.theme().transparent
+                })
+            })
+            .when(tab_style.shadow, |this| this.shadow_xs())
+            .hover(|this| this.bg(hover_style.inner_bg).rounded(inner_radius));
 
         let inner_element = if animate_fg {
             inner_content
@@ -844,26 +835,6 @@ impl RenderOnce for Tab {
                     .border_b(hover_style.borders.bottom)
                     .border_color(hover_style.border_color)
                     .rounded(radius)
-            })
-            .when(has_inline_inner_bg, |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .top_0()
-                        .bottom_0()
-                        .flex()
-                        .items_center()
-                        .child(
-                            div()
-                                .w_full()
-                                .h(inner_height)
-                                .bg(inline_inner_bg)
-                                .rounded(inner_radius)
-                                .when(tab_style.shadow, |this| this.shadow_sm()),
-                        ),
-                )
             })
             // Under `max_width` the label is the only part that gives way, so
             // hold the prefix and suffix (e.g. a close button) at their full size.

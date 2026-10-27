@@ -32,6 +32,8 @@ use gpui_kit::{
 };
 use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
+#[path = "screenshots/segmented_tabs.rs"]
+mod segmented_tabs;
 #[path = "screenshots/settings.rs"]
 mod settings;
 #[path = "screenshots/table_spacing.rs"]

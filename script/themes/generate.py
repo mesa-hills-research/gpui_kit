@@ -319,7 +319,6 @@ def build(name: str, mode: str, r: dict, opts: dict) -> tuple[dict, dict]:
     put("tab.foreground", r["muted"], "muted")
     put("tab.active.foreground", fg, "foreground")
     put("tab_bar.background", r["tab_bar"], "tab_bar")
-    put("tab_bar.segmented.background", r["secondary"], "secondary")
     put("table.background", bg, "background")
     put("table.active.background", r["list_active"], "list_active", 0.2 if dark else 0.16)
     put("table.active.border", r["ring"], "ring")

@@ -14,7 +14,7 @@ use crate::button::{Button, ButtonVariants as _};
 use crate::menu::{DropdownMenu as _, PopupMenuItem};
 use crate::{
     ActiveTheme, ElementExt, Icon, InteractiveElementExt as _, Selectable, Sizable, Size,
-    StyledExt, h_flex, styled::raised_shadow,
+    StyledExt, h_flex,
 };
 
 struct TabIndicatorBounds {
@@ -260,9 +260,12 @@ impl TabBar {
                     div()
                         .w_full()
                         .h(inner_height)
-                        .bg(cx.theme().tokens.background)
-                        .rounded(inner_radius)
-                        .shadow(raised_shadow()),
+                        .border_1()
+                        .border_color(TabVariant::segmented_outline(
+                            self.children[selected_ix].disabled,
+                            cx,
+                        ))
+                        .rounded(inner_radius),
                 ),
                 TabVariant::Pill => el.flex().items_center().child(
                     div()
@@ -385,7 +388,8 @@ impl RenderOnce for TabBar {
                 let padding_x = match self.size {
                     Size::XSmall => px(2.),
                     Size::Small => px(3.),
-                    _ => px(4.),
+                    Size::Large => px(4.),
+                    _ => px(3.),
                 };
                 let padding = Edges {
                     left: padding_x,
@@ -908,7 +912,7 @@ mod tests {
         for (size, padding) in [
             (Size::XSmall, px(2.)),
             (Size::Small, px(3.)),
-            (Size::Medium, px(4.)),
+            (Size::Medium, px(3.)),
             (Size::Large, px(4.)),
         ] {
             let scroll_handle = ScrollHandle::new();
@@ -1134,6 +1138,7 @@ mod tests {
     struct KeyboardHarness {
         selected: Rc<Cell<usize>>,
         scroll_handle: ScrollHandle,
+        variant: TabVariant,
     }
 
     impl Render for KeyboardHarness {
@@ -1141,6 +1146,7 @@ mod tests {
             let selected = self.selected.clone();
             div().w(px(120.)).child(
                 TabBar::new("keyboard-tabs")
+                    .with_variant(self.variant)
                     .w_full()
                     .track_scroll(&self.scroll_handle)
                     .selected_index(self.selected.get())
@@ -1158,6 +1164,13 @@ mod tests {
     fn keyboard_harness(
         cx: &mut TestAppContext,
     ) -> (&mut gpui::VisualTestContext, Rc<Cell<usize>>, ScrollHandle) {
+        keyboard_harness_for(cx, TabVariant::Tab)
+    }
+
+    fn keyboard_harness_for(
+        cx: &mut TestAppContext,
+        variant: TabVariant,
+    ) -> (&mut gpui::VisualTestContext, Rc<Cell<usize>>, ScrollHandle) {
         cx.update(crate::init);
         let selected = Rc::new(Cell::new(1));
         let scroll_handle = ScrollHandle::new();
@@ -1167,6 +1180,7 @@ mod tests {
             move |_, _| KeyboardHarness {
                 selected,
                 scroll_handle,
+                variant,
             }
         });
         draw(cx);
@@ -1181,6 +1195,18 @@ mod tests {
             prefer_character_input: false,
         });
         cx.simulate_event(gpui::KeyUpEvent { keystroke });
+    }
+
+    #[gpui::test]
+    fn segmented_keyboard_navigation_skips_disabled_tabs(cx: &mut TestAppContext) {
+        let (cx, selected, _) = keyboard_harness_for(cx, TabVariant::Segmented);
+        cx.update(|window, cx| window.focus_next(cx));
+        cx.simulate_keystrokes("right right");
+        press(cx, "enter");
+        assert_eq!(selected.get(), 4);
+        cx.simulate_keystrokes("left");
+        press(cx, "space");
+        assert_eq!(selected.get(), 2);
     }
 
     #[gpui::test]

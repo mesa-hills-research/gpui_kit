@@ -75,6 +75,10 @@ TabBar::new("outline-tabs")
 
 #### Segmented
 
+选中项使用前景色描边，容器使用较深的灰色背景。禁用项使用弱化文字，键盘导航会跳过它们。
+容器使用 `tab_bar.segmented.background`，默认取窗口和侧边栏背景中较深的颜色，再降低 10% 亮度。
+默认高度为 34 px，选项高度为 28 px，使用小号文字。可通过尺寸方法调整大小。
+
 ```rust
 use gpui_kit::component::IconName;
 
