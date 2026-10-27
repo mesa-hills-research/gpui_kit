@@ -306,6 +306,20 @@ input.update(cx, |input, cx| input.set_smooth_caret(false, cx));
 
 `smooth_caret_options` takes the same `SmoothCaretOptions` as a textarea.
 
+To glide the caret in every text field of the application, set it once. It
+also reaches the fields that other components build for themselves, such as the
+search field of Settings, a number input or the filter of a searchable Select.
+
+```rust
+use gpui_kit::component::input::set_app_smooth_caret;
+
+gpui_kit::init(cx);
+set_app_smooth_caret(true, cx);
+```
+
+A field's own `smooth_caret` or `set_smooth_caret` still wins. Fields already on
+screen follow a later call at once, so a setting can call it whenever it changes.
+
 ### Paste Hook
 
 `on_paste` intercepts the clipboard before the default text insertion, so

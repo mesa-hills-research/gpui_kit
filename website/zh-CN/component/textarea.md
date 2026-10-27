@@ -127,6 +127,12 @@ Textarea::new(&state)
 
 从 `gpui_kit::component::input` 导入 `InputToken`，从 `gpui_kit::component` 导入 `IconName`。token 会整块换到下一行，自动增高会相应调整输入框高度。换行符应放在 token 之间的普通文本中。使用 `on_token_hover` 可在不选中、不编辑的情况下显示提示或预览；禁用 token 不会上报悬停进入事件；禁用已悬停的 token 时会发送离开事件。编辑、激活、草稿保存、模式限制和 JavaScript API 见 [Input：原子行内 token](./input.md#原子行内-token)。
 
+## 平滑光标
+
+`smooth_caret(true)` 让光标平滑移动，输入的字符随光标经过而显现。退格键、左右方向键和单词移动也使用平滑光标，其他编辑立即生效。默认在 100 毫秒内到位，`smooth_caret_options` 可调整时长。只有绘制使用动画，文本、撤销和拼写检查仍会立即处理每次按键。系统要求减少动态效果时、当前行有从右向左的文字时，或有多个光标时，光标立即移动。
+
+`EditorState` 和单行 `InputState` 使用相同的方法。`set_app_smooth_caret` 为应用中未单独设置的所有输入框开启或关闭平滑光标，已有输入框也会跟随变化。用法见 [Input](./input.md#平滑光标)。
+
 ## 拼写检查与单词建议
 
 Textarea 可以使用应用提供的 `SpellChecker` 标记拼写错误，并使用 `SuggestionProvider` 在光标后显示补全。正在输入的单词不会被标记：光标处的拼写错误会暂缓标记，在已标记的单词中输入会先去掉它的下划线。单词一结束（在其后输入空格、标点或换行，或光标移开）就会立即检查，下划线随即出现或消失，无需等到停止输入。Provider 的 `did_change` 收到的每个编辑都带有 `origin`，说明它的来源：`Typed`（输入）、`Suggestion`（按 Tab 接受的建议）、`Correction`（从拼写错误菜单中选择的更正）、`Pasted`（粘贴）、`History`（撤销与重做）或 `Program`（程序），因此从文本中学习的 Provider 可以只学习用户亲手写下的内容。`gpui-kit-writing` 提供了带英语词典的拼写检查器，以及从用户输入中学习的单词建议，见 [拼写检查与单词建议](../docs/writing)。

@@ -32,7 +32,7 @@ use super::{
     kind::InputModeKind,
     mask_pattern::normalize_number_input,
     mode::LayoutMode,
-    smooth_caret::CaretMotion,
+    smooth_caret::{AppSmoothCaret, CaretMotion, SmoothCaret},
     undo_manager::{EditIntent, UndoManager},
 };
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
@@ -290,7 +290,7 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) cursor_surrounding_lines: Option<usize>,
     pub(super) blink_cursor: Entity<BlinkCursor>,
     /// The smooth caret's options and the glide in progress.
-    pub(super) smooth_caret: super::smooth_caret::SmoothCaret,
+    pub(super) smooth_caret: SmoothCaret,
     pub(super) loading: bool,
     /// The cursors and selections.
     ///
@@ -623,6 +623,9 @@ impl<M: InputModeKind> InputBaseState<M> {
             }),
             cx.on_focus(&focus_handle, window, Self::on_focus),
             cx.on_blur(&focus_handle, window, Self::on_blur),
+            // Unless it chooses for itself, the input follows the application's
+            // smooth caret.
+            cx.observe_global::<AppSmoothCaret>(Self::follow_app_smooth_caret),
         ];
 
         let text_style = window.text_style();
@@ -641,7 +644,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             scroll_beyond_last_line: None,
             cursor_surrounding_lines: None,
             blink_cursor,
-            smooth_caret: Default::default(),
+            smooth_caret: SmoothCaret::new(cx),
             undo_manager,
             inline_tokens: None,
             pending_token: None,
@@ -1107,7 +1110,9 @@ impl<M: InputModeKind> InputBaseState<M> {
 
     /// Glide the caret to where it moves instead of jumping there, and draw a
     /// typed character only as the caret passes it, in any input: a
-    /// single-line input, a textarea or the code editor. Off by default.
+    /// single-line input, a textarea or the code editor. Off by default, or
+    /// as [`set_app_smooth_caret`] chose for every input. The input's own
+    /// choice wins over the application's.
     ///
     /// Typing, Backspace, the arrow keys and the word motions glide the caret
     /// along its row, and every other movement is instant. Only drawing is
@@ -1117,21 +1122,22 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// fast.
     ///
     /// [`SmoothCaretOptions`]: crate::input::SmoothCaretOptions
+    /// [`set_app_smooth_caret`]: crate::input::set_app_smooth_caret
     pub fn smooth_caret(mut self, enabled: bool) -> Self {
-        self.smooth_caret.enabled = enabled;
+        self.smooth_caret.own = Some(enabled);
+        self.smooth_caret.turn(enabled);
         self
     }
 
     /// Turn the smooth caret on or off. See [`Self::smooth_caret`].
     pub fn set_smooth_caret(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        self.smooth_caret.enabled = enabled;
-        if !enabled {
-            self.smooth_caret.stop();
-        }
+        self.smooth_caret.own = Some(enabled);
+        self.smooth_caret.turn(enabled);
         cx.notify();
     }
 
-    /// Whether the smooth caret is on. See [`Self::smooth_caret`].
+    /// Whether the smooth caret is on, by the input's own choice or the
+    /// application's. See [`Self::smooth_caret`].
     pub fn has_smooth_caret(&self) -> bool {
         self.smooth_caret.enabled
     }
