@@ -9,6 +9,9 @@ description: 带校验、掩码和多种扩展能力的文本输入组件。
 
 Input 是一个单行文本输入组件，支持校验、输入掩码、前后缀元素以及多种交互状态。普通多行文本请使用 [Textarea](./textarea.md)，源代码编辑请使用 [Editor](./editor.md)。
 
+文本输入框获得焦点时，一像素边框使用主题的 `ring` 颜色，不绘制会被滚动区域裁切的外环。
+Textarea、NumberInput、OTP 单元格、InputGroup 和 TimeField 采用同样的焦点样式。
+
 ## 导入
 
 ```rust
@@ -259,6 +262,17 @@ input.update(cx, |input, cx| input.set_smooth_caret(false, cx));
 ```
 
 `smooth_caret_options` 接受与 Textarea 相同的 `SmoothCaretOptions`。
+
+若要让应用中的所有输入框都使用平滑光标，设置一次即可。其他组件自己创建的输入框也会遵循它，例如 Settings 的搜索框、数字输入框或可搜索 Select 的筛选框。
+
+```rust
+use gpui_kit::component::input::set_app_smooth_caret;
+
+gpui_kit::init(cx);
+set_app_smooth_caret(true, cx);
+```
+
+输入框自身的 `smooth_caret` 或 `set_smooth_caret` 仍然优先。之后再调用时，屏幕上已有的输入框会立即跟随，因此可以在设置每次变化时调用它。
 
 ### 粘贴钩子
 

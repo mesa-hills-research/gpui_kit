@@ -142,7 +142,7 @@ pub use native::{NativeMenu, NativeMenuItem};
 pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
 pub use ropey::Rope;
 pub use search::{SearchMatcher, SearchSession};
-pub use smooth_caret::SmoothCaretOptions;
+pub use smooth_caret::{SmoothCaretOptions, app_smooth_caret, set_app_smooth_caret};
 pub use spelling::{
     AddToDictionary, IgnoreMisspelling, Misspelling, ReplaceMisspelling, SpellCheck,
     SpellCheckRequest, SpellChecker, SpellEvent, refresh_spelling,

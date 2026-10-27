@@ -15,6 +15,18 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
+- **Outlined segmented tabs** (`gpui-component`). A foreground outline marks the selected option
+  on a darker grey container. Disabled options use muted text and stay out of keyboard navigation.
+- **Tables end at their content** (`gpui-base`). A final Markdown table has no outside bottom
+  gap, like a final paragraph. Tables before another block use `TextViewStyle`'s paragraph gap
+  in both wrapping and horizontal-scroll layouts.
+- **Managed tooltips on custom elements** (`gpui-component`). Import
+  `tooltip::ManagedTooltipExt` and call `.managed_tooltip(...)` on a `div` with an id to use
+  Kit's tooltip timing, positioning and open-menu suppression.
+- **One focus border on text fields** (`gpui-component`). Inputs, textareas, number inputs,
+  OTP cells, input groups and time fields tint their one-pixel border with the theme's `ring`
+  color when focused. They draw no outside band, so focus stays visible inside scroll areas.
+  Buttons and other controls keep their focus-visible rings.
 - **Code blocks on the editor surface** (`gpui-base`, `gpui-component`). Markdown code blocks sit
   on the theme's `editor.background`, where they sat on the muted color, so syntax colors keep the
   contrast the editor gives them in every bundled theme. A 1 px outline in the theme's `border`
@@ -164,7 +176,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   inactive and resumes when its focused input becomes active again.
 - **A smooth caret** (`gpui-base`). `smooth_caret(true)` on any input (a single-line input, a
   textarea or the code editor) glides the caret to where it moves. A typed character is
-  uncovered by the caret as it passes, and the rest of the line follows it. Off by default. See
+  uncovered by the caret as it passes, and the rest of the line follows it. Off by default, and
+  `set_app_smooth_caret` turns it on for every field that doesn't choose for itself, the ones
+  inside other components too, such as the Settings search field. See
   [Textarea: smooth caret](website/component/textarea.md#smooth-caret) and
   [Input: smooth caret](website/component/input.md#smooth-caret).
 - **The system's reduced-motion setting, followed** (`gpui-base`). `gpui_base::init` reads it on
@@ -314,6 +328,11 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   each button's. The box then moves and resizes to the new tooltip and uncovers its text, which
   stays where it is. See
   [Tooltip: moving between tooltips](website/component/tooltip.md#moving-between-tooltips).
+- **No tooltip over an open menu** (`gpui-base`, `gpui-component`). While a dropdown menu,
+  popover or context menu is open, its trigger and the elements inside it show no tooltip, so none
+  covers the menu when the pointer comes back to the trigger. `prepaint_popup_trigger` gives a
+  custom popup host the same. See
+  [Tooltip: while a menu is open](website/component/tooltip.md#while-a-menu-is-open).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it

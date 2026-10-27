@@ -75,6 +75,11 @@ TabBar::new("outline-tabs")
 
 #### Segmented Tabs
 
+The selected option has a foreground outline on an inset grey container. Disabled options use
+muted text and are skipped by the keyboard. The container uses `tab_bar.segmented.background`,
+which defaults to 10% darker than the darker of the window and sidebar backgrounds. The default
+height is 34 px, with 28 px options and small text. Use the size builders for smaller or larger tabs.
+
 ```rust
 use gpui_kit::component::IconName;
 

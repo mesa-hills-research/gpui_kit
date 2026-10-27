@@ -82,6 +82,17 @@ element ID, because the trigger's state is kept under it.
 stays until it is hidden, and another request made this way replaces it at
 once.
 
+### Inside the trigger of an open popup
+
+`Popup` prepaints its trigger with `prepaint_popup_trigger`, so while it shows
+content, the tooltip triggers inside its trigger show nothing and a tooltip
+already up for one of them hides. An element of your own that hosts a popup
+does the same around its trigger's prepaint:
+
+```rust
+gpui_kit::base::prepaint_popup_trigger(self.open, || self.trigger.prepaint(window, cx));
+```
+
 ## Complete Rust example
 
 The complete implementation used by the runnable showcase is embedded directly from Rust source:

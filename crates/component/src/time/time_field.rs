@@ -7,7 +7,7 @@ use gpui::{
 
 use crate::{
     ActiveTheme as _, Disableable, Sizable, Size, StyleSized as _, StyledExt as _,
-    ThemeStyled as _, input::input_style,
+    input::input_style,
 };
 
 use gpui_base::TimeField as BaseTimeField;
@@ -114,7 +114,7 @@ impl RenderOnce for TimeField {
             .px_1()
             .when(self.disabled, |this| this.opacity(0.5))
             .when(focused && !self.disabled, |this| {
-                this.focus_ring_style(window, cx)
+                this.border_color(cx.theme().ring)
             })
             .when(self.invalid, |this| this.border_color(cx.theme().danger))
             .child(

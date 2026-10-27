@@ -1,4 +1,6 @@
 mod common;
+#[path = "overlays/managed_tooltip.rs"]
+mod managed_tooltip;
 use gpui_kit::component::{
     Root, WindowExt,
     button::Button,

@@ -2066,6 +2066,67 @@ mod tests {
         }
     }
 
+    #[gpui::test]
+    fn a_final_table_has_no_more_trailing_gap_than_a_final_paragraph(cx: &mut TestAppContext) {
+        const TABLE: &str = "| Name | Age |\n|:--|--:|\n| Alice | 30 |";
+        const FOLLOWED: &str = "| Name | Age |\n|:--|--:|\n| Alice | 30 |\n\nAfter table.";
+
+        struct TableEndRoot {
+            view: Entity<TextViewState>,
+            scroll: bool,
+        }
+
+        impl Render for TableEndRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let mut table = StyleRefinement::default();
+                if self.scroll {
+                    table.overflow.x = Some(Overflow::Scroll);
+                }
+                div().w(px(320.)).child(
+                    TextView::new(&self.view)
+                        .style(
+                            TextViewStyle::default()
+                                .with_table(table)
+                                .with_paragraph_gap(rems(2.)),
+                        )
+                        .table_actions(|_, _, _| {
+                            div().h(px(1.)).debug_selector(|| "table-end".into())
+                        }),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        for scroll in [false, true] {
+            for source in [TABLE, "After table.", FOLLOWED] {
+                let (root, cx) = cx.add_window_view(|_, cx| TableEndRoot {
+                    view: cx.new(|cx| TextViewState::markdown(source, cx)),
+                    scroll,
+                });
+                let cx: &mut VisualTestContext = cx;
+                cx.run_until_parked();
+                let gap = cx.update(|window, cx| {
+                    window.draw(cx).clear(cx);
+                    rems(2.).to_pixels(window.rem_size())
+                });
+                let (bounds, lines) = root.read_with(cx, |root, cx| {
+                    let state = root.view.read(cx);
+                    (state.bounds(), state.selection_adapter.text_bounds())
+                });
+                let content_bottom = if source == TABLE {
+                    cx.debug_bounds("table-end").unwrap().bottom()
+                } else {
+                    lines.last().unwrap().bottom()
+                };
+                assert_eq!(bounds.bottom(), content_bottom, "scroll {scroll}, {source}");
+                if source == FOLLOWED {
+                    let table_bottom = cx.debug_bounds("table-end").unwrap().bottom();
+                    assert_eq!(lines.last().unwrap().top() - table_bottom, gap);
+                }
+            }
+        }
+    }
+
     #[test]
     fn plugin_accepts_text_view_plugins_beyond_markdown() {
         let view = TextView::markdown("plugin-test", "").plugin(DummyTextViewPlugin);

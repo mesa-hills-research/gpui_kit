@@ -1683,3 +1683,62 @@ fn aligned_single_line_inputs_glide_to_the_caret(cx: &mut TestAppContext) {
         }
     }
 }
+
+/// Whether `state`'s caret glides.
+fn glides<M: InputModeKind>(
+    state: &gpui::Entity<InputBaseState<M>>,
+    cx: &impl gpui::AppContext,
+) -> bool {
+    state.read_with(cx, |state, _| state.has_smooth_caret())
+}
+
+/// An input that doesn't choose for itself follows the application's smooth
+/// caret as it changes, and one made later starts with it.
+#[gpui::test]
+fn inputs_follow_the_app_smooth_caret(cx: &mut TestAppContext) {
+    let mut test = KeymapTest::new(cx, Keymap::Cua, KeymapPlatform::Linux, "abˇcd");
+    test.cx.update(|window, _| window.activate_window());
+    assert_eq!(test.cx.update(|_, cx| app_smooth_caret(cx)), None);
+    assert!(!glides(&test.textarea, &test.cx));
+
+    test.cx.update(|_, cx| set_app_smooth_caret(true, cx));
+    test.draw();
+    assert_eq!(test.cx.update(|_, cx| app_smooth_caret(cx)), Some(true));
+    assert!(glides(&test.textarea, &test.cx));
+    test.type_text("W");
+    let gliding = |test: &KeymapTest| {
+        test.textarea
+            .read_with(&test.cx, |state, _| state.smooth_caret.last_frame.is_some())
+    };
+    assert!(gliding(&test), "typing glides");
+    let later = test
+        .cx
+        .update(|window, cx| cx.new(|cx| crate::input::InputState::new(window, cx)));
+    assert!(glides(&later, &test.cx));
+
+    // Turned off, the glide in progress ends.
+    test.cx.update(|_, cx| set_app_smooth_caret(false, cx));
+    test.draw();
+    assert!(!glides(&test.textarea, &test.cx));
+    assert!(!glides(&later, &test.cx));
+    assert!(!gliding(&test));
+}
+
+/// An input's own choice wins over the application's, whichever way either
+/// goes.
+#[gpui::test]
+fn an_input_choice_wins_over_the_app_smooth_caret(cx: &mut TestAppContext) {
+    let mut test = KeymapTest::new(cx, Keymap::Cua, KeymapPlatform::Linux, "abˇcd");
+    test.update(|state, _, cx| state.set_smooth_caret(false, cx));
+    test.cx.update(|_, cx| set_app_smooth_caret(true, cx));
+    test.draw();
+    assert!(!glides(&test.textarea, &test.cx));
+
+    let chosen = test.cx.update(|window, cx| {
+        cx.new(|cx| crate::input::InputState::new(window, cx).smooth_caret(true))
+    });
+    test.cx.update(|_, cx| set_app_smooth_caret(false, cx));
+    test.draw();
+    assert!(glides(&chosen, &test.cx));
+    assert!(!glides(&test.textarea, &test.cx));
+}

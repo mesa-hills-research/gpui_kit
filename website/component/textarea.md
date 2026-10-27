@@ -571,4 +571,5 @@ Typing faster than that keeps the caret moving at a steady pace, a character or 
 drawing is animated, so the text, undo and the spell checker see every keystroke at once.
 `EditorState` and the single-line `InputState` have the same methods. The caret moves at once
 while the system asks for reduced motion, on a line with right-to-left text, and with several
-carets.
+carets. `set_app_smooth_caret` turns the smooth caret on or off in every field of the application
+that doesn't choose for itself. See [Input: smooth caret](./input.md#smooth-caret).

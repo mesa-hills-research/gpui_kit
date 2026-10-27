@@ -50,7 +50,7 @@ pub use gpui_base::input::{
     SelectToEndOfLine, SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart,
     SelectToStartOfLine, Selection, ShowCharacterPalette, ShowDocumentHandler, SmoothCaretOptions,
     SubmitKey, TabSize, TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions,
-    Undo, WrappingIndent,
+    Undo, WrappingIndent, app_smooth_caret, set_app_smooth_caret,
 };
 pub use gpui_base::input::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,

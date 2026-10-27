@@ -277,22 +277,25 @@ impl Render for TabsStory {
                 ),
             )
             .child(
-                section("Segmented Tabs").w_full().child(
-                    TabBar::new("segmented")
-                        .w_full()
-                        .segmented()
-                        .with_size(self.size)
-                        .menu(self.menu)
-                        .when_some(max_width, |this, max_width| this.max_width(max_width))
-                        .selected_index(self.active_tab_ix)
-                        .on_click(cx.listener(|this, ix: &usize, window, cx| {
-                            this.set_active_tab(*ix, window, cx);
-                        }))
-                        .child(IconName::Bot)
-                        .child(IconName::Calendar)
-                        .child(IconName::Map)
-                        .children(vec!["Appearance", "Settings", "About", "License"]),
-                ),
+                section("Segmented Tabs")
+                    .description("An outline marks the selected option on an inset grey container.")
+                    .w_full()
+                    .child(
+                        TabBar::new("segmented")
+                            .w_full()
+                            .segmented()
+                            .with_size(self.size)
+                            .menu(self.menu)
+                            .when_some(max_width, |this, max_width| this.max_width(max_width))
+                            .selected_index(self.active_tab_ix)
+                            .on_click(cx.listener(|this, ix: &usize, window, cx| {
+                                this.set_active_tab(*ix, window, cx);
+                            }))
+                            .child(IconName::Bot)
+                            .child(IconName::Calendar)
+                            .child(IconName::Map)
+                            .children(vec!["Appearance", "Settings", "About", "License"]),
+                    ),
             )
             .child(
                 section("Dynamic Tabs")
