@@ -224,18 +224,24 @@ def build_checks(r: kit.Resolved) -> list[Check]:
     for kind in ("error", "warning", "info", "hint"):
         text(f"diagnostic.{kind}", f"Diagnostic {kind} underline", f"@status:{kind}", ed, "ui")
 
+    # Markdown blocks use the editor background but inherit the body foreground.
+    text("code_block.text", "Code block text", "fg:foreground", ed)
+
     # Syntax: one set of checks per distinct color, naming every capture that uses it
     fg = lookup(r, "@editor_fg")[0]
     groups: dict[tuple, list[str]] = {}
     for name in kit.HIGHLIGHT_NAMES:
         c = kit.syntax_color(r.highlight["syntax"], name)
-        if c is None or C.to_hex(c) == C.to_hex(fg):
+        if c is None:
             continue
         level = "subtle" if name in SUBTLE_SYNTAX else "text"
         groups.setdefault((C.to_hex(c), level), []).append(name)
-    for (_, level), names in groups.items():
+    for (color, level), names in groups.items():
         ref = "syn:" + names[0]
         label = ", ".join(names)
+        text(f"code_block.syntax.{names[0]}", f"Code block syntax ({label})", ref, ed, level)
+        if color == C.to_hex(fg):
+            continue
         text(f"syntax.{names[0]}", f"Syntax: {label}", ref, ed, level)
         text(f"syntax.{names[0]}.active_line", f"Syntax on the active line: {label}", ref, ed + ["@active_line"], level)
         text(f"syntax.{names[0]}.selection", f"Selected syntax: {label}", ref, ed + ["@selection"], "subtle")

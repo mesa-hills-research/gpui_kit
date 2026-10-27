@@ -6,11 +6,11 @@ themes from small palette specs and draw a preview of every theme. They need Pyt
 later and nothing else.
 
 ```sh
-python3 script/themes check                     # every file in themes/
-python3 script/themes check themes/macos.json   # one file
-python3 script/themes fix themes/ayu.json       # move the colors that fail until they pass
-python3 script/themes generate                  # rebuild themes from script/themes/palettes/
-python3 script/themes preview -o preview.html   # an HTML page showing every theme
+python3 -I script/themes check                     # every file in themes/
+python3 -I script/themes check themes/macos.json   # one file
+python3 -I script/themes fix themes/ayu.json       # move the colors that fail until they pass
+python3 -I script/themes generate                  # rebuild themes from script/themes/palettes/
+python3 -I script/themes preview -o preview.html   # an HTML page showing every theme
 ```
 
 ## Checking a theme
@@ -25,7 +25,8 @@ list and table rows at rest, hovered and selected, menus, tabs, the title and st
 inputs, every button variant and state, semantic colors as text and as fills, focus rings,
 borders, the scrollbar thumb, and in the editor the text, line numbers, the caret line's
 number, gutter separator, caret, selection, search matches, diagnostics and every syntax color
-on the editor background, on the active line and under a selection.
+on the editor background, on the active line and under a selection. Markdown code blocks check
+plain text and every syntax color on their background too.
 
 Each failing pair is listed with its ratio, the minimum it needed, the two colors and where
 it appears. The exit status is 1 when anything fails.
@@ -45,6 +46,12 @@ the schema: `link.foreground` for `link`, `drag_border` for `drag.border`, `comm
 A code editor draws its text in `editor.foreground`, and editor gutters draw line numbers in
 `editor.line_number` and the caret line's number in `editor.active_line_number`. They default
 to `foreground`, `muted.foreground` and the editor's text color.
+
+Markdown code blocks use `editor.background` from `highlight`, falling back to the input
+background when unset. In light themes that is `background`. In dark themes it is `input.border`
+at 30% opacity over `background`. Plain code inherits `foreground`, not `editor.foreground`. Syntax
+uses the same colors and contrast levels as the editor. Using the editor surface keeps those
+colors readable without changing each theme's palette. Inline code keeps `accent.background`.
 
 ## Contrast rules
 
@@ -190,7 +197,7 @@ top switch between generated and other themes and between light and dark.
 ## Tests
 
 ```sh
-python3 -m unittest discover -s script/tests
+python3 -I -m unittest discover -s script/tests
 ```
 
 The tests cover the contrast math, compare the checker's key tables and the schema with the

@@ -98,6 +98,54 @@ class KitReplay(unittest.TestCase):
         # The active line's number falls back to the editor's text color.
         self.assertEqual(results["editor.active_line_number"].fg_hex, "#333333")
 
+    def test_code_blocks_check_body_text_and_every_syntax_level(self):
+        for mode, background, foreground in (("light", "#FFFFFF", "#000000"),
+                                              ("dark", "#000000", "#FFFFFF")):
+            with self.subTest(mode=mode):
+                theme = {"name": "T", "mode": mode, "colors": {
+                    "foreground": "#777777", "muted.background": foreground,
+                }, "highlight": {"editor.background": background, "editor.foreground": foreground,
+                                  "syntax": {name: {"color": foreground}
+                                             for name in kit.SYNTAX_KEYS}}}
+                resolved = kit.resolve_theme(theme)
+                results = {r.check.id: r for r in checks.evaluate(resolved)}
+                plain = results["code_block.text"]
+                self.assertEqual((plain.fg_hex, plain.bg_hex), ("#777777", background))
+                self.assertEqual(plain.ok, mode == "dark")
+                self.assertTrue(results["editor.text"].ok)
+                syntax = [r for r in results.values() if r.check.id.startswith("code_block.syntax.")]
+                self.assertEqual({r.check.level for r in syntax}, {"text", "subtle"})
+                for result in syntax:
+                    self.assertEqual((result.fg_hex, result.bg_hex), (foreground, background))
+                    self.assertTrue(result.ok)
+                names = {name for r in syntax for name in r.check.label.split("(")[1][:-1].split(", ")}
+                self.assertEqual(names, set(kit.HIGHLIGHT_NAMES))
+                theme["highlight"]["syntax"] = {
+                    "attribute": {"color": "#777777"}, "punctuation": {"color": "#777777"},
+                }
+                results = {r.check.id: r for r in checks.evaluate(kit.resolve_theme(theme))}
+                self.assertEqual(results["code_block.syntax.attribute"].ok, mode == "dark")
+                self.assertTrue(results["code_block.syntax.punctuation"].ok)
+
+    def test_code_block_background_falls_back_to_the_input_surface(self):
+        for mode in ("light", "dark"):
+            with self.subTest(mode=mode):
+                resolved = kit.resolve_theme({"name": "T", "mode": mode, "colors": {
+                    "background": "#FFFFFF", "foreground": "#000000", "input.border": "#000000",
+                }, "highlight": {"syntax": {}}})
+                results = {r.check.id: r for r in checks.evaluate(resolved)}
+                self.assertEqual(results["code_block.text"].bg_hex, results["input"].bg_hex)
+                self.assertEqual(results["code_block.text"].bg_hex,
+                                 "#FFFFFF" if mode == "light" else "#B2B2B2")
+
+    def test_every_theme_passes_the_full_audit(self):
+        for path in sorted((kit.ROOT / "themes").glob("*.json")):
+            for theme in json.loads(path.read_text())["themes"]:
+                with self.subTest(file=path.name, theme=theme["name"]):
+                    failures = [(r.check.id, r.ratio) for r in checks.evaluate(kit.resolve_theme(theme))
+                                if not r.ok]
+                    self.assertEqual(failures, [])
+
     def test_missing_keys_fall_back_like_the_kit(self):
         theme = {"name": "T", "mode": "light", "colors": {"primary.background": "#0000FF", "background": "#FFFFFF"}}
         tokens = kit.resolve_theme(theme).tokens

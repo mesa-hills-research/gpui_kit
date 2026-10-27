@@ -51,7 +51,7 @@ pub(crate) fn base_text_view_style(theme: &crate::Theme) -> gpui_base::TextViewS
         .with_muted_foreground(theme.muted_foreground)
         .with_link(theme.link)
         .with_selection(theme.selection)
-        .with_code_background(theme.muted)
+        .with_code_background(theme.editor_background())
         .with_border(theme.border)
         .with_code_block(code_block)
         .with_table(table)
@@ -322,12 +322,37 @@ mod tests {
         assert_eq!(style.muted_foreground(), theme.muted_foreground);
         assert_eq!(style.link(), theme.link);
         assert_eq!(style.selection(), theme.selection);
+        assert_eq!(style.code_background(), theme.editor_background());
         assert_eq!(style.inline_code().background_color, Some(theme.accent));
         let radius = theme.semantic_tokens().radius.md;
         assert_eq!(style.table().corner_radii.top_left, Some(radius.into()));
         assert_eq!(style.table().corner_radii.top_right, Some(radius.into()));
         assert_eq!(style.table().corner_radii.bottom_left, Some(radius.into()));
         assert_eq!(style.table().corner_radii.bottom_right, Some(radius.into()));
+    }
+
+    #[test]
+    fn component_code_block_background_tracks_the_editor_surface() {
+        for mode in [crate::ThemeMode::Light, crate::ThemeMode::Dark] {
+            let mut theme = Theme::default();
+            theme.mode = mode;
+            let editor_background = gpui::rgb(0x123456).into();
+            std::sync::Arc::make_mut(&mut theme.highlight_theme)
+                .style
+                .editor_background = Some(editor_background);
+            assert_eq!(
+                super::base_text_view_style(&theme).code_background(),
+                editor_background
+            );
+
+            std::sync::Arc::make_mut(&mut theme.highlight_theme)
+                .style
+                .editor_background = None;
+            assert_eq!(
+                super::base_text_view_style(&theme).code_background(),
+                theme.input_background()
+            );
+        }
     }
 
     #[test]
