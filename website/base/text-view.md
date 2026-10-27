@@ -73,6 +73,8 @@ let style = TextViewStyle::default()
 TextView::markdown("themed", source).style(style)
 ```
 
+`with_paragraph_gap(rems(...))` sets the paragraph gap, also used after tables in wrapping and horizontal-scroll layouts. A final table has no outside bottom gap, like a final paragraph.
+
 A code block has no outline by default. `with_code_border(color)` gives it a 1 px border, for a code background that can match the page. The component theme sets one in the theme's `border` color.
 
 Heading refinements receive the Markdown heading level (1-6) and are applied

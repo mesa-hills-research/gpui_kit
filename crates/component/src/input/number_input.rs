@@ -11,7 +11,6 @@ use gpui::{
 use crate::{Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _};
 
 use super::{Input, InputState, input::input_style};
-use crate::ThemeStyled as _;
 use gpui_base::NumberInput as BaseNumberInput;
 pub use gpui_base::{NumberInputEvent, NumberStep, StepAction};
 use rust_i18n::t;
@@ -185,9 +184,7 @@ impl RenderOnce for NumberInput {
                     .child(Icon::new(IconName::Plus).with_size(button_size))
             });
 
-        // The visual frame wraps the complete spinbutton. BaseNumberInput routes
-        // application children into its text slot, so putting the ring on that
-        // element would incorrectly surround only the editable middle region.
+        // The frame surrounds the complete spinbutton, including its step buttons.
         div()
             .flex_1()
             .input_h(self.size)
@@ -196,17 +193,13 @@ impl RenderOnce for NumberInput {
                 this.bg(bg)
                     .border_1()
                     .border_color(border_color)
-                    .when(focused, |this| {
-                        this.border_1().border_color(cx.theme().ring)
+                    .when(focused && self.focus_ring_enabled, |this| {
+                        this.border_color(cx.theme().ring)
                     })
             })
             .refine_style(&self.style)
             .when(self.disabled, |this| this.opacity(0.5))
             .child(content)
-            .when(
-                focused && self.appearance && self.focus_ring_enabled,
-                |this| this.focus_ring_style(window, cx),
-            )
     }
 }
 

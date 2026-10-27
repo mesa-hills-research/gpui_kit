@@ -70,7 +70,9 @@ impl RenderOnce for Tooltip {
 /// from the element's prepaint, every frame. A request made with
 /// [`TooltipRequest::for_trigger`] is then drawn only on frames that draw its
 /// trigger: the tooltip disappears on the first frame without the trigger, and
-/// one still waiting for its show delay never appears.
+/// one still waiting for its show delay never appears. Neither shows while the
+/// trigger is drawn inside the trigger of an open popup, as
+/// [`prepaint_popup_trigger`] describes.
 #[derive(Clone, Default)]
 pub struct TooltipTrigger(Rc<RefCell<Option<Rc<TriggerState>>>>);
 
@@ -81,6 +83,38 @@ struct TriggerState {
     bounds: Cell<Bounds<Pixels>>,
     hitbox: Cell<Option<HitboxId>>,
     prepainted: Cell<bool>,
+    /// Drawn inside the trigger of an open popup, as of its last prepaint.
+    in_open_popup_trigger: Cell<bool>,
+}
+
+thread_local! {
+    /// Whether the element being prepainted is inside the trigger of an open
+    /// popup.
+    static IN_OPEN_POPUP_TRIGGER: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Restores the scope [`prepaint_popup_trigger`] replaced when dropped.
+struct PopupTriggerScope(bool);
+
+impl Drop for PopupTriggerScope {
+    fn drop(&mut self) {
+        IN_OPEN_POPUP_TRIGGER.set(self.0);
+    }
+}
+
+/// Runs `prepaint` for the trigger of a menu, popover or other popup.
+///
+/// While `open`, the tooltip triggers prepainted inside it show no tooltip,
+/// and one already up hides, so no tooltip covers the popup the trigger
+/// opened. Once a frame prepaints them with the popup closed, the pointer
+/// shows their tooltips again as usual. [`crate::Popup`] does this for its
+/// trigger, and a custom element hosting a popup calls it around its
+/// trigger's prepaint.
+pub fn prepaint_popup_trigger<R>(open: bool, prepaint: impl FnOnce() -> R) -> R {
+    let outer = IN_OPEN_POPUP_TRIGGER.get();
+    let _scope = PopupTriggerScope(outer);
+    IN_OPEN_POPUP_TRIGGER.set(outer || open);
+    prepaint()
 }
 
 impl TooltipTrigger {
@@ -110,6 +144,7 @@ impl TooltipTrigger {
         state.bounds.set(bounds);
         state.hitbox.set(Some(hitbox.id));
         state.prepainted.set(true);
+        state.in_open_popup_trigger.set(IN_OPEN_POPUP_TRIGGER.get());
         *self.0.borrow_mut() = Some(state);
     }
 }
@@ -263,6 +298,15 @@ impl TooltipOverlay {
         if !self.enabled {
             return;
         }
+        if content
+            .trigger
+            .as_ref()
+            .is_some_and(|trigger| trigger.in_open_popup_trigger.get())
+        {
+            // A trigger whose popup is open counts as no trigger at all.
+            self.request_hide(window, cx);
+            return;
+        }
         self.hide_task = None;
         self.hovered = content.trigger.clone();
         if let Some(shown) = &self.content {
@@ -371,7 +415,8 @@ impl TooltipOverlay {
         }
     }
 
-    /// Hides the tooltip if it still belongs to `trigger`, which is gone.
+    /// Hides the tooltip if it still belongs to `trigger`, which is gone or
+    /// now inside the trigger of an open popup.
     fn trigger_left(&mut self, trigger: &Rc<TriggerState>, cx: &mut Context<Self>) {
         let shown_for_trigger = self
             .content
@@ -428,7 +473,8 @@ impl Render for TooltipOverlay {
     }
 }
 
-/// Paints the tooltip only on frames that have its trigger.
+/// Paints the tooltip only on frames that have its trigger, outside the
+/// trigger of an open popup.
 ///
 /// Deferred draws are painted after every element has been prepainted, and
 /// after GPUI has hit-tested the new frame, so by then the trigger has either
@@ -504,7 +550,8 @@ impl Element for TriggerGate {
             self.child.paint(window, cx);
             return;
         };
-        if trigger.in_frame(window) || self.leaving {
+        let in_frame = trigger.in_frame(window);
+        if (in_frame || self.leaving) && !trigger.in_open_popup_trigger.get() {
             self.child.paint(window, cx);
             return;
         }

@@ -175,15 +175,13 @@ impl RenderOnce for InputGroup {
             .control
             .map(|input| render_control(input, presentation, multiline));
         let theme = cx.theme();
+        let focused = focused && self.focus_ring;
         let appearance = GroupAppearance::new(theme, focused, disabled, self.invalid);
         let radius = theme.radius;
         let foreground = theme.foreground;
-        let show_ring = theme.focus_ring && self.focus_ring;
         let motion = theme.motion_tokens();
         let duration = motion.duration_fast;
         let easing = motion.easing_move.clone();
-        // The border and background colors transition; the ring outside them
-        // changes immediately, like the standalone input's.
         let (border, background) = window.with_id(self.id.clone(), |window| {
             let transition = || gpui_base::Transition::new(duration).easing(easing.clone());
             (
@@ -227,10 +225,7 @@ impl RenderOnce for InputGroup {
             })
             .refine_style(&self.style)
             .when(disabled, |this| this.bg(background).opacity(0.5))
-            .when(appearance.ring.is_some(), |this| this.border_color(border))
-            .when_some(appearance.ring.filter(|_| show_ring), |this, ring| {
-                crate::styled::focus_ring(this, window, ring)
-            })
+            .when(self.invalid || focused, |this| this.border_color(border))
             .when_some(state.filter(|_| !disabled), |this, state| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     // Native buttons prevent the default mouse-down focus action.
@@ -288,7 +283,6 @@ fn render_control(
 struct GroupAppearance {
     background: gpui::Hsla,
     border: gpui::Hsla,
-    ring: Option<gpui::Hsla>,
 }
 
 impl GroupAppearance {
@@ -302,25 +296,14 @@ impl GroupAppearance {
         };
         // Validation remains visible when editing is disabled. Focus alone never
         // reactivates a disabled control, and never replaces its validation color.
-        let (border, ring) = if invalid {
-            (
-                theme.danger,
-                Some(
-                    theme
-                        .danger
-                        .opacity(if theme.is_dark() { 0.4 } else { 0.2 }),
-                ),
-            )
+        let border = if invalid {
+            theme.danger
         } else if focused && !disabled {
-            (theme.ring, Some(theme.ring.opacity(0.5)))
+            theme.ring
         } else {
-            (theme.input, None)
+            theme.input
         };
-        Self {
-            background,
-            border,
-            ring,
-        }
+        Self { background, border }
     }
 }
 

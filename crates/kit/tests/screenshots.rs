@@ -34,6 +34,10 @@ use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
 #[path = "screenshots/settings.rs"]
 mod settings;
+#[path = "screenshots/table_spacing.rs"]
+mod table_spacing;
+#[path = "screenshots/text_field_focus.rs"]
+mod text_field_focus;
 
 /// A typical phone's scale factor. Each golden is this many device pixels per logical pixel.
 const SCALE: f32 = 2.;

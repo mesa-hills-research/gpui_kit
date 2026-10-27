@@ -430,11 +430,13 @@ impl ComponentTooltip {
     }
 }
 
-// ── Internal managed tooltip trait ──────────────────────────────────────────
-
-pub(crate) trait ManagedTooltipExt:
-    StatefulInteractiveElement + crate::ElementExt + Sized
-{
+/// Kit-managed tooltips for any stateful interactive element, including a `div` with an id.
+///
+/// These tooltips share the window's timing, placement and lifecycle rules. They hide
+/// while their trigger's menu or popover is open and are disabled on mobile platforms.
+/// GPUI's `InteractiveElement::tooltip` uses a separate tooltip system.
+pub trait ManagedTooltipExt: StatefulInteractiveElement + crate::ElementExt + Sized {
+    /// Show a tooltip on hover, with placement chosen to fit the window.
     fn managed_tooltip(
         self,
         build_tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
@@ -442,6 +444,7 @@ pub(crate) trait ManagedTooltipExt:
         self.managed_tooltip_with_placement(None, build_tooltip)
     }
 
+    /// Show a tooltip on hover, preferring `placement` when it fits the window.
     fn managed_tooltip_at(
         self,
         placement: Placement,
@@ -450,6 +453,7 @@ pub(crate) trait ManagedTooltipExt:
         self.managed_tooltip_with_placement(Some(placement), build_tooltip)
     }
 
+    /// Show a tooltip with an optional preferred placement. `None` chooses automatically.
     fn managed_tooltip_with_placement(
         self,
         preferred_placement: Option<Placement>,
@@ -504,15 +508,17 @@ mod tests {
     use std::time::Duration;
 
     use gpui::{
-        AppContext as _, Context, Entity, InputEvent as _, InteractiveElement as _, IntoElement,
-        Modifiers, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
-        Render, Styled as _, TestAppContext, VisualTestContext, Window, div, point,
+        App, AppContext as _, Context, Entity, InputEvent as _, InteractiveElement as _,
+        IntoElement, Modifiers, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _,
+        Pixels, Point, Render, Styled as _, TestAppContext, VisualTestContext, Window, div, point,
         prelude::FluentBuilder as _, px, size,
     };
 
     use crate::{
         IconName, Sizable as _,
         button::{Button, ButtonVariants as _},
+        menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
+        popover::Popover,
     };
 
     /// Longer than any show delay or grace period.
@@ -921,5 +927,174 @@ mod tests {
         assert!(painted(cx), "the tooltip outlasts the pointer briefly");
         wait(cx, LONG);
         assert!(!painted(cx), "then hides");
+    }
+
+    /// Buttons with tooltips that open a menu, a popover and a context menu.
+    struct Triggers;
+
+    impl Render for Triggers {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let item = |_: &mut Window, _: &mut App| {
+                div().debug_selector(|| "item".into()).child("Stop all")
+            };
+            // Clear of the left edge, which would push a tooltip off center.
+            div()
+                .size_full()
+                .p(px(20.))
+                .pl(px(200.))
+                .flex()
+                .gap(px(80.))
+                .child(
+                    Button::new("menu")
+                        .debug_selector(|| "menu".into())
+                        .icon(IconName::Ellipsis)
+                        .tooltip("More")
+                        .dropdown_menu(move |menu, _, _| menu.item(PopupMenuItem::element(item))),
+                )
+                .child(
+                    Popover::new("popover")
+                        .trigger(
+                            Button::new("usage")
+                                .debug_selector(|| "usage".into())
+                                .label("Usage")
+                                .tooltip("Usage"),
+                        )
+                        .content(|_, _, _| {
+                            Button::new("inside")
+                                .debug_selector(|| "inside".into())
+                                .label("Inside")
+                                .tooltip("Inside")
+                        }),
+                )
+                .child(
+                    Button::new("row")
+                        .debug_selector(|| "row".into())
+                        .label("Row")
+                        .tooltip("Row")
+                        .context_menu(move |menu, _, _| menu.item(PopupMenuItem::element(item))),
+                )
+        }
+    }
+
+    fn triggers(cx: &mut TestAppContext) -> &mut VisualTestContext {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| Triggers);
+            crate::Root::new(view, window, cx)
+        });
+        cx.simulate_resize(size(px(600.), px(300.)));
+        draw(cx);
+        cx
+    }
+
+    /// Takes the pointer off every trigger and brings it back onto the
+    /// top-left corner of the one named `name`, clear of a context menu
+    /// opened at its middle, resting long enough each time for a tooltip.
+    fn leave_and_return(name: &'static str, cx: &mut VisualTestContext) {
+        cx.simulate_mouse_move(point(px(590.), px(290.)), None, Modifiers::default());
+        draw(cx);
+        wait(cx, LONG);
+        let corner = cx
+            .debug_bounds(name)
+            .expect("the trigger is painted")
+            .origin;
+        cx.simulate_mouse_move(corner + point(px(3.), px(3.)), None, Modifiers::default());
+        draw(cx);
+        wait(cx, LONG);
+    }
+
+    /// Opens the popup of the trigger named `name` with `open`, moves the
+    /// pointer away and back, closes it, and does the same again. The popup
+    /// is open while an element named `surface` is painted.
+    fn assert_no_tooltip_while_open(
+        name: &'static str,
+        surface: &'static str,
+        open: impl FnOnce(Point<Pixels>, &mut VisualTestContext),
+        cx: &mut VisualTestContext,
+    ) {
+        let center = point_at(name, cx);
+        wait(cx, LONG);
+        assert!(
+            shows_tooltip_of(name, cx),
+            "a closed trigger shows its tooltip"
+        );
+
+        open(center, cx);
+        draw(cx);
+        assert!(cx.debug_bounds(surface).is_some(), "the popup opens");
+        assert!(!painted(cx), "opening the popup hides the tooltip");
+
+        leave_and_return(name, cx);
+        assert!(cx.debug_bounds(surface).is_some(), "the popup stays open");
+        assert!(
+            !painted(cx),
+            "the pointer coming back to the trigger shows no tooltip over its popup"
+        );
+
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        assert!(
+            cx.debug_bounds(surface).is_none(),
+            "escape closes the popup"
+        );
+
+        leave_and_return(name, cx);
+        assert!(
+            shows_tooltip_of(name, cx),
+            "once closed, the trigger shows its tooltip again"
+        );
+    }
+
+    #[gpui::test]
+    fn a_button_shows_no_tooltip_while_its_dropdown_menu_is_open(cx: &mut TestAppContext) {
+        let cx = triggers(cx);
+        assert_no_tooltip_while_open(
+            "menu",
+            "item",
+            |center, cx| cx.simulate_click(center, Modifiers::default()),
+            cx,
+        );
+    }
+
+    #[gpui::test]
+    fn a_button_shows_no_tooltip_while_its_popover_is_open(cx: &mut TestAppContext) {
+        let cx = triggers(cx);
+        assert_no_tooltip_while_open(
+            "usage",
+            "inside",
+            |center, cx| cx.simulate_click(center, Modifiers::default()),
+            cx,
+        );
+    }
+
+    /// A right click leaves the tooltip up until the menu opens.
+    #[gpui::test]
+    fn an_element_shows_no_tooltip_while_its_context_menu_is_open(cx: &mut TestAppContext) {
+        let cx = triggers(cx);
+        assert_no_tooltip_while_open(
+            "row",
+            "item",
+            |center, cx| {
+                cx.simulate_mouse_down(center, MouseButton::Right, Modifiers::default());
+                cx.simulate_mouse_up(center, MouseButton::Right, Modifiers::default());
+                draw(cx);
+            },
+            cx,
+        );
+    }
+
+    #[gpui::test]
+    fn tooltips_inside_an_open_popover_still_show(cx: &mut TestAppContext) {
+        let cx = triggers(cx);
+        let usage = point_at("usage", cx);
+        cx.simulate_click(usage, Modifiers::default());
+        draw(cx);
+
+        point_at("inside", cx);
+        wait(cx, LONG);
+        assert!(shows_tooltip_of("inside", cx));
     }
 }

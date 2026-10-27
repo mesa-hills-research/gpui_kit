@@ -211,6 +211,7 @@ pub use toggle_group::ToggleGroup;
 pub use toolbar::{Toolbar, ToolbarGroup};
 pub use tooltip::{
     Tooltip, TooltipOverlay, TooltipPositioner, TooltipRequest, TooltipTransition, TooltipTrigger,
+    prepaint_popup_trigger,
 };
 pub use touch_selection::{SelectionEdge, TouchHandle, TouchSelectionSnapshot};
 pub use tree::{Tree, TreeEntry, TreeEntryState, TreeEvent, TreeItem, TreeState};

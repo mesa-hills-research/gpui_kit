@@ -23,7 +23,6 @@ use rust_i18n::t;
 use super::context_menu::{ContextMenuStyle, ContextMenuTarget, standard_items};
 use super::state::{TextInputState, sync_focused_input_registry};
 use super::{InputContentType, InputState, sync_native_content_type};
-use crate::ThemeStyled as _;
 
 fn accessibility_role(
     is_multi_line: bool,
@@ -907,10 +906,6 @@ impl RenderOnce for Input {
                 this.text_color(cx.theme().editor_foreground())
             })
             .refine_style(&self.style)
-            .when(
-                focused && self.appearance && self.bordered && self.focus_bordered,
-                |this| this.focus_ring_style(window, cx),
-            )
             .children(prefix.map(|p| {
                 div()
                     .when(presentation.is_disabled(), |this| this.opacity(0.5))

@@ -30,7 +30,7 @@ use gpui_kit::base::{Popup};
 
 ## 状态与事件
 
-应用负责打开状态和关闭策略；Popup 负责锚定及浮层结构。
+应用负责打开状态和关闭策略；Popup 负责锚定及浮层结构。Popup 显示内容期间，触发元素内的 Tooltip 不会显示，因此不会遮住浮层。
 
 受控状态应保存在父渲染类型或 GPUI entity 中；在回调中更新并调用 `cx.notify()`，不要在每次渲染时重建持久 entity。
 
