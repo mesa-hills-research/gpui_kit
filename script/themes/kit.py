@@ -431,9 +431,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     bg("tab.active.background", t["background"])
     col("tab.active.foreground", foreground)
     bg("tab_bar.background", t["background"])
-    segmented_surface = min(
-        [background, t["sidebar.background"].color], key=lambda c: C.rgb_to_hsl(c)[2])
-    bg("tab_bar.segmented.background", C.hsl_darken(segmented_surface, 0.1))
+    bg("tab_bar.segmented.background", t["secondary.background"])
     col("tab.foreground", foreground)
     bg("table.background", t["list.background"])
     bg("table.active.background", t["list.active.background"])

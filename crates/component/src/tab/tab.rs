@@ -1,10 +1,14 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::animation::{Lerp, ease_in_out_cubic};
-use crate::{ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex};
+use crate::styled::raised_shadow;
+use crate::theme::contrast_ratio;
+use crate::{
+    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, Theme, h_flex, v_flex,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Edges, ElementId,
+    Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Div, Edges, ElementId,
     FocusHandle, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce,
     SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
@@ -20,12 +24,70 @@ pub enum TabVariant {
     Underline,
 }
 
+/// The least contrast of the chosen segment's outline with its fill and with
+/// the track.
+const SEGMENT_OUTLINE_MIN_CONTRAST: f32 = 1.4;
+/// The most contrast of the track's outline with the track.
+const TRACK_OUTLINE_MAX_CONTRAST: f32 = 1.25;
+
 impl TabVariant {
-    pub(super) fn segmented_outline(disabled: bool, cx: &App) -> Hsla {
-        if disabled {
-            cx.theme().muted_foreground.opacity(0.65)
+    /// The track behind segmented tabs, as an opaque color.
+    fn segmented_track(theme: &Theme) -> Hsla {
+        theme.background.blend(theme.tab_bar_segmented)
+    }
+
+    /// The fill and the outline of the chosen segment.
+    ///
+    /// The fill is the window background on a light theme and a step lighter
+    /// than the track on a dark one. The outline is the foreground at 30%
+    /// opacity on a light theme and 25% on a dark one. Where a theme's colors
+    /// sit close together it gets stronger, until it stands out from both the
+    /// fill and the track.
+    fn segmented_selection(theme: &Theme) -> (Hsla, Hsla) {
+        let track = Self::segmented_track(theme);
+        let (fill, mut alpha) = if theme.is_dark() {
+            (track.blend(theme.foreground.opacity(0.16)), 0.25)
         } else {
-            cx.theme().foreground
+            (theme.background, 0.3)
+        };
+        let faint = |alpha: f32| {
+            let line = fill.blend(theme.foreground.opacity(alpha));
+            contrast_ratio(line, fill).min(contrast_ratio(line, track))
+                < SEGMENT_OUTLINE_MIN_CONTRAST
+        };
+        while alpha < 1. && faint(alpha) {
+            alpha = (alpha + 0.05).min(1.);
+        }
+        (fill, theme.foreground.opacity(alpha))
+    }
+
+    /// The track's hairline, in the theme's border color. A strong border is
+    /// faded toward the track, so no theme frames the control heavily.
+    pub(super) fn segmented_track_outline(theme: &Theme) -> Hsla {
+        let track = Self::segmented_track(theme);
+        let mut alpha = 1.;
+        while alpha > 0.
+            && contrast_ratio(track.blend(theme.border.opacity(alpha)), track)
+                > TRACK_OUTLINE_MAX_CONTRAST
+        {
+            alpha = (alpha - 0.05).max(0.);
+        }
+        theme.border.opacity(alpha)
+    }
+
+    /// The chosen segment: filled, outlined in a hairline and slightly raised.
+    /// A disabled selection keeps the fill with a fainter outline and no shadow.
+    pub(super) fn segmented_pill<E: Styled>(pill: E, disabled: bool, cx: &App) -> E {
+        let (fill, outline) = Self::segmented_selection(cx.theme());
+        let pill = pill.bg(fill).border_1().border_color(if disabled {
+            outline.opacity(0.5)
+        } else {
+            outline
+        });
+        if disabled {
+            pill
+        } else {
+            pill.shadow(raised_shadow())
         }
     }
 
@@ -44,7 +106,6 @@ impl TabVariant {
                 _ => px(36.),
             },
             _ => match self {
-                TabVariant::Segmented => px(34.),
                 TabVariant::Underline => px(36.),
                 _ => px(32.),
             },
@@ -71,7 +132,7 @@ impl TabVariant {
             _ => match self {
                 TabVariant::Tab => px(30.),
                 TabVariant::Outline | TabVariant::Pill => px(26.),
-                TabVariant::Segmented => px(28.),
+                TabVariant::Segmented => px(24.),
                 TabVariant::Underline => px(26.),
             },
         }
@@ -160,7 +221,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().foreground,
+                fg: cx.theme().muted_foreground,
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -177,7 +238,7 @@ impl TabVariant {
         }
     }
 
-    fn hovered(&self, selected: bool, cx: &App) -> TabStyle {
+    fn hovered(&self, cx: &App) -> TabStyle {
         match self {
             TabVariant::Tab => TabStyle {
                 fg: cx.theme().tab_active_foreground,
@@ -204,11 +265,6 @@ impl TabVariant {
             },
             TabVariant::Segmented => TabStyle {
                 fg: cx.theme().foreground,
-                inner_bg: if selected {
-                    cx.theme().transparent.into()
-                } else {
-                    cx.theme().foreground.opacity(0.05).into()
-                },
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -309,7 +365,7 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: Self::segmented_outline(true, cx),
+                fg: cx.theme().muted_foreground.opacity(0.65),
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
@@ -365,6 +421,16 @@ impl TabVariant {
             _ => px(0.),
         }
     }
+}
+
+/// A segment's label, as wide as its medium weight. The selected segment's
+/// label is medium weight, and a hidden medium copy holds every segment at
+/// that width, so selection never moves the other segments.
+fn segment_label(label: SharedString) -> Div {
+    v_flex()
+        .items_center()
+        .child(label.clone())
+        .child(div().h_0().overflow_hidden().font_medium().child(label))
 }
 
 #[allow(dead_code)]
@@ -622,7 +688,7 @@ impl RenderOnce for Tab {
         let mut normal_style = self.variant.normal(cx);
         let mut selected_style = self.variant.selected(cx);
         let mut disabled_style = self.variant.disabled(self.selected, cx);
-        let mut hover_style = self.variant.hovered(self.selected, cx);
+        let mut hover_style = self.variant.hovered(cx);
         if self.disabled {
             hover_style = self.variant.disabled(self.selected, cx);
         }
@@ -658,7 +724,9 @@ impl RenderOnce for Tab {
                 .as_ref()
                 .is_some_and(|focus_handle| focus_handle.is_focused(window));
 
-        let inline_segmented_outline = self.variant == TabVariant::Segmented
+        // A selected segment draws its own pill until the bar's sliding
+        // indicator is ready, and always outside a bar.
+        let segmented_pill = self.variant == TabVariant::Segmented
             && self.selected
             && !(self.indicator_active && self.indicator_ready);
 
@@ -732,6 +800,9 @@ impl RenderOnce for Tab {
                                 .text_ellipsis()
                                 .child(label),
                         ),
+                        (Some(label), None) if self.variant == TabVariant::Segmented => {
+                            this.child(segment_label(label))
+                        }
                         (Some(label), None) => this.child(label),
                         (None, _) => this,
                     })
@@ -739,15 +810,22 @@ impl RenderOnce for Tab {
             })
             .bg(tab_style.inner_bg)
             .rounded(inner_radius)
+            // Every segment has room for the pill's outline, so all keep one size.
             .when(self.variant == TabVariant::Segmented, |this| {
-                this.border_1().border_color(if inline_segmented_outline {
-                    TabVariant::segmented_outline(self.disabled, cx)
-                } else {
-                    cx.theme().transparent
-                })
+                this.border_1().border_color(cx.theme().transparent)
+            })
+            .when(segmented_pill, |this| {
+                TabVariant::segmented_pill(this, self.disabled, cx)
             })
             .when(tab_style.shadow, |this| this.shadow_xs())
-            .hover(|this| this.bg(hover_style.inner_bg).rounded(inner_radius));
+            .hover(|this| {
+                let this = this.rounded(inner_radius);
+                if segmented_pill {
+                    this
+                } else {
+                    this.bg(hover_style.inner_bg)
+                }
+            });
 
         let inner_element = if animate_fg {
             inner_content
@@ -810,6 +888,10 @@ impl RenderOnce for Tab {
                 Size::Large => this.text_base(),
                 _ => this.text_sm(),
             })
+            .when(
+                self.variant == TabVariant::Segmented && self.selected,
+                |this| this.font_medium(),
+            )
             .rounded(radius)
             .when(!self.selected && !self.disabled, |this| {
                 this.text_color(normal_style.fg)
@@ -937,6 +1019,48 @@ mod tests {
                     .width
             })
             .collect()
+    }
+
+    /// In every variant of every bundled theme, the chosen segment's outline
+    /// stands out from its fill and from the track, and the track's own
+    /// outline stays fainter than that.
+    #[test]
+    fn segmented_outlines_are_visible_and_subtle_in_every_bundled_theme() {
+        use crate::ThemeSet;
+
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes");
+        let mut variants = 0;
+        let mut failures = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let set: ThemeSet =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            for config in set.themes {
+                let name = config.name.clone();
+                let mut theme = Theme::default();
+                theme.apply_config(&Rc::new(config));
+                let (fill, outline) = TabVariant::segmented_selection(&theme);
+                let track = theme.background.blend(theme.tab_bar_segmented);
+                let line = fill.blend(outline);
+                for (surface, color) in [("fill", fill), ("track", track)] {
+                    let ratio = contrast_ratio(line, color);
+                    if ratio < SEGMENT_OUTLINE_MIN_CONTRAST {
+                        failures.push(format!("{name}: outline on {surface} {ratio:.2}"));
+                    }
+                }
+                let edge = track.blend(TabVariant::segmented_track_outline(&theme));
+                let ratio = contrast_ratio(edge, track);
+                if ratio > TRACK_OUTLINE_MAX_CONTRAST {
+                    failures.push(format!("{name}: track outline {ratio:.2}"));
+                }
+                variants += 1;
+            }
+        }
+        assert!(variants >= 71, "{variants} variants read");
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     #[gpui::test]

@@ -278,7 +278,7 @@ impl Render for TabsStory {
             )
             .child(
                 section("Segmented Tabs")
-                    .description("An outline marks the selected option on an inset grey container.")
+                    .description("A filled, outlined option marks the selection.")
                     .w_full()
                     .child(
                         TabBar::new("segmented")

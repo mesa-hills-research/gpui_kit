@@ -42,6 +42,45 @@ impl Render for SegmentedStates {
     }
 }
 
+/// A segmented bar sized by its labels, with a marker after it.
+struct SegmentedWidth(usize);
+
+impl Render for SegmentedWidth {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(
+            div()
+                .flex()
+                .items_center()
+                .child(
+                    TabBar::new("width")
+                        .segmented()
+                        .selected_index(self.0)
+                        .child(Tab::new().label("Session"))
+                        .child(Tab::new().label("All")),
+                )
+                .child(div().id("after").test_support().size_2()),
+        )
+    }
+}
+
+/// The selected label is medium weight, and every segment keeps that width,
+/// so changing the selection never resizes the bar.
+#[test]
+fn segmented_selection_keeps_the_bar_width() {
+    let mut app = app(ThemeMode::Light);
+    let mut positions = Vec::new();
+    for selected in [0, 1] {
+        let window = open(&mut app, (320., 80.), SCALE, move |_, _| {
+            SegmentedWidth(selected)
+        });
+        app.capture(window).unwrap();
+        act(&mut app, window, |window, _| {
+            positions.push(window.find("after").bounds().origin);
+        });
+    }
+    assert_eq!(positions[0], positions[1]);
+}
+
 #[test]
 fn segmented_selection_and_disabled_options() {
     for (mode, suffix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
