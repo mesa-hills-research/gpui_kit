@@ -257,14 +257,9 @@ impl TabBar {
             .w(width)
             .map(|el| match variant {
                 TabVariant::Segmented => el.flex().items_center().child(
-                    div()
+                    TabVariant::segmented_pill(div(), self.children[selected_ix].disabled, cx)
                         .w_full()
                         .h(inner_height)
-                        .border_1()
-                        .border_color(TabVariant::segmented_outline(
-                            self.children[selected_ix].disabled,
-                            cx,
-                        ))
                         .rounded(inner_radius),
                 ),
                 TabVariant::Pill => el.flex().items_center().child(
@@ -388,8 +383,7 @@ impl RenderOnce for TabBar {
                 let padding_x = match self.size {
                     Size::XSmall => px(2.),
                     Size::Small => px(3.),
-                    Size::Large => px(4.),
-                    _ => px(3.),
+                    _ => px(4.),
                 };
                 let padding = Edges {
                     left: padding_x,
@@ -611,6 +605,19 @@ impl RenderOnce for TabBar {
                 )
             })
             .when_some(self.suffix, |this, suffix| this.child(suffix))
+            // The segmented track's outline, drawn last so a segment scrolled to
+            // the edge can't cover it, and positioned outside the layout so the
+            // bar keeps its height.
+            .when(self.variant == TabVariant::Segmented, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .rounded(self.variant.tab_bar_radius(self.size, cx))
+                        .border_1()
+                        .border_color(TabVariant::segmented_track_outline(cx.theme())),
+                )
+            })
     }
 }
 
@@ -912,7 +919,7 @@ mod tests {
         for (size, padding) in [
             (Size::XSmall, px(2.)),
             (Size::Small, px(3.)),
-            (Size::Medium, px(3.)),
+            (Size::Medium, px(4.)),
             (Size::Large, px(4.)),
         ] {
             let scroll_handle = ScrollHandle::new();

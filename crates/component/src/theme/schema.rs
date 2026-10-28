@@ -1081,13 +1081,7 @@ impl ThemeColor {
         apply_background_color!(tab_active, fallback = tokens.background);
         apply_color!(tab_active_foreground, fallback = self.foreground);
         apply_background_color!(tab_bar, fallback = tokens.background);
-        // Segmented controls sit on both window and sidebar surfaces.
-        let segmented_surface = if self.sidebar.l < self.background.l {
-            self.sidebar
-        } else {
-            self.background
-        };
-        apply_background_color!(tab_bar_segmented, fallback = segmented_surface.darken(0.1));
+        apply_background_color!(tab_bar_segmented, fallback = tokens.secondary);
         apply_color!(tab_foreground, fallback = self.foreground);
         apply_background_color!(table, fallback = tokens.list);
         apply_background_color!(table_active, fallback = tokens.list_active);
@@ -1269,17 +1263,17 @@ mod tests {
     }
 
     #[test]
-    fn segmented_background_is_inset_and_accepts_an_override() {
+    fn segmented_background_defaults_to_secondary_and_accepts_an_override() {
         for mode in ["light", "dark"] {
             let config: std::rc::Rc<ThemeConfig> = serde_json::from_value(serde_json::json!({
-                "name": "Inset",
+                "name": "Secondary",
                 "mode": mode,
-                "colors": { "background": "#808080", "sidebar.background": "#606060" }
+                "colors": { "background": "#808080", "secondary.background": "#606060" }
             }))
             .unwrap();
             let mut theme = Theme::default();
             theme.apply_config(&config);
-            assert_eq!(theme.tab_bar_segmented, theme.sidebar.darken(0.1));
+            assert_eq!(theme.tab_bar_segmented, try_parse_color("#606060").unwrap());
             assert_eq!(
                 theme.tokens.tab_bar_segmented.color,
                 theme.tab_bar_segmented
