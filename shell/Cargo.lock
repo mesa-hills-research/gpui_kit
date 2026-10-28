@@ -5615,7 +5615,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "mhr-gpui",
  "mhr-gpui-kit-assets",
@@ -5628,7 +5628,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-assets"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "anyhow",
  "gpui-pre-reqwest",
@@ -5641,7 +5641,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-base"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -5682,7 +5682,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-component"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -5780,7 +5780,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-component-macros"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -5790,7 +5790,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-writing"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "anyhow",
  "log",
