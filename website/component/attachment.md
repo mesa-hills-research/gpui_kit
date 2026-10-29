@@ -135,8 +135,8 @@ fills edge to edge, its corners one border width tighter than the card's so the
 two stay concentric.
 
 Media inside a card's padding takes the card's radius less the border and the
-padding, so the XSmall and Small tiles are nearly square. Larger sizes sit past
-the card's corner and keep their own radius.
+padding, but never less than 3 px, so the XSmall and Small tiles stay rounded.
+Larger sizes sit past the card's corner and keep their own radius.
 
 `AttachmentMedia` is independently styleable. Use `with_size(...)` to override
 the inherited media size, or use normal GPUI refinements for a custom preview

@@ -172,7 +172,9 @@ and pills; a tooltip must not become a capsule by accident.
 
 Nested surfaces should read as concentric shapes. Use
 `inner radius ≈ max(0, outer radius − gap)` to choose the closest suitable
-theme tier; the visible band should remain even through the turn. Add a
+theme tier; the visible band should remain even through the turn. Rows
+and tiles keep a small minimum, so a wide gap doesn't square them off
+(`nested_radius` uses 3 px, at most half the outer radius). Add a
 named application token if a repeated composition needs an intermediate
 value. A segmented control is one silhouette: its end segments follow the container's inner
 corners, its middle segments remain square, and each boundary has one divider

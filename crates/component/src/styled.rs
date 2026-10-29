@@ -6,7 +6,7 @@ use gpui::{
 };
 pub use gpui_base::{
     FocusableExt, RoleOverride, StyledExt, box_shadow, concentric_radius, enclosing_radius, h_flex,
-    v_flex,
+    nested_radius, v_flex,
 };
 
 use crate::ActiveTheme as _;
@@ -141,11 +141,14 @@ pub trait ThemeStyled: Styled + Sized {
         self.rounded(cx.theme().radius_full())
     }
 
-    /// Round this element to stay concentric inside a parent of radius `outer`
-    /// when its edge is `inset` away from the parent's edge. See
-    /// [`concentric_radius`].
+    /// Round this row or tile to follow a parent of radius `outer` when its
+    /// edge is `inset` away from the parent's edge, and never less than the
+    /// minimum a nested shape gets. See [`nested_radius`].
+    ///
+    /// Use [`concentric_radius`] with `rounded` for a shape that must meet its
+    /// parent exactly, such as a segmented tab.
     fn rounded_inside(self, outer: Pixels, inset: Pixels) -> Self {
-        self.rounded(concentric_radius(outer, inset))
+        self.rounded(nested_radius(outer, inset))
     }
 }
 
@@ -314,13 +317,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rounded_inside_rounds_to_the_concentric_radius() {
+    fn rounded_inside_rounds_to_the_nested_radius() {
         let radius = |outer, inset| {
             let mut element = div().rounded_inside(px(outer), px(inset));
             element.style().corner_radii.top_left
         };
 
+        assert_eq!(radius(8., 4.), Some(px(4.).into()));
         assert_eq!(radius(8., 5.), Some(px(3.).into()));
-        assert_eq!(radius(6., 9.), Some(px(0.).into()));
+        assert_eq!(radius(6., 4.), Some(px(3.).into()));
+        assert_eq!(radius(6., 9.), Some(px(3.).into()));
+        assert_eq!(radius(0., 4.), Some(px(0.).into()));
     }
 }
