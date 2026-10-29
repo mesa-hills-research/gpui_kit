@@ -443,4 +443,6 @@ div()
 
 GPUI Kit 另有 `StyledExt`，提供 `h_flex`、`v_flex` 和 `refine_style` 等不依赖主题的辅助方法；`ThemeStyled` 则提供 `popover_style(cx)` 等依赖主题的外观方法。它们是在 GPUI `Styled` 之上的扩展，不属于 Tailwind utility。自行实现元素时，应从 `style()` 返回元素的 `StyleRefinement`，并在布局与绘制阶段应用解析后的样式。只实现元素确实支持的子元素与交互 trait。
 
+嵌套在圆角形状内的形状使用 `concentric_radius(outer, inset)`，结果是外层圆角减去两条边之间的距离，最小为 0。距离包含内边距和画在盒内的边框。弹层的边缘是画在盒外的阴影环，不计入。`ThemeStyled::rounded_inside(outer, inset)` 把这个圆角应用到元素上，`enclosing_radius(inner, inset)` 则给出包在形状外的环的圆角。GPUI 不会按圆角裁剪子元素，所以位于转角的填充需要自己的圆角。
+
 Tailwind 对应关系有明确范围：这里没有 CSS 选择器、层叠、响应式前缀，也不保证每个 Tailwind utility 都存在对应的 GPUI 方法。几何布局使用 GPUI 带类型的辅助方法，产品外观使用 GPUI Kit 主题 token，行为则使用明确的元素或实体 API。

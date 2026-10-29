@@ -1,9 +1,12 @@
 use gpui::{
-    AnyElement, App, Axis, DefiniteLength, IntoElement, ParentElement, RenderOnce, SharedString,
-    Styled, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, Axis, Corners, DefiniteLength, IntoElement, ParentElement, RenderOnce,
+    SharedString, Styled, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
-use crate::{ActiveTheme as _, AxisExt, Sizable, Size, h_flex, text::Text, v_flex};
+use crate::{
+    ActiveTheme as _, AxisExt, Sizable, Size, StyledExt as _, concentric_radius, h_flex,
+    text::Text, v_flex,
+};
 
 /// A description list.
 #[derive(IntoElement)]
@@ -278,6 +281,11 @@ impl RenderOnce for DescriptionList {
         // Group items by columns
         let rows = Self::group_item_rows(self.items, self.columns);
         let rows_len = rows.len();
+        // Label fills sit inside the 1px border. GPUI clips to rectangles, so
+        // the cells at the frame's corners take the matching radius.
+        let corner = concentric_radius(cx.theme().radius, px(1.));
+        let corner_if = |touches_frame: bool| if touches_frame { corner } else { px(0.) };
+        let is_vertical = self.layout.is_vertical();
 
         v_flex()
             .gap(gap)
@@ -289,6 +297,7 @@ impl RenderOnce for DescriptionList {
             })
             .children(rows.into_iter().enumerate().map(|(ix, items)| {
                 let is_last = ix == rows_len - 1;
+                let items_len = items.len();
                 h_flex()
                     .when(self.bordered && !is_last, |this| {
                         this.border_b_1().border_color(cx.theme().border)
@@ -296,6 +305,18 @@ impl RenderOnce for DescriptionList {
                     .children({
                         items.into_iter().enumerate().map(|(item_ix, item)| {
                             let is_first_col = item_ix == 0;
+                            // Labels sit left of the value, so only the first
+                            // column touches the left corners. Stacked labels
+                            // sit above it, so the first row touches the top
+                            // corners across.
+                            let label_corners = Corners {
+                                top_left: corner_if(ix == 0 && is_first_col),
+                                top_right: corner_if(
+                                    is_vertical && ix == 0 && item_ix + 1 == items_len,
+                                ),
+                                bottom_left: corner_if(!is_vertical && is_last && is_first_col),
+                                bottom_right: px(0.),
+                            };
 
                             match item {
                                 DescriptionItem::Item { label, value, span } => {
@@ -331,6 +352,7 @@ impl RenderOnce for DescriptionList {
                                                     })
                                                     .border_color(cx.theme().border)
                                                     .bg(cx.theme().tokens.description_list_label)
+                                                    .corner_radii(label_corners)
                                                 })
                                                 .map(|this| match label_width {
                                                     Some(label_width) => {

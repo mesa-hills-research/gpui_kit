@@ -18,7 +18,7 @@ use crate::{
         command::CommandOptions,
         item::{CommandEntry, CommandItem},
     },
-    h_flex,
+    concentric_radius, h_flex,
     input::{Input, InputEvent, InputState},
     kbd::Kbd,
     scroll::Scrollbar,
@@ -717,7 +717,7 @@ impl CommandState {
             (false, Some(radius)) => (radius.to_pixels(rem_size), px(0.)),
             (false, None) => return theme.radius,
         };
-        (outer - rem_size * 0.25 - border).max(px(0.))
+        concentric_radius(outer, rem_size * 0.25 + border)
     }
 
     /// The frame every item row shares, so that the measured height matches the

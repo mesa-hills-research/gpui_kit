@@ -1,12 +1,14 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    percentage, prelude::FluentBuilder as _, rems,
+    AnyElement, App, Corners, ElementId, InteractiveElement as _, IntoElement, ParentElement,
+    Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Window, div, percentage, prelude::FluentBuilder as _, px, rems,
 };
 
-use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size, StyledExt as _, h_flex};
+use crate::{
+    ActiveTheme as _, Icon, IconName, Sizable, Size, StyledExt as _, concentric_radius, h_flex,
+};
 use gpui_base::{
     Accordion as BaseAccordion, AccordionHeader as BaseAccordionHeader,
     AccordionItem as BaseAccordionItem, AccordionPanel as BaseAccordionPanel, AccordionTrigger,
@@ -99,6 +101,13 @@ impl RenderOnce for Accordion {
         let open_indices = Rc::new(RefCell::new(HashSet::new()));
         let multiple = self.multiple;
         let last_ix = self.children.len().saturating_sub(1);
+        // Item fills sit inside the 1px border. GPUI clips to rectangles, so
+        // the first and last items take the card's radius less the border.
+        let corner = if self.bordered {
+            concentric_radius(cx.theme().radius_lg, px(1.))
+        } else {
+            px(0.)
+        };
 
         BaseAccordion::new(self.id)
             .v_flex()
@@ -121,10 +130,18 @@ impl RenderOnce for Accordion {
                             open_indices.borrow_mut().insert(ix);
                         }
                         let disabled = self.disabled || accordion.disabled;
+                        let top = if ix == 0 { corner } else { px(0.) };
+                        let bottom = if ix == last_ix { corner } else { px(0.) };
 
                         accordion
                             .index(ix)
                             .last(ix == last_ix)
+                            .corners(Corners {
+                                top_left: top,
+                                top_right: top,
+                                bottom_left: bottom,
+                                bottom_right: bottom,
+                            })
                             .with_size(self.size)
                             .disabled(disabled)
                             .on_toggle_click({
@@ -161,6 +178,7 @@ impl RenderOnce for Accordion {
 pub struct AccordionItem {
     index: usize,
     last: bool,
+    corners: Corners<Pixels>,
     style: StyleRefinement,
     hover_style: Option<StyleRefinement>,
     title_style: StyleRefinement,
@@ -180,6 +198,7 @@ impl AccordionItem {
         Self {
             index: 0,
             last: false,
+            corners: Corners::default(),
             style: StyleRefinement::default(),
             hover_style: None,
             title_style: StyleRefinement::default(),
@@ -245,6 +264,13 @@ impl AccordionItem {
 
     fn last(mut self, last: bool) -> Self {
         self.last = last;
+        self
+    }
+
+    /// The radii of the item's fill, for the item at a corner of a bordered
+    /// accordion.
+    fn corners(mut self, corners: Corners<Pixels>) -> Self {
+        self.corners = corners;
         self
     }
 
@@ -376,6 +402,7 @@ impl RenderOnce for AccordionItem {
                 .v_flex()
                 .w_full()
                 .bg(cx.theme().tokens.accordion)
+                .corner_radii(self.corners)
                 .overflow_hidden()
                 .when(!self.last, |this| {
                     this.border_b_1().border_color(cx.theme().border)

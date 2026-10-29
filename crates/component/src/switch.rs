@@ -1,6 +1,6 @@
 use crate::{
     ActiveTheme, Disableable, FocusableExt, Side, Sizable, Size, StyleSized as _, StyledExt,
-    ThemeStyled as _, text::Text, tooltip::ComponentTooltip,
+    ThemeStyled as _, concentric_radius, text::Text, tooltip::ComponentTooltip,
 };
 use gpui::{
     App, Background, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement as _,
@@ -276,7 +276,7 @@ impl RenderOnce for Switch {
                         .child(
                             // Switch Toggle
                             SwitchThumb::new(checked)
-                                .rounded(radius)
+                                .rounded(concentric_radius(radius, inset))
                                 .size(bar_width)
                                 .left(thumb_x)
                                 .bg(toggle_bg),

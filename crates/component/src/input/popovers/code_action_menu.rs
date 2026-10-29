@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use gpui::{
     Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
-    Half as _, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render,
-    RenderOnce, Styled, StyledText, Subscription, WeakEntity, Window, deferred, div,
-    prelude::FluentBuilder, px, relative,
+    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, RenderOnce, Styled,
+    StyledText, Subscription, WeakEntity, Window, deferred, div, prelude::FluentBuilder, px,
+    relative,
 };
 pub(crate) use gpui_base::input::CodeActionItem;
 
@@ -12,9 +12,10 @@ const MAX_MENU_WIDTH: Pixels = px(320.);
 const MAX_MENU_HEIGHT: Pixels = px(480.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, IndexPath, Selectable, ThemeStyled as _, actions, h_flex,
     input::{self, EditorState, popovers::editor_popover},
     list::{List, ListDelegate, ListEvent, ListState},
+    sizing::POPUP_ITEM_INSET,
 };
 
 struct MenuDelegate {
@@ -80,7 +81,7 @@ impl RenderOnce for MenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded(cx.theme().radius.half())
+            .rounded_inside(cx.theme().radius, POPUP_ITEM_INSET)
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
                 this.bg(cx.theme().tokens.accent)

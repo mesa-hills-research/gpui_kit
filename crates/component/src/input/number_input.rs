@@ -8,7 +8,9 @@ use gpui::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _};
+use crate::{
+    Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _, concentric_radius,
+};
 
 use super::{Input, InputState, input::input_style};
 use gpui_base::NumberInput as BaseNumberInput;
@@ -124,7 +126,7 @@ impl RenderOnce for NumberInput {
         // The buttons sit inside the 1px frame, so their corners are a pixel
         // tighter than the frame's, or they paint over its inner curve.
         let button_radius = if self.appearance {
-            (cx.theme().radius - px(1.)).max(px(0.))
+            concentric_radius(cx.theme().radius, px(1.))
         } else {
             cx.theme().radius
         };

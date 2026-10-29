@@ -20,7 +20,7 @@ use crate::{
         SearchableListAdapter, SearchableListChange, SearchableListDelegate, SearchableListItem,
         SearchableListState,
     },
-    sizing::DROPDOWN_LIST_PADDING,
+    sizing::POPUP_ITEM_INSET,
     v_flex,
 };
 use gpui_base::{Combobox as BaseCombobox, GlobalState};
@@ -1061,7 +1061,7 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
                     })
                     .with_size(size)
                     .max_h(menu_max_h)
-                    .paddings(Edges::all(DROPDOWN_LIST_PADDING)),
+                    .paddings(Edges::all(POPUP_ITEM_INSET)),
             )
             .when(has_footer, |this| {
                 this.child(
