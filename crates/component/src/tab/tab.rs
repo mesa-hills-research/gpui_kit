@@ -3,7 +3,8 @@ use std::{rc::Rc, time::Duration};
 use crate::animation::{Lerp, ease_in_out_cubic};
 use crate::theme::contrast_ratio;
 use crate::{
-    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, Theme, h_flex, v_flex,
+    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, Theme, concentric_radius,
+    h_flex, v_flex,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -433,10 +434,9 @@ impl TabVariant {
     pub(super) fn inner_radius(&self, size: Size, cx: &App) -> Pixels {
         match self {
             // The bar's radius less the inset, so the two curves stay
-            // concentric. Floored at zero: a square bar has nothing to inset
-            // from.
+            // concentric.
             TabVariant::Segmented => {
-                (self.tab_bar_radius(size, cx) - Self::segment_inset(size)).max(px(0.))
+                concentric_radius(self.tab_bar_radius(size, cx), Self::segment_inset(size))
             }
             _ => px(0.),
         }
