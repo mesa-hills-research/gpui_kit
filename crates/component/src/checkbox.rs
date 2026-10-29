@@ -276,7 +276,7 @@ impl RenderOnce for Checkbox {
                 Size::Size(_) => this,
                 size => this.input_text_size(size),
             })
-            .rounded(cx.theme().radius * 0.5)
+            .rounded(radius)
             .when(is_focused && self.focus_ring_enabled, |this| {
                 this.focus_ring_style(window, cx)
             })
