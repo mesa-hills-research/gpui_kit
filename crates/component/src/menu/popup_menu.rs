@@ -4,9 +4,7 @@ use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
 use crate::sizing::POPUP_ITEM_INSET;
-use crate::{
-    ActiveTheme, ElementExt, Icon, IconName, Sizable as _, concentric_radius, h_flex, v_flex,
-};
+use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, nested_radius, v_flex};
 use crate::{Side, Size, kbd::Kbd};
 use gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -1471,7 +1469,7 @@ impl Render for PopupMenu {
             has_left_icon,
             check_side: self.check_side,
             // The rows sit `POPUP_ITEM_INSET` inside the popover's edge.
-            radius: concentric_radius(cx.theme().radius, POPUP_ITEM_INSET),
+            radius: nested_radius(cx.theme().radius, POPUP_ITEM_INSET),
         };
 
         v_flex()
