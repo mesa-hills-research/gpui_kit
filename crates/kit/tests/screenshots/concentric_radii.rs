@@ -3,9 +3,11 @@ use super::*;
 use gpui_kit::{
     Axis,
     component::{
+        WindowExt as _,
         attachment::{
             Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle,
         },
+        notification::Notification,
         select::{SearchableVec, Select, SelectState},
     },
 };
@@ -76,4 +78,47 @@ fn attachment_media_follows_the_card_corner() {
     let mut app = app(ThemeMode::Light);
     let window = open(&mut app, (320., 460.), SCALE, |_, _| AttachmentTiles);
     goldens().assert("attachment-media", &app.capture(window).unwrap());
+}
+
+struct NotificationHost;
+
+impl Render for NotificationHost {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx)
+    }
+}
+
+/// The close button's hover fill follows the card's corner.
+#[test]
+fn notification_close_button_follows_the_card_corner() {
+    let mut app = app(ThemeMode::Light);
+    app.update(|cx| cx.set_reduce_motion(true));
+    let window = open(&mut app, (480., 130.), SCALE, |_, _| NotificationHost);
+    act(&mut app, window, |window, cx| {
+        window.push_notification(
+            Notification::new()
+                .title("Saved")
+                .message("The file was written.")
+                .autohide(false),
+            cx,
+        );
+    });
+    app.run_until_parked();
+    app.advance_clock(Duration::from_secs(1));
+    app.capture(window).unwrap();
+    act(&mut app, window, |window, cx| {
+        let close = window.try_find("close").expect("the close button");
+        let position = close.bounds().center();
+        window.dispatch_event(
+            gpui_kit::MouseMoveEvent {
+                position,
+                pressed_button: None,
+                modifiers: Modifiers::default(),
+            }
+            .to_platform_input(),
+            cx,
+        );
+    });
+    app.run_until_parked();
+    goldens().assert("notification-close", &app.capture(window).unwrap());
 }
