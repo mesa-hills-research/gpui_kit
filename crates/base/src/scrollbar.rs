@@ -167,10 +167,10 @@ struct ScrollbarStateInner {
     visibility: VisibilityAnimation,
     vertical_width: WidthAnimation,
     horizontal_width: WidthAnimation,
-    /// The opacity the last frame painted the scrollbar with. The fade runs in
-    /// the paint phase, so events read this rather than the opacity sampled when
-    /// the scrollbar was last laid out.
-    painted_opacity: f32,
+    /// The effect the last frame painted the scrollbar with. The fade and the
+    /// slide run in the paint phase, so events read the opacity from this rather
+    /// than from the sample taken when the scrollbar was last laid out.
+    painted: PaintEffect,
 }
 
 impl Default for ScrollbarState {
@@ -190,7 +190,7 @@ impl Default for ScrollbarState {
             visibility: VisibilityAnimation::hidden(now),
             vertical_width: WidthAnimation::new(now),
             horizontal_width: WidthAnimation::new(now),
-            painted_opacity: 0.0,
+            painted: PaintEffect::opacity(0.0),
         })))
     }
 }
@@ -399,26 +399,7 @@ struct VisibilityAnimation {
 struct VisibilitySample {
     opacity: f32,
     position: f32,
-    /// Whether the scrollbar is on its way in rather than out.
-    entering: bool,
-    position_running: bool,
     running: bool,
-}
-
-impl VisibilitySample {
-    /// How far the thumb has slid in, from 0 at the edge to 1 in place.
-    ///
-    /// Only an entrance slides. The fade out paints without moving the thumb,
-    /// because it runs as a paint effect and those change opacity only.
-    fn slide(&self) -> f32 {
-        if self.entering { self.position } else { 1.0 }
-    }
-
-    /// Whether the thumb is sliding in, which moves it and so needs a new layout
-    /// for each frame.
-    fn sliding(&self) -> bool {
-        self.entering && self.position_running
-    }
 }
 
 impl VisibilityAnimation {
@@ -454,10 +435,28 @@ impl VisibilityAnimation {
         VisibilitySample {
             opacity,
             position,
-            entering,
-            position_running,
             running: opacity_running || position_running,
         }
+    }
+
+    /// The paint effect for the axis of a scrollbar `track_width` wide, at `now`, or at the end of
+    /// the transition with None.
+    ///
+    /// The opacity is the sample of the transition. The offset is the distance the thumb has
+    /// left to slide in from the edge, toward the edge it leaves by.
+    fn effect(&self, axis: Axis, track_width: Pixels, now: Option<Instant>) -> PaintEffect {
+        let (opacity, position) = match now {
+            Some(now) => {
+                let sample = self.sample(now);
+                (sample.opacity, sample.position)
+            }
+            None => (self.opacity.target, self.position.target),
+        };
+        PaintEffect::opacity(opacity).with_translation(visibility_translation(
+            axis,
+            track_width,
+            position,
+        ))
     }
 
     /// Reverse or start a transition toward `visible`.
@@ -1198,9 +1197,9 @@ pub struct PrepaintState {
     hitbox: Hitbox,
     scrollbar_state: ScrollbarState,
     states: Vec<AxisPrepaintState>,
-    /// The quads of every axis, painted with the fade as a paint effect. None
-    /// while the scrollbar is hidden, or has no axis to show.
-    quads: Option<AnyElement>,
+    /// The quads of each axis, painted with the fade and the slide as a paint
+    /// effect. Empty while the scrollbar is hidden, or has no axis to show.
+    quads: Vec<AnyElement>,
 }
 
 #[doc(hidden)]
@@ -1231,14 +1230,14 @@ struct AxisQuads {
     radius: Pixels,
 }
 
-/// The track, border and thumb of each axis, without the listeners.
+/// The track, border and thumb of one axis, without the listeners.
 ///
-/// They are an element of their own so that the fade can be a paint effect, which
-/// GPUI applies to what an element painted, in every frame, without laying out the
-/// view around it again.
+/// They are an element of their own so that the fade and the slide can be a paint
+/// effect, which GPUI applies to what an element painted, in every frame, without
+/// laying out the view around it again.
 struct ScrollbarQuads {
     clip: Bounds<Pixels>,
-    axes: Vec<AxisQuads>,
+    quads: AxisQuads,
 }
 
 impl IntoElement for ScrollbarQuads {
@@ -1293,29 +1292,27 @@ impl Element for ScrollbarQuads {
         _: &mut App,
     ) {
         let clip = self.clip;
+        let axis = &self.quads;
         window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
-            for axis in &self.axes {
-                window.paint_layer(clip, |window| {
-                    window.paint_quad(fill(axis.bounds, axis.track));
+            window.paint_layer(clip, |window| {
+                window.paint_quad(fill(axis.bounds, axis.track));
 
-                    window.paint_quad(PaintQuad {
-                        bounds: axis.bounds,
-                        corner_radii: (0.).into(),
-                        background: gpui::transparent_black().into(),
-                        border_widths: Edges {
-                            top: px(0.),
-                            right: px(0.),
-                            bottom: px(0.),
-                            left: px(0.),
-                        },
-                        border_color: axis.border,
-                        border_style: BorderStyle::default(),
-                    });
-
-                    window
-                        .paint_quad(fill(axis.thumb_bounds, axis.thumb).corner_radii(axis.radius));
+                window.paint_quad(PaintQuad {
+                    bounds: axis.bounds,
+                    corner_radii: (0.).into(),
+                    background: gpui::transparent_black().into(),
+                    border_widths: Edges {
+                        top: px(0.),
+                        right: px(0.),
+                        bottom: px(0.),
+                        left: px(0.),
+                    },
+                    border_color: axis.border,
+                    border_style: BorderStyle::default(),
                 });
-            }
+
+                window.paint_quad(fill(axis.thumb_bounds, axis.thumb).corner_radii(axis.radius));
+            });
         });
     }
 }
@@ -1476,13 +1473,7 @@ impl Element for Scrollbar {
             now,
         );
         let visibility = inner.visibility.sample(now);
-        // The fade is a paint effect, which the window draws frame after frame
-        // without laying this view out again. Only the slide of an entrance moves
-        // the thumb, so only it needs a new layout for each frame.
-        if visibility.sliding() {
-            window.request_animation_frame();
-        }
-        inner.painted_opacity = visibility.opacity;
+        inner.painted = PaintEffect::opacity(visibility.opacity);
 
         if !is_hovered && !is_dragging {
             if let Some(last_time) = inner.last_scroll_time {
@@ -1691,62 +1682,63 @@ impl Element for Scrollbar {
             })
         }
 
-        // A hidden scrollbar paints nothing. One on its way in or out paints with
-        // the opacity of each frame, which the animation below works out from the
-        // clock, and the window asks for those frames until it ends. Nothing
-        // notifies this view for them.
-        let quads =
-            (!states.is_empty() && (visibility.opacity > 0.0 || visibility.running)).then(|| {
-                let mut axes = Vec::with_capacity(states.len());
-                for state in &states {
-                    let translation =
-                        visibility_translation(state.axis, state.track_width, visibility.slide());
-                    let radius = if cx.theme().tokens.radius.md.is_zero() {
-                        px(0.)
-                    } else {
-                        state.radius
-                    };
-                    axes.push(AxisQuads {
-                        bounds: state.bounds + translation,
-                        track: state.bg,
-                        border: state.border,
-                        thumb_bounds: state.thumb_fill_bounds + translation,
-                        thumb: state.thumb_bg,
-                        radius: clamp_thumb_radius(radius, state.thumb_fill_bounds),
-                    });
-                }
-                let duration = if visibility.running {
-                    inner.visibility.opacity.duration
+        // A hidden scrollbar paints nothing. One on its way in or out paints each axis
+        // with the opacity and the offset of each frame, which the animation below
+        // works out from the clock, and the window asks for those frames until it
+        // ends. Nothing notifies this view for them.
+        let mut quads = Vec::new();
+        if visibility.opacity > 0.0 || visibility.running {
+            let duration = if visibility.running {
+                inner.visibility.opacity.duration
+            } else {
+                Duration::ZERO
+            };
+            let plan = inner.visibility;
+            for axis_state in &states {
+                let radius = if cx.theme().tokens.radius.md.is_zero() {
+                    px(0.)
                 } else {
-                    Duration::ZERO
+                    axis_state.radius
                 };
-                let plan = inner.visibility;
+                let (axis, track_width) = (axis_state.axis, axis_state.track_width);
                 let clock = cx.background_executor().clone();
                 let painted = state.clone();
                 let mut element = ScrollbarQuads {
                     clip: hitbox.bounds,
-                    axes,
+                    quads: AxisQuads {
+                        bounds: axis_state.bounds,
+                        track: axis_state.bg,
+                        border: axis_state.border,
+                        thumb_bounds: axis_state.thumb_fill_bounds,
+                        thumb: axis_state.thumb_bg,
+                        radius: clamp_thumb_radius(radius, axis_state.thumb_fill_bounds),
+                    },
                 }
                 .with_paint_animation(
-                    ("scrollbar-fade", plan.generation),
+                    (
+                        if axis.is_vertical() {
+                            "scrollbar-fade-vertical"
+                        } else {
+                            "scrollbar-fade-horizontal"
+                        },
+                        plan.generation,
+                    ),
                     Animation::new(duration),
                     move |progress| {
                         // The last frame lands on the target, however the clocks line up.
-                        let opacity = if progress >= 1.0 {
-                            plan.opacity.target
-                        } else {
-                            plan.sample(clock.now()).opacity
-                        };
+                        let now = (progress < 1.0).then(|| clock.now());
+                        let effect = plan.effect(axis, track_width, now);
                         let mut inner = painted.get();
-                        inner.painted_opacity = opacity;
+                        inner.painted = effect;
                         painted.set(inner);
-                        PaintEffect::opacity(opacity)
+                        effect
                     },
                 )
                 .into_any_element();
                 element.prepaint_as_root(hitbox.origin, AvailableSpace::min_size(), window, cx);
-                element
-            });
+                quads.push(element);
+            }
+        }
 
         PrepaintState {
             hitbox,
@@ -1772,7 +1764,7 @@ impl Element for Scrollbar {
         let hitbox_bounds = prepaint.hitbox.bounds;
         let is_hover_to_show = mode.is_hover();
 
-        if let Some(quads) = prepaint.quads.as_mut() {
+        for quads in &mut prepaint.quads {
             quads.paint(window, cx);
         }
 
@@ -1791,7 +1783,7 @@ impl Element for Scrollbar {
                     // the scrollbar still shows is worked out when the event comes.
                     let requested = state.visibility_requested;
                     let is_visible = move |state: &ScrollbarState| {
-                        requested || state.get().painted_opacity > 0.0
+                        requested || state.get().painted.opacity > 0.0
                     };
 
                     window.set_cursor_style(CursorStyle::default(), &state.bar_hitbox);
@@ -2471,25 +2463,43 @@ mod tests {
     }
 
     #[test]
-    fn only_an_entrance_slides_the_thumb() {
+    fn the_effect_fades_and_slides_with_the_curves_of_the_transition() {
         let start = Instant::now();
+        let width = px(16.);
+        let at = |animation: &VisibilityAnimation, time: Duration| {
+            animation.effect(Axis::Vertical, width, Some(start + time))
+        };
+
+        // A fade in takes its place at once and fades linearly.
+        let mut animation = VisibilityAnimation::hidden(start);
+        animation.set_visible(true, ScrollbarEntrance::Fade, ENTER, EXIT, start);
+        let halfway = at(&animation, ENTER / 2);
+        assert!((halfway.opacity - 0.5).abs() < 0.001);
+        assert_eq!(halfway.translation, Point::default());
+
+        // A slide in comes from the edge it leaves by, on a cubic ease-out.
         let mut animation = VisibilityAnimation::hidden(start);
         animation.set_visible(true, ScrollbarEntrance::SlideAndFade, ENTER, EXIT, start);
-        let entering = animation.sample(start + ENTER / 4);
-        assert!(entering.sliding());
-        assert!(entering.slide() < 1.0);
+        let halfway = at(&animation, ENTER / 2);
+        assert!((halfway.opacity - 0.5).abs() < 0.001);
+        assert!((halfway.translation.x - width * (1. - ease_out_cubic(0.5))).abs() < px(0.001));
+        assert_eq!(halfway.translation.y, px(0.));
+        assert_eq!(at(&animation, Duration::ZERO).translation.x, width);
+        assert_eq!(at(&animation, ENTER).translation.x, px(0.));
 
-        let entered = animation.sample(start + ENTER);
-        assert!(!entered.sliding());
-        assert_eq!(entered.slide(), 1.0);
-
-        // The way out is a fade in place, because it paints as an opacity effect.
+        // A fade out slides toward the edge on a cubic ease-in, whatever the entrance was.
         let exit = start + ENTER;
-        animation.set_visible(false, ScrollbarEntrance::SlideAndFade, ENTER, EXIT, exit);
-        let leaving = animation.sample(exit + EXIT / 2);
-        assert!(leaving.running);
-        assert!(!leaving.sliding());
-        assert_eq!(leaving.slide(), 1.0);
+        animation.set_visible(false, ScrollbarEntrance::Fade, ENTER, EXIT, exit);
+        let leaving = animation.effect(Axis::Vertical, width, Some(exit + EXIT / 2));
+        assert!((leaving.opacity - (1. - ease_in_cubic(0.5))).abs() < 0.001);
+        assert!((leaving.translation.x - width * ease_in_cubic(0.5)).abs() < px(0.001));
+        // A horizontal bar leaves by the bottom.
+        let below = animation.effect(Axis::Horizontal, width, Some(exit + EXIT / 2));
+        assert_eq!(below.translation.x, px(0.));
+        assert_eq!(below.translation.y, leaving.translation.x);
+        // The last frame is the end of the transition, however the clocks line up.
+        let ended = animation.effect(Axis::Vertical, width, None);
+        assert_eq!((ended.opacity, ended.translation.x), (0., width));
     }
 
     /// A scrollbar that hands out its state, to read what the last frame painted it with.
@@ -2649,9 +2659,14 @@ mod tests {
             )
         }
 
+        /// The effect the last frame painted the scrollbar with.
+        fn effect(&self) -> PaintEffect {
+            self.state.borrow().as_ref().unwrap().get().painted
+        }
+
         /// The opacity the last frame painted the scrollbar with.
         fn painted(&self) -> f32 {
-            self.state.borrow().as_ref().unwrap().get().painted_opacity
+            self.effect().opacity
         }
 
         /// Scrolls to `y` and renders the view for it, as a wheel event does.
@@ -2672,16 +2687,16 @@ mod tests {
 
         /// Steps through `time` in frames that the window has to ask for, and tells what
         /// each painted the scrollbar with.
-        fn fade(&self, time: Duration, cx: &mut VisualTestContext) -> Vec<f32> {
-            let mut opacities = vec![self.painted()];
+        fn fade(&self, time: Duration, cx: &mut VisualTestContext) -> Vec<PaintEffect> {
+            let mut effects = vec![self.effect()];
             for _ in 0..(time.as_millis() / STEP.as_millis()) {
                 assert!(
                     Self::step(cx, STEP) >= 1,
                     "the window asks for the next frame"
                 );
-                opacities.push(self.painted());
+                effects.push(self.effect());
             }
-            opacities
+            effects
         }
     }
 
@@ -2698,12 +2713,16 @@ mod tests {
         // Scrolling shows the scrollbar, which renders the view once for the new offset.
         fixture.scroll(-20., cx);
         assert_eq!(fixture.renders.get(), 2);
-        let opacities = fixture.fade(ENTER, cx);
+        let effects = fixture.fade(ENTER, cx);
         assert_eq!(fixture.painted(), 1.0, "shown after the fade in");
-        // Linear, over the enter time, as the animation that rendered the view was.
+        // Linear, over the enter time, in place, as the animation that rendered the view was.
         let steps = ENTER.as_millis() as f32 / STEP.as_millis() as f32;
-        for (ix, opacity) in opacities.iter().enumerate() {
-            assert!((opacity - ix as f32 / steps).abs() < 0.001, "{opacities:?}");
+        for (ix, effect) in effects.iter().enumerate() {
+            assert!(
+                (effect.opacity - ix as f32 / steps).abs() < 0.001,
+                "{effects:?}"
+            );
+            assert_eq!(effect.translation, Point::default(), "{effects:?}");
         }
         assert_eq!(
             fixture.renders.get(),
@@ -2724,23 +2743,33 @@ mod tests {
         assert_eq!(FadeFixture::step(cx, Duration::from_millis(249)), 0);
         FadeFixture::step(cx, Duration::from_millis(1));
         assert_eq!(fixture.renders.get(), 3, "the idle time ran out");
-        let opacities = fixture.fade(EXIT, cx);
+        let effects = fixture.fade(EXIT, cx);
         assert_eq!(
             fixture.renders.get(),
             3,
             "the fade out never rendered the view"
         );
         assert_eq!(fixture.painted(), 0.0, "hidden after the fade out");
-        // It eases in over the exit time, as the animation that rendered the view did.
+        // It eases in over the exit time and slides toward the right edge by the width of
+        // the track, as the animation that rendered the view did.
         let steps = EXIT.as_millis() as f32 / STEP.as_millis() as f32;
-        for (ix, opacity) in opacities.iter().enumerate() {
-            let expected = 1.0 - ease_in_cubic(ix as f32 / steps);
-            assert!((opacity - expected).abs() < 0.001, "{opacities:?}");
+        for (ix, effect) in effects.iter().enumerate() {
+            let eased = ease_in_cubic(ix as f32 / steps);
+            assert!(
+                (effect.opacity - (1.0 - eased)).abs() < 0.001,
+                "{effects:?}"
+            );
+            assert!(
+                (effect.translation.x - WIDTH * eased).abs() < px(0.001),
+                "{effects:?}"
+            );
+            assert_eq!(effect.translation.y, px(0.));
         }
 
         assert_eq!(FadeFixture::step(cx, STEP), 1);
         assert_eq!(FadeFixture::step(cx, STEP), 0, "no frames after the end");
         assert_eq!(fixture.painted(), 0.0);
+        assert_eq!(fixture.effect().translation, point(WIDTH, px(0.)));
         assert_eq!(fixture.renders.get(), 3);
 
         // The scrollbar no longer takes the pointer, though no render followed its end.
@@ -2756,16 +2785,19 @@ mod tests {
         FadeFixture::step(cx, DEFAULT_IDLE - ENTER);
         assert_eq!(fixture.renders.get(), 3, "the fade out began");
         let leaving = fixture.fade(EXIT / 2, cx);
-        let before = *leaving.last().unwrap();
+        let before = leaving.last().unwrap().opacity;
         assert!(before > 0.5 && before < 1.0, "{leaving:?}");
+        assert!(leaving.last().unwrap().translation.x > px(0.));
 
         // The new offset renders the view, and the opacity goes on from where it was,
-        // up to 1 in the part of the enter time that is left to cover.
+        // up to 1 in the part of the enter time that is left to cover. The thumb comes
+        // back to its place at once, as a fade in does.
         fixture.scroll(-40., cx);
         assert_eq!(fixture.renders.get(), 4);
         assert!((fixture.painted() - before).abs() < 0.001);
+        assert_eq!(fixture.effect().translation, Point::default());
         let entering = fixture.fade(STEP, cx);
-        assert!(entering[1] > before, "{entering:?}");
+        assert!(entering[1].opacity > before, "{entering:?}");
         assert_eq!(FadeFixture::step(cx, STEP), 1);
         assert_eq!(FadeFixture::step(cx, STEP), 0);
         assert_eq!(fixture.painted(), 1.0);
@@ -2776,33 +2808,34 @@ mod tests {
         );
     }
 
-    /// A slide moves the thumb, which only a new layout can do, so it still renders the
-    /// view for each step. The fade out that follows does not.
+    /// The slide in of a thumb the pointer reaches in Hover mode is a paint effect too, from
+    /// the edge on a cubic ease-out, and renders no view.
     #[gpui::test]
-    fn the_slide_in_renders_the_view_for_each_step(cx: &mut TestAppContext) {
+    fn the_slide_in_runs_without_rendering_the_view(cx: &mut TestAppContext) {
         let (fixture, cx) = FadeFixture::open(cx, ScrollbarMode::Hover, false);
         cx.simulate_mouse_move(point(px(95.), px(20.)), None, Modifiers::default());
         cx.run_until_parked();
         assert_eq!(fixture.renders.get(), 2, "the pointer reached the thumb");
 
-        let before = fixture.renders.get();
-        let entering = fixture.fade(ENTER / 2, cx);
+        let effects = fixture.fade(ENTER, cx);
+        let steps = ENTER.as_millis() as f32 / STEP.as_millis() as f32;
+        for (ix, effect) in effects.iter().enumerate() {
+            let progress = ix as f32 / steps;
+            assert!((effect.opacity - progress).abs() < 0.001, "{effects:?}");
+            let expected = WIDTH * (1. - ease_out_cubic(progress));
+            assert!(
+                (effect.translation.x - expected).abs() < px(0.001),
+                "{effects:?}"
+            );
+        }
         assert_eq!(
             fixture.renders.get(),
-            before + entering.len() - 1,
-            "a render for each step of the slide"
+            2,
+            "the slide never rendered the view"
         );
-        assert!(
-            entering.windows(2).all(|pair| pair[0] < pair[1]),
-            "{entering:?}"
-        );
-
-        // The slide ends, and nothing renders the view again until the pointer leaves.
-        FadeFixture::step(cx, ENTER);
-        let settled = fixture.renders.get();
-        assert_eq!(fixture.painted(), 1.0);
+        assert_eq!(FadeFixture::step(cx, STEP), 1);
         assert_eq!(FadeFixture::step(cx, STEP), 0);
-        assert_eq!(fixture.renders.get(), settled);
+        assert_eq!(fixture.effect(), PaintEffect::NONE);
     }
 
     #[gpui::test]

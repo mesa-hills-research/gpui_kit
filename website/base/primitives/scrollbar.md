@@ -184,12 +184,12 @@ The example theme above produces this choreography:
 
 For `SlideAndFade`, a vertical scrollbar enters from the right and a horizontal
 scrollbar enters from the bottom. Opacity uses linear entrance progress, and
-position uses cubic ease-out. The exit fades in place with cubic ease-in.
+position uses cubic ease-out. Exit opacity and position use cubic ease-in, so
+the thumb leaves toward the edge it enters from as it fades.
 
-The fade is a paint effect. The window asks for its frames and the view the
-scrollbar is in is not rendered again for any of them, so a long list stays
-cached while a scrollbar fades. Only the slide of `SlideAndFade` moves the
-thumb, so it renders that view for each step.
+The fade and the slide are a paint effect. The window asks for their frames and
+the view the scrollbar is in is not rendered again for any of them, so a long
+list stays cached while a scrollbar fades.
 
 An interrupted transition samples its current opacity and position before
 changing direction. A zero duration adopts the target immediately, including
