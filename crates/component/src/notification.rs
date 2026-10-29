@@ -23,7 +23,7 @@ use crate::{
     ActiveTheme as _, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
     animation::cubic_bezier,
     button::{Button, ButtonVariants as _},
-    concentric_radius,
+    nested_radius,
     styled::toast_shadow,
     v_flex,
 };
@@ -420,8 +420,7 @@ impl Render for Notification {
         let has_icon = icon.is_some();
         let placement = self.placement.unwrap_or(cx.theme().notification.placement);
         // The close button sits at `top_1` and `right_1`, inside the card's border.
-        let close_radius =
-            concentric_radius(cx.theme().radius_lg, window.rem_size() * 0.25 + px(1.));
+        let close_radius = nested_radius(cx.theme().radius_lg, window.rem_size() * 0.25 + px(1.));
 
         BaseToast::new("notification")
             .transition_status(transition_status)

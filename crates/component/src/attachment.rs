@@ -17,7 +17,7 @@ use rust_i18n::t;
 use crate::{
     ActiveTheme as _, Icon, IconName, InteractiveElementExt as _, Sizable, Size, StyledExt as _,
     button::{Button, ButtonCustomVariant, ButtonVariants as _},
-    concentric_radius, h_flex,
+    concentric_radius, h_flex, nested_radius,
     progress::ProgressCircle,
     shimmer::{ShimmerStyle, ShimmerText},
     spinner::Spinner,
@@ -748,9 +748,9 @@ impl RenderOnce for AttachmentMedia {
         let metrics = card_metrics(resolved_size);
         let card = card_radius(resolved_size, cx);
         // Media sits a border and the card's padding inside its edge, so its
-        // corners are that much tighter than the card's to stay concentric.
-        // Past the card's corner arc any radius reads fine, so a roomy size
-        // keeps its tier radius.
+        // corners are that much tighter than the card's, down to the nested
+        // minimum. Past the card's corner arc any radius reads fine, so a roomy
+        // size keeps its tier radius.
         let inset = px(CARD_BORDER)
             + if self.flush {
                 px(0.)
@@ -758,7 +758,7 @@ impl RenderOnce for AttachmentMedia {
                 metrics.padding_start.to_pixels(window.rem_size())
             };
         let radius = if self.flush || inset < card {
-            concentric_radius(card, inset)
+            nested_radius(card, inset)
         } else if resolved_size == Size::XSmall {
             tokens.radius.sm
         } else {

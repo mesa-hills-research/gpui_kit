@@ -18,9 +18,10 @@ use crate::{
         command::CommandOptions,
         item::{CommandEntry, CommandItem},
     },
-    concentric_radius, h_flex,
+    h_flex,
     input::{Input, InputEvent, InputState},
     kbd::Kbd,
+    nested_radius,
     scroll::Scrollbar,
     v_flex, v_virtual_list,
 };
@@ -701,7 +702,7 @@ impl CommandState {
         });
     }
 
-    /// Row corner radius, concentric with the frame: the list's `p_1` (plus the
+    /// Row corner radius, following the frame: the list's `p_1` (plus the
     /// border when bordered) sits between a row and the frame's corner. A
     /// borderless command without its own radius keeps the theme radius, since
     /// its frame belongs to the host.
@@ -717,7 +718,7 @@ impl CommandState {
             (false, Some(radius)) => (radius.to_pixels(rem_size), px(0.)),
             (false, None) => return theme.radius,
         };
-        concentric_radius(outer, rem_size * 0.25 + border)
+        nested_radius(outer, rem_size * 0.25 + border)
     }
 
     /// The frame every item row shares, so that the measured height matches the
