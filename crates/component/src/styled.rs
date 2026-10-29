@@ -4,7 +4,10 @@ use gpui::{
     App, BoxShadow, Corners, Edges, Hsla, InteractiveElement as _, ParentElement, Pixels,
     StyleRefinement, Styled, Window, div, hsla, prelude::FluentBuilder as _, px,
 };
-pub use gpui_base::{FocusableExt, RoleOverride, StyledExt, box_shadow, h_flex, v_flex};
+pub use gpui_base::{
+    FocusableExt, RoleOverride, StyledExt, box_shadow, concentric_radius, enclosing_radius, h_flex,
+    v_flex,
+};
 
 use crate::ActiveTheme as _;
 
@@ -94,33 +97,6 @@ pub(crate) fn toast_shadow(strength: f32) -> Vec<BoxShadow> {
     ]
 }
 
-/// shadcn/ui's `shadow-sm`, the elevation it spends on a control raised out of
-/// the container it sits in — the active pill of a segmented tab bar — at full
-/// ink.
-///
-/// Unlike a popover or a toast this surface is not floating over the page: it
-/// sits *inside* a trough only a few pixels wider than itself, and that trough
-/// clips. Both are reasons to keep the falloff tight — there is no room for a
-/// wide one, and a wide one would read as grime against the trough wall rather
-/// than as lift.
-///
-/// The radii are Tailwind's halved, for the reason [`popover_shadow`] explains:
-/// CSS defines a box shadow's blur radius as twice the gaussian's standard
-/// deviation, while GPUI's shader takes the field as the deviation itself
-/// (`gaussian(y, sigma)`). Copying Tailwind's `3px` and `2px` across therefore
-/// spreads the shadow over twice the distance, which is why
-/// [`Styled::shadow_sm`] leaves a haze around a 24px pill where shadcn draws a
-/// compact line.
-pub(crate) fn raised_shadow() -> Vec<BoxShadow> {
-    let ink = hsla(0., 0., 0., SURFACE_SHADOW_INK);
-    vec![
-        BoxShadow::new(px(0.), px(1.), ink).blur_radius(px(1.5)),
-        BoxShadow::new(px(0.), px(1.), ink)
-            .blur_radius(px(1.))
-            .spread_radius(px(-1.)),
-    ]
-}
-
 /// Finished styles that read the theme.
 ///
 /// Separate from [`StyledExt`], which holds neutral helpers that make no
@@ -163,6 +139,13 @@ pub trait ThemeStyled: Styled + Sized {
     /// a UI that is square everywhere else. See [`crate::Theme::radius_full`].
     fn rounded_full_style(self, cx: &App) -> Self {
         self.rounded(cx.theme().radius_full())
+    }
+
+    /// Round this element to stay concentric inside a parent of radius `outer`
+    /// when its edge is `inset` away from the parent's edge. See
+    /// [`concentric_radius`].
+    fn rounded_inside(self, outer: Pixels, inset: Pixels) -> Self {
+        self.rounded(concentric_radius(outer, inset))
     }
 }
 
@@ -279,7 +262,7 @@ pub(crate) fn focus_style<T: Styled + ParentElement>(
     // Shrinking or growing the box by `inset` keeps the line concentric with
     // the element's own corners.
     let radius =
-        corner_radii(element.style(), rem_size).map(|value| (*value - inset).max(Pixels::ZERO));
+        corner_radii(element.style(), rem_size).map(|value| concentric_radius(*value, inset));
     element.child(
         div()
             .when(cfg!(test), |this| {
@@ -324,4 +307,20 @@ pub(crate) fn focus_ring<T: Styled + ParentElement>(
             .border_color(color)
             .refine_style(&ring_style),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_inside_rounds_to_the_concentric_radius() {
+        let radius = |outer, inset| {
+            let mut element = div().rounded_inside(px(outer), px(inset));
+            element.style().corner_radii.top_left
+        };
+
+        assert_eq!(radius(8., 5.), Some(px(3.).into()));
+        assert_eq!(radius(6., 9.), Some(px(0.).into()));
+    }
 }

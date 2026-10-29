@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use gpui::{
     Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
-    Half as _, HighlightStyle, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point,
-    Render, RenderOnce, SharedString, Styled, StyledText, Subscription, WeakEntity, Window,
-    deferred, div, prelude::FluentBuilder, px, relative,
+    HighlightStyle, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render,
+    RenderOnce, SharedString, Styled, StyledText, Subscription, WeakEntity, Window, deferred, div,
+    prelude::FluentBuilder, px, relative,
 };
 use lsp_types::CompletionItem;
 
@@ -12,13 +12,14 @@ const MAX_MENU_HEIGHT: Pixels = px(240.);
 const POPOVER_GAP: Pixels = px(4.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, IndexPath, Selectable, ThemeStyled as _, actions, h_flex,
     input::{
         self, EditorState,
         popovers::{editor_popover, render_markdown},
     },
     label::Label,
     list::{List, ListDelegate, ListEvent, ListState},
+    sizing::POPUP_ITEM_INSET,
 };
 
 struct ContextMenuDelegate {
@@ -106,7 +107,7 @@ impl RenderOnce for CompletionMenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded(cx.theme().radius.half())
+            .rounded_inside(cx.theme().radius, POPUP_ITEM_INSET)
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {

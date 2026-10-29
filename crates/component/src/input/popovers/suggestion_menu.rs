@@ -1,13 +1,16 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Entity, Half as _, HighlightStyle, InteractiveElement as _, IntoElement,
+    AnyElement, App, Entity, HighlightStyle, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Styled as _, StyledText, Window, div, prelude::FluentBuilder as _,
     px, relative,
 };
 use gpui_base::input::{SuggestionItemContext, SuggestionItemRenderer, SuggestionMenu};
 
-use crate::{ActiveTheme, ThemeStyled as _, h_flex, input::TextareaState, label::Label};
+use crate::{
+    ActiveTheme, ThemeStyled as _, h_flex, input::TextareaState, label::Label,
+    sizing::POPUP_ITEM_INSET,
+};
 
 const MAX_MENU_HEIGHT: Pixels = px(240.);
 const MIN_MENU_WIDTH: Pixels = px(120.);
@@ -34,7 +37,7 @@ pub(crate) fn suggestion_menu(
             .popover_style(cx)
             .shadow_md()
             .text_xs()
-            .p_1()
+            .p(POPUP_ITEM_INSET)
             .min_w(MIN_MENU_WIDTH)
             .max_w(MAX_MENU_WIDTH)
             .max_h(MAX_MENU_HEIGHT)
@@ -73,7 +76,7 @@ fn render_suggestion(item: &SuggestionItemContext, _: &mut Window, cx: &App) -> 
         .gap_2()
         .p_1()
         .line_height(relative(1.))
-        .rounded(cx.theme().radius.half())
+        .rounded_inside(cx.theme().radius, POPUP_ITEM_INSET)
         .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
         .when(item.is_selected(), |this| {
             this.bg(cx.theme().tokens.accent)

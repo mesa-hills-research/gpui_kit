@@ -168,15 +168,17 @@ impl Size {
     /// Returns the horizontal padding of a row in an input's dropdown list.
     ///
     /// The trigger insets its text by a 1px border plus [`Self::input_px`]; the
-    /// popup insets a row by [`DROPDOWN_LIST_PADDING`]. The row pads the
+    /// popup insets a row by [`POPUP_ITEM_INSET`]. The row pads the
     /// difference, so the chosen item's text lines up with the trigger's.
     pub(crate) fn list_px(&self) -> Pixels {
-        self.input_px() + px(1.) - DROPDOWN_LIST_PADDING
+        self.input_px() + px(1.) - POPUP_ITEM_INSET
     }
 }
 
-/// The inset between an input's dropdown popup and its list rows.
-pub(crate) const DROPDOWN_LIST_PADDING: Pixels = px(4.);
+/// The inset between a popup's edge and its rows, in a menu and in an input's
+/// dropdown list. The padding and the rows' concentric radius both read it, so
+/// the two cannot drift apart.
+pub(crate) const POPUP_ITEM_INSET: Pixels = px(4.);
 
 impl From<Pixels> for Size {
     fn from(size: Pixels) -> Self {

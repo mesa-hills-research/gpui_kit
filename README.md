@@ -15,10 +15,17 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
-- **Outlined segmented selection** (`gpui-component`). The selected option of segmented tabs keeps
-  its raised fill and adds a thin outline that shows in every theme. On dark themes the fill is a
-  step lighter than the track. Other options use muted text that brightens on hover. Disabled
-  options are dimmer and stay out of keyboard navigation.
+- **Nested corners follow their container** (`gpui-component`, `gpui-base`). `concentric_radius`,
+  `enclosing_radius` and `ThemeStyled::rounded_inside` give a nested shape the radius that stays
+  concentric with the shape around it. Menu, Select, Combobox and editor popover rows, the
+  Attachment media tile and the Notification close button use it. The fills of Markdown table
+  headers, DataTable headers, bordered DescriptionList labels and bordered Accordion items round
+  at the corners of their frame, so a square fill no longer pokes past a rounded border. See
+  [Style](website/docs/style.md).
+- **Bordered segmented tabs** (`gpui-component`). Segmented tabs sit on the window background
+  inside a 1 px border, and the selected option has a `secondary` fill with a thin outline that
+  shows in every theme. Other options use muted text that brightens on hover. Disabled options are
+  dimmer and stay out of keyboard navigation.
 - **Tables end at their content** (`gpui-base`). A final Markdown table has no outside bottom
   gap, like a final paragraph. Tables before another block use `TextViewStyle`'s paragraph gap
   in both wrapping and horizontal-scroll layouts.

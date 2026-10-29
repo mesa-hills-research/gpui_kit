@@ -63,6 +63,61 @@ impl Render for SegmentedWidth {
     }
 }
 
+/// Session | All, whose selection follows clicks.
+struct SegmentedSwitch(usize);
+
+impl Render for SegmentedSwitch {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(
+            TabBar::new("switch")
+                .segmented()
+                .selected_index(self.0)
+                .child(Tab::new().label("Session"))
+                .child(Tab::new().label("All"))
+                .on_click(cx.listener(|this, index: &usize, _, cx| {
+                    this.0 = *index;
+                    cx.notify();
+                })),
+        )
+    }
+}
+
+/// A click shows the new option as chosen and the old one plain at once, with
+/// the pointer still over the bar, so the bar looks as it does with that
+/// option chosen and the pointer elsewhere. Switching back and forth also
+/// covers an option that was chosen under the pointer and then left.
+#[test]
+fn segmented_switch_under_the_pointer() {
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        let mut app = app(mode);
+        app.update(|cx| cx.set_reduce_motion(true));
+        let rest: Vec<_> = (0..2)
+            .map(|selected| {
+                let window = open(&mut app, (240., 80.), SCALE, move |_, _| {
+                    SegmentedSwitch(selected)
+                });
+                app.capture(window).unwrap().image
+            })
+            .collect();
+        let window = open(&mut app, (240., 80.), SCALE, |_, _| SegmentedSwitch(0));
+        for selected in [1, 0, 1] {
+            act(&mut app, window, |window, cx| {
+                window.within("switch").click(selected, cx)
+            });
+            let image = app.capture(window).unwrap().image;
+            let changed = image
+                .pixels()
+                .zip(rest[selected].pixels())
+                .filter(|(a, b)| a != b)
+                .count();
+            assert_eq!(
+                changed, 0,
+                "{mode:?}, option {selected} chosen under the pointer"
+            );
+        }
+    }
+}
+
 /// The selected label is medium weight, and every segment keeps that width,
 /// so changing the selection never resizes the bar.
 #[test]

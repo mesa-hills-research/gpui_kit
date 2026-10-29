@@ -17,6 +17,7 @@ use gpui::{
 
 use crate::{
     ActiveTheme, ThemeStyled as _,
+    sizing::POPUP_ITEM_INSET,
     text::{TextView, TextViewStyle},
 };
 
@@ -53,5 +54,5 @@ pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div
         .popover_style(cx)
         .shadow_md()
         .text_xs()
-        .p_1()
+        .p(POPUP_ITEM_INSET)
 }

@@ -271,7 +271,7 @@ pub struct ThemeColor {
     pub tab_active_foreground: Hsla,
     /// TabBar background color.
     pub tab_bar: Hsla,
-    /// TabBar segmented background color.
+    /// The track of segmented tabs. Defaults to `background`.
     pub tab_bar_segmented: Hsla,
     /// Tab text color.
     pub tab_foreground: Hsla,

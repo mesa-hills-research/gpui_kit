@@ -5,16 +5,17 @@ use std::{
 };
 
 use gpui::{
-    AnyElement, App, Axis, DefiniteLength, Div, ElementId, FontFeatures, FontStyle, FontWeight,
-    HighlightStyle, Hsla, Image, ImageFormat, ImageSource, InteractiveElement as _, IntoElement,
-    IsZero as _, Length, ObjectFit, Overflow, ParentElement, Pixels, Rems, ScrollHandle,
-    SharedString, SharedUri, StatefulInteractiveElement, StyleRefinement, Styled, StyledImage as _,
-    WhiteSpace, Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
+    AbsoluteLength, AnyElement, App, Axis, Corners, DefiniteLength, Div, ElementId, FontFeatures,
+    FontStyle, FontWeight, HighlightStyle, Hsla, Image, ImageFormat, ImageSource,
+    InteractiveElement as _, IntoElement, IsZero as _, Length, ObjectFit, Overflow, ParentElement,
+    Pixels, Rems, ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement,
+    StyleRefinement, Styled, StyledImage as _, WhiteSpace, Window, div, img,
+    prelude::FluentBuilder as _, px, relative, rems,
 };
 use markdown::mdast;
 
 use crate::{
-    ScrollableMask, Scrollbar, StyledExt, h_flex,
+    ScrollableMask, Scrollbar, StyledExt, concentric_radius, h_flex,
     scrollable_mask::horizontal_scroll_area,
     text::{
         CodeBlockActionsFn, CodeBlockHighlighterFn, LinkClickHandlerFn, MarkdownExtensions,
@@ -3072,6 +3073,36 @@ fn slice_backgrounds(
 const CELL_PAD_PX: f32 = 16.0; // px_2 horizontal padding
 const CELL_MIN_PX: f32 = 48.0;
 const CELL_BORDER_PX: f32 = 1.0; // border_r_1 drawn by every column but the last
+/// The width of a table frame's border, which `border_1` draws inside the frame.
+const TABLE_FRAME_BORDER: Pixels = px(1.);
+
+/// The corners of a table row whose fill touches the frame's rounded corners.
+///
+/// GPUI clips to the frame's rectangle, so a square fill would show outside the
+/// arc. The rows start one border width inside the frame, so the first row
+/// takes the frame's top radii and the last row its bottom radii, each reduced
+/// by that width.
+fn table_row_corners(
+    frame: &StyleRefinement,
+    row_ix: usize,
+    row_count: usize,
+    rem_size: Pixels,
+) -> Corners<Pixels> {
+    let (top, bottom) = (row_ix == 0, row_ix + 1 == row_count);
+    let corner = |radius: Option<AbsoluteLength>, touches_frame: bool| match radius {
+        Some(radius) if touches_frame => {
+            concentric_radius(radius.to_pixels(rem_size), TABLE_FRAME_BORDER)
+        }
+        _ => Pixels::ZERO,
+    };
+    let radii = &frame.corner_radii;
+    Corners {
+        top_left: corner(radii.top_left, top),
+        top_right: corner(radii.top_right, top),
+        bottom_left: corner(radii.bottom_left, bottom),
+        bottom_right: corner(radii.bottom_right, bottom),
+    }
+}
 
 /// The max-content width of every table column: the widest cell line,
 /// shaped with the runs the cell renders with, plus the cell's padding and
@@ -3745,6 +3776,12 @@ impl BlockNode {
                     .border_color(style.border())
                     .flex()
                     .flex_row()
+                    .corner_radii(table_row_corners(
+                        style.table(),
+                        row_ix,
+                        row_count,
+                        window.rem_size(),
+                    ))
                     // The first row is the header, as everywhere else that
                     // reads a table (`table_data`, `to_markdown`). The
                     // refinement comes last so it can override the defaults.
@@ -3859,6 +3896,12 @@ impl BlockNode {
                     .border_color(style.border())
                     .flex()
                     .flex_row()
+                    .corner_radii(table_row_corners(
+                        style.table(),
+                        row_ix,
+                        row_count,
+                        window.rem_size(),
+                    ))
                     // The first row is the header, as everywhere else that
                     // reads a table (`table_data`, `to_markdown`). The
                     // refinement comes last so it can override the defaults.
@@ -5577,6 +5620,47 @@ mod tests {
         assert_eq!(
             document.selected_text(SelectionFormat::Source, None),
             "# Title\n\nA paragraph.\n\n```rust\nlet x = 1;\n```\n\n1. one\n2. two"
+        );
+    }
+
+    #[test]
+    fn table_rows_at_the_frames_corners_take_its_radius_less_the_border() {
+        let mut frame = StyleRefinement::default();
+        frame.corner_radii.top_left = Some(px(6.).into());
+        frame.corner_radii.top_right = Some(px(6.).into());
+        frame.corner_radii.bottom_left = Some(px(6.).into());
+        frame.corner_radii.bottom_right = Some(rems(0.5).into());
+        let corners = |row, count| table_row_corners(&frame, row, count, px(16.));
+        let top = Corners {
+            top_left: px(5.),
+            top_right: px(5.),
+            bottom_left: px(0.),
+            bottom_right: px(0.),
+        };
+        let bottom = Corners {
+            top_left: px(0.),
+            top_right: px(0.),
+            bottom_left: px(5.),
+            bottom_right: px(7.),
+        };
+
+        assert_eq!(corners(0, 3), top);
+        assert_eq!(corners(1, 3), Corners::all(px(0.)));
+        assert_eq!(corners(2, 3), bottom);
+        // A table with only its header row touches all four corners.
+        assert_eq!(
+            corners(0, 1),
+            Corners {
+                top_left: px(5.),
+                top_right: px(5.),
+                bottom_left: px(5.),
+                bottom_right: px(7.),
+            }
+        );
+        // A frame without a radius keeps square rows.
+        assert_eq!(
+            table_row_corners(&StyleRefinement::default(), 0, 1, px(16.)),
+            Corners::all(px(0.))
         );
     }
 

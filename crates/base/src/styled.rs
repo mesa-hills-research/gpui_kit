@@ -63,6 +63,23 @@ pub fn box_shadow(
     }
 }
 
+/// The corner radius that keeps a shape concentric inside one of radius
+/// `outer`, when its edge is `inset` from the outer shape's edge.
+///
+/// `inset` is the padding plus any border drawn inside the outer box. A ring
+/// drawn outside the box, such as a popover's edge, does not count. A shape
+/// deeper than the corner arc reads fine with any radius, and the result is
+/// zero once `inset` reaches `outer`.
+pub fn concentric_radius(outer: Pixels, inset: Pixels) -> Pixels {
+    (outer - inset).max(Pixels::ZERO)
+}
+
+/// The radius of a ring or frame drawn `inset` outside a shape of radius
+/// `inner`. The inverse of [`concentric_radius`].
+pub fn enclosing_radius(inner: Pixels, inset: Pixels) -> Pixels {
+    inner + inset
+}
+
 macro_rules! font_weight {
     ($method:ident, $weight:ident) => {
         fn $method(self) -> Self {
@@ -281,5 +298,25 @@ mod tests {
 
         // A width-less child of a column does fill the cross axis.
         assert_eq!(cx.debug_bounds("col-stretch").unwrap().size.width, px(200.));
+    }
+
+    #[test]
+    fn concentric_radius_follows_the_inset_and_stops_at_zero() {
+        assert_eq!(concentric_radius(px(6.), px(4.)), px(2.));
+        assert_eq!(concentric_radius(px(8.), px(5.)), px(3.));
+        assert_eq!(concentric_radius(px(6.), px(0.)), px(6.));
+        assert_eq!(concentric_radius(px(6.), px(6.)), px(0.));
+        assert_eq!(concentric_radius(px(6.), px(9.)), px(0.));
+        // A frame drawn outside grows the radius instead.
+        assert_eq!(concentric_radius(px(6.), px(-3.)), px(9.));
+    }
+
+    #[test]
+    fn enclosing_radius_undoes_concentric_radius() {
+        assert_eq!(enclosing_radius(px(6.), px(3.)), px(9.));
+        assert_eq!(
+            concentric_radius(enclosing_radius(px(6.), px(3.)), px(3.)),
+            px(6.)
+        );
     }
 }
