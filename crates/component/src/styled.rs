@@ -4,7 +4,10 @@ use gpui::{
     App, BoxShadow, Corners, Edges, Hsla, InteractiveElement as _, ParentElement, Pixels,
     StyleRefinement, Styled, Window, div, hsla, prelude::FluentBuilder as _, px,
 };
-pub use gpui_base::{FocusableExt, RoleOverride, StyledExt, box_shadow, h_flex, v_flex};
+pub use gpui_base::{
+    FocusableExt, RoleOverride, StyledExt, box_shadow, concentric_radius, enclosing_radius, h_flex,
+    v_flex,
+};
 
 use crate::ActiveTheme as _;
 
@@ -164,6 +167,13 @@ pub trait ThemeStyled: Styled + Sized {
     fn rounded_full_style(self, cx: &App) -> Self {
         self.rounded(cx.theme().radius_full())
     }
+
+    /// Round this element to stay concentric inside a parent of radius `outer`
+    /// when its edge is `inset` away from the parent's edge. See
+    /// [`concentric_radius`].
+    fn rounded_inside(self, outer: Pixels, inset: Pixels) -> Self {
+        self.rounded(concentric_radius(outer, inset))
+    }
 }
 
 impl<T: Styled + Sized> ThemeStyled for T {
@@ -279,7 +289,7 @@ pub(crate) fn focus_style<T: Styled + ParentElement>(
     // Shrinking or growing the box by `inset` keeps the line concentric with
     // the element's own corners.
     let radius =
-        corner_radii(element.style(), rem_size).map(|value| (*value - inset).max(Pixels::ZERO));
+        corner_radii(element.style(), rem_size).map(|value| concentric_radius(*value, inset));
     element.child(
         div()
             .when(cfg!(test), |this| {
@@ -324,4 +334,20 @@ pub(crate) fn focus_ring<T: Styled + ParentElement>(
             .border_color(color)
             .refine_style(&ring_style),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_inside_rounds_to_the_concentric_radius() {
+        let radius = |outer, inset| {
+            let mut element = div().rounded_inside(px(outer), px(inset));
+            element.style().corner_radii.top_left
+        };
+
+        assert_eq!(radius(8., 5.), Some(px(3.).into()));
+        assert_eq!(radius(6., 9.), Some(px(0.).into()));
+    }
 }

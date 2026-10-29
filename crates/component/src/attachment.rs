@@ -17,7 +17,7 @@ use rust_i18n::t;
 use crate::{
     ActiveTheme as _, Icon, IconName, InteractiveElementExt as _, Sizable, Size, StyledExt as _,
     button::{Button, ButtonCustomVariant, ButtonVariants as _},
-    h_flex,
+    concentric_radius, h_flex,
     progress::ProgressCircle,
     shimmer::{ShimmerStyle, ShimmerText},
     spinner::Spinner,
@@ -550,7 +550,9 @@ fn upload_bar_path(bounds: Bounds<Pixels>, percent: f32, radius: Pixels) -> Opti
     const STEPS: usize = 6;
     let width = bounds.size.width.as_f32();
     let height = bounds.size.height.as_f32();
-    let radius = (radius.as_f32() - CARD_BORDER).clamp(0., width.min(height) / 2.);
+    let radius = concentric_radius(radius, px(CARD_BORDER))
+        .as_f32()
+        .min(width.min(height) / 2.);
     let inner_left = 0.;
     let inner_right = width;
     let inner_bottom = height;
