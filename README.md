@@ -16,9 +16,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
 - **Nested corners follow their container** (`gpui-component`, `gpui-base`). `concentric_radius`,
-  `enclosing_radius` and `ThemeStyled::rounded_inside` give a nested shape the radius that stays
-  concentric with the shape around it. Menu, Select, Combobox and editor popover rows, the
-  Attachment media tile and the Notification close button use it. The fills of Markdown table
+  `nested_radius`, `enclosing_radius` and `ThemeStyled::rounded_inside` give a nested shape the
+  radius that stays concentric with the shape around it. `concentric_radius` is exact, for fills
+  that must meet their frame. `nested_radius` and `rounded_inside` are never below 3 px (or half
+  the frame's radius, if less), so rows and tiles don't turn square. Menu, Command, Select,
+  Combobox and editor popover rows, the Attachment media tile and the Notification close button
+  use it. The fills of Markdown table
   headers, DataTable headers, bordered DescriptionList labels and bordered Accordion items round
   at the corners of their frame, so a square fill no longer pokes past a rounded border. See
   [Style](website/docs/style.md).
