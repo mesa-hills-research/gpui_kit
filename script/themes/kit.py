@@ -431,7 +431,7 @@ def resolve(colors: dict, mode: str, default: dict | None) -> dict:
     bg("tab.active.background", t["background"])
     col("tab.active.foreground", foreground)
     bg("tab_bar.background", t["background"])
-    bg("tab_bar.segmented.background", t["secondary.background"])
+    bg("tab_bar.segmented.background", t["background"])
     col("tab.foreground", foreground)
     bg("table.background", t["list.background"])
     bg("table.active.background", t["list.active.background"])

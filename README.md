@@ -15,10 +15,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   `mhr-gpui-kit-writing`, because `gpui-kit`, `gpui-base` and `gpui-component` on crates.io belong
   to other projects. The libraries keep their names, so `use gpui_kit::*;`, `gpui_base` and
   `gpui_component` work as before. The rest of this page still calls the crates by those names.
-- **Outlined segmented selection** (`gpui-component`). The selected option of segmented tabs keeps
-  its raised fill and adds a thin outline that shows in every theme. On dark themes the fill is a
-  step lighter than the track. Other options use muted text that brightens on hover. Disabled
-  options are dimmer and stay out of keyboard navigation.
+- **Bordered segmented tabs** (`gpui-component`). Segmented tabs sit on the window background
+  inside a 1 px border, and the selected option has a `secondary` fill with a thin outline that
+  shows in every theme. Other options use muted text that brightens on hover. Disabled options are
+  dimmer and stay out of keyboard navigation.
 - **Tables end at their content** (`gpui-base`). A final Markdown table has no outside bottom
   gap, like a final paragraph. Tables before another block use `TextViewStyle`'s paragraph gap
   in both wrapping and horizontal-scroll layouts.

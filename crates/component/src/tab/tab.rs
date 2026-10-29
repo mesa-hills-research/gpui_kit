@@ -1,7 +1,6 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::animation::{Lerp, ease_in_out_cubic};
-use crate::styled::raised_shadow;
 use crate::theme::contrast_ratio;
 use crate::{
     ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, Theme, h_flex, v_flex,
@@ -24,32 +23,43 @@ pub enum TabVariant {
     Underline,
 }
 
+/// The least contrast of the chosen segment's fill with the track.
+const SEGMENT_FILL_MIN_CONTRAST: f32 = 1.15;
 /// The least contrast of the chosen segment's outline with its fill and with
 /// the track.
 const SEGMENT_OUTLINE_MIN_CONTRAST: f32 = 1.4;
-/// The most contrast of the track's outline with the track.
-const TRACK_OUTLINE_MAX_CONTRAST: f32 = 1.25;
+/// The least contrast of the track's outline with the window.
+const TRACK_OUTLINE_MIN_CONTRAST: f32 = 1.2;
+/// The most contrast of the track's outline with the window.
+const TRACK_OUTLINE_MAX_CONTRAST: f32 = 2.;
 
 impl TabVariant {
-    /// The track behind segmented tabs, as an opaque color.
+    /// The track behind segmented tabs, as an opaque color. It's the window
+    /// background unless the theme sets `tab_bar.segmented.background`.
     fn segmented_track(theme: &Theme) -> Hsla {
         theme.background.blend(theme.tab_bar_segmented)
     }
 
     /// The fill and the outline of the chosen segment.
     ///
-    /// The fill is the window background on a light theme and a step lighter
-    /// than the track on a dark one. The outline is the foreground at 30%
-    /// opacity on a light theme and 25% on a dark one. Where a theme's colors
-    /// sit close together it gets stronger, until it stands out from both the
-    /// fill and the track.
+    /// The fill is `secondary`. Where that sits too close to the track, it's
+    /// the foreground at 8% opacity on a light theme and 10% on a dark one,
+    /// stronger where needed to stand out from the track. The outline is the
+    /// foreground at 30% opacity on a light theme and 25% on a dark one,
+    /// stronger where needed to stand out from both the fill and the track.
     fn segmented_selection(theme: &Theme) -> (Hsla, Hsla) {
         let track = Self::segmented_track(theme);
-        let (fill, mut alpha) = if theme.is_dark() {
-            (track.blend(theme.foreground.opacity(0.16)), 0.25)
-        } else {
-            (theme.background, 0.3)
-        };
+        let dark = theme.is_dark();
+        let mut fill = track.blend(theme.secondary);
+        if contrast_ratio(fill, track) < SEGMENT_FILL_MIN_CONTRAST {
+            let mut alpha: f32 = if dark { 0.1 } else { 0.08 };
+            let tint = |alpha: f32| track.blend(theme.foreground.opacity(alpha));
+            while alpha < 1. && contrast_ratio(tint(alpha), track) < SEGMENT_FILL_MIN_CONTRAST {
+                alpha = (alpha + 0.01).min(1.);
+            }
+            fill = tint(alpha);
+        }
+        let mut alpha: f32 = if dark { 0.25 } else { 0.3 };
         let faint = |alpha: f32| {
             let line = fill.blend(theme.foreground.opacity(alpha));
             contrast_ratio(line, fill).min(contrast_ratio(line, track))
@@ -61,34 +71,35 @@ impl TabVariant {
         (fill, theme.foreground.opacity(alpha))
     }
 
-    /// The track's hairline, in the theme's border color. A strong border is
-    /// faded toward the track, so no theme frames the control heavily.
+    /// The track's 1 px outline, in the theme's border color. A strong border
+    /// is faded toward the window, so no theme frames the control heavily. A
+    /// faint one gives way to the foreground at the least opacity that shows.
     pub(super) fn segmented_track_outline(theme: &Theme) -> Hsla {
         let track = Self::segmented_track(theme);
-        let mut alpha = 1.;
-        while alpha > 0.
-            && contrast_ratio(track.blend(theme.border.opacity(alpha)), track)
-                > TRACK_OUTLINE_MAX_CONTRAST
-        {
+        let edge = |color: Hsla| contrast_ratio(track.blend(color), theme.background);
+        if edge(theme.border) < TRACK_OUTLINE_MIN_CONTRAST {
+            let mut alpha: f32 = 0.15;
+            while alpha < 1. && edge(theme.foreground.opacity(alpha)) < TRACK_OUTLINE_MIN_CONTRAST {
+                alpha = (alpha + 0.01).min(1.);
+            }
+            return theme.foreground.opacity(alpha);
+        }
+        let mut alpha: f32 = 1.;
+        while alpha > 0. && edge(theme.border.opacity(alpha)) > TRACK_OUTLINE_MAX_CONTRAST {
             alpha = (alpha - 0.05).max(0.);
         }
         theme.border.opacity(alpha)
     }
 
-    /// The chosen segment: filled, outlined in a hairline and slightly raised.
-    /// A disabled selection keeps the fill with a fainter outline and no shadow.
+    /// The chosen segment, filled and outlined. A disabled selection keeps
+    /// the fill with a fainter outline.
     pub(super) fn segmented_pill<E: Styled>(pill: E, disabled: bool, cx: &App) -> E {
         let (fill, outline) = Self::segmented_selection(cx.theme());
-        let pill = pill.bg(fill).border_1().border_color(if disabled {
+        pill.bg(fill).border_1().border_color(if disabled {
             outline.opacity(0.5)
         } else {
             outline
-        });
-        if disabled {
-            pill
-        } else {
-            pill.shadow(raised_shadow())
-        }
+        })
     }
 
     fn height(&self, size: Size) -> Pixels {
@@ -1030,45 +1041,80 @@ mod tests {
             .collect()
     }
 
-    /// In every variant of every bundled theme, the chosen segment's outline
-    /// stands out from its fill and from the track, and the track's own
-    /// outline stays fainter than that.
+    /// In every bundled theme and both defaults, the track's outline shows
+    /// without framing the control heavily, the chosen segment's fill and
+    /// outline stand out, and both labels are legible.
     #[test]
-    fn segmented_outlines_are_visible_and_subtle_in_every_bundled_theme() {
+    fn segmented_tabs_keep_their_contrast_in_every_bundled_theme() {
         use crate::ThemeSet;
 
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes");
+        let mut paths: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("json"))
+            .collect();
+        paths.push(concat!(env!("CARGO_MANIFEST_DIR"), "/src/theme/default-theme.json").into());
         let mut variants = 0;
         let mut failures = Vec::new();
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
+        for path in paths {
             let set: ThemeSet =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             for config in set.themes {
                 let name = config.name.clone();
                 let mut theme = Theme::default();
                 theme.apply_config(&Rc::new(config));
+                let track = TabVariant::segmented_track(&theme);
                 let (fill, outline) = TabVariant::segmented_selection(&theme);
-                let track = theme.background.blend(theme.tab_bar_segmented);
-                let line = fill.blend(outline);
-                for (surface, color) in [("fill", fill), ("track", track)] {
-                    let ratio = contrast_ratio(line, color);
-                    if ratio < SEGMENT_OUTLINE_MIN_CONTRAST {
-                        failures.push(format!("{name}: outline on {surface} {ratio:.2}"));
-                    }
-                }
                 let edge = track.blend(TabVariant::segmented_track_outline(&theme));
-                let ratio = contrast_ratio(edge, track);
-                if ratio > TRACK_OUTLINE_MAX_CONTRAST {
-                    failures.push(format!("{name}: track outline {ratio:.2}"));
+                let line = fill.blend(outline);
+                let checks = [
+                    (
+                        "track outline",
+                        contrast_ratio(edge, theme.background),
+                        TRACK_OUTLINE_MIN_CONTRAST,
+                        TRACK_OUTLINE_MAX_CONTRAST,
+                    ),
+                    (
+                        "fill",
+                        contrast_ratio(fill, track),
+                        SEGMENT_FILL_MIN_CONTRAST,
+                        21.,
+                    ),
+                    (
+                        "outline on fill",
+                        contrast_ratio(line, fill),
+                        SEGMENT_OUTLINE_MIN_CONTRAST,
+                        21.,
+                    ),
+                    (
+                        "outline on track",
+                        contrast_ratio(line, track),
+                        SEGMENT_OUTLINE_MIN_CONTRAST,
+                        21.,
+                    ),
+                    (
+                        "chosen label",
+                        contrast_ratio(fill.blend(theme.foreground), fill),
+                        4.5,
+                        21.,
+                    ),
+                    (
+                        "other labels",
+                        contrast_ratio(track.blend(theme.muted_foreground), track),
+                        4.5,
+                        21.,
+                    ),
+                ];
+                for (what, ratio, least, most) in checks {
+                    if !(least..=most).contains(&ratio) {
+                        failures.push(format!("{name}: {what} {ratio:.2}"));
+                    }
                 }
                 variants += 1;
             }
         }
-        assert!(variants >= 71, "{variants} variants read");
+        assert!(variants >= 73, "{variants} variants read");
         assert!(failures.is_empty(), "{failures:#?}");
     }
 

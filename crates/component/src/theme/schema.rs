@@ -646,7 +646,7 @@ pub struct ThemeConfigColors {
     /// TabBar background color.
     #[serde(rename = "tab_bar.background")]
     pub tab_bar: Option<SharedString>,
-    /// TabBar segmented background color.
+    /// The track of segmented tabs. Defaults to `background`.
     #[serde(rename = "tab_bar.segmented.background")]
     pub tab_bar_segmented: Option<SharedString>,
     /// Tab text color.
@@ -1081,7 +1081,7 @@ impl ThemeColor {
         apply_background_color!(tab_active, fallback = tokens.background);
         apply_color!(tab_active_foreground, fallback = self.foreground);
         apply_background_color!(tab_bar, fallback = tokens.background);
-        apply_background_color!(tab_bar_segmented, fallback = tokens.secondary);
+        apply_background_color!(tab_bar_segmented, fallback = tokens.background);
         apply_color!(tab_foreground, fallback = self.foreground);
         apply_background_color!(table, fallback = tokens.list);
         apply_background_color!(table_active, fallback = tokens.list_active);
@@ -1263,17 +1263,17 @@ mod tests {
     }
 
     #[test]
-    fn segmented_background_defaults_to_secondary_and_accepts_an_override() {
+    fn segmented_background_defaults_to_the_background_and_accepts_an_override() {
         for mode in ["light", "dark"] {
             let config: std::rc::Rc<ThemeConfig> = serde_json::from_value(serde_json::json!({
-                "name": "Secondary",
+                "name": "Window",
                 "mode": mode,
                 "colors": { "background": "#808080", "secondary.background": "#606060" }
             }))
             .unwrap();
             let mut theme = Theme::default();
             theme.apply_config(&config);
-            assert_eq!(theme.tab_bar_segmented, try_parse_color("#606060").unwrap());
+            assert_eq!(theme.tab_bar_segmented, try_parse_color("#808080").unwrap());
             assert_eq!(
                 theme.tokens.tab_bar_segmented.color,
                 theme.tab_bar_segmented
