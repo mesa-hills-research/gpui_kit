@@ -409,15 +409,24 @@ impl TabVariant {
         }
     }
 
+    /// The gap between a segmented bar's outer edge, where its outline is
+    /// drawn, and the edge of each segment, the same on every side.
+    pub(super) fn segment_inset(size: Size) -> Pixels {
+        match size {
+            Size::XSmall => px(2.),
+            Size::Small => px(3.),
+            _ => px(4.),
+        }
+    }
+
     pub(super) fn inner_radius(&self, size: Size, cx: &App) -> Pixels {
         match self {
-            // The inset the active pill sits at, taken off the bar's own radius
-            // so the two curves stay concentric. Floored at zero: a square bar
-            // has nothing to inset from.
-            TabVariant::Segmented => match size {
-                Size::Large => (self.tab_bar_radius(size, cx) - px(3.)).max(px(0.)),
-                _ => (self.tab_bar_radius(size, cx) - px(2.)).max(px(0.)),
-            },
+            // The bar's radius less the inset, so the two curves stay
+            // concentric. Floored at zero: a square bar has nothing to inset
+            // from.
+            TabVariant::Segmented => {
+                (self.tab_bar_radius(size, cx) - Self::segment_inset(size)).max(px(0.))
+            }
             _ => px(0.),
         }
     }

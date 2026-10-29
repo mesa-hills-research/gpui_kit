@@ -380,11 +380,7 @@ impl RenderOnce for TabBar {
                 (cx.theme().transparent.into(), padding, px(4.))
             }
             TabVariant::Segmented => {
-                let padding_x = match self.size {
-                    Size::XSmall => px(2.),
-                    Size::Small => px(3.),
-                    _ => px(4.),
-                };
+                let padding_x = TabVariant::segment_inset(self.size);
                 let padding = Edges {
                     left: padding_x,
                     right: padding_x,
@@ -959,6 +955,48 @@ mod tests {
                 "left padding for {size:?}"
             );
             assert_eq!(scroll_handle.children_count(), 5);
+        }
+    }
+
+    /// A segment sits the same inset from the bar's outer edge on every side,
+    /// and its corners take the bar's radius less that inset, so the two
+    /// curves are concentric.
+    #[gpui::test]
+    fn segment_corners_are_concentric_with_the_bar(cx: &mut TestAppContext) {
+        struct SegmentedHarness(Size);
+
+        impl Render for SegmentedHarness {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().flex().flex_col().items_start().child(
+                    div().debug_selector(|| "bar".into()).child(
+                        TabBar::new("segmented")
+                            .with_size(self.0)
+                            .segmented()
+                            .selected_index(0)
+                            .child(Tab::new().label("One").debug_selector(|| "tab".into())),
+                    ),
+                )
+            }
+        }
+
+        cx.update(crate::theme::init);
+        let variant = TabVariant::Segmented;
+        for size in [Size::XSmall, Size::Small, Size::Medium, Size::Large] {
+            let (_, cx) = cx.add_window_view(move |_, _| SegmentedHarness(size));
+            draw(cx);
+            draw(cx);
+            let bar = cx.debug_bounds("bar").unwrap();
+            let tab = cx.debug_bounds("tab").unwrap();
+            let inset = tab.left() - bar.left();
+            let segment = variant.inner_height(size);
+            assert_eq!(bar.size.height - segment, inset * 2., "{size:?}");
+            cx.update(|_, cx| {
+                assert_eq!(
+                    variant.inner_radius(size, cx),
+                    (variant.tab_bar_radius(size, cx) - inset).max(px(0.)),
+                    "{size:?}"
+                );
+            });
         }
     }
 
