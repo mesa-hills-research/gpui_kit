@@ -54,12 +54,12 @@ edition = "2024"
 # `gpui-base` and `gpui-component` belong to other projects. Their library names stay
 # (`gpui_kit`, `gpui_base`, `gpui_component`), and these keys keep the old names so no
 # source file changes. The versions are exact because the six release together.
-gpui-kit = { package = "mhr-gpui-kit", path = "crates/kit", version = "=0.7.7" }
-gpui-component = { package = "mhr-gpui-kit-component", path = "crates/component", version = "=0.7.7" }
-gpui-base = { package = "mhr-gpui-kit-base", path = "crates/base", version = "=0.7.7" }
-gpui-component-macros = { package = "mhr-gpui-kit-component-macros", path = "crates/component-macros", version = "=0.7.7" }
-gpui-kit-assets = { package = "mhr-gpui-kit-assets", path = "crates/assets", version = "=0.7.7" }
-gpui-kit-writing = { package = "mhr-gpui-kit-writing", path = "crates/writing", version = "=0.7.7" }
+gpui-kit = { package = "mhr-gpui-kit", path = "crates/kit", version = "=0.7.8" }
+gpui-component = { package = "mhr-gpui-kit-component", path = "crates/component", version = "=0.7.8" }
+gpui-base = { package = "mhr-gpui-kit-base", path = "crates/base", version = "=0.7.8" }
+gpui-component-macros = { package = "mhr-gpui-kit-component-macros", path = "crates/component-macros", version = "=0.7.8" }
+gpui-kit-assets = { package = "mhr-gpui-kit-assets", path = "crates/assets", version = "=0.7.8" }
+gpui-kit-writing = { package = "mhr-gpui-kit-writing", path = "crates/writing", version = "=0.7.8" }
 gpui-fps = { path = "crates/fps", version = "0.7.1" }
 gpui-wry = { path = "crates/webview", version = "0.7.1" }
 story = { path = "crates/story" }
@@ -71,12 +71,12 @@ story = { path = "crates/story" }
 # other gpui crates and gpui-component were not built with. Crates that changed in a
 # release carry its version and the others keep the version they were published at.
 # `script/check-gpui-pin.ts` fails CI when a pin is not exact.
-gpui = { package = "mhr-gpui", version = "=0.1.6" }
-gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.6", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-gpui_web = { package = "mhr-gpui-web", version = "=0.1.6" }
-gpui_macros = { package = "mhr-gpui-macros", version = "=0.1.6" }
+gpui = { package = "mhr-gpui", version = "=0.1.7" }
+gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.7", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui_web = { package = "mhr-gpui-web", version = "=0.1.7" }
+gpui_macros = { package = "mhr-gpui-macros", version = "=0.1.7" }
 # The golden-image harness for crates/kit/tests/screenshots.rs.
-gpui-screenshot = { package = "mhr-gpui-screenshot", version = "=0.1.6" }
+gpui-screenshot = { package = "mhr-gpui-screenshot", version = "=0.1.7" }
 reqwest_client = { package = "mhr-reqwest-client", version = "=0.1.0" }
 sum-tree = { package = "mhr-sum-tree", version = "=0.1.0" }
 reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
