@@ -742,14 +742,23 @@ impl Styled for AttachmentMedia {
 }
 
 impl RenderOnce for AttachmentMedia {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let tokens = cx.theme().semantic_tokens();
         let resolved_size = self.size.unwrap_or_default();
         let metrics = card_metrics(resolved_size);
-        // Flush media sits inside the card's 1px border, so its corners are
-        // one border width tighter than the card's to stay concentric.
-        let radius = if self.flush {
-            (card_radius(resolved_size, cx) - px(1.)).max(px(0.))
+        let card = card_radius(resolved_size, cx);
+        // Media sits a border and the card's padding inside its edge, so its
+        // corners are that much tighter than the card's to stay concentric.
+        // Past the card's corner arc any radius reads fine, so a roomy size
+        // keeps its tier radius.
+        let inset = px(CARD_BORDER)
+            + if self.flush {
+                px(0.)
+            } else {
+                metrics.padding_start.to_pixels(window.rem_size())
+            };
+        let radius = if self.flush || inset < card {
+            concentric_radius(card, inset)
         } else if resolved_size == Size::XSmall {
             tokens.radius.sm
         } else {
