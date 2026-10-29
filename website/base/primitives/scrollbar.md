@@ -183,8 +183,13 @@ The example theme above produces this choreography:
 | `Always` mode                         | Immediate; visibility motion is skipped                          |
 
 For `SlideAndFade`, a vertical scrollbar enters from the right and a horizontal
-scrollbar enters from the bottom. Opacity uses linear entrance progress;
-position uses cubic ease-out. Exit opacity and position use cubic ease-in.
+scrollbar enters from the bottom. Opacity uses linear entrance progress, and
+position uses cubic ease-out. Exit opacity and position use cubic ease-in, so
+the thumb leaves toward the edge it enters from as it fades.
+
+The fade and the slide are a paint effect. The window asks for their frames and
+the view the scrollbar is in is not rendered again for any of them, so a long
+list stays cached while a scrollbar fades.
 
 An interrupted transition samples its current opacity and position before
 changing direction. A zero duration adopts the target immediately, including

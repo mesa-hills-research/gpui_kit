@@ -287,13 +287,14 @@ not give base ownership of toast colors, typography, borders, or content.
 
 `Scrollbar` follows the same rule through `ScrollbarMotion`. A scrollbar is a
 custom element that paints its own track and thumb, so no caller can apply an
-opacity or offset to it from outside. Base therefore plays the transition, but
-owns none of its timing: `ScrollbarMotion::default()` has zero enter, exit, and
-expand durations, so an unstyled scrollbar appears and disappears without
-motion. The styled layer projects product timing and the entrance choreography
-through `ScrollbarTheme::motion`. A zero duration always means "adopt the
-target now", which is also how reduced motion and always-visible scrollbars
-reach the same code path.
+opacity or offset to it from outside. Base therefore plays the transition, as a
+paint effect so that the view around the scrollbar is not rendered again for
+each step, but owns none of its timing: `ScrollbarMotion::default()` has zero
+enter, exit, and expand durations, so an unstyled scrollbar appears and
+disappears without motion. The styled layer projects product timing and the
+entrance choreography through `ScrollbarTheme::motion`. A zero duration always
+means "adopt the target now", which is also how reduced motion and
+always-visible scrollbars reach the same code path.
 
 `TextView` follows it through `TextViewMotion`. Streamed text is painted glyph
 by glyph inside the view, so only the view can fade the words an update

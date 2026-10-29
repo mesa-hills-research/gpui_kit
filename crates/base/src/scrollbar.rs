@@ -1,6 +1,7 @@
 use std::{cell::Cell, ops::Deref, panic::Location, rc::Rc};
 
-use instant::{Duration, Instant};
+use instant::Duration;
+use web_time::Instant;
 
 use crate::{
     AxisExt,
@@ -8,12 +9,13 @@ use crate::{
     theme::ActiveTheme as _,
 };
 use gpui::{
-    Anchor, App, Axis, Background, BorderStyle, Bounds, ContentMask, CursorStyle, Edges, Element,
-    ElementId, EntityId, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
-    IntoElement, IsZero, LayoutId, ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    PaintQuad, Pixels, Point, Position, ScrollHandle, ScrollWheelEvent, Size, Style,
-    TouchDragEvent, TouchPhase, UniformListScrollHandle, Window, fill, point,
-    prelude::FluentBuilder, px, relative, size,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, AvailableSpace, Axis, Background,
+    BorderStyle, Bounds, ContentMask, CursorStyle, Edges, Element, ElementId, EntityId,
+    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, IsZero,
+    LayoutId, ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintEffect, PaintQuad,
+    Pixels, Point, Position, ScrollHandle, ScrollWheelEvent, Size, Style, TouchDragEvent,
+    TouchPhase, UniformListScrollHandle, Window, fill, point, prelude::FluentBuilder, px, relative,
+    size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -165,6 +167,10 @@ struct ScrollbarStateInner {
     visibility: VisibilityAnimation,
     vertical_width: WidthAnimation,
     horizontal_width: WidthAnimation,
+    /// The effect the last frame painted the scrollbar with. The fade and the
+    /// slide run in the paint phase, so events read the opacity from this rather
+    /// than from the sample taken when the scrollbar was last laid out.
+    painted: PaintEffect,
 }
 
 impl Default for ScrollbarState {
@@ -184,6 +190,7 @@ impl Default for ScrollbarState {
             visibility: VisibilityAnimation::hidden(now),
             vertical_width: WidthAnimation::new(now),
             horizontal_width: WidthAnimation::new(now),
+            painted: PaintEffect::opacity(0.0),
         })))
     }
 }
@@ -383,6 +390,9 @@ struct VisibilityAnimation {
     opacity: ScalarTransition<f32>,
     position: ScalarTransition<f32>,
     entrance: ScrollbarEntrance,
+    /// Counts the transitions started. The paint-driven fade is keyed on it, so
+    /// each new transition starts a new run of frames.
+    generation: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -398,6 +408,7 @@ impl VisibilityAnimation {
             opacity: ScalarTransition::settled(0.0, now),
             position: ScalarTransition::settled(0.0, now),
             entrance: ScrollbarEntrance::Fade,
+            generation: 0,
         }
     }
 
@@ -426,6 +437,26 @@ impl VisibilityAnimation {
             position,
             running: opacity_running || position_running,
         }
+    }
+
+    /// The paint effect for the axis of a scrollbar `track_width` wide, at `now`, or at the end of
+    /// the transition with None.
+    ///
+    /// The opacity is the sample of the transition. The offset is the distance the thumb has
+    /// left to slide in from the edge, toward the edge it leaves by.
+    fn effect(&self, axis: Axis, track_width: Pixels, now: Option<Instant>) -> PaintEffect {
+        let (opacity, position) = match now {
+            Some(now) => {
+                let sample = self.sample(now);
+                (sample.opacity, sample.position)
+            }
+            None => (self.opacity.target, self.position.target),
+        };
+        PaintEffect::opacity(opacity).with_translation(visibility_translation(
+            axis,
+            track_width,
+            position,
+        ))
     }
 
     /// Reverse or start a transition toward `visible`.
@@ -471,6 +502,7 @@ impl VisibilityAnimation {
         self.opacity.start(sample.opacity, target, duration, now);
         self.position.start(from_position, target, duration, now);
         self.entrance = entrance;
+        self.generation += 1;
     }
 }
 
@@ -586,12 +618,12 @@ impl ScrollbarStateInner {
         state
     }
 
-    fn with_hovered_on_thumb(&self, axis: Option<Axis>) -> Self {
+    fn with_hovered_on_thumb(&self, axis: Option<Axis>, now: Instant) -> Self {
         let mut state = *self;
         state.hovered_on_thumb = axis;
-        if self.is_scrollbar_visible() {
+        if self.is_scrollbar_visible(now) {
             if axis.is_some() {
-                state.last_scroll_time = Some(Instant::now());
+                state.last_scroll_time = Some(now);
             }
         }
         state
@@ -620,8 +652,8 @@ impl ScrollbarStateInner {
         state
     }
 
-    fn is_scrollbar_visible(&self) -> bool {
-        self.dragged_axis.is_some() || self.visibility.sample(Instant::now()).opacity > 0.0
+    fn is_scrollbar_visible(&self, now: Instant) -> bool {
+        self.dragged_axis.is_some() || self.visibility.sample(now).opacity > 0.0
     }
 }
 
@@ -1165,6 +1197,9 @@ pub struct PrepaintState {
     hitbox: Hitbox,
     scrollbar_state: ScrollbarState,
     states: Vec<AxisPrepaintState>,
+    /// The quads of each axis, painted with the fade and the slide as a paint
+    /// effect. Empty while the scrollbar is hidden, or has no axis to show.
+    quads: Vec<AnyElement>,
 }
 
 #[doc(hidden)]
@@ -1182,9 +1217,104 @@ pub struct AxisPrepaintState {
     geometry: ThumbGeometry,
     active_geometry: ThumbGeometry,
     track_width: Pixels,
-    visibility_opacity: f32,
-    visibility_position: f32,
     visibility_requested: bool,
+}
+
+/// What one axis of a scrollbar paints.
+struct AxisQuads {
+    bounds: Bounds<Pixels>,
+    track: Hsla,
+    border: Hsla,
+    thumb_bounds: Bounds<Pixels>,
+    thumb: Background,
+    radius: Pixels,
+}
+
+/// The track, border and thumb of one axis, without the listeners.
+///
+/// They are an element of their own so that the fade and the slide can be a paint
+/// effect, which GPUI applies to what an element painted, in every frame, without
+/// laying out the view around it again.
+struct ScrollbarQuads {
+    clip: Bounds<Pixels>,
+    quads: AxisQuads,
+}
+
+impl IntoElement for ScrollbarQuads {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for ScrollbarQuads {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (window.request_layout(Style::default(), None, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        _: &mut Window,
+        _: &mut App,
+    ) -> Self::PrepaintState {
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        _: &mut Self::PrepaintState,
+        window: &mut Window,
+        _: &mut App,
+    ) {
+        let clip = self.clip;
+        let axis = &self.quads;
+        window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
+            window.paint_layer(clip, |window| {
+                window.paint_quad(fill(axis.bounds, axis.track));
+
+                window.paint_quad(PaintQuad {
+                    bounds: axis.bounds,
+                    corner_radii: (0.).into(),
+                    background: gpui::transparent_black().into(),
+                    border_widths: Edges {
+                        top: px(0.),
+                        right: px(0.),
+                        bottom: px(0.),
+                        left: px(0.),
+                    },
+                    border_color: axis.border,
+                    border_style: BorderStyle::default(),
+                });
+
+                window.paint_quad(fill(axis.thumb_bounds, axis.thumb).corner_radii(axis.radius));
+            });
+        });
+    }
 }
 
 /// The same longitudinal geometry drives painting, track clicks and dragging.
@@ -1297,7 +1427,9 @@ impl Element for Scrollbar {
             .read(cx)
             .clone();
 
-        let now = Instant::now();
+        // The clock the window's animations and timers run on, so that a test clock
+        // moves the scrollbar as it moves everything else.
+        let now = cx.background_executor().now();
         let base_theme = cx.theme();
         let mode = self.mode.unwrap_or(base_theme.scrollbar.mode());
         let motion = base_theme.scrollbar.motion();
@@ -1341,9 +1473,7 @@ impl Element for Scrollbar {
             now,
         );
         let visibility = inner.visibility.sample(now);
-        if visibility.running {
-            window.request_animation_frame();
-        }
+        inner.painted = PaintEffect::opacity(visibility.opacity);
 
         if !is_hovered && !is_dragging {
             if let Some(last_time) = inner.last_scroll_time {
@@ -1548,16 +1678,73 @@ impl Element for Scrollbar {
                 geometry,
                 active_geometry,
                 track_width,
-                visibility_opacity: visibility.opacity,
-                visibility_position: visibility.position,
                 visibility_requested: visible,
             })
+        }
+
+        // A hidden scrollbar paints nothing. One on its way in or out paints each axis
+        // with the opacity and the offset of each frame, which the animation below
+        // works out from the clock, and the window asks for those frames until it
+        // ends. Nothing notifies this view for them.
+        let mut quads = Vec::new();
+        if visibility.opacity > 0.0 || visibility.running {
+            let duration = if visibility.running {
+                inner.visibility.opacity.duration
+            } else {
+                Duration::ZERO
+            };
+            let plan = inner.visibility;
+            for axis_state in &states {
+                let radius = if cx.theme().tokens.radius.md.is_zero() {
+                    px(0.)
+                } else {
+                    axis_state.radius
+                };
+                let (axis, track_width) = (axis_state.axis, axis_state.track_width);
+                let clock = cx.background_executor().clone();
+                let painted = state.clone();
+                let mut element = ScrollbarQuads {
+                    clip: hitbox.bounds,
+                    quads: AxisQuads {
+                        bounds: axis_state.bounds,
+                        track: axis_state.bg,
+                        border: axis_state.border,
+                        thumb_bounds: axis_state.thumb_fill_bounds,
+                        thumb: axis_state.thumb_bg,
+                        radius: clamp_thumb_radius(radius, axis_state.thumb_fill_bounds),
+                    },
+                }
+                .with_paint_animation(
+                    (
+                        if axis.is_vertical() {
+                            "scrollbar-fade-vertical"
+                        } else {
+                            "scrollbar-fade-horizontal"
+                        },
+                        plan.generation,
+                    ),
+                    Animation::new(duration),
+                    move |progress| {
+                        // The last frame lands on the target, however the clocks line up.
+                        let now = (progress < 1.0).then(|| clock.now());
+                        let effect = plan.effect(axis, track_width, now);
+                        let mut inner = painted.get();
+                        inner.painted = effect;
+                        painted.set(inner);
+                        effect
+                    },
+                )
+                .into_any_element();
+                element.prepaint_as_root(hitbox.origin, AvailableSpace::min_size(), window, cx);
+                quads.push(element);
+            }
         }
 
         PrepaintState {
             hitbox,
             states,
             scrollbar_state: state,
+            quads,
         }
     }
 
@@ -1572,11 +1759,14 @@ impl Element for Scrollbar {
         cx: &mut App,
     ) {
         let scrollbar_state = &prepaint.scrollbar_state;
-        let theme = cx.theme();
-        let mode = self.mode.unwrap_or(theme.scrollbar.mode());
+        let mode = self.mode.unwrap_or(cx.theme().scrollbar.mode());
         let view_id = window.current_view();
         let hitbox_bounds = prepaint.hitbox.bounds;
         let is_hover_to_show = mode.is_hover();
+
+        for quads in &mut prepaint.quads {
+            quads.paint(window, cx);
+        }
 
         window.with_content_mask(
             Some(ContentMask {
@@ -1585,58 +1775,18 @@ impl Element for Scrollbar {
             |window| {
                 for state in prepaint.states.iter() {
                     let axis = state.axis;
-                    let mut radius = state.radius;
-                    if theme.tokens.radius.md.is_zero() {
-                        radius = px(0.);
-                    }
-                    radius = clamp_thumb_radius(radius, state.thumb_fill_bounds);
                     let bounds = state.bounds;
                     let thumb_bounds = state.thumb_bounds;
                     let geometry = state.geometry;
                     let active_geometry = state.active_geometry;
-                    let is_vertical = axis.is_vertical();
-                    let visibility_opacity = state.visibility_opacity;
-                    let is_visible = state.visibility_requested || visibility_opacity > 0.0;
-                    let translation =
-                        visibility_translation(axis, state.track_width, state.visibility_position);
-                    let painted_bounds = state.bounds + translation;
-                    let painted_thumb_bounds = state.thumb_fill_bounds + translation;
-                    let painted_track_bg = state.bg.opacity(visibility_opacity);
-                    let painted_border = state.border.opacity(visibility_opacity);
-                    let painted_thumb_bg = state.thumb_bg.clone().opacity(visibility_opacity);
+                    // The fade ends in a frame no view is laid out for, so whether
+                    // the scrollbar still shows is worked out when the event comes.
+                    let requested = state.visibility_requested;
+                    let is_visible = move |state: &ScrollbarState| {
+                        requested || state.get().painted.opacity > 0.0
+                    };
 
                     window.set_cursor_style(CursorStyle::default(), &state.bar_hitbox);
-
-                    window.paint_layer(hitbox_bounds, |cx| {
-                        cx.paint_quad(fill(painted_bounds, painted_track_bg));
-
-                        cx.paint_quad(PaintQuad {
-                            bounds: painted_bounds,
-                            corner_radii: (0.).into(),
-                            background: gpui::transparent_black().into(),
-                            border_widths: if is_vertical {
-                                Edges {
-                                    top: px(0.),
-                                    right: px(0.),
-                                    bottom: px(0.),
-                                    left: px(0.),
-                                }
-                            } else {
-                                Edges {
-                                    top: px(0.),
-                                    right: px(0.),
-                                    bottom: px(0.),
-                                    left: px(0.),
-                                }
-                            },
-                            border_color: painted_border,
-                            border_style: BorderStyle::default(),
-                        });
-
-                        cx.paint_quad(
-                            fill(painted_thumb_bounds, painted_thumb_bg).corner_radii(radius),
-                        );
-                    });
 
                     window.on_mouse_event({
                         let state = scrollbar_state.clone();
@@ -1647,7 +1797,7 @@ impl Element for Scrollbar {
                                 if scroll_handle.offset() != state.get().last_scroll_offset {
                                     state.set(state.get().with_last_scroll(
                                         scroll_handle.offset(),
-                                        Some(Instant::now()),
+                                        Some(cx.background_executor().now()),
                                     ));
                                     cx.notify(view_id);
                                 }
@@ -1666,7 +1816,7 @@ impl Element for Scrollbar {
                                 return;
                             }
                             if event.phase == TouchPhase::Started {
-                                if !is_visible
+                                if !is_visible(&state)
                                     || window.default_prevented()
                                     || !thumb_bounds.contains(&event.start_position)
                                 {
@@ -1690,7 +1840,11 @@ impl Element for Scrollbar {
                             }
                             if matches!(event.phase, TouchPhase::Ended | TouchPhase::Cancelled) {
                                 scroll_handle.end_drag();
-                                state.set(state.get().with_unset_drag_pos(Instant::now()));
+                                state.set(
+                                    state
+                                        .get()
+                                        .with_unset_drag_pos(cx.background_executor().now()),
+                                );
                             }
                             window.prevent_default();
                             cx.stop_propagation();
@@ -1708,47 +1862,47 @@ impl Element for Scrollbar {
                         }
                     });
 
-                    if is_visible {
-                        window.on_mouse_event({
-                            let state = scrollbar_state.clone();
-                            let scroll_handle = self.scroll_handle.clone();
+                    window.on_mouse_event({
+                        let state = scrollbar_state.clone();
+                        let scroll_handle = self.scroll_handle.clone();
 
-                            move |event: &MouseDownEvent, phase, _, cx| {
-                                if phase.bubble() && bounds.contains(&event.position) {
-                                    cx.stop_propagation();
+                        move |event: &MouseDownEvent, phase, _, cx| {
+                            if phase.bubble()
+                                && is_visible(&state)
+                                && bounds.contains(&event.position)
+                            {
+                                cx.stop_propagation();
 
-                                    if thumb_bounds.contains(&event.position) {
-                                        // click on the thumb bar, set the drag position
-                                        let pos = event.position - thumb_bounds.origin;
+                                if thumb_bounds.contains(&event.position) {
+                                    // click on the thumb bar, set the drag position
+                                    let pos = event.position - thumb_bounds.origin;
 
-                                        scroll_handle.start_drag();
-                                        state.set(state.get().with_drag_pos(axis, pos));
-                                        // Active styling can change the inset or minimum length.
-                                        // Keep the original grab point under the pointer on that frame.
-                                        scroll_handle.set_offset(active_geometry.drag_offset(
-                                            axis,
-                                            event.position,
-                                            pos,
-                                            scroll_handle.offset(),
-                                        ));
-                                    } else {
-                                        // click on the scrollbar, jump to the position
-                                        // Set the thumb bar center to the click position
-                                        let center =
-                                            point(geometry.length / 2., geometry.length / 2.);
-                                        scroll_handle.set_offset(geometry.drag_offset(
-                                            axis,
-                                            event.position,
-                                            center,
-                                            scroll_handle.offset(),
-                                        ));
-                                    }
-
-                                    cx.notify(view_id);
+                                    scroll_handle.start_drag();
+                                    state.set(state.get().with_drag_pos(axis, pos));
+                                    // Active styling can change the inset or minimum length.
+                                    // Keep the original grab point under the pointer on that frame.
+                                    scroll_handle.set_offset(active_geometry.drag_offset(
+                                        axis,
+                                        event.position,
+                                        pos,
+                                        scroll_handle.offset(),
+                                    ));
+                                } else {
+                                    // click on the scrollbar, jump to the position
+                                    // Set the thumb bar center to the click position
+                                    let center = point(geometry.length / 2., geometry.length / 2.);
+                                    scroll_handle.set_offset(geometry.drag_offset(
+                                        axis,
+                                        event.position,
+                                        center,
+                                        scroll_handle.offset(),
+                                    ));
                                 }
+
+                                cx.notify(view_id);
                             }
-                        });
-                    }
+                        }
+                    });
 
                     window.on_mouse_event({
                         let scroll_handle = self.scroll_handle.clone();
@@ -1757,16 +1911,18 @@ impl Element for Scrollbar {
 
                         move |event: &MouseMoveEvent, _, window, cx| {
                             let mut notify = false;
+                            let now = cx.background_executor().now();
+                            let is_visible = is_visible(&state);
                             // When is hover to show mode or it was visible,
                             // we need to update the hovered state and increase the last_scroll_time.
                             let need_hover_to_update = is_hover_to_show || is_visible;
                             // Update hovered state for scrollbar
                             if bounds.contains(&event.position) && need_hover_to_update {
                                 let hover_changed = state.get().hovered_axis != Some(axis);
-                                state.set(state.get().with_hovered(Some(axis), Instant::now()));
+                                state.set(state.get().with_hovered(Some(axis), now));
                                 notify |= hover_changed;
                             } else if state.get().hovered_axis == Some(axis) {
-                                state.set(state.get().with_hovered(None, Instant::now()));
+                                state.set(state.get().with_hovered(None, now));
                                 notify = true;
                             }
 
@@ -1775,12 +1931,12 @@ impl Element for Scrollbar {
                                 && thumb_bounds.contains(&event.position)
                             {
                                 if state.get().hovered_on_thumb != Some(axis) {
-                                    state.set(state.get().with_hovered_on_thumb(Some(axis)));
+                                    state.set(state.get().with_hovered_on_thumb(Some(axis), now));
                                     notify = true;
                                 }
                             } else {
                                 if state.get().hovered_on_thumb == Some(axis) {
-                                    state.set(state.get().with_hovered_on_thumb(None));
+                                    state.set(state.get().with_hovered_on_thumb(None, now));
                                     notify = true;
                                 }
                             }
@@ -1832,7 +1988,11 @@ impl Element for Scrollbar {
                                     scroll_handle.offset(),
                                 ));
                                 scroll_handle.end_drag();
-                                state.set(state.get().with_unset_drag_pos(Instant::now()));
+                                state.set(
+                                    state
+                                        .get()
+                                        .with_unset_drag_pos(cx.background_executor().now()),
+                                );
                                 cx.notify(view_id);
                             }
                         }
@@ -1850,8 +2010,8 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     use gpui::{
-        Context, Modifiers, MouseButton, ParentElement as _, Render, Styled as _, TestAppContext,
-        VisualTestContext, div,
+        AppContext as _, Context, Entity, Modifiers, MouseButton, ParentElement as _, Render,
+        StyleRefinement, Styled as _, TestAppContext, VisualTestContext, div,
     };
 
     #[test]
@@ -2280,6 +2440,418 @@ mod tests {
         });
         cx.update(|window, cx| window.draw(cx).clear(cx));
         (cx, handle)
+    }
+
+    #[test]
+    fn each_transition_starts_a_generation_and_a_repeat_does_not() {
+        let start = Instant::now();
+        let mut animation = VisibilityAnimation::hidden(start);
+        assert_eq!(animation.generation, 0);
+
+        animation.set_visible(true, ScrollbarEntrance::Fade, ENTER, EXIT, start);
+        assert_eq!(animation.generation, 1);
+        let later = start + ENTER / 2;
+        animation.set_visible(true, ScrollbarEntrance::Fade, ENTER, EXIT, later);
+        assert_eq!(animation.generation, 1, "the transition goes on");
+
+        animation.set_visible(false, ScrollbarEntrance::Fade, ENTER, EXIT, later);
+        assert_eq!(animation.generation, 2, "reversing starts another");
+
+        // A motionless policy settles without a run of frames to key.
+        animation.set_visible(true, ScrollbarEntrance::Fade, Duration::ZERO, EXIT, later);
+        assert_eq!(animation.generation, 2);
+    }
+
+    #[test]
+    fn the_effect_fades_and_slides_with_the_curves_of_the_transition() {
+        let start = Instant::now();
+        let width = px(16.);
+        let at = |animation: &VisibilityAnimation, time: Duration| {
+            animation.effect(Axis::Vertical, width, Some(start + time))
+        };
+
+        // A fade in takes its place at once and fades linearly.
+        let mut animation = VisibilityAnimation::hidden(start);
+        animation.set_visible(true, ScrollbarEntrance::Fade, ENTER, EXIT, start);
+        let halfway = at(&animation, ENTER / 2);
+        assert!((halfway.opacity - 0.5).abs() < 0.001);
+        assert_eq!(halfway.translation, Point::default());
+
+        // A slide in comes from the edge it leaves by, on a cubic ease-out.
+        let mut animation = VisibilityAnimation::hidden(start);
+        animation.set_visible(true, ScrollbarEntrance::SlideAndFade, ENTER, EXIT, start);
+        let halfway = at(&animation, ENTER / 2);
+        assert!((halfway.opacity - 0.5).abs() < 0.001);
+        assert!((halfway.translation.x - width * (1. - ease_out_cubic(0.5))).abs() < px(0.001));
+        assert_eq!(halfway.translation.y, px(0.));
+        assert_eq!(at(&animation, Duration::ZERO).translation.x, width);
+        assert_eq!(at(&animation, ENTER).translation.x, px(0.));
+
+        // A fade out slides toward the edge on a cubic ease-in, whatever the entrance was.
+        let exit = start + ENTER;
+        animation.set_visible(false, ScrollbarEntrance::Fade, ENTER, EXIT, exit);
+        let leaving = animation.effect(Axis::Vertical, width, Some(exit + EXIT / 2));
+        assert!((leaving.opacity - (1. - ease_in_cubic(0.5))).abs() < 0.001);
+        assert!((leaving.translation.x - width * ease_in_cubic(0.5)).abs() < px(0.001));
+        // A horizontal bar leaves by the bottom.
+        let below = animation.effect(Axis::Horizontal, width, Some(exit + EXIT / 2));
+        assert_eq!(below.translation.x, px(0.));
+        assert_eq!(below.translation.y, leaving.translation.x);
+        // The last frame is the end of the transition, however the clocks line up.
+        let ended = animation.effect(Axis::Vertical, width, None);
+        assert_eq!((ended.opacity, ended.translation.x), (0., width));
+    }
+
+    /// A scrollbar that hands out its state, to read what the last frame painted it with.
+    struct StateProbe {
+        scrollbar: Scrollbar,
+        state: Rc<RefCell<Option<ScrollbarState>>>,
+    }
+
+    impl IntoElement for StateProbe {
+        type Element = Self;
+
+        fn into_element(self) -> Self {
+            self
+        }
+    }
+
+    impl Element for StateProbe {
+        type RequestLayoutState = ();
+        type PrepaintState = PrepaintState;
+
+        fn id(&self) -> Option<ElementId> {
+            Element::id(&self.scrollbar)
+        }
+
+        fn source_location(&self) -> Option<&'static Location<'static>> {
+            None
+        }
+
+        fn request_layout(
+            &mut self,
+            id: Option<&GlobalElementId>,
+            inspector: Option<&InspectorElementId>,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> (LayoutId, ()) {
+            self.scrollbar.request_layout(id, inspector, window, cx)
+        }
+
+        fn prepaint(
+            &mut self,
+            id: Option<&GlobalElementId>,
+            inspector: Option<&InspectorElementId>,
+            bounds: Bounds<Pixels>,
+            layout: &mut (),
+            window: &mut Window,
+            cx: &mut App,
+        ) -> PrepaintState {
+            let state = self
+                .scrollbar
+                .prepaint(id, inspector, bounds, layout, window, cx);
+            *self.state.borrow_mut() = Some(state.scrollbar_state.clone());
+            state
+        }
+
+        fn paint(
+            &mut self,
+            id: Option<&GlobalElementId>,
+            inspector: Option<&InspectorElementId>,
+            bounds: Bounds<Pixels>,
+            layout: &mut (),
+            state: &mut PrepaintState,
+            window: &mut Window,
+            cx: &mut App,
+        ) {
+            self.scrollbar
+                .paint(id, inspector, bounds, layout, state, window, cx);
+        }
+    }
+
+    /// A view with a scrollbar that counts how often it renders.
+    struct FadePane {
+        handle: TestHandle,
+        mode: ScrollbarMode,
+        renders: Rc<Cell<usize>>,
+        state: Rc<RefCell<Option<ScrollbarState>>>,
+    }
+
+    impl Render for FadePane {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.renders.set(self.renders.get() + 1);
+            div().relative().size(px(100.)).child(StateProbe {
+                scrollbar: Scrollbar::vertical(&self.handle).mode(self.mode),
+                state: self.state.clone(),
+            })
+        }
+    }
+
+    /// A window whose root caches the view of the scrollbar, as an application does for
+    /// a long transcript.
+    struct FadeWindow {
+        pane: Entity<FadePane>,
+    }
+
+    impl Render for FadeWindow {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                self.pane
+                    .clone()
+                    .cached(StyleRefinement::default().size(px(100.)).flex_none()),
+            )
+        }
+    }
+
+    const STEP: Duration = Duration::from_millis(25);
+
+    struct FadeFixture {
+        handle: TestHandle,
+        pane: Entity<FadePane>,
+        renders: Rc<Cell<usize>>,
+        state: Rc<RefCell<Option<ScrollbarState>>>,
+    }
+
+    impl FadeFixture {
+        /// Opens the window with the motion a styled layer projects.
+        fn open(
+            cx: &mut TestAppContext,
+            mode: ScrollbarMode,
+            reduce_motion: bool,
+        ) -> (Self, &mut VisualTestContext) {
+            cx.update(|cx| {
+                cx.set_reduce_motion(reduce_motion);
+                crate::Theme::global_mut(cx).scrollbar =
+                    crate::ScrollbarTheme::new().with_mode(mode).with_motion(
+                        ScrollbarMotion::default()
+                            .with_idle(DEFAULT_IDLE)
+                            .with_enter(ENTER)
+                            .with_exit(EXIT)
+                            .with_thumb_hover_entrance(ScrollbarEntrance::SlideAndFade),
+                    );
+            });
+            let handle = TestHandle::new(size(px(100.), px(500.)));
+            let renders = Rc::new(Cell::new(0));
+            let state = Rc::new(RefCell::new(None));
+            let (window, cx) = cx.add_window_view({
+                let handle = handle.clone();
+                let renders = renders.clone();
+                let state = state.clone();
+                move |_, cx| FadeWindow {
+                    pane: cx.new(|_| FadePane {
+                        handle,
+                        mode,
+                        renders,
+                        state,
+                    }),
+                }
+            });
+            let pane = window.read_with(cx, |root, _| root.pane.clone());
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            (
+                Self {
+                    handle,
+                    pane,
+                    renders,
+                    state,
+                },
+                cx,
+            )
+        }
+
+        /// The effect the last frame painted the scrollbar with.
+        fn effect(&self) -> PaintEffect {
+            self.state.borrow().as_ref().unwrap().get().painted
+        }
+
+        /// The opacity the last frame painted the scrollbar with.
+        fn painted(&self) -> f32 {
+            self.effect().opacity
+        }
+
+        /// Scrolls to `y` and renders the view for it, as a wheel event does.
+        fn scroll(&self, y: f32, cx: &mut VisualTestContext) {
+            self.handle.set_offset(point(px(0.), px(y)));
+            self.pane.update(cx, |_, cx| cx.notify());
+            cx.run_until_parked();
+        }
+
+        /// Steps the clock and the display's next frame, and tells how many frames the
+        /// window had asked for.
+        fn step(cx: &mut VisualTestContext, by: Duration) -> usize {
+            cx.executor().advance_clock(by);
+            let asked = cx.update(|window, cx| window.simulate_next_frame(cx));
+            cx.run_until_parked();
+            asked
+        }
+
+        /// Steps through `time` in frames that the window has to ask for, and tells what
+        /// each painted the scrollbar with.
+        fn fade(&self, time: Duration, cx: &mut VisualTestContext) -> Vec<PaintEffect> {
+            let mut effects = vec![self.effect()];
+            for _ in 0..(time.as_millis() / STEP.as_millis()) {
+                assert!(
+                    Self::step(cx, STEP) >= 1,
+                    "the window asks for the next frame"
+                );
+                effects.push(self.effect());
+            }
+            effects
+        }
+    }
+
+    /// The fade steps through frames the window asks for, and the view that holds the
+    /// scrollbar is not rendered for any of them. Rendering it for each step cost a
+    /// transcript about 56 renders for each fade, and the session view around it as well.
+    #[gpui::test]
+    fn the_fade_paints_in_frames_without_rendering_its_view(cx: &mut TestAppContext) {
+        let (fixture, cx) = FadeFixture::open(cx, ScrollbarMode::Scrolling, false);
+        assert_eq!(fixture.renders.get(), 1);
+        assert_eq!(fixture.painted(), 0.0);
+        assert_eq!(FadeFixture::step(cx, STEP), 0, "nothing to draw");
+
+        // Scrolling shows the scrollbar, which renders the view once for the new offset.
+        fixture.scroll(-20., cx);
+        assert_eq!(fixture.renders.get(), 2);
+        let effects = fixture.fade(ENTER, cx);
+        assert_eq!(fixture.painted(), 1.0, "shown after the fade in");
+        // Linear, over the enter time, in place, as the animation that rendered the view was.
+        let steps = ENTER.as_millis() as f32 / STEP.as_millis() as f32;
+        for (ix, effect) in effects.iter().enumerate() {
+            assert!(
+                (effect.opacity - ix as f32 / steps).abs() < 0.001,
+                "{effects:?}"
+            );
+            assert_eq!(effect.translation, Point::default(), "{effects:?}");
+        }
+        assert_eq!(
+            fixture.renders.get(),
+            2,
+            "the fade in never rendered the view"
+        );
+
+        // The animation ends in the first frame past its duration, and then it holds
+        // with no frames until the idle time is out.
+        assert_eq!(FadeFixture::step(cx, STEP), 1);
+        assert_eq!(FadeFixture::step(cx, STEP), 0, "nothing asks for a frame");
+        assert_eq!(FadeFixture::step(cx, Duration::from_millis(1400)), 0);
+        assert_eq!(fixture.painted(), 1.0);
+        assert_eq!(fixture.renders.get(), 2, "the hold never rendered the view");
+
+        // The idle timer renders the view once to start the fade out, and the fade
+        // goes on in frames. The hold has used 300 + 50 + 1400 ms of the 2 s.
+        assert_eq!(FadeFixture::step(cx, Duration::from_millis(249)), 0);
+        FadeFixture::step(cx, Duration::from_millis(1));
+        assert_eq!(fixture.renders.get(), 3, "the idle time ran out");
+        let effects = fixture.fade(EXIT, cx);
+        assert_eq!(
+            fixture.renders.get(),
+            3,
+            "the fade out never rendered the view"
+        );
+        assert_eq!(fixture.painted(), 0.0, "hidden after the fade out");
+        // It eases in over the exit time and slides toward the right edge by the width of
+        // the track, as the animation that rendered the view did.
+        let steps = EXIT.as_millis() as f32 / STEP.as_millis() as f32;
+        for (ix, effect) in effects.iter().enumerate() {
+            let eased = ease_in_cubic(ix as f32 / steps);
+            assert!(
+                (effect.opacity - (1.0 - eased)).abs() < 0.001,
+                "{effects:?}"
+            );
+            assert!(
+                (effect.translation.x - WIDTH * eased).abs() < px(0.001),
+                "{effects:?}"
+            );
+            assert_eq!(effect.translation.y, px(0.));
+        }
+
+        assert_eq!(FadeFixture::step(cx, STEP), 1);
+        assert_eq!(FadeFixture::step(cx, STEP), 0, "no frames after the end");
+        assert_eq!(fixture.painted(), 0.0);
+        assert_eq!(fixture.effect().translation, point(WIDTH, px(0.)));
+        assert_eq!(fixture.renders.get(), 3);
+
+        // The scrollbar no longer takes the pointer, though no render followed its end.
+        cx.simulate_click(point(px(95.), px(80.)), Modifiers::default());
+        assert_eq!(fixture.handle.offset(), point(px(0.), px(-20.)));
+    }
+
+    #[gpui::test]
+    fn scrolling_in_the_fade_out_fades_back_in_from_where_it_was(cx: &mut TestAppContext) {
+        let (fixture, cx) = FadeFixture::open(cx, ScrollbarMode::Scrolling, false);
+        fixture.scroll(-20., cx);
+        fixture.fade(ENTER, cx);
+        FadeFixture::step(cx, DEFAULT_IDLE - ENTER);
+        assert_eq!(fixture.renders.get(), 3, "the fade out began");
+        let leaving = fixture.fade(EXIT / 2, cx);
+        let before = leaving.last().unwrap().opacity;
+        assert!(before > 0.5 && before < 1.0, "{leaving:?}");
+        assert!(leaving.last().unwrap().translation.x > px(0.));
+
+        // The new offset renders the view, and the opacity goes on from where it was,
+        // up to 1 in the part of the enter time that is left to cover. The thumb comes
+        // back to its place at once, as a fade in does.
+        fixture.scroll(-40., cx);
+        assert_eq!(fixture.renders.get(), 4);
+        assert!((fixture.painted() - before).abs() < 0.001);
+        assert_eq!(fixture.effect().translation, Point::default());
+        let entering = fixture.fade(STEP, cx);
+        assert!(entering[1].opacity > before, "{entering:?}");
+        assert_eq!(FadeFixture::step(cx, STEP), 1);
+        assert_eq!(FadeFixture::step(cx, STEP), 0);
+        assert_eq!(fixture.painted(), 1.0);
+        assert_eq!(
+            fixture.renders.get(),
+            4,
+            "the fade in never rendered the view"
+        );
+    }
+
+    /// The slide in of a thumb the pointer reaches in Hover mode is a paint effect too, from
+    /// the edge on a cubic ease-out, and renders no view.
+    #[gpui::test]
+    fn the_slide_in_runs_without_rendering_the_view(cx: &mut TestAppContext) {
+        let (fixture, cx) = FadeFixture::open(cx, ScrollbarMode::Hover, false);
+        cx.simulate_mouse_move(point(px(95.), px(20.)), None, Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(fixture.renders.get(), 2, "the pointer reached the thumb");
+
+        let effects = fixture.fade(ENTER, cx);
+        let steps = ENTER.as_millis() as f32 / STEP.as_millis() as f32;
+        for (ix, effect) in effects.iter().enumerate() {
+            let progress = ix as f32 / steps;
+            assert!((effect.opacity - progress).abs() < 0.001, "{effects:?}");
+            let expected = WIDTH * (1. - ease_out_cubic(progress));
+            assert!(
+                (effect.translation.x - expected).abs() < px(0.001),
+                "{effects:?}"
+            );
+        }
+        assert_eq!(
+            fixture.renders.get(),
+            2,
+            "the slide never rendered the view"
+        );
+        assert_eq!(FadeFixture::step(cx, STEP), 1);
+        assert_eq!(FadeFixture::step(cx, STEP), 0);
+        assert_eq!(fixture.effect(), PaintEffect::NONE);
+    }
+
+    #[gpui::test]
+    fn reduced_motion_shows_and_hides_without_frames(cx: &mut TestAppContext) {
+        let (fixture, cx) = FadeFixture::open(cx, ScrollbarMode::Scrolling, true);
+        fixture.scroll(-20., cx);
+        assert_eq!(fixture.renders.get(), 2);
+        assert_eq!(fixture.painted(), 1.0, "shown at once");
+        assert_eq!(FadeFixture::step(cx, Duration::from_millis(1900)), 0);
+        assert_eq!(fixture.painted(), 1.0, "held until the idle time is out");
+
+        FadeFixture::step(cx, Duration::from_millis(100));
+        assert_eq!(fixture.renders.get(), 3, "the idle time renders the view");
+        assert_eq!(fixture.painted(), 0.0, "hidden at once");
+        assert_eq!(FadeFixture::step(cx, STEP), 0);
+        assert_eq!(fixture.renders.get(), 3);
     }
 
     #[test]
