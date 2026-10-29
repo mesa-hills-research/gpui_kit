@@ -18,7 +18,7 @@ use crate::{
     searchable_list::{
         SearchableListChange, SearchableListDelegate, SearchableListItem, SearchableListState,
     },
-    sizing::DROPDOWN_LIST_PADDING,
+    sizing::POPUP_ITEM_INSET,
     v_flex,
 };
 use gpui_base::{GlobalState, Select as BaseSelect};
@@ -627,7 +627,7 @@ where
                                         )
                                         .with_size(self.state.size)
                                         .max_h(self.state.menu_max_h)
-                                        .paddings(Edges::all(DROPDOWN_LIST_PADDING)),
+                                        .paddings(Edges::all(POPUP_ITEM_INSET)),
                                 )
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);

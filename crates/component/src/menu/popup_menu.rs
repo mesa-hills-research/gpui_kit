@@ -3,7 +3,10 @@ use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_flex};
+use crate::sizing::POPUP_ITEM_INSET;
+use crate::{
+    ActiveTheme, ElementExt, Icon, IconName, Sizable as _, concentric_radius, h_flex, v_flex,
+};
 use crate::{Side, Size, kbd::Kbd};
 use gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -11,7 +14,7 @@ use gpui::{
     ParentElement, Pixels, Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement,
     Styled, WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px, rems,
 };
-use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
+use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use gpui_base::TestSupportExt as _;
 
 use std::rc::Rc;
@@ -1223,9 +1226,9 @@ impl PopupMenu {
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
 
-        let (item_height, radius) = match self.size {
-            Size::Small => (px(20.), options.radius.half()),
-            _ => (px(26.), options.radius),
+        let item_height = match self.size {
+            Size::Small => px(20.),
+            _ => px(26.),
         };
 
         let this = MenuItemElement::new(ix)
@@ -1233,7 +1236,7 @@ impl PopupMenu {
             .text_sm()
             .py_0()
             .px(INNER_PADDING)
-            .rounded(radius)
+            .rounded(options.radius)
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, window, cx| {
@@ -1467,7 +1470,8 @@ impl Render for PopupMenu {
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
-            radius: cx.theme().radius.min(px(8.)),
+            // The rows sit `POPUP_ITEM_INSET` inside the popover's edge.
+            radius: concentric_radius(cx.theme().radius, POPUP_ITEM_INSET),
         };
 
         v_flex()
@@ -1490,7 +1494,7 @@ impl Render for PopupMenu {
             .child(
                 v_flex()
                     .id("items")
-                    .p_1()
+                    .p(POPUP_ITEM_INSET)
                     .gap_y_0p5()
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
