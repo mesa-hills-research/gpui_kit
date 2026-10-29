@@ -32,6 +32,8 @@ use gpui_kit::{
 };
 use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
+#[path = "screenshots/concentric_radii.rs"]
+mod concentric_radii;
 #[path = "screenshots/segmented_tabs.rs"]
 mod segmented_tabs;
 #[path = "screenshots/settings.rs"]
