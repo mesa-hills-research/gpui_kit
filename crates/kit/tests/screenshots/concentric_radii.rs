@@ -4,11 +4,14 @@ use gpui_kit::{
     Axis,
     component::{
         WindowExt as _,
+        accordion::Accordion,
         attachment::{
             Attachment, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle,
         },
+        description_list::{DescriptionItem, DescriptionList},
         notification::Notification,
         select::{SearchableVec, Select, SelectState},
+        table::{Column, DataTable, TableDelegate, TableState},
     },
 };
 
@@ -121,4 +124,80 @@ fn notification_close_button_follows_the_card_corner() {
     });
     app.run_until_parked();
     goldens().assert("notification-close", &app.capture(window).unwrap());
+}
+
+struct Rows;
+
+impl TableDelegate for Rows {
+    fn columns_count(&self, _: &App) -> usize {
+        2
+    }
+    fn rows_count(&self, _: &App) -> usize {
+        2
+    }
+    fn column(&self, ix: usize, _: &App) -> Column {
+        Column::new(
+            format!("column-{ix}"),
+            if ix == 0 { "Name" } else { "Status" },
+        )
+        .width(px(140.))
+    }
+    fn render_td(
+        &mut self,
+        row: usize,
+        col: usize,
+        _: &mut Window,
+        _: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        div().child(format!("{row}:{col}"))
+    }
+}
+
+struct Fills {
+    table: Entity<TableState<Rows>>,
+}
+
+impl Render for Fills {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let list = |layout: Axis| {
+            DescriptionList::new()
+                .bordered(true)
+                .layout(layout)
+                .columns(1)
+                .children([
+                    DescriptionItem::new("Name").value("Notes"),
+                    DescriptionItem::new("Status").value("Saved"),
+                ])
+        };
+        // The page color would hide a fill that pokes out, so the items take another.
+        let muted = cx.theme().muted;
+        page(cx)
+            .child(
+                div()
+                    .h(px(76.))
+                    .flex_none()
+                    .child(DataTable::new(&self.table)),
+            )
+            .child(div().flex_none().child(list(Axis::Horizontal)))
+            .child(div().flex_none().child(list(Axis::Vertical)))
+            .child(
+                div().h(px(84.)).flex_none().child(
+                    Accordion::new("fills")
+                        .bordered(true)
+                        .item(|item| item.title("First").bg(muted))
+                        .item(|item| item.title("Second").bg(muted)),
+                ),
+            )
+    }
+}
+
+/// A fill at the corner of a bordered frame follows the frame's arc, with no square corner past
+/// it.
+#[test]
+fn fills_at_a_frames_corners_follow_its_arc() {
+    let mut app = app(ThemeMode::Light);
+    let window = open(&mut app, (320., 420.), SCALE, |window, cx| Fills {
+        table: cx.new(|cx| TableState::new(Rows, window, cx)),
+    });
+    goldens().assert("rounded-fills", &app.capture(window).unwrap());
 }

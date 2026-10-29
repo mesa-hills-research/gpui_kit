@@ -7,17 +7,17 @@ use crate::{
         Cancel, SelectDown, SelectFirst, SelectLast, SelectNextColumn, SelectPageDown,
         SelectPageUp, SelectPrevColumn, SelectUp,
     },
-    h_flex,
+    concentric_radius, h_flex,
     menu::{ContextMenuExt, PopupMenu},
     scroll::{ScrollableMask, Scrollbar},
     v_flex,
 };
 use gpui::{
-    AppContext, Axis, Bounds, ClickEvent, Context, Div, DragMoveEvent, ElementId, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, ListSizingBehavior, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, Point, Render, ScrollStrategy, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Task, UniformListScrollHandle, Window, div,
-    prelude::FluentBuilder, px, uniform_list,
+    App, AppContext, Axis, Bounds, ClickEvent, Context, Div, DragMoveEvent, ElementId,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, ListSizingBehavior,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, Render, ScrollStrategy,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Task, UniformListScrollHandle,
+    Window, div, prelude::FluentBuilder, px, uniform_list,
 };
 
 use super::*;
@@ -1563,6 +1563,17 @@ where
             )
     }
 
+    /// The corner radius of the header's fill, which sits inside the table's
+    /// 1px border. GPUI clips to rectangles, so a square fill would show
+    /// outside the border's arc.
+    fn header_corner_radius(&self, cx: &App) -> Pixels {
+        if self.options.bordered {
+            concentric_radius(cx.theme().radius, px(1.))
+        } else {
+            px(0.)
+        }
+    }
+
     /// Render the row header cell (when cell_selectable is enabled)
     fn render_row_header_cell(
         &self,
@@ -1577,6 +1588,9 @@ where
             .border_r_1()
             .border_color(cx.theme().table_row_border)
             .bg(cx.theme().tokens.table_head)
+            .when(is_head, |this| {
+                this.rounded_tl(self.header_corner_radius(cx))
+            })
             .flex_shrink_0()
             .table_cell_size(self.options.size)
             .when(!is_head, |this| {
@@ -1808,6 +1822,9 @@ where
             self.fixed_head_cols_bounds = Bounds::default();
         }
 
+        let corner = self.header_corner_radius(cx);
+        // The leftmost fill takes the top-left corner.
+        let row_header = self.cell_selectable && self.row_header;
         let mut header = self.delegate_mut().render_header(window, cx);
         let style = header.style().clone();
         let layout = self.header_layout.clone();
@@ -1816,6 +1833,7 @@ where
             .h_flex()
             .w_full()
             .flex_shrink_0()
+            .rounded_t(corner)
             .bg(cx.theme().tokens.table_head)
             .text_color(cx.theme().table_head_foreground)
             .refine_style(&style)
@@ -1847,7 +1865,7 @@ where
                 let to_ix = if drag.col_ix < gap { gap - 1 } else { gap };
                 table.move_column(drag.col_ix, to_ix, window, cx);
             }))
-            .when(self.cell_selectable && self.row_header, |this| {
+            .when(row_header, |this| {
                 this.child(self.render_row_header_cell(0, true, cx))
             })
             .when(left_columns_count > 0, |this| {
@@ -1857,6 +1875,7 @@ where
                     h_flex()
                         .relative()
                         .h_full()
+                        .when(!row_header, |this| this.rounded_tl(corner))
                         .bg(cx.theme().tokens.table_head)
                         .child(v_flex().min_w_full().flex_shrink_0().children(
                             layout.iter().enumerate().map(|(_row_ix, row_cells)| {
@@ -1917,6 +1936,10 @@ where
                     .overflow_scroll()
                     .relative()
                     .track_scroll(&horizontal_scroll_handle)
+                    .rounded_tr(corner)
+                    .when(left_columns_count == 0 && !row_header, |this| {
+                        this.rounded_tl(corner)
+                    })
                     .bg(cx.theme().tokens.table_head)
                     .child(v_flex().min_w_full().flex_shrink_0().children(
                         layout.iter().enumerate().map(|(row_ix, row_cells)| {
