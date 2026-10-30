@@ -236,7 +236,8 @@ impl Element for ScrollBounce {
                 *state = State::default();
             }
             state.physics.motion = self.motion;
-            let now = Instant::now();
+            // The window's clock, which a test clock moves.
+            let now = cx.background_executor().now();
             let elapsed = state
                 .sampled_at
                 .replace(now)
@@ -394,7 +395,7 @@ impl Element for ScrollBounce {
                     }
                 }
                 if changed {
-                    state.sampled_at = Some(Instant::now());
+                    state.sampled_at = Some(cx.background_executor().now());
                 }
                 drop(state);
                 if changed {
@@ -874,6 +875,36 @@ mod tests {
             draw(cx);
             assert_eq!(handle.offset().y, px(-40.));
         }
+    }
+
+    #[gpui::test]
+    fn a_released_edge_springs_back_by_the_windows_clock(cx: &mut TestAppContext) {
+        let handle = ScrollHandle::new();
+        let (_, cx) = cx.add_window_view({
+            let handle = handle.clone();
+            move |_, _| ScrollTest {
+                handle,
+                enabled: true,
+            }
+        });
+        draw(cx);
+        let origin = handle.bounds().origin.y;
+        scroll(cx, 100., TouchPhase::Started);
+        scroll(cx, 0., TouchPhase::Ended);
+        draw(cx);
+        let released = handle.bounds().origin.y;
+        assert!(released > origin);
+
+        cx.executor().advance_clock(Duration::from_millis(50));
+        draw(cx);
+        let returning = handle.bounds().origin.y;
+        assert!(
+            returning > origin && returning < released,
+            "{returning:?} between {origin:?} and {released:?}"
+        );
+        cx.executor().advance_clock(Duration::from_secs(2));
+        draw(cx);
+        assert_eq!(handle.bounds().origin.y, origin);
     }
 
     #[test]

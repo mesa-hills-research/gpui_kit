@@ -173,9 +173,9 @@ struct ScrollbarStateInner {
     painted: PaintEffect,
 }
 
-impl Default for ScrollbarState {
-    fn default() -> Self {
-        let now = Instant::now();
+impl ScrollbarState {
+    /// A hidden scrollbar's state, made at `now` by the window's clock.
+    fn new(now: Instant) -> Self {
         Self(Rc::new(Cell::new(ScrollbarStateInner {
             hovered_axis: None,
             hovered_on_thumb: None,
@@ -578,7 +578,7 @@ impl ScrollbarState {
                     return;
                 }
                 inner.drag_update_scheduled = false;
-                inner.last_update = Instant::now();
+                inner.last_update = cx.background_executor().now();
                 state.set(inner);
                 cx.update(|_, cx| cx.notify(view)).ok();
             })
@@ -587,7 +587,7 @@ impl ScrollbarState {
 }
 
 impl ScrollbarStateInner {
-    fn with_drag_pos(&self, axis: Axis, pos: Point<Pixels>) -> Self {
+    fn with_drag_pos(&self, axis: Axis, pos: Point<Pixels>, now: Instant) -> Self {
         let mut state = *self;
         if axis.is_vertical() {
             state.drag_pos.y = pos.y;
@@ -596,7 +596,7 @@ impl ScrollbarStateInner {
         }
 
         state.dragged_axis = Some(axis);
-        state.last_update = Instant::now();
+        state.last_update = now;
         state.drag_update_scheduled = false;
         state.drag_update_generation = state.drag_update_generation.wrapping_add(1);
         state
@@ -1422,14 +1422,13 @@ impl Element for Scrollbar {
             window.insert_hitbox(bounds, HitboxBehavior::Normal)
         });
 
-        let state = window
-            .use_state(cx, |_, _| ScrollbarState::default())
-            .read(cx)
-            .clone();
-
         // The clock the window's animations and timers run on, so that a test clock
         // moves the scrollbar as it moves everything else.
         let now = cx.background_executor().now();
+        let state = window
+            .use_state(cx, |_, _| ScrollbarState::new(now))
+            .read(cx)
+            .clone();
         let base_theme = cx.theme();
         let mode = self.mode.unwrap_or(base_theme.scrollbar.mode());
         let motion = base_theme.scrollbar.motion();
@@ -1826,6 +1825,7 @@ impl Element for Scrollbar {
                                 state.set(state.get().with_drag_pos(
                                     axis,
                                     event.start_position - thumb_bounds.origin,
+                                    cx.background_executor().now(),
                                 ));
                             } else if state.get().dragged_axis != Some(axis) {
                                 return;
@@ -1850,7 +1850,7 @@ impl Element for Scrollbar {
                             cx.stop_propagation();
                             if event.phase == TouchPhase::Moved {
                                 state.notify_drag(
-                                    Instant::now(),
+                                    cx.background_executor().now(),
                                     max_fps_duration,
                                     view_id,
                                     window,
@@ -1878,7 +1878,11 @@ impl Element for Scrollbar {
                                     let pos = event.position - thumb_bounds.origin;
 
                                     scroll_handle.start_drag();
-                                    state.set(state.get().with_drag_pos(axis, pos));
+                                    state.set(state.get().with_drag_pos(
+                                        axis,
+                                        pos,
+                                        cx.background_executor().now(),
+                                    ));
                                     // Active styling can change the inset or minimum length.
                                     // Keep the original grab point under the pointer on that frame.
                                     scroll_handle.set_offset(active_geometry.drag_offset(
@@ -1959,7 +1963,7 @@ impl Element for Scrollbar {
                                 }
                                 if notify {
                                     state.notify_drag(
-                                        Instant::now(),
+                                        cx.background_executor().now(),
                                         max_fps_duration,
                                         view_id,
                                         window,
@@ -2329,7 +2333,7 @@ mod tests {
     fn leaving_hover_starts_a_fresh_idle_hold() {
         let entered_at = Instant::now();
         let left_at = entered_at + Duration::from_secs(5);
-        let state = ScrollbarState::default().get();
+        let state = ScrollbarState::new(entered_at).get();
 
         let hovered = state.with_hovered(Some(Axis::Vertical), entered_at);
         assert_eq!(hovered.last_scroll_time, Some(entered_at));
@@ -3103,6 +3107,49 @@ mod tests {
         assert!(handle.offset().y < px(0.));
     }
 
+    /// The throttle goes by the window's clock, so a drag that pauses for an
+    /// interval of it draws its next move at once.
+    #[gpui::test]
+    fn a_drag_move_after_a_pause_draws_at_once(cx: &mut TestAppContext) {
+        let handle = TestHandle::new(size(px(100.), px(1000.)));
+        let (view, cx) = cx.add_window_view({
+            let handle = handle.clone();
+            move |_, _| ScrollbarHarness {
+                handle,
+                axis: ScrollbarAxis::Vertical,
+                mode: ScrollbarMode::Always,
+            }
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let notifications = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            let notifications = notifications.clone();
+            cx.observe(&view, move |_, _| {
+                notifications.set(notifications.get() + 1)
+            })
+        });
+        let thumb = point(px(95.), px(5.));
+        cx.simulate_mouse_down(thumb, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            thumb + point(px(0.), px(10.)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        // Any trailing draw of the first move happens in the pause.
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        let before = notifications.get();
+        let offset = handle.offset().y;
+
+        cx.simulate_mouse_move(
+            thumb + point(px(0.), px(20.)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        assert!(handle.offset().y < offset);
+        assert_eq!(notifications.get(), before + 1);
+    }
+
     #[gpui::test]
     fn drag_notifications_are_throttled_and_deliver_the_latest_offset(cx: &mut TestAppContext) {
         let handle = TestHandle::new(size(px(100.), px(1000.)));
@@ -3123,10 +3170,12 @@ mod tests {
                 observed.borrow_mut().push(handle.offset().y)
             })
         });
-        let state = ScrollbarState::default();
         let now = Instant::now();
+        let state = ScrollbarState::new(now);
         let interval = Duration::from_secs_f64(1. / 30.);
-        let mut inner = state.get().with_drag_pos(Axis::Vertical, Point::default());
+        let mut inner = state
+            .get()
+            .with_drag_pos(Axis::Vertical, Point::default(), now);
         inner.last_update = now;
         state.set(inner);
         let update = |offset, elapsed, cx: &mut VisualTestContext| {
