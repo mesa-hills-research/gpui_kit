@@ -8,7 +8,7 @@ name = "mhr-gpui-kit-base"
 # they stay out of the published package.
 exclude = ["examples/"]
 repository = "https://github.com/mesa-hills-research/gpui_kit"
-homepage = "https://gpui-kit.com"
+homepage = "https://github.com/mesa-hills-research/gpui_kit"
 version = "0.7.8"
 publish = true
 edition.workspace = true

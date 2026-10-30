@@ -4,7 +4,7 @@ description = "Spell checking and learned word suggestions for GPUI Kit text are
 keywords = ["gpui", "spellcheck", "autocomplete", "text", "editor"]
 categories = ["gui", "text-processing"]
 license = "Apache-2.0"
-homepage = "https://gpui-kit.com"
+homepage = "https://github.com/mesa-hills-research/gpui_kit"
 repository = "https://github.com/mesa-hills-research/gpui_kit"
 readme = "README.md"
 # The bundled word list carries its own notice.

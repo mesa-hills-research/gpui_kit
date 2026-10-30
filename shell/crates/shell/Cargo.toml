@@ -6,8 +6,8 @@ keywords = ["desktop", "gpui", "javascript", "runtime"]
 license = "Apache-2.0"
 publish = false
 edition.workspace = true
-repository = "https://github.com/longbridge/gpui-kit"
-homepage = "https://gpui-kit.com"
+repository = "https://github.com/mesa-hills-research/gpui_kit"
+homepage = "https://github.com/mesa-hills-research/gpui_kit"
 
 [lib]
 name = "gpui_shell"
