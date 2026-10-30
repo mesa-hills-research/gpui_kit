@@ -10,10 +10,10 @@ use std::{
 
 use gpui::{
     App, BorderStyle, Bounds, ClickEvent, CursorStyle, Edges, Element, ElementId, FontFeatures,
-    GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
-    IntoElement, LayoutId, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, SharedString, StyledText, TextAlign, TextLayout, TextRun,
-    TextStyle, Window, WindowId, point, px, quad, size,
+    GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
+    LayoutId, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, SharedString, StyledText, TextAlign, TextLayout, TextRun, TextStyle, Window, WindowId,
+    point, px, quad, size,
 };
 
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
     text::TextViewMultiClickKind,
     text::node::CodeBlockHighlights,
     text::node::LinkMark,
-    text::range_highlight::RevealAt,
+    text::range_highlight::{HighlightPaint, RevealAt},
     text::selection::word_range_at,
     text::state::LineSpan,
     text::text_view::{LinkClickHandlerFn, handle_link_click},
@@ -350,8 +350,9 @@ pub(super) struct Inline {
     paint_origin: Option<Point<Pixels>>,
     selection_bounds: Option<Bounds<Pixels>>,
     selection_source: Option<(Arc<Mutex<InlineState>>, Range<usize>)>,
-    /// Range highlight backgrounds, painted behind the text.
-    range_backgrounds: Vec<(Range<usize>, Hsla)>,
+    /// Range highlights, whose backgrounds are painted behind the text and
+    /// whose text colors its glyphs are painted in.
+    range_highlights: Vec<(Range<usize>, HighlightPaint)>,
     /// The start of a pending reveal, when it is in this text.
     reveal: Option<RevealAt>,
     link_click_handler: Option<Arc<LinkClickHandlerFn>>,
@@ -640,7 +641,7 @@ impl Inline {
             paint_origin: None,
             selection_bounds: None,
             selection_source: None,
-            range_backgrounds: Vec::new(),
+            range_highlights: Vec::new(),
             reveal: None,
             link_click_handler,
             retained_key: None,
@@ -675,10 +676,14 @@ impl Inline {
         self
     }
 
-    /// Paint `backgrounds` behind the text. They are not part of the text
-    /// runs, so changing them does not shape the text again.
-    pub(super) fn range_backgrounds(mut self, backgrounds: Vec<(Range<usize>, Hsla)>) -> Self {
-        self.range_backgrounds = backgrounds;
+    /// Paint the backgrounds of `range_highlights` behind the text, and the
+    /// glyphs they cover in their text colors. Neither is part of the text
+    /// runs, so changing them does not lay the text out again.
+    pub(super) fn range_highlights(
+        mut self,
+        range_highlights: Vec<(Range<usize>, HighlightPaint)>,
+    ) -> Self {
+        self.range_highlights = range_highlights;
         self
     }
 
@@ -1098,14 +1103,14 @@ impl Inline {
         );
         let origin = text_layout.bounds().origin;
         let line_height = text_layout.line_height();
-        for (range, color) in &self.range_backgrounds {
+        for (range, paint) in &self.range_highlights {
             for (row, left, right) in range_boxes(&glyphs, range.clone()) {
                 window.paint_quad(gpui::fill(
                     Bounds::from_corners(
                         point(origin.x + left, origin.y + line_height * row as f32),
                         point(origin.x + right, origin.y + line_height * (row + 1) as f32),
                     ),
-                    *color,
+                    paint.background,
                 ));
             }
         }
@@ -1240,11 +1245,32 @@ impl Element for Inline {
             return;
         }
         let text_layout = self.styled_text.layout().clone();
-        if !self.range_backgrounds.is_empty() {
+        if !self.range_highlights.is_empty() {
             self.paint_range_highlights(&text_layout, window);
         }
-        self.styled_text
-            .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
+        if self
+            .range_highlights
+            .iter()
+            .any(|(_, paint)| paint.text_color.is_some())
+        {
+            // The same two passes as `StyledText::paint`, with the glyphs in
+            // the highlights' text colors. The text keeps its layout.
+            let mut text_colors = Vec::with_capacity(self.range_highlights.len());
+            text_colors.extend(
+                self.range_highlights
+                    .iter()
+                    .filter_map(|(range, paint)| Some((range.clone(), paint.text_color?))),
+            );
+            if let Err(error) = text_layout
+                .paint_background(window, cx)
+                .and_then(|()| text_layout.paint_foreground_with_colors(&text_colors, window, cx))
+            {
+                tracing::warn!("failed to paint {}: {error:#}", self.text);
+            }
+        } else {
+            self.styled_text
+                .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
+        }
 
         // layout selections
         let (is_selectable, is_selection, selection) =
@@ -2753,13 +2779,16 @@ mod tests {
 
 #[cfg(test)]
 mod retained_layout_tests {
+    use std::sync::Arc;
+
     use gpui::{
-        AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-        TestAppContext, Window, div, prelude::FluentBuilder as _, px,
+        AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+        Styled as _, TestAppContext, TextRun, VisualTestContext, Window, WrappedLineLayout, div,
+        prelude::FluentBuilder as _, px,
     };
 
     use super::RETAINED_LAYOUTS;
-    use crate::text::{TextView, TextViewState};
+    use crate::text::{RangeHighlight, TextView, TextViewState};
 
     /// The same document shown twice in one window, as a preview beside the
     /// text: both `Inline`s share every `InlineState`.
@@ -2877,6 +2906,100 @@ mod retained_layout_tests {
                 .count()
         });
         assert_eq!(alive, 3, "one live layout per remaining fragment");
+    }
+
+    /// The text, runs and shaped lines the table holds for each element, in
+    /// the order of their states.
+    fn retained_shapes() -> Vec<(SharedString, Vec<TextRun>, Vec<Arc<WrappedLineLayout>>)> {
+        RETAINED_LAYOUTS.with(|layouts| {
+            let mut shapes = layouts
+                .borrow()
+                .layouts
+                .iter()
+                .map(|(key, retained)| {
+                    let lines = retained.styled_text.layout().line_layouts();
+                    let shape = (retained.text.clone(), retained.runs.clone(), lines.to_vec());
+                    (*key, shape)
+                })
+                .collect::<Vec<_>>();
+            shapes.sort_by_key(|(key, _)| *key);
+            shapes.into_iter().map(|(_, shape)| shape).collect()
+        })
+    }
+
+    /// Asserts that each element kept its text and runs, and the very lines
+    /// its text was shaped into.
+    fn assert_shaped_alike(
+        actual: &[(SharedString, Vec<TextRun>, Vec<Arc<WrappedLineLayout>>)],
+        expected: &[(SharedString, Vec<TextRun>, Vec<Arc<WrappedLineLayout>>)],
+    ) {
+        assert_eq!(actual.len(), expected.len());
+        for ((text, runs, lines), (expected_text, expected_runs, expected_lines)) in
+            actual.iter().zip(expected)
+        {
+            assert_eq!((text, runs), (expected_text, expected_runs));
+            assert_eq!(lines.len(), expected_lines.len());
+            assert!(
+                lines
+                    .iter()
+                    .zip(expected_lines)
+                    .all(|(line, expected)| Arc::ptr_eq(line, expected)),
+                "{text:?} was shaped again"
+            );
+        }
+    }
+
+    /// A range highlight's text color is painted over the text as it was
+    /// laid out. The text keeps its runs and the very lines it was shaped
+    /// into while the color comes, moves and goes, in a link, in the
+    /// fragments of a paragraph with a code span and in a code block's
+    /// syntax colors.
+    #[gpui::test]
+    fn text_colors_keep_the_retained_layouts(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let markdown =
+            "A [link](https://example.com) here.\n\nCall `foo` now.\n\n```rust\nlet x = 1;\n```";
+        let (view, cx) = cx.add_window_view(|_, cx| Once {
+            state: cx.new(|cx| TextViewState::markdown(markdown, cx)),
+        });
+        cx.run_until_parked();
+        let draw = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+            retained_shapes()
+        };
+        draw(cx);
+        let plain = draw(cx);
+        // The paragraph with the link, the three fragments around `foo` and the code block.
+        assert!(plain.len() >= 5, "{} elements laid out", plain.len());
+
+        let (yellow, black) = (gpui::yellow(), gpui::black());
+        for (words, text_color) in [
+            (["link", "foo now", "x = 1"], Some(black)),
+            (["A li", "Call f", "let"], Some(black)),
+            (["A li", "Call f", "let"], None),
+            ([""; 3], None),
+        ] {
+            view.update(cx, |view, cx| {
+                view.state.update(cx, |state, cx| {
+                    let rendered = state.rendered_text();
+                    let highlights = words
+                        .into_iter()
+                        .filter(|word| !word.is_empty())
+                        .map(|word| {
+                            let start = rendered.as_str().find(word).unwrap();
+                            let highlight = RangeHighlight::new(start..start + word.len(), yellow);
+                            match text_color {
+                                Some(color) => highlight.with_text_color(color),
+                                None => highlight,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    state.set_range_highlights(highlights, cx).unwrap();
+                })
+            });
+            cx.run_until_parked();
+            assert_shaped_alike(&draw(cx), &plain);
+        }
     }
 
     /// A paragraph much taller than the window lays out only the lines in

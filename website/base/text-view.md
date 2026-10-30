@@ -298,6 +298,8 @@ lays out the first lines of each code block only. See
 `rendered_text()`, the text plain copy produces, so an application can show
 its search results or citations without reparsing or restyling the document.
 The ranges are painted, not shaped, so they never change layout.
+`RangeHighlight::with_text_color` also draws the text of a range in a color of
+its own.
 Ranges of the Markdown source, such as those `selected_source_range()`
 returns, convert to it with `rendered_text().range_for_source(range)`.
 `reveal_range` scrolls the line a range starts on into view, through the

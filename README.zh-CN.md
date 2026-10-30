@@ -26,6 +26,7 @@ mhr-gpui-kit                 应用唯一需要依赖的 crate
 本仓库是 Mesa Hills Research 维护的 GPUI Kit 分支，完整的改动列表见英文 README 的 [Changes from upstream](./README.md#changes-from-upstream)。
 
 - **`on_prepaint` 可以写在构建链的任意位置**（`gpui-base`）。无论在构建链的哪个位置调用，`ElementExt::on_prepaint` 报告的都是元素边框以内的区域。它添加的 canvas 原本没有设置偏移，所以在块级元素中会排在之前添加的子元素下方，在 flex 元素中则从内边距以内开始，添加在图标之后的托管提示（managed tooltip）因此一直不会显示。
+- **范围高亮可以设置文字颜色**（`gpui-base`、`gpui-component`）。`RangeHighlight::with_text_color` 用单独的颜色绘制高亮范围内的字形，让搜索的当前结果在醒目的背景上依然清晰可读。文字的排版保持不变，所以颜色从一个匹配移到下一个时不需要重新排版。`contrast_ratio` 计算两种颜色的 WCAG 对比度，可以用来挑选在高亮上易读的文字颜色。详见 [TextView：高亮文本范围](website/zh-CN/component/text-view.md#高亮文本范围)。
 
 ## 特性
 

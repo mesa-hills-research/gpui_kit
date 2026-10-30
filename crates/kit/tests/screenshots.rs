@@ -15,6 +15,7 @@ use gpui_kit::{
         ActiveTheme as _, Disableable as _, IconName, IndexPath, Sizable as _, Theme, ThemeMode,
         button::{Button, ButtonVariants as _},
         clipboard::Clipboard,
+        contrast_ratio,
         font_picker::{FontCatalog, FontPicker, FontPickerState, FontSettings},
         input::{
             Editor, EditorState, Input, InputState, RopeExt as _, SpellCheck, SpellCheckRequest,
@@ -24,6 +25,7 @@ use gpui_kit::{
         list::{List, ListDelegate, ListItem, ListState},
         menu::{PopupMenu, PopupMenuItem},
         progress::{Progress, ProgressCircle, ProgressSegment, UsageBar},
+        text::{RangeHighlight, TextView, TextViewState},
     },
     div,
     prelude::FluentBuilder as _,
@@ -294,6 +296,245 @@ fn markdown_code_block() {
         let window = open(&mut app, (320., 190.), SCALE, |_, _| MarkdownCode);
         goldens().assert(name, &app.capture(window).unwrap());
     }
+}
+
+/// Find results in a paragraph with a link and a code span. The current one sits on a strong
+/// background with a text color of its own, so it stays readable.
+struct FindHighlights {
+    text: Entity<TextViewState>,
+}
+
+impl Render for FindHighlights {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(TextView::new(&self.text))
+    }
+}
+
+const FIND_TEXT: &str = "Find a match, the [current match](https://example.com) and `a match`.";
+
+/// Opens `markdown` in a window of `size`, and returns the window and the text's state.
+fn open_text(
+    app: &mut ScreenshotApp,
+    size: (f32, f32),
+    markdown: &'static str,
+) -> (AnyWindowHandle, Entity<TextViewState>) {
+    let text = Rc::new(RefCell::new(None));
+    let window = open(app, size, SCALE, {
+        let text = text.clone();
+        move |_, cx| {
+            let state = cx.new(|cx| TextViewState::markdown(markdown, cx));
+            *text.borrow_mut() = Some(state.clone());
+            FindHighlights { text: state }
+        }
+    });
+    // The text is parsed in the background.
+    app.run_until_parked();
+    let text = text.borrow_mut().take().unwrap();
+    (window, text)
+}
+
+/// Gives `text` the range highlights `highlights` makes from its rendered text.
+fn set_highlights(
+    app: &mut ScreenshotApp,
+    window: AnyWindowHandle,
+    text: &Entity<TextViewState>,
+    highlights: impl FnOnce(&str, &App) -> Vec<RangeHighlight>,
+) {
+    act(app, window, |_, cx| {
+        let rendered = text.update(cx, |state, _| state.rendered_text());
+        let highlights = highlights(rendered.as_str(), cx);
+        text.update(cx, |state, cx| state.set_range_highlights(highlights, cx))
+            .unwrap();
+    });
+}
+
+#[test]
+fn find_highlights_with_a_text_color() {
+    for (mode, name) in [
+        (ThemeMode::Light, "find-highlights"),
+        (ThemeMode::Dark, "find-highlights-dark"),
+    ] {
+        let mut app = app(mode);
+        let (window, text) = open_text(&mut app, (320., 96.), FIND_TEXT);
+        set_highlights(&mut app, window, &text, |rendered, cx| {
+            let theme = cx.theme();
+            let (other, current) = (theme.warning.opacity(0.3), theme.warning);
+            // The theme's text or page color, whichever reads better on the current result.
+            let current_text = [theme.foreground, theme.background]
+                .into_iter()
+                .max_by(|a, b| contrast_ratio(*a, current).total_cmp(&contrast_ratio(*b, current)))
+                .unwrap();
+            assert!(contrast_ratio(current_text, current) >= 4.5);
+            rendered
+                .match_indices("match")
+                .enumerate()
+                .map(|(ix, (start, found))| {
+                    let range = start..start + found.len();
+                    match ix {
+                        1 => RangeHighlight::new(range, current).with_text_color(current_text),
+                        _ => RangeHighlight::new(range, other),
+                    }
+                })
+                .collect()
+        });
+        goldens().assert(name, &app.capture(window).unwrap());
+    }
+}
+
+/// The smallest box, `[left, top, right, bottom]` in device pixels, around the pixels drawn in
+/// the magenta of [`magenta_text`].
+fn magenta_box(screenshot: &Screenshot) -> Option<[u32; 4]> {
+    screenshot
+        .image
+        .enumerate_pixels()
+        .filter(|(_, _, pixel)| {
+            let [r, g, b, _] = pixel.0;
+            r > 200 && b > 200 && g < 128
+        })
+        .fold(None, |found, (x, y, _)| {
+            let [left, top, right, bottom] = found.unwrap_or([x, y, x, y]);
+            Some([left.min(x), top.min(y), right.max(x), bottom.max(y)])
+        })
+}
+
+/// Asserts that `actual` shows what `expected` does, within 2 levels a channel, outside
+/// `except` and the 3 device pixels around it.
+fn assert_same_outside(expected: &Screenshot, actual: &Screenshot, except: Option<[u32; 4]>) {
+    let inside = |x: u32, y: u32| {
+        except.is_some_and(|[left, top, right, bottom]| {
+            x + 3 >= left && x <= right + 3 && y + 3 >= top && y <= bottom + 3
+        })
+    };
+    for (x, y, pixel) in actual.image.enumerate_pixels() {
+        let wanted = expected.image.get_pixel(x, y);
+        assert!(
+            inside(x, y)
+                || pixel
+                    .0
+                    .iter()
+                    .zip(wanted.0)
+                    .all(|(actual, wanted)| actual.abs_diff(wanted) <= 2),
+            "pixel ({x}, {y}) is {:?}, not {:?}",
+            pixel.0,
+            wanted.0
+        );
+    }
+}
+
+/// A text color draws the glyphs of its range alone, in a link and in a code span, which a
+/// paragraph lays out in fragments. It moves with its range and goes when the highlights are
+/// cleared, and the rest of the text stays where it was.
+#[test]
+fn a_text_color_paints_its_range_alone_across_frames() {
+    let mut app = app(ThemeMode::Light);
+    let (window, text) = open_text(&mut app, (640., 64.), FIND_TEXT);
+    let plain = app.capture(window).unwrap();
+    assert_eq!(magenta_box(&plain), None);
+
+    let mut boxes = Vec::new();
+    // "current" in the link, then "a match" in the code span, which holds the second of two.
+    for code_span in [false, true] {
+        set_highlights(&mut app, window, &text, |rendered, _| {
+            let (start, word) = if code_span {
+                (rendered.rfind("a match").unwrap(), "a match")
+            } else {
+                (rendered.find("current").unwrap(), "current")
+            };
+            magenta_text(start..start + word.len())
+        });
+        let colored = app.capture(window).unwrap();
+        let found = magenta_box(&colored).expect("the range is drawn in its text color");
+        assert_same_outside(&plain, &colored, Some(found));
+        boxes.push(found);
+    }
+    // The code span comes after the link on the line.
+    assert!(boxes[1][0] > boxes[0][2], "{boxes:?}");
+
+    set_highlights(&mut app, window, &text, |_, _| Vec::new());
+    let cleared = app.capture(window).unwrap();
+    assert_same_outside(&plain, &cleared, None);
+}
+
+/// A highlight over `range` with no background and its text in magenta, a color no theme uses.
+fn magenta_text(range: std::ops::Range<usize>) -> Vec<RangeHighlight> {
+    let magenta = gpui_kit::hsla(300. / 360., 1., 0.5, 1.);
+    vec![RangeHighlight::new(range, gpui_kit::transparent_black()).with_text_color(magenta)]
+}
+
+/// In a code span that mixes right-to-left and left-to-right text, a text color follows the
+/// characters of its range to wherever the line draws them.
+#[test]
+fn a_text_color_follows_right_to_left_text() {
+    let mut app = app(ThemeMode::Light);
+    // An Arabic word, which DejaVu Sans Mono draws from right to left, before an English one.
+    let word = "\u{0645}\u{0631}\u{062d}\u{0628}\u{0627}";
+    let (window, text) = open_text(
+        &mut app,
+        (640., 64.),
+        "Say `\u{0645}\u{0631}\u{062d}\u{0628}\u{0627} world` now.",
+    );
+    let plain = app.capture(window).unwrap();
+    let mut boxes = Vec::new();
+    // The word's first two letters, then its last two, two bytes each.
+    for last in [false, true] {
+        set_highlights(&mut app, window, &text, |rendered, _| {
+            let start = rendered.find(word).unwrap();
+            magenta_text(if last {
+                start + word.len() - 4..start + word.len()
+            } else {
+                start..start + 4
+            })
+        });
+        let colored = app.capture(window).unwrap();
+        let found = magenta_box(&colored).expect("the range is drawn in its text color");
+        assert_same_outside(&plain, &colored, Some(found));
+        boxes.push(found);
+    }
+    // From right to left, the first letters are drawn right of the last ones.
+    assert!(boxes[0][0] > boxes[1][2], "{boxes:?}");
+}
+
+/// A selection over a text color is drawn as over any text, and the text keeps its color under
+/// it.
+#[test]
+fn a_selection_over_a_text_color() {
+    let mut app = app(ThemeMode::Light);
+    let (window, text) = open_text(&mut app, (640., 64.), FIND_TEXT);
+    let plain = app.capture(window).unwrap();
+    let current = |rendered: &str| {
+        let start = rendered.find("current").unwrap();
+        start..start + "current".len()
+    };
+    set_highlights(&mut app, window, &text, |rendered, _| {
+        magenta_text(current(rendered))
+    });
+    let found = magenta_box(&app.capture(window).unwrap()).expect("the range is drawn");
+
+    act(&mut app, window, |_, cx| {
+        text.update(cx, |state, cx| state.select_all(cx))
+    });
+    let selected_and_colored = app.capture(window).unwrap();
+    set_highlights(&mut app, window, &text, |_, _| Vec::new());
+    let selected = app.capture(window).unwrap();
+
+    let differ = |a: &Screenshot, b: &Screenshot, [left, top, right, bottom]: [u32; 4]| {
+        a.image.enumerate_pixels().any(|(x, y, pixel)| {
+            (left..=right).contains(&x)
+                && (top..=bottom).contains(&y)
+                && pixel
+                    .0
+                    .iter()
+                    .zip(b.image.get_pixel(x, y).0)
+                    .any(|(a, b)| a.abs_diff(b) > 2)
+        })
+    };
+    let whole = [0, 0, plain.image.width() - 1, plain.image.height() - 1];
+    assert!(differ(&selected, &plain, whole), "the selection is drawn");
+    assert!(
+        differ(&selected_and_colored, &selected, found),
+        "the text color shows under the selection"
+    );
+    assert_same_outside(&selected, &selected_and_colored, Some(found));
 }
 
 struct Buttons;

@@ -126,6 +126,12 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   and `rendered_text()`, put a blank line between blocks, where there was one line break, so
   pasted paragraphs stay apart. See
   [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
+- **Text colors on range highlights** (`gpui-base`, `gpui-component`).
+  `RangeHighlight::with_text_color` paints the glyphs of a highlighted range in a color of their
+  own, so the current result of a search stays readable on a strong background. The text keeps
+  its layout, so the color moves from match to match without laying the text out again.
+  `contrast_ratio` gives the WCAG contrast of two colors, for choosing one that reads on the
+  highlight. See [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
 - **The layout of selectable text** (`gpui-base`). `SelectableText::layout` returns the
   `TextLayout` the text is drawn with, so an element around it can find where an offset is drawn
   without shaping the text again. See

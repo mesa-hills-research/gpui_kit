@@ -262,13 +262,16 @@ changed fade.
 
 An application that searches a document, or points at a citation inside it,
 paints its ranges with `set_range_highlights`. The application owns the
-search: it finds its ranges in `rendered_text()`, the text the view shows, and
-hands them back with the colors to paint them in, a stronger one for the
-current result:
+search. It finds its ranges in `rendered_text()`, the text the view shows, and
+hands them back with the colors to paint them in. The current result gets a
+stronger background and a text color that reads on it. The theme's
+`warning_foreground` is made for buttons and reads poorly as text on
+`warning`, so the example picks the theme's text or page color with
+`contrast_ratio`:
 
 ```rust
 use gpui_kit::component::{
-    ActiveTheme as _,
+    ActiveTheme as _, contrast_ratio,
     text::{RangeHighlight, RangeHighlightError, TextViewState},
 };
 
@@ -278,7 +281,16 @@ fn highlight_matches(
     current_match: usize,
     cx: &mut Context<TextViewState>,
 ) -> Result<(), RangeHighlightError> {
-    let (color, current_color) = (cx.theme().warning.opacity(0.3), cx.theme().warning);
+    let theme = cx.theme();
+    let (color, current_color) = (theme.warning.opacity(0.3), theme.warning);
+    // The theme's text or page color, whichever reads better on the current result.
+    let current_text = if contrast_ratio(theme.foreground, current_color)
+        >= contrast_ratio(theme.background, current_color)
+    {
+        theme.foreground
+    } else {
+        theme.background
+    };
     let text = state.rendered_text();
     let matches = if query.is_empty() {
         Vec::new()
@@ -286,10 +298,12 @@ fn highlight_matches(
         text.as_str().match_indices(query).collect()
     };
     let highlights = matches.into_iter().enumerate().map(|(ix, (start, found))| {
-        RangeHighlight::new(
-            start..start + found.len(),
-            if ix == current_match { current_color } else { color },
-        )
+        let range = start..start + found.len();
+        if ix == current_match {
+            RangeHighlight::new(range, current_color).with_text_color(current_text)
+        } else {
+            RangeHighlight::new(range, color)
+        }
     });
     state.set_range_highlights(highlights, cx)
 }
@@ -302,20 +316,26 @@ passed as they are, and a repeated phrase is addressed by where it occurs. The
 text is built the first time it is read.
 
 A highlight is painted behind the text and under the selection, so wrapping,
-alignment, syntax colors, links, selection and copy stay as they were. Where
+alignment, syntax colors, links, selection and copy stay as they were. One
+made `with_text_color` also paints the glyphs in its range in that color, in
+place of their syntax and link colors, so they stay readable on a strong
+background. Underlines, strikethroughs and the text's own backgrounds keep
+their colors, and the text keeps its layout, so the color can move from match
+to match without laying the text out again. A glyph that joins several
+characters, such as a ligature, takes the color of its first one. Where
 highlights overlap, the later one paints over the earlier. A range that
 crosses from one block into the next paints in both. Text that belongs to no
-block is left unpainted: the line breaks between blocks, the spaces between
-table cells, custom blocks, HTML blocks and inline plugin objects. Only a range
-that is reversed, out of bounds or not on a character boundary is rejected,
-and the whole set with it.
+block is left unpainted, such as the line breaks between blocks, the spaces
+between table cells, custom blocks, HTML blocks and inline plugin objects.
+Only a range that is reversed, out of bounds or not on a character boundary is
+rejected, and the whole set with it.
 
 When the content changes, a highlight follows its block and stays as far as
 the block's text is unchanged. Text appended while streaming, through
 `push_str` or `set_text`, keeps the highlights before it, and an edit keeps
 those before and after it. After an edit inside a table, the cells in and
 after the edited row lose theirs, since a cell is only known by its place in
-the table. The view notifies when its text changes: observe the state and
+the table. The view notifies when its text changes, so observe the state and
 search the new `rendered_text()` again. Compute ranges and call
 `set_range_highlights` in the same state update so the ranges address the
 current text. Backgrounds that are part of the text, such as

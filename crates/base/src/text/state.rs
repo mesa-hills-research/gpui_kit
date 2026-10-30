@@ -4189,7 +4189,7 @@ mod tests {
         use gpui::{Entity, TestAppContext};
 
         use super::super::*;
-        use crate::text::stream_fade::TextLeafKey;
+        use crate::text::{range_highlight::HighlightPaint, stream_fade::TextLeafKey};
 
         fn state(markdown: &str, cx: &mut TestAppContext) -> Entity<TextViewState> {
             cx.update(crate::init);
@@ -4222,7 +4222,7 @@ mod tests {
             state.read_with(cx, |state, _| {
                 state.range_highlights.as_ref().map_or(Vec::new(), |frame| {
                     frame
-                        .backgrounds(key)
+                        .highlights(key)
                         .iter()
                         .map(|(range, _)| range.clone())
                         .collect()
@@ -4273,6 +4273,29 @@ mod tests {
             set(&state, [1..5], cx).unwrap();
             assert_eq!(painted(&state, TextLeafKey::block(0), cx), [1..2]);
             assert_eq!(painted(&state, TextLeafKey::block(4), cx), [0..1]);
+        }
+
+        #[gpui::test]
+        fn a_text_color_reaches_each_leaf_the_range_covers(cx: &mut TestAppContext) {
+            let state = state("ab\n\ncd", cx);
+            let (background, text_color) = (gpui::yellow(), gpui::black());
+            state
+                .update(cx, |state, cx| {
+                    state.set_range_highlights(
+                        [RangeHighlight::new(1..5, background).with_text_color(text_color)],
+                        cx,
+                    )
+                })
+                .unwrap();
+            let paint = HighlightPaint {
+                background,
+                text_color: Some(text_color),
+            };
+            state.read_with(cx, |state, _| {
+                let frame = state.range_highlights.as_ref().unwrap();
+                assert_eq!(frame.highlights(TextLeafKey::block(0)), [(1..2, paint)]);
+                assert_eq!(frame.highlights(TextLeafKey::block(4)), [(0..1, paint)]);
+            });
         }
 
         #[gpui::test]

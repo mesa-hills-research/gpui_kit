@@ -26,7 +26,7 @@ use crate::{
             text_runs, text_size_ranges,
         },
         inline_flow::{InlineFlow, InlineFlowItem, slice_ranges},
-        range_highlight::{RangeHighlightFrame, RevealAt, RevealRequest},
+        range_highlight::{HighlightPaint, RangeHighlightFrame, RevealAt, RevealRequest},
         stream_fade::{StreamFadeFrame, TextLeafKey},
         text_view::handle_link_click,
     },
@@ -2414,8 +2414,8 @@ impl CodeBlock {
                     ),
                     node_cx.link_click_handler.clone(),
                 )
-                .range_backgrounds(slice_backgrounds(
-                    node_cx.range_backgrounds(leaf_key),
+                .range_highlights(slice_range_highlights(
+                    node_cx.leaf_range_highlights(leaf_key),
                     0,
                     len,
                 ))
@@ -2554,11 +2554,11 @@ impl NodeContext {
         }
     }
 
-    /// The range highlight backgrounds of the text leaf `key`, in its
-    /// rendered byte space.
-    fn range_backgrounds(&self, key: Option<TextLeafKey>) -> &[(Range<usize>, Hsla)] {
+    /// The range highlights of the text leaf `key`, in its rendered byte
+    /// space.
+    fn leaf_range_highlights(&self, key: Option<TextLeafKey>) -> &[(Range<usize>, HighlightPaint)] {
         match (&self.range_highlights, key) {
-            (Some(frame), Some(key)) => frame.backgrounds(key),
+            (Some(frame), Some(key)) => frame.highlights(key),
             _ => &[],
         }
     }
@@ -2659,12 +2659,12 @@ impl Paragraph {
     ) -> AnyElement {
         let children = &self.children;
         let fades = node_cx.stream_fades(fade_key);
-        let backgrounds = node_cx.range_backgrounds(fade_key);
+        let range_highlights = node_cx.leaf_range_highlights(fade_key);
 
         if self.should_render_inline_flow() {
             return InlineFlow::new(
                 leaf_element_id(fade_key),
-                self.inline_flow_items(fade_key, fades, backgrounds, node_cx, cx),
+                self.inline_flow_items(fade_key, fades, range_highlights, node_cx, cx),
                 node_cx.link_click_handler.clone(),
             )
             .into_any_element();
@@ -2686,7 +2686,7 @@ impl Paragraph {
                 }
             }
             let highlights = fade_highlights(highlights, &slice_fades(fades, 0, text.len()));
-            let backgrounds = slice_backgrounds(backgrounds, 0, text.len());
+            let range_highlights = slice_range_highlights(range_highlights, 0, text.len());
             let reveal = node_cx.reveal_at(fade_key, 0, text.len());
             if let Ok(mut state) = self.state.lock() {
                 state.set_text(text);
@@ -2697,7 +2697,7 @@ impl Paragraph {
                 highlights,
                 node_cx.link_click_handler.clone(),
             )
-            .range_backgrounds(backgrounds)
+            .range_highlights(range_highlights)
             .reveal(reveal)
             .into_any_element();
         }
@@ -2731,8 +2731,8 @@ impl Paragraph {
                             ),
                             node_cx.link_click_handler.clone(),
                         )
-                        .range_backgrounds(slice_backgrounds(
-                            backgrounds,
+                        .range_highlights(slice_range_highlights(
+                            range_highlights,
                             consumed,
                             consumed + text.len(),
                         ))
@@ -2828,7 +2828,7 @@ impl Paragraph {
                     highlights,
                     node_cx.link_click_handler.clone(),
                 )
-                .range_backgrounds(slice_backgrounds(backgrounds, consumed, text_end))
+                .range_highlights(slice_range_highlights(range_highlights, consumed, text_end))
                 .reveal(node_cx.reveal_at(fade_key, consumed, text_end))
                 .into_any_element(),
             );
@@ -2864,7 +2864,7 @@ impl Paragraph {
         &self,
         leaf_key: Option<TextLeafKey>,
         fades: &[(Range<usize>, f32)],
-        backgrounds: &[(Range<usize>, Hsla)],
+        range_highlights: &[(Range<usize>, HighlightPaint)],
         node_cx: &NodeContext,
         cx: &mut App,
     ) -> Vec<InlineFlowItem> {
@@ -2874,7 +2874,7 @@ impl Paragraph {
         let mut links: Vec<(Range<usize>, LinkMark)> = vec![];
         let mut offset = 0;
         // Where `text` starts in the paragraph's whole rendered text, which
-        // is the byte space the fade and background ranges use.
+        // is the byte space the fade and range highlight ranges use.
         let mut consumed = 0;
 
         for inline_node in &self.children {
@@ -2884,8 +2884,8 @@ impl Paragraph {
                 }
                 if !text.is_empty() {
                     let item_fades = slice_fades(fades, consumed, consumed + text.len());
-                    let item_backgrounds =
-                        slice_backgrounds(backgrounds, consumed, consumed + text.len());
+                    let item_range_highlights =
+                        slice_range_highlights(range_highlights, consumed, consumed + text.len());
                     let item_reveal = node_cx.reveal_at(leaf_key, consumed, consumed + text.len());
                     consumed += text.len();
                     items.push(InlineFlowItem::Text {
@@ -2893,7 +2893,7 @@ impl Paragraph {
                         text: std::mem::take(&mut text).into(),
                         links: std::mem::take(&mut links),
                         highlights: fade_highlights(std::mem::take(&mut highlights), &item_fades),
-                        backgrounds: item_backgrounds,
+                        range_highlights: item_range_highlights,
                         reveal: item_reveal,
                     });
                 }
@@ -2949,8 +2949,8 @@ impl Paragraph {
                             highlights.clone(),
                             &slice_fades(fades, consumed, consumed + text.len()),
                         ),
-                        backgrounds: slice_backgrounds(
-                            backgrounds,
+                        range_highlights: slice_range_highlights(
+                            range_highlights,
                             consumed,
                             consumed + text.len(),
                         ),
@@ -3009,14 +3009,15 @@ impl Paragraph {
                 highlights,
                 &slice_fades(fades, consumed, consumed + text.len()),
             );
-            let backgrounds = slice_backgrounds(backgrounds, consumed, consumed + text.len());
+            let range_highlights =
+                slice_range_highlights(range_highlights, consumed, consumed + text.len());
             let reveal = node_cx.reveal_at(leaf_key, consumed, consumed + text.len());
             items.push(InlineFlowItem::Text {
                 state: self.state.clone(),
                 text: text.into(),
                 links,
                 highlights,
-                backgrounds,
+                range_highlights,
                 reveal,
             });
         }
@@ -3060,14 +3061,14 @@ fn slice_fades(
     slice_ranges(fades, start, end, |range, fade_out| (range, *fade_out))
 }
 
-/// The range highlight backgrounds overlapping `start..end`, rebased to
-/// start at `start`.
-fn slice_backgrounds(
-    backgrounds: &[(Range<usize>, Hsla)],
+/// The range highlights overlapping `start..end`, rebased to start at
+/// `start`.
+fn slice_range_highlights(
+    range_highlights: &[(Range<usize>, HighlightPaint)],
     start: usize,
     end: usize,
-) -> Vec<(Range<usize>, Hsla)> {
-    slice_ranges(backgrounds, start, end, |range, color| (range, *color))
+) -> Vec<(Range<usize>, HighlightPaint)> {
+    slice_ranges(range_highlights, start, end, |range, paint| (range, *paint))
 }
 
 const CELL_PAD_PX: f32 = 16.0; // px_2 horizontal padding

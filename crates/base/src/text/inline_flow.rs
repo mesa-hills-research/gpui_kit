@@ -20,7 +20,7 @@ use super::{
     inline::{Inline, InlineHighlight, InlineState, text_runs, text_size_ranges},
     inline_object::{InlineObject, MeasuredInlineObject},
     node::LinkMark,
-    range_highlight::RevealAt,
+    range_highlight::{HighlightPaint, RevealAt},
 };
 
 const IMAGE_LEN: usize = 1;
@@ -51,9 +51,9 @@ pub(super) enum InlineFlowItem {
         text: SharedString,
         links: Vec<(Range<usize>, LinkMark)>,
         highlights: Vec<(Range<usize>, InlineHighlight)>,
-        /// Range highlight backgrounds, in this item's byte space. They are
-        /// only painted, so unlike `highlights` they take no part in layout.
-        backgrounds: Vec<(Range<usize>, Hsla)>,
+        /// Range highlights, in this item's byte space. They only paint, so
+        /// unlike `highlights` they take no part in layout.
+        range_highlights: Vec<(Range<usize>, HighlightPaint)>,
         /// The start of a pending reveal, when it is in this item.
         reveal: Option<RevealAt>,
     },
@@ -643,7 +643,7 @@ impl Element for InlineFlow {
                 } => {
                     let InlineFlowItem::Text {
                         state: source_state,
-                        backgrounds,
+                        range_highlights,
                         reveal,
                         ..
                     } = &self.items[*item_ix]
@@ -689,11 +689,11 @@ impl Element for InlineFlow {
                         self.link_click_handler.clone(),
                     )
                     .selection_source(source_state.clone(), source_range.clone())
-                    .range_backgrounds(slice_ranges(
-                        backgrounds,
+                    .range_highlights(slice_ranges(
+                        range_highlights,
                         source_range.start,
                         source_range.end,
-                        |range, color| (range, *color),
+                        |range, paint| (range, *paint),
                     ))
                     .reveal(
                         reveal
