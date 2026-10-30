@@ -159,8 +159,9 @@ pub(crate) fn to_oklch(color: Hsla) -> (f32, f32, f32) {
     (lightness, a.hypot(b), b.atan2(a).to_degrees())
 }
 
-/// The WCAG 2 contrast ratio of two opaque colors, from 1 to 21.
-pub(crate) fn contrast_ratio(a: Hsla, b: Hsla) -> f32 {
+/// The WCAG 2 contrast ratio of two opaque colors, from 1 to 21. Body text
+/// reads well at 4.5 or more.
+pub fn contrast_ratio(a: Hsla, b: Hsla) -> f32 {
     fn luminance(color: Hsla) -> f32 {
         let channel = |c: f32| {
             if c <= 0.04045 {
