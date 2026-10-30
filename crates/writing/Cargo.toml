@@ -11,7 +11,7 @@ readme = "README.md"
 include = ["src/**/*", "assets/**/*", "README.md", "NOTICE", "LICENSE-APACHE"]
 edition.workspace = true
 publish = true
-version = "0.7.8"
+version = "0.7.9"
 
 [lib]
 name = "gpui_kit_writing"
