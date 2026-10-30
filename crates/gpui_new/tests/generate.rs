@@ -155,17 +155,28 @@ fn the_manifest_parses_and_names_the_crate() {
         assert_eq!(package["edition"].as_str(), Some("2024"));
 
         let kit = manifest["dependencies"]["gpui-kit"].as_table().unwrap();
-        assert_eq!(kit["git"].as_str(), Some(gpui_new::KIT_GIT));
-        match (kit.get("rev"), kit.get("branch")) {
-            (Some(rev), None) => assert_eq!(rev.as_str(), Some(gpui_new::KIT_REV)),
-            (None, Some(branch)) => {
-                assert!(gpui_new::KIT_REV.is_empty());
-                assert_eq!(branch.as_str(), Some("main"));
-            }
-            other => panic!("gpui-kit is pinned by {other:?}"),
-        }
+        let mut keys: Vec<&str> = kit.keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            ["package", "version"],
+            "gpui-kit isn't from crates.io"
+        );
+        assert_eq!(kit["package"].as_str(), Some("mhr-gpui-kit"));
+        assert_eq!(kit["version"].as_str(), Some(gpui_new::KIT_VERSION));
         assert!(manifest["build-dependencies"].get("winresource").is_some());
     }
+}
+
+/// New apps depend on the kit release the generator was built with.
+#[test]
+fn the_kit_version_is_the_kits_own() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../kit/Cargo.toml");
+    let manifest: toml::Table = fs::read_to_string(path).unwrap().parse().unwrap();
+    assert_eq!(
+        manifest["package"]["version"].as_str(),
+        Some(gpui_new::KIT_VERSION)
+    );
 }
 
 /// New apps get GPUI from the kit, which pins the published `mhr-gpui` crates,

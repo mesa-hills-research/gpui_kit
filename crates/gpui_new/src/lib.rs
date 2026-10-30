@@ -1,8 +1,8 @@
 //! Creates a GPUI app from the template in `template/`.
 //!
 //! Text files go through placeholder substitution (`{{crate_name}}`,
-//! `{{display_name}}`, `{{app_id}}`, `{{year}}` and `{{kit_ref}}`). Binary files
-//! are copied as they are.
+//! `{{display_name}}`, `{{app_id}}`, `{{year}}` and `{{kit_version}}`). Binary
+//! files are copied as they are.
 
 use std::fmt;
 use std::fs;
@@ -10,12 +10,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The repository new apps take GPUI Kit from.
-pub const KIT_GIT: &str = "https://github.com/mesa-hills-research/gpui_kit";
-
-/// The kit commit this generator was built from, empty when the build found
-/// none.
-pub const KIT_REV: &str = env!("GPUI_NEW_KIT_REV");
+/// The version of `mhr-gpui-kit` on crates.io that new apps depend on, the
+/// version of the kit this generator was built with.
+pub const KIT_VERSION: &str = env!("GPUI_NEW_KIT_VERSION");
 
 /// One file of the template.
 pub struct TemplateFile {
@@ -119,16 +116,7 @@ impl Project {
             .replace("{{display_name}}", &self.display_name)
             .replace("{{app_id}}", &self.app_id)
             .replace("{{year}}", &self.year.to_string())
-            .replace("{{kit_ref}}", &kit_ref())
-    }
-}
-
-/// How the new app's `Cargo.toml` pins GPUI Kit.
-pub fn kit_ref() -> String {
-    if KIT_REV.is_empty() {
-        r#"branch = "main""#.to_string()
-    } else {
-        format!(r#"rev = "{KIT_REV}""#)
+            .replace("{{kit_version}}", KIT_VERSION)
     }
 }
 

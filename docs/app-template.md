@@ -21,7 +21,7 @@ gpui_new <PATH> [--name <NAME>] [--app-id <ID>] [--no-git]
 ## The app
 
 ```
-Cargo.toml          gpui-kit from this repository, logging, the Windows icon tool
+Cargo.toml          gpui-kit from crates.io, logging, the Windows icon tool
 build.rs            embeds the icon and app name in Windows executables
 src/main.rs         the app's name and id, logging, startup
 src/chrome.rs       window options and can_close, the one close check
@@ -50,9 +50,9 @@ a window drag. `can_close` is where an app asks about unsaved work.
 
 ## The kit version
 
-The new app's `Cargo.toml` pins `gpui-kit` to the commit of this repository the generator was
-built from, so the template and the kit match. A generator built outside a Git checkout of the kit
-follows the `main` branch instead.
+The new app's `Cargo.toml` takes `gpui-kit` from crates.io, as `mhr-gpui-kit` at the version of
+the kit the generator was built from, so the template and the kit match. `cargo update` moves the
+app to later releases of the same minor version, such as 0.7.9 after 0.7.8.
 
 GPUI comes with the kit, from the published `mhr-gpui` crates the kit pins, so the app's
 `Cargo.toml` names no GPUI crate and needs no patch for one.
@@ -61,7 +61,7 @@ To build an app against a local checkout of the kit, add a patch to the app's `C
 its `.cargo/config.toml`:
 
 ```toml
-[patch."https://github.com/mesa-hills-research/gpui_kit"]
+[patch.crates-io]
 mhr-gpui-kit = { path = "../gpui_kit/crates/kit" }
 ```
 
@@ -69,7 +69,7 @@ mhr-gpui-kit = { path = "../gpui_kit/crates/kit" }
 
 The template lives in `crates/gpui_new/template` and is compiled into the generator. Text
 files take the placeholders `{{crate_name}}`, `{{display_name}}`, `{{app_id}}`, `{{year}}`
-and `{{kit_ref}}`. A new file also needs an entry in `FILES` in `src/lib.rs`. Test with
+and `{{kit_version}}`. A new file also needs an entry in `FILES` in `src/lib.rs`. Test with
 
 ```sh
 cargo test -p gpui_new
