@@ -105,6 +105,9 @@ async fn dialog_validates_scoped_input_saves_and_dismisses_notification(cx: &mut
         window.try_find("dialog").is_some()
     })
     .await;
+    // Let the dialog's entrance (250 ms) finish, which fades it in.
+    cx.background_executor
+        .advance_clock(Duration::from_millis(300));
     cx.update_window(handle.into(), |_, window, cx| {
         let dialog = window.within("dialog").find(0usize).bounds();
         assert!(dialog.left() >= px(0.) && dialog.right() <= window.viewport_size().width);
@@ -133,8 +136,9 @@ async fn dialog_validates_scoped_input_saves_and_dismisses_notification(cx: &mut
         window.try_find("dialog").is_none() && window.try_find("notification").is_some()
     })
     .await;
-    // Toast entrance also uses GPUI's wall-clock Animation (400 ms).
-    std::thread::sleep(Duration::from_millis(410));
+    // Let the toast's entrance (400 ms) finish.
+    cx.background_executor
+        .advance_clock(Duration::from_millis(410));
     cx.update_window(handle.into(), |_, window, cx| {
         assert_eq!(window.find("name").value(), Some("Ada 中文"));
         assert!(window.find("notification").visible());
@@ -185,10 +189,10 @@ async fn escape_dismisses_dialog_and_sheet_and_restores_focus(cx: &mut TestAppCo
         window.try_find("sheet-content").is_some()
     })
     .await;
-    // GPUI's non-synced Animation uses std::time::Instant, not the test clock.
-    // Finish the actual entrance (the theme's normal duration, 180 ms) before
+    // Finish the entrance (the theme's normal duration, 180 ms) before
     // asserting its final geometry.
-    std::thread::sleep(Duration::from_millis(200));
+    cx.background_executor
+        .advance_clock(Duration::from_millis(200));
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         let sheet = window.find("sheet-content").bounds();

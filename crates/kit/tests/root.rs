@@ -8,6 +8,7 @@ use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _,
     TestAppContext, Window, WindowOptions, div, px, size,
 };
+use std::time::Duration;
 
 /// A view that never mentions the layers.
 struct PlainView;
@@ -23,6 +24,12 @@ fn open_and_notify(window: &mut Window, cx: &mut App) {
     window.push_notification(Notification::new().message("Saved").autohide(false), cx);
 }
 
+/// Moves the clock past the dialog's entrance (250 ms), which fades it in.
+fn let_the_dialog_fade_in(cx: &mut TestAppContext) {
+    cx.background_executor
+        .advance_clock(Duration::from_millis(300));
+}
+
 #[gpui_kit::test]
 fn a_root_renders_the_layers_a_plain_view_leaves_out(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
@@ -36,6 +43,7 @@ fn a_root_renders_the_layers_a_plain_view_leaves_out(cx: &mut TestAppContext) {
         open_and_notify(window, cx);
     })
     .unwrap();
+    let_the_dialog_fade_in(cx);
     cx.update_window(handle.into(), |_, window, cx| {
         window.render_frame(cx);
         assert!(
@@ -63,6 +71,7 @@ fn open_window_wraps_the_view_in_a_root_and_returns_the_view(cx: &mut TestAppCon
         open_and_notify(window, cx);
     })
     .unwrap();
+    let_the_dialog_fade_in(cx);
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(window.find("dialog").visible());

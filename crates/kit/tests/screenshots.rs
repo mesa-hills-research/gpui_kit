@@ -197,8 +197,8 @@ fn tooltip_switch() {
     hover_icon_button(&mut app, window, 130.);
     app.advance_clock(Duration::from_secs(2));
     app.capture(window).unwrap();
-    // Edit's entrance animation runs on the wall clock, and the switch starts where it ends.
-    std::thread::sleep(Duration::from_millis(300));
+    // Edit's entrance animation ends, and the switch starts where it ends.
+    app.advance_clock(Duration::from_millis(300));
     app.capture(window).unwrap();
     hover_icon_button(&mut app, window, 150.);
     // The pointer rests on Branch for the switch delay.
