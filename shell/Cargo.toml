@@ -30,8 +30,8 @@ gpui-shell = { path = "crates/shell" }
 # The same exact GPUI pins as the root Cargo.toml, which `script/check-gpui-pin.ts`
 # checks in both files. A different release here would build the kit crates
 # against one GPUI and the shell against another.
-gpui = { package = "mhr-gpui", version = "=0.1.8" }
-gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.8", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui = { package = "mhr-gpui", version = "=0.1.9" }
+gpui_platform = { package = "mhr-gpui-platform", version = "=0.1.9", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
 reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = [
     "charset",
     "http2",
