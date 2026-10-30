@@ -7,7 +7,7 @@ name = "mhr-gpui-kit-component"
 homepage = "https://github.com/mesa-hills-research/gpui_kit"
 repository = "https://github.com/mesa-hills-research/gpui_kit"
 readme = "../../README.md"
-version = "0.7.9"
+version = "0.7.10"
 publish = true
 edition.workspace = true
 
