@@ -142,11 +142,8 @@ cover writing these tests, reviewing failures and allowing a tolerance.
 ## Working on the gpui fork alongside
 
 The gpui crates are the published `mhr-gpui` crates from crates.io, built from
-[Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui). The screenshot
-harness is not published, so `crates/kit/Cargo.toml` takes it from the fork at the commit the
-published crates were cut from, and the workspace's `[patch."https://github.com/mesa-hills-research/gpui"]`
-gives it the published `mhr-gpui` and `mhr-gpui-wgpu`. That keeps one copy of GPUI in the build, so
-the harness and the kit draw with the same types.
+[Mesa Hills Research's fork of gpui](https://github.com/mesa-hills-research/gpui), and so is the
+screenshot harness, `mhr-gpui-screenshot`.
 
 To build against a checkout of the fork beside this repository instead, put these patches in
 `.cargo/local.toml`, a file git ignores and `.cargo/config.toml` includes:
@@ -162,6 +159,7 @@ mhr-gpui-linux           = { path = "../gpui/crates/gpui_linux" }
 mhr-gpui-macos           = { path = "../gpui/crates/gpui_macos" }
 mhr-gpui-macros          = { path = "../gpui/crates/gpui_macros" }
 mhr-gpui-platform        = { path = "../gpui/crates/gpui_platform" }
+mhr-gpui-screenshot      = { path = "../gpui/crates/gpui_screenshot" }
 mhr-gpui-shared-string   = { path = "../gpui/crates/gpui_shared_string" }
 mhr-gpui-util            = { path = "../gpui/crates/gpui_util" }
 mhr-gpui-web             = { path = "../gpui/crates/gpui_web" }
@@ -178,12 +176,10 @@ mhr-util-macros          = { path = "../gpui/crates/util_macros" }
 mhr-zlog                 = { path = "../gpui/crates/zlog" }
 mhr-ztracing             = { path = "../gpui/crates/ztracing" }
 mhr-ztracing-macro       = { path = "../gpui/crates/ztracing_macro" }
-
-[patch."https://github.com/mesa-hills-research/gpui"]
-mhr-gpui-screenshot      = { path = "../gpui/crates/gpui_screenshot" }
 ```
 
-Cargo records the local paths in `Cargo.lock`, so run the first build without `--locked`. It warns
-that the two patch entries in the workspace `Cargo.toml` are unused, because the local checkout
-replaces them. Before committing, restore the lock with `git checkout Cargo.lock`. Deleting
+A patch applies only when the checkout's version meets the workspace's `=x.y.z` pin. Cargo warns
+that a patch is unused otherwise, so a checkout that has moved on to its next version needs the
+pins moved with it. Cargo records the local paths in `Cargo.lock`, so run the first build without
+`--locked`, and restore the lock with `git checkout Cargo.lock` before committing. Deleting
 `.cargo/local.toml` switches back to crates.io.
