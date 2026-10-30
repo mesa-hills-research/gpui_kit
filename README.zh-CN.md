@@ -21,6 +21,12 @@ mhr-gpui-kit                 应用唯一需要依赖的 crate
 
 `gpui-kit` 会固定配套的 GPUI 版本并导出 GPUI、base、component 和 assets，Rust 应用只需声明这一个依赖。JavaScript 扩展宿主另行依赖 `gpui-shell`；`gpui-component-shell` 提供带样式的组件目录。
 
+## 与上游的差异
+
+本仓库是 Mesa Hills Research 维护的 GPUI Kit 分支，完整的改动列表见英文 README 的 [Changes from upstream](./README.md#changes-from-upstream)。
+
+- **`on_prepaint` 可以写在构建链的任意位置**（`gpui-base`）。无论在构建链的哪个位置调用，`ElementExt::on_prepaint` 报告的都是元素边框以内的区域。它添加的 canvas 原本没有设置偏移，所以在块级元素中会排在之前添加的子元素下方，在 flex 元素中则从内边距以内开始，添加在图标之后的托管提示（managed tooltip）因此一直不会显示。
+
 ## 特性
 
 - **75+ 组件与原语**：覆盖表单、导航、浮层、数据展示、编辑、反馈和布局等场景，提供成熟交互与高效默认值。

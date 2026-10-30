@@ -35,6 +35,10 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 - **Managed tooltips on custom elements** (`gpui-component`). Import
   `tooltip::ManagedTooltipExt` and call `.managed_tooltip(...)` on a `div` with an id to use
   Kit's tooltip timing, positioning and open-menu suppression.
+- **`on_prepaint` anywhere in the chain** (`gpui-base`). `ElementExt::on_prepaint` reports the
+  element's box inside its border wherever the call comes in the builder chain. The canvas it adds
+  had no insets, so in a block element it sat below the children added before it, and in a flex
+  element it started inside the padding. A managed tooltip added after an icon never showed.
 - **One focus border on text fields** (`gpui-component`). Inputs, textareas, number inputs,
   OTP cells, input groups and time fields tint their one-pixel border with the theme's `ring`
   color when focused. They draw no outside band, so focus stays visible inside scroll areas.

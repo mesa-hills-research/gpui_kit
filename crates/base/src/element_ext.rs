@@ -23,6 +23,11 @@ pub trait ElementExt: ParentElement + Sized {
                 |_, _, _, _| {},
             )
             .absolute()
+            // Without insets, an absolute child of a block element sits
+            // after the children before it, and one of a flex element inside
+            // its padding.
+            .top_0()
+            .left_0()
             .size_full(),
         )
     }
