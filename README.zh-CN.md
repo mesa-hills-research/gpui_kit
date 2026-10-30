@@ -11,7 +11,7 @@ GPUI Kit 是一个综合性的 Rust 桌面应用开发框架。它将生产级 U
 并让交付后的应用可以被 JavaScript 扩展。GPUI Kit 提供 75+ 个有完整文档的组件与原语，
 并具备 WebAssembly、AccessKit 无障碍、UI 集成测试及可选的 JavaScript 扩展运行时。
 
-文档：<https://gpui-kit.com>
+指南在本仓库的 [website/zh-CN/docs](website/zh-CN/docs/index.md) 中，API 文档在 [docs.rs](https://docs.rs/mhr-gpui-kit) 上。
 
 ```text
 mhr-gpui-kit                 应用唯一需要依赖的 crate
@@ -214,7 +214,7 @@ cargo run -p window_title
 
 ## 与其他框架对比
 
-请查看站点上的[与 Iced、egui、Qt 6 的对比](https://gpui-kit.com/zh-CN/docs/comparison)。
+请查看[与 Iced、egui、Qt 6 的对比](website/zh-CN/docs/comparison.md)。
 
 ## 许可证
 

@@ -30,7 +30,7 @@ collapses the HUD to a tag. The reasoning is in the [FPS Monitor docs].
 
 It does not depend on `gpui-component`, so it works in any GPUI application.
 
-[FPS Monitor docs]: https://gpui-kit.com/docs/fps
+[FPS Monitor docs]: https://github.com/mesa-hills-research/gpui_kit/blob/main/website/docs/fps.md
 
 ## Usage
 

@@ -405,7 +405,8 @@ infrastructure. GPUI Kit ships 75+ documented components and primitives,
 WebAssembly support, AccessKit accessibility, UI integration testing, and an
 optional JavaScript extension runtime.
 
-Documentation: <https://gpui-kit.com>
+The guides are in [website/docs](website/docs/index.md), and the API reference is on
+[docs.rs](https://docs.rs/mhr-gpui-kit).
 
 ```text
 mhr-gpui-kit                 The one crate applications depend on
@@ -623,7 +624,7 @@ Check out [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## Compare to others
 
-See the [comparison with Iced, egui and Qt 6](https://gpui-kit.com/docs/comparison) on the site.
+See the [comparison with Iced, egui and Qt 6](website/docs/comparison.md).
 
 ## License
 

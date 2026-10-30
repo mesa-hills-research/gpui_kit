@@ -323,8 +323,8 @@ style and motion contracts.
 
 ## Related Resources
 
-- [GPUI Kit repository](https://github.com/longbridge/gpui-kit)
-- [GPUI Kit documentation](https://gpui-kit.com)
+- [GPUI Kit repository](https://github.com/mesa-hills-research/gpui_kit)
+- [GPUI Kit documentation](https://github.com/mesa-hills-research/gpui_kit/tree/main/website/docs)
 - [`mhr-gpui-kit-component` crate](https://crates.io/crates/mhr-gpui-kit-component)
 - [`mhr-gpui-kit-base` API documentation](https://docs.rs/mhr-gpui-kit-base)
 - GPUI

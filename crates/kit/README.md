@@ -56,4 +56,4 @@ available without the feature: `.test_support()` keeps production render chains
 intact and returns the original element in normal builds. Snapshots read native
 accessibility properties without hand-supplied state. See [UI integration testing](TESTING.md) for usage.
 The independent `profiler` feature enables GPUI frame-event instrumentation and is off by default.
-See <https://gpui-kit.com> for the guides.
+The guides are in [website/docs](https://github.com/mesa-hills-research/gpui_kit/tree/main/website/docs).

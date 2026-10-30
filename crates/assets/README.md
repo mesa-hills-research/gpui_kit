@@ -35,7 +35,7 @@
 > On WASM, `Assets::new(endpoint)` and `AllAssets::new(endpoint)` use the existing
 > on-demand CDN loader instead of embedding the complete bundle.
 
-The shared icon names and assets for [GPUI Kit](https://gpui-kit.com), exposed as
+The shared icon names and assets for [GPUI Kit](https://github.com/mesa-hills-research/gpui_kit), exposed as
 `gpui_kit::assets`. The crate depends on GPUI, not GPUI Component, so Base and
 alternative presentation layers can use its complete `IconName` catalog.
 
@@ -65,7 +65,7 @@ On native platforms, this embeds only the original component icons listed in
 `default-icons.txt`. Existing `Assets::get`, `Assets::iter`, `Assets::new` and
 `AssetSource` behavior remain available. Applications can embed additional SVGs
 with their own asset source and fall back to `Assets` for component paths, as
-before. See [Icons & Assets](https://gpui-kit.com/docs/assets) and
+before. See [Icons & Assets](https://github.com/mesa-hills-research/gpui_kit/blob/main/website/docs/assets.md) and
 [the extra-assets example](examples/extra_assets.rs) for source composition.
 
 For selecting bundled extras without copying SVG files, the optional macro
