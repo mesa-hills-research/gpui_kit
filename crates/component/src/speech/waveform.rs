@@ -1,13 +1,15 @@
 use gpui::{
-    App, Bounds, ContentMask, Entity, IntoElement, ParentElement as _, Path, PathBuilder, Pixels,
-    RenderOnce, StyleRefinement, Styled, Window, canvas, div, point, px, size,
+    Animation, AnimationExt as _, App, Bounds, ContentMask, Entity, IntoElement, PaintEffect,
+    ParentElement as _, Path, PathBuilder, Pixels, RenderOnce, StyleRefinement, Styled, Window,
+    canvas, div, point, px, size,
 };
 
 use crate::{ActiveTheme as _, Sizable, Size, StyledExt as _};
 
-use instant::Instant;
-
-use super::SpeechState;
+use super::{
+    SpeechState,
+    level::{LEVEL_INTERVAL, PLAYHEAD_MAX_LEAD},
+};
 
 /// The width of a waveform the caller does not size.
 const DEFAULT_WIDTH: Pixels = px(96.);
@@ -19,10 +21,14 @@ const GAP_RATIO: f32 = 2.5;
 ///
 /// Each level is a bar that grows up and down from the midline; silence is a
 /// dot. The newest level enters at the trailing edge and older ones scroll
-/// toward the leading edge at a steady pace, redrawn every frame while audio is
-/// captured, so the trail grows from the trailing edge until it fills the
-/// width. Before any audio, nothing is drawn. With reduced motion the bars
-/// still show each level but do not scroll between them.
+/// toward the leading edge at a steady pace while audio is captured, so the
+/// trail grows from the trailing edge until it fills the width. Before any
+/// audio, nothing is drawn. With reduced motion the bars still show each level
+/// but do not scroll between them.
+///
+/// The bars scroll as they paint, so the view the waveform is in draws once
+/// per level (every 80 ms) rather than at every frame. A cached view that holds
+/// it has to observe the [`SpeechState`] to show new levels.
 ///
 /// Size the waveform like any element, e.g. `.w_full()` to span a row; it is
 /// 96 px wide by default, and its height follows [`Sizable`].
@@ -68,7 +74,7 @@ impl Styled for SpeechWaveform {
 }
 
 impl RenderOnce for SpeechWaveform {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let height = self.height();
         // Bars thicken with the waveform so a tall one does not read as hairlines,
         // and stand apart so a run of silence reads as a row of dots.
@@ -77,48 +83,70 @@ impl RenderOnce for SpeechWaveform {
         let state = self.state.read(cx);
         let capturing = state.status().is_capturing();
         let levels: Vec<f32> = state.levels().collect();
-        let animate = capturing && !cx.reduce_motion();
         // The bars follow an even clock rather than the arrival of each level,
-        // which comes in uneven bursts: the newest bar slides in from just past
+        // which comes in uneven bursts. The newest bar slides in from just past
         // the trailing edge, so the waveform scrolls without stepping or
-        // stalling. Without animation the newest bar sits at the edge.
-        let scroll = state
-            .level_lead_at(Instant::now())
-            .filter(|_| animate)
-            .map_or(0., |lead| -lead);
-        if animate {
-            window.request_animation_frame();
-        }
+        // stalling. Without motion the newest bar sits at the edge.
+        let playhead = state
+            .playhead()
+            .filter(|_| capturing && !cx.reduce_motion());
+        // Bars that scroll in from past the leading edge are painted too, cut off
+        // until they come into view.
+        let lead = if playhead.is_some() {
+            PLAYHEAD_MAX_LEAD
+        } else {
+            0.
+        };
         let color = if capturing {
             cx.theme().primary
         } else {
             cx.theme().muted_foreground
         };
 
+        let bars = canvas(
+            |_, _, _| {},
+            move |bounds, _, window, _| {
+                // A bar sliding in is cut at the trailing edge, not drawn past it.
+                // Bars are anti-aliased paths, not quads, because quads snap to
+                // whole device pixels, so a bar moving a fraction of a pixel per
+                // frame would step instead of glide.
+                window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                    for rect in bar_rects(bounds, &levels, lead, bar, gap) {
+                        if let Some(path) = capsule(rect) {
+                            window.paint_path(path, color);
+                        }
+                    }
+                });
+            },
+        )
+        .size_full();
+
         div()
             .h(height)
             .w(DEFAULT_WIDTH)
             .flex_shrink_0()
             .refine_style(&self.style)
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        // A bar sliding in is cut at the trailing edge, not drawn past it.
-                        // Bars are anti-aliased paths, not quads: quads snap to whole
-                        // device pixels, so a bar moving a fraction of a pixel per
-                        // frame would step instead of glide.
-                        window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                            for rect in bar_rects(bounds, &levels, scroll, bar, gap) {
-                                if let Some(path) = capsule(rect) {
-                                    window.paint_path(path, color);
-                                }
-                            }
-                        });
-                    },
-                )
-                .size_full(),
-            )
+            .child(match playhead {
+                // The bars move as they paint, so the views around the waveform are
+                // not drawn again for each frame. The content mask doesn't move, so
+                // the bars are still cut at the waveform's edges.
+                Some(playhead) => {
+                    let clock = cx.background_executor().clone();
+                    let pitch = bar + gap;
+                    bars.with_paint_animation(
+                        "bars",
+                        // The effect reads the clock itself, and the animation keeps
+                        // the frames coming.
+                        Animation::new(LEVEL_INTERVAL).repeat(),
+                        move |_| {
+                            let lead = playhead.lead_at(clock.now());
+                            PaintEffect::translation(point(pitch * lead, px(0.)))
+                        },
+                    )
+                    .into_any_element()
+                }
+                None => bars.into_any_element(),
+            })
     }
 }
 
@@ -137,39 +165,33 @@ fn capsule(rect: Bounds<Pixels>) -> Option<Path<Pixels>> {
     path.build().ok()
 }
 
-/// The bars for `levels` (oldest first) in `bounds`: the newest at the trailing
-/// edge, `scroll` of a step further toward the leading edge (negative past the
-/// trailing edge, where a bar is cut off or left out), each centered on
-/// the midline and at least as tall as it is wide. Only levels that exist are
-/// drawn, so a short history leaves the leading part empty.
+/// The bars for `levels` (oldest first) in `bounds`, from the newest, which
+/// sits at the trailing edge, to older ones a step apart toward the leading
+/// edge. Each is centered on the midline and at least as tall as it is wide. A
+/// bar past the leading edge is left out unless moving the bars up to `lead`
+/// steps toward the trailing edge brings it into view. Only levels that exist
+/// are drawn, so a short history leaves the leading part empty.
 fn bar_rects(
     bounds: Bounds<Pixels>,
     levels: &[f32],
-    scroll: f32,
+    lead: f32,
     bar: Pixels,
     gap: Pixels,
 ) -> Vec<Bounds<Pixels>> {
     let pitch = bar + gap;
     let height = bounds.size.height;
     let middle = bounds.origin.y + height / 2.;
-    // Enough bars to reach the leading edge from wherever the newest one sits.
-    let count = ((bounds.size.width + gap) / pitch - scroll.min(0.))
-        .ceil()
-        .max(0.) as usize
-        + 1;
-    (0..count)
-        .filter_map(|from_end| {
-            let right = bounds.right() - pitch * (from_end as f32 + scroll);
-            let left = right - bar;
-            if left < bounds.left() - px(0.5) || left >= bounds.right() {
-                return None;
-            }
-            let level = levels[levels.len().checked_sub(from_end + 1)?];
-            let bar_height = (height * level.clamp(0., 1.)).max(bar);
-            Some(Bounds::new(
-                point(left, middle - bar_height / 2.),
-                size(bar, bar_height),
-            ))
+    let leading = bounds.left() - px(0.5) - pitch * lead;
+    levels
+        .iter()
+        .rev()
+        .enumerate()
+        .map_while(|(from_end, level)| {
+            let left = bounds.right() - bar - pitch * from_end as f32;
+            (left >= leading).then(|| {
+                let bar_height = (height * level.clamp(0., 1.)).max(bar);
+                Bounds::new(point(left, middle - bar_height / 2.), size(bar, bar_height))
+            })
         })
         .collect()
 }
@@ -222,29 +244,167 @@ mod tests {
     }
 
     #[test]
-    fn scrolling_moves_bars_toward_the_leading_edge() {
-        let bounds = bounds(40., 20.);
-        let still = bar_rects(bounds, &[1.; 8], 0., px(2.), px(5.));
-        let moving = bar_rects(bounds, &[1.; 8], 0.5, px(2.), px(5.));
-        assert_eq!(still[0].left() - moving[0].left(), px(3.5));
-        assert!(
-            moving
-                .iter()
-                .all(|rect| rect.left() >= bounds.left() - px(0.5))
-        );
+    fn bars_that_scroll_in_from_the_leading_edge_are_drawn_ahead() {
+        let bounds = bounds(96., 20.);
+        let still = bar_rects(bounds, &[1.; 64], 0., px(2.), px(5.));
+        let moving = bar_rects(bounds, &[1.; 64], 3., px(2.), px(5.));
+        // Three steps of scrolling bring three more bars in, in the same places.
+        assert_eq!(moving.len(), still.len() + 3);
+        assert_eq!(moving[..still.len()], still[..]);
+        assert!(moving[still.len()].left() < bounds.left());
     }
 
-    #[test]
-    fn a_bar_past_the_trailing_edge_is_left_out_until_it_slides_in() {
-        let bounds = bounds(40., 20.);
-        // The newest bar sits a whole pitch past the edge: not drawn yet.
-        let out = bar_rects(bounds, &[1., 0.5], -1., px(2.), px(5.));
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].right(), bounds.right());
-        // A fifth of a pitch out (1.4 px): drawn across the edge, cut by the
-        // content mask.
-        let entering = bar_rects(bounds, &[1., 0.5], -0.2, px(2.), px(5.));
-        assert_eq!(entering.len(), 2);
-        assert!(entering[0].left() < bounds.right());
+    mod motion {
+        use std::{
+            cell::{Cell, RefCell},
+            rc::Rc,
+            time::Duration,
+        };
+
+        use gpui::{
+            AppContext as _, Context, Render, StyleRefinement, Subscription, TestAppContext,
+            WindowHandle,
+        };
+
+        use super::*;
+        use crate::speech::{
+            AudioFormat, AudioInput, AudioSink, RecognitionSession, SpeechError, SpeechRecognizer,
+            SpeechSink,
+        };
+
+        struct Recognizer;
+
+        struct Session;
+
+        impl SpeechRecognizer for Recognizer {
+            fn start(
+                &self,
+                _: SpeechSink,
+                _: &mut App,
+            ) -> Result<Box<dyn RecognitionSession>, SpeechError> {
+                Ok(Box::new(Session))
+            }
+        }
+
+        impl RecognitionSession for Session {
+            fn push_audio(&mut self, _: &[i16], _: &mut App) {}
+
+            fn finish(&mut self, _: &mut App) {}
+        }
+
+        #[derive(Clone, Default)]
+        struct Input(Rc<RefCell<Option<AudioSink>>>);
+
+        impl AudioInput for Input {
+            fn start(
+                &self,
+                _: AudioFormat,
+                sink: AudioSink,
+                _: &mut App,
+            ) -> Result<Subscription, SpeechError> {
+                *self.0.borrow_mut() = Some(sink);
+                Ok(Subscription::new(|| {}))
+            }
+        }
+
+        /// A pane that shows a waveform, draws again when its state notifies, as
+        /// a cached view has to, and counts its draws.
+        struct Pane {
+            speech: Entity<SpeechState>,
+            renders: Rc<Cell<usize>>,
+            _observe: Subscription,
+        }
+
+        impl Render for Pane {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.renders.set(self.renders.get() + 1);
+                SpeechWaveform::new(&self.speech)
+            }
+        }
+
+        /// A window whose root keeps the pane, as an app keeps its panes.
+        struct PaneWindow {
+            pane: Entity<Pane>,
+        }
+
+        impl Render for PaneWindow {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    self.pane
+                        .clone()
+                        .cached(StyleRefinement::default().size_full()),
+                )
+            }
+        }
+
+        /// Pushes a level of audio every 5 frames (12 levels) over 60 frames of a
+        /// 60 Hz display, with the executor parked after each. Returns how often
+        /// the pane drew and how many frames asked for the next.
+        fn listen_for_a_second(
+            window: WindowHandle<PaneWindow>,
+            audio: &AudioSink,
+            renders: &Cell<usize>,
+            cx: &mut TestAppContext,
+        ) -> (usize, usize) {
+            let before = renders.get();
+            let mut asked = 0;
+            for frame in 0..60 {
+                if frame % 5 == 0 {
+                    // 80 ms of 16 kHz mono.
+                    cx.update(|cx| audio.push(vec![8_000; 1_280], cx));
+                }
+                cx.executor().advance_clock(Duration::from_micros(16_667));
+                let callbacks = window
+                    .update(cx, |_, window, cx| window.simulate_next_frame(cx))
+                    .unwrap();
+                asked += usize::from(callbacks > 0);
+                cx.run_until_parked();
+            }
+            (renders.get() - before, asked)
+        }
+
+        /// The waveform scrolls at every frame without drawing the view it is in,
+        /// which draws once per level, with motion or without.
+        #[gpui::test]
+        fn a_listening_waveform_draws_its_view_once_per_level(cx: &mut TestAppContext) {
+            cx.update(crate::theme::init);
+            let input = Input::default();
+            let speech = cx.update(|cx| {
+                cx.new(|cx| {
+                    SpeechState::new(cx)
+                        .recognizer(Recognizer)
+                        .input(input.clone())
+                })
+            });
+            let renders = Rc::new(Cell::new(0));
+            let window = cx.open_window(gpui::size(px(200.), px(40.)), {
+                let (speech, renders) = (speech.clone(), renders.clone());
+                move |_, cx| PaneWindow {
+                    pane: cx.new(|cx| Pane {
+                        _observe: cx.observe(&speech, |_, _, cx| cx.notify()),
+                        speech,
+                        renders,
+                    }),
+                }
+            });
+            speech.update(cx, |speech, cx| speech.start(cx));
+            let audio = input.0.borrow().clone().unwrap();
+            cx.update(|cx| audio.push(vec![8_000; 1_280], cx));
+            cx.run_until_parked();
+
+            let (drawn, asked) = listen_for_a_second(window, &audio, &renders, cx);
+            assert!(drawn <= 12, "the pane drew {drawn} times for 12 levels");
+            assert_eq!(asked, 60, "a moving waveform asks for every frame");
+
+            cx.update(|cx| cx.set_reduce_motion(true));
+            // The frame the moving waveform asked for last.
+            window
+                .update(cx, |_, window, cx| window.simulate_next_frame(cx))
+                .unwrap();
+            cx.run_until_parked();
+            let (drawn, asked) = listen_for_a_second(window, &audio, &renders, cx);
+            assert!(drawn <= 12, "the pane drew {drawn} times for 12 levels");
+            assert_eq!(asked, 0, "a still waveform asked for frames");
+        }
     }
 }

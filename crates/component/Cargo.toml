@@ -181,6 +181,8 @@ ttf-parser = "0.25"
 
 # Cross-platform time APIs (zero-cost on native, uses web APIs on WASM)
 instant.workspace = true
+# The `Instant` of GPUI's executor clock, which animations read.
+web-time = "1"
 
 # Native-only dependencies (not available on WASM)
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

@@ -5556,6 +5556,7 @@ dependencies = [
  "tracing",
  "ttf-parser",
  "uuid",
+ "web-time",
  "windows 0.58.0",
 ]
 

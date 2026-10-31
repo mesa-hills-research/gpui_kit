@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, time::Duration};
 
-use instant::Instant;
+use web_time::Instant;
 
 /// How much audio one level covers, and so how often the waveform takes a
 /// step: about the pace of a syllable, so the bars follow speech without
@@ -32,7 +32,7 @@ const PLAYHEAD_PACE_GAIN: f64 = 0.01;
 
 /// How far ahead of the playhead levels may pile up before the waveform shows
 /// them anyway, in levels.
-const PLAYHEAD_MAX_LEAD: f32 = 3.;
+pub(super) const PLAYHEAD_MAX_LEAD: f32 = 3.;
 
 /// Raw levels below this are background noise and read as silence, so a quiet
 /// room shows a calm baseline instead of flickering bars.
@@ -87,13 +87,9 @@ impl LevelMeter {
         };
     }
 
-    /// Measure `samples`; returns whether a new level was recorded.
-    pub(super) fn push(&mut self, samples: &[i16]) -> bool {
-        self.push_at(samples, Instant::now())
-    }
-
-    /// [`Self::push`] with the time the samples arrived.
-    pub(super) fn push_at(&mut self, samples: &[i16], now: Instant) -> bool {
+    /// Measure `samples`, which arrived at `now`, and return whether a new level
+    /// was recorded.
+    pub(super) fn push(&mut self, samples: &[i16], now: Instant) -> bool {
         let mut recorded = false;
         for &sample in samples {
             let sample = sample as f64 / i16::MAX as f64;
@@ -136,21 +132,41 @@ impl LevelMeter {
         self.anchor = Some(shift_instant(anchor, error * PLAYHEAD_PHASE_GAIN));
     }
 
-    /// Where the waveform should draw the newest level at `now`, in levels past
-    /// the trailing edge (0.0 at the edge, positive further out). The playhead
-    /// advances at an even pace of about one level per [`LEVEL_INTERVAL`],
-    /// behind the newest level; `None` before the first level.
-    pub(super) fn lead_at(&self, now: Instant) -> Option<f32> {
-        let anchor = self.anchor?;
-        let playhead = signed_secs(now, anchor) / self.pace - PLAYHEAD_LAG;
-        let lead = (self.recorded as f64 - playhead) as f32;
-        // Never draw past the newest level, and never fall so far behind that a
-        // burst of levels stays hidden.
-        Some(lead.clamp(0., PLAYHEAD_MAX_LEAD))
+    /// The playhead's clock as it stands after the newest level, or `None`
+    /// before the first level.
+    pub(super) fn playhead(&self) -> Option<Playhead> {
+        Some(Playhead {
+            recorded: self.recorded,
+            anchor: self.anchor?,
+            pace: self.pace,
+        })
     }
 
     pub(super) fn levels(&self) -> impl ExactSizeIterator<Item = f32> + '_ {
         self.levels.iter().copied()
+    }
+}
+
+/// The waveform's playhead after a given level. It advances at an even pace of
+/// about one level per [`LEVEL_INTERVAL`], behind the newest level, and changes
+/// only when a level is recorded, so a waveform can read where to draw from it
+/// at every frame.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Playhead {
+    recorded: u64,
+    anchor: Instant,
+    pace: f64,
+}
+
+impl Playhead {
+    /// Where the waveform should draw the newest level at `now`, in levels past
+    /// the trailing edge (0.0 at the edge, positive further out).
+    pub(super) fn lead_at(&self, now: Instant) -> f32 {
+        let playhead = signed_secs(now, self.anchor) / self.pace - PLAYHEAD_LAG;
+        let lead = (self.recorded as f64 - playhead) as f32;
+        // Never draw past the newest level, and never fall so far behind that a
+        // burst of levels stays hidden.
+        lead.clamp(0., PLAYHEAD_MAX_LEAD)
     }
 }
 
@@ -213,11 +229,11 @@ mod tests {
         meter.reset(16_000, 1);
         // Two and a half levels' worth of audio in uneven pushes.
         let window = window_for(16_000, 1);
-        assert!(!meter.push(&tone(1_000, window / 3)));
-        assert!(meter.push(&tone(1_000, window)));
-        assert!(meter.push(&tone(1_000, window + window / 6)));
+        assert!(!meter.push(&tone(1_000, window / 3), Instant::now()));
+        assert!(meter.push(&tone(1_000, window), Instant::now()));
+        assert!(meter.push(&tone(1_000, window + window / 6), Instant::now()));
         assert_eq!(meter.levels().len(), 2);
-        assert!(meter.lead_at(Instant::now()).is_some());
+        assert!(lead_at(&meter, Instant::now()).is_some());
     }
 
     #[test]
@@ -241,7 +257,7 @@ mod tests {
         let mut meter = LevelMeter::new();
         meter.reset(16_000, 1);
         // -60 dBFS: below the -50 dB floor of the scale.
-        meter.push(&tone(32, window_for(16_000, 1)));
+        meter.push(&tone(32, window_for(16_000, 1)), Instant::now());
         assert_eq!(meter.levels().next(), Some(0.));
     }
 
@@ -257,13 +273,18 @@ mod tests {
     fn history_is_bounded() {
         let mut meter = LevelMeter::new();
         meter.reset(16_000, 1);
-        meter.push(&tone(8_000, window_for(16_000, 1) * (LEVEL_HISTORY + 10)));
+        let samples = tone(8_000, window_for(16_000, 1) * (LEVEL_HISTORY + 10));
+        meter.push(&samples, Instant::now());
         assert_eq!(meter.levels().len(), LEVEL_HISTORY);
     }
 
     fn level_at(meter: &mut LevelMeter, at: Instant) {
         let window = window_for(16_000, 1);
-        assert!(meter.push_at(&tone(1_000, window), at));
+        assert!(meter.push(&tone(1_000, window), at));
+    }
+
+    fn lead_at(meter: &LevelMeter, now: Instant) -> Option<f32> {
+        meter.playhead().map(|playhead| playhead.lead_at(now))
     }
 
     #[test]
@@ -274,7 +295,7 @@ mod tests {
         level_at(&mut meter, start);
         // Right after a level the newest bar sits past the trailing edge, then
         // slides toward it at one level per interval.
-        let lead = |ms: u64| meter.lead_at(start + Duration::from_millis(ms)).unwrap();
+        let lead = |ms: u64| lead_at(&meter, start + Duration::from_millis(ms)).unwrap();
         assert!((lead(0) - 1.75).abs() < 1e-3, "{}", lead(0));
         assert!((lead(40) - 1.25).abs() < 1e-3, "{}", lead(40));
         assert!((lead(80) - 0.75).abs() < 1e-3, "{}", lead(80));
@@ -290,9 +311,9 @@ mod tests {
         level_at(&mut meter, start);
         // The second level arrives 20 ms early: the playhead barely moves with
         // it; the bars stay put and the new one waits further out.
-        let before = meter.lead_at(start + Duration::from_millis(60)).unwrap();
+        let before = lead_at(&meter, start + Duration::from_millis(60)).unwrap();
         level_at(&mut meter, start + Duration::from_millis(60));
-        let after = meter.lead_at(start + Duration::from_millis(60)).unwrap();
+        let after = lead_at(&meter, start + Duration::from_millis(60)).unwrap();
         assert!((after - before - 1.).abs() < 0.05, "{before} → {after}");
     }
 
@@ -311,8 +332,8 @@ mod tests {
             // The newest bar arrives the usual lag behind the playhead and is
             // still out past the edge half an interval later: the waveform
             // neither runs ahead and stalls nor falls behind.
-            let at_arrival = meter.lead_at(last).unwrap();
-            let between = meter.lead_at(last + half).unwrap();
+            let at_arrival = lead_at(&meter, last).unwrap();
+            let between = lead_at(&meter, last + half).unwrap();
             assert!(
                 (at_arrival - 1.75).abs() < 0.1,
                 "{interval_ms} ms: {at_arrival}"
@@ -325,6 +346,6 @@ mod tests {
     fn nothing_leads_before_the_first_level() {
         let mut meter = LevelMeter::new();
         meter.reset(16_000, 1);
-        assert_eq!(meter.lead_at(Instant::now()), None);
+        assert_eq!(lead_at(&meter, Instant::now()), None);
     }
 }

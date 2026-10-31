@@ -4,7 +4,7 @@ use gpui::{App, Context, EventEmitter, SharedString, Subscription, Task, WeakEnt
 
 use super::{
     AudioInput, AudioSink, RecognitionSession, SpeechError, SpeechRecognizer, SpeechSink,
-    level::LevelMeter,
+    level::{LevelMeter, Playhead},
 };
 
 /// Default time [`SpeechState::stop`] waits for the final result.
@@ -172,10 +172,10 @@ impl SpeechState {
         self.meter.levels()
     }
 
-    /// How far past the waveform's trailing edge the newest level sits at
-    /// `now`, in levels; see `LevelMeter::lead_at`.
-    pub(super) fn level_lead_at(&self, now: instant::Instant) -> Option<f32> {
-        self.meter.lead_at(now)
+    /// The waveform's playhead after the newest level, or `None` before the
+    /// first level.
+    pub(super) fn playhead(&self) -> Option<Playhead> {
+        self.meter.playhead()
     }
 
     /// Start a session. Does nothing while one is running.
@@ -310,9 +310,10 @@ impl SpeechState {
         if let Some(session) = self.session.as_mut() {
             session.recognition.push_audio(samples, cx);
         }
-        // Redraw once per new level, not per push: levels are what the
-        // waveform shows.
-        if self.meter.push(samples) {
+        // Redraw once per new level, not per push, since levels are what the
+        // waveform shows. Arrivals go by the executor's clock, which the
+        // waveform scrolls by too.
+        if self.meter.push(samples, cx.background_executor().now()) {
             cx.notify();
         }
     }
