@@ -6,7 +6,7 @@ use super::{SpeechState, state::defer_session_update};
 
 /// The PCM format a [`SpeechRecognizer`] consumes.
 ///
-/// Audio always arrives as interleaved signed 16-bit samples; an [`AudioInput`]
+/// Audio always arrives as interleaved signed 16-bit samples. An [`AudioInput`]
 /// converts whatever its device produces to this rate and channel count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioFormat {
@@ -112,16 +112,16 @@ impl std::error::Error for SpeechError {}
 /// A session runs as follows:
 ///
 /// 1. [`start`](Self::start) opens a session. Connecting may take a while, so
-///    return immediately and buffer the audio pushed in the meantime; call
+///    return immediately and buffer the audio pushed in the meantime. Call
 ///    [`SpeechSink::ready`] once the service accepts audio.
 /// 2. [`RecognitionSession::push_audio`] delivers PCM in [`Self::audio_format`].
 ///    Report results through [`SpeechSink::hypothesis`] and
 ///    [`SpeechSink::phrase`] as they arrive.
-/// 3. [`RecognitionSession::finish`] means the user stopped talking: send the
+/// 3. [`RecognitionSession::finish`] means the user stopped talking. Send the
 ///    remaining audio, wait for the last result, then call
 ///    [`SpeechSink::finish`].
 ///
-/// Dropping the [`RecognitionSession`] cancels it: close the connection and
+/// Dropping the [`RecognitionSession`] cancels it, so close the connection and
 /// report nothing more. Every [`SpeechSink`] method may be called from any
 /// point on the main thread, including from inside `start` or `push_audio`.
 pub trait SpeechRecognizer: 'static {
@@ -132,7 +132,7 @@ pub trait SpeechRecognizer: 'static {
 
     /// Whether the recognizer can start a session now, default `true`.
     ///
-    /// Return `false` while it cannot work, e.g. before the user signs in; the
+    /// Return `false` while it cannot work, e.g. before the user signs in. The
     /// [`SpeechButton`](super::SpeechButton) then renders disabled. Called on
     /// every render, so keep it cheap.
     fn is_available(&self, _cx: &App) -> bool {
@@ -179,7 +179,7 @@ pub trait RecognitionSession: 'static {
 
 /// Where a [`SpeechRecognizer`] reports its session's progress.
 ///
-/// The sink is cheap to clone and may outlive its session: once the session is
+/// The sink is cheap to clone and may outlive its session. Once the session is
 /// stopped, cancelled or replaced, its calls are ignored. Calls are applied
 /// after the current update, so they never re-enter the [`SpeechState`].
 #[derive(Clone)]
@@ -209,7 +209,7 @@ impl SpeechSink {
         self.apply(cx, move |state, cx| state.on_phrase(text, cx));
     }
 
-    /// The session is complete; no more results will follow.
+    /// The session is complete, and no more results will follow.
     pub fn finish(&self, cx: &mut App) {
         self.apply(cx, |state, cx| state.on_finish(cx));
     }
@@ -271,7 +271,7 @@ impl AudioSink {
         self.apply(cx, move |state, cx| state.on_audio(&samples, cx));
     }
 
-    /// Capture failed; the session ends with this error.
+    /// Capture failed, and the session ends with this error.
     pub fn error(&self, error: SpeechError, cx: &mut App) {
         self.apply(cx, move |state, cx| state.on_error(error, cx));
     }

@@ -16,8 +16,8 @@ const GAP_RATIO: f32 = 2.5;
 
 /// A live waveform of a [`SpeechState`]'s input levels.
 ///
-/// Each level is a bar that grows up and down from the midline; silence is a
-/// dot. The newest level enters at the trailing edge and older ones scroll
+/// Each level is a bar that grows up and down from the midline, and silence is
+/// a dot. The newest level enters at the trailing edge and older ones scroll
 /// toward the leading edge at a steady pace while audio is captured, so the
 /// trail grows from the trailing edge until it fills the width. Before any
 /// audio, nothing is drawn. With reduced motion the bars still show each level
@@ -27,7 +27,7 @@ const GAP_RATIO: f32 = 2.5;
 /// per level (every 80 ms) rather than at every frame. A cached view that holds
 /// it has to observe the [`SpeechState`] to show new levels.
 ///
-/// Size the waveform like any element, e.g. `.w_full()` to span a row; it is
+/// Size the waveform like any element, e.g. `.w_full()` to span a row. It is
 /// 96 px wide by default, and its height follows [`Sizable`].
 #[derive(IntoElement)]
 pub struct SpeechWaveform {
@@ -160,7 +160,8 @@ impl RenderOnce for SpeechWaveform {
     }
 }
 
-/// A capsule filling `rect`: round caps on its short ends, a dot when square.
+/// A capsule filling `rect`, with round caps on its short ends, or a dot when
+/// square.
 fn capsule(rect: Bounds<Pixels>) -> Option<Path<Pixels>> {
     let radius = rect.size.width.min(rect.size.height) / 2.;
     let radii = point(radius, radius);
@@ -229,7 +230,7 @@ mod tests {
     fn a_long_history_fills_the_width() {
         let bounds = bounds(96., 20.);
         let rects = bar_rects(bounds, &[0.; 64], 0., px(2.), px(5.));
-        // 96 px at a 7 px pitch fits 14 bars; the oldest sit off the leading edge.
+        // 96 px at a 7 px pitch fits 14 bars, and the oldest sit off the leading edge.
         assert_eq!(rects.len(), 14);
         assert!(
             rects

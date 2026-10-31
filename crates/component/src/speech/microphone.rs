@@ -98,8 +98,8 @@ impl AudioInput for Microphone {
             let mut converter = Converter::new(source_rate, format);
             let mut mono = Vec::new();
             while let Ok(first) = rx.recv().await {
-                // The device delivers ~10 ms chunks; forward what has queued up
-                // as one push so the state updates once per batch.
+                // The device delivers ~10 ms chunks. What has queued up goes on
+                // as one push, so the state updates once per batch.
                 let mut error = None;
                 for capture in
                     std::iter::once(first).chain(std::iter::from_fn(|| rx.try_recv().ok()))
@@ -285,7 +285,7 @@ impl Converter {
             position: 1.,
             previous: 0.,
             // Downsampling folds everything above the new Nyquist rate back
-            // into the band speech lives in; filter it out first.
+            // into the band speech lives in, so that is filtered out first.
             low_pass: (source_rate > target_rate)
                 .then(|| LowPass::new(target_rate as f32 * 0.45, source_rate as f32)),
             channels: format.channels().max(1) as usize,

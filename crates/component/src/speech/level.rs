@@ -3,25 +3,25 @@ use std::{collections::VecDeque, time::Duration};
 use web_time::Instant;
 
 /// How much audio one level covers, and so how often the waveform takes a
-/// step: about the pace of a syllable, so the bars follow speech without
+/// step. It's about the pace of a syllable, so the bars follow speech without
 /// racing past.
 pub(super) const LEVEL_INTERVAL: Duration = Duration::from_millis(80);
 
-/// How many recent levels are kept: enough to fill a wide waveform (about
+/// How many recent levels are kept, enough to fill a wide waveform (about
 /// twenty seconds of audio).
 pub(super) const LEVEL_HISTORY: usize = 256;
 
 /// How far behind the newest level the waveform's playhead runs, in levels.
 /// Levels arrive in uneven bursts as the audio device hands over its buffers.
 /// Between two arrivals the playhead advances a whole level, so it must run
-/// more than one level behind to never catch up with the newest bar; the rest
-/// absorbs late and bunched buffers. The bars then scroll at an even pace and
+/// more than one level behind to never catch up with the newest bar, and the
+/// rest absorbs late and bunched buffers. The bars then scroll at an even pace and
 /// each new one slides in from past the trailing edge (about 140 ms later
 /// than the sound).
 const PLAYHEAD_LAG: f64 = 1.75;
 
-/// How much of each level's arrival error the playhead's phase corrects:
-/// small enough that one late buffer does not jerk the waveform.
+/// How much of each level's arrival error the playhead's phase corrects, small
+/// enough that one late buffer does not jerk the waveform.
 const PLAYHEAD_PHASE_GAIN: f64 = 0.1;
 
 /// How much each arrival error adjusts the playhead's pace, in seconds per
@@ -38,18 +38,19 @@ pub(super) const PLAYHEAD_MAX_LEAD: f32 = 3.;
 /// room shows a calm baseline instead of flickering bars.
 const NOISE_FLOOR: f32 = 0.06;
 
-/// How far a level moves toward a louder reading per step: almost at once, so
+/// How far a level moves toward a louder reading per step, almost at once, so
 /// peaks pop.
 const ATTACK: f32 = 0.85;
 
-/// How far a level moves toward a quieter reading per step: slowly, so bars
+/// How far a level moves toward a quieter reading per step, slowly, so bars
 /// fall back smoothly.
 const RELEASE: f32 = 0.3;
 
 /// Turns a stream of PCM into smoothed input levels, one per
 /// [`LEVEL_INTERVAL`] of audio, carrying partial intervals across pushes.
 pub(super) struct LevelMeter {
-    /// Samples per level: [`LEVEL_INTERVAL`] at the stream's rate and channels.
+    /// Samples per level, as many as [`LEVEL_INTERVAL`] holds at the stream's
+    /// rate and channels.
     window: usize,
     sum: f64,
     count: usize,
@@ -57,11 +58,11 @@ pub(super) struct LevelMeter {
     levels: VecDeque<f32>,
     /// Levels recorded since the reset, including those dropped from history.
     recorded: u64,
-    /// When level zero would have arrived on the playhead's even clock; `None`
-    /// until the first level.
+    /// When level zero would have arrived on the playhead's even clock, or
+    /// `None` before the first level.
     anchor: Option<Instant>,
-    /// The playhead's pace in seconds per level: [`LEVEL_INTERVAL`], tuned to
-    /// how fast levels actually arrive.
+    /// The playhead's pace in seconds per level, which starts at
+    /// [`LEVEL_INTERVAL`] and tunes itself to how fast levels actually arrive.
     pace: f64,
     /// When the newest level arrived, or `None` before the first.
     arrived: Option<Instant>,
@@ -117,7 +118,7 @@ impl LevelMeter {
     }
 
     /// Nudge the playhead's clock toward the arrival of the level just
-    /// recorded: its pace toward the pace levels arrive at, its phase toward
+    /// recorded, its pace toward the pace levels arrive at and its phase toward
     /// this arrival. Changing the pace keeps the playhead where it is, so the
     /// waveform never jumps.
     fn align_playhead(&mut self, now: Instant) {
@@ -284,7 +285,7 @@ mod tests {
     fn background_noise_reads_as_silence() {
         let mut meter = LevelMeter::new();
         meter.reset(16_000, 1);
-        // -60 dBFS: below the -50 dB floor of the scale.
+        // -60 dBFS is below the -50 dB floor of the scale.
         meter.push(&tone(32, window_for(16_000, 1)), Instant::now());
         assert_eq!(meter.levels().next(), Some(0.));
     }
@@ -370,8 +371,8 @@ mod tests {
         meter.reset(16_000, 1);
         let start = Instant::now();
         level_at(&mut meter, start);
-        // The second level arrives 20 ms early: the playhead barely moves with
-        // it; the bars stay put and the new one waits further out.
+        // The second level arrives 20 ms early. The playhead barely moves with
+        // it, so the bars stay put and the new one waits further out.
         let before = lead_at(&meter, start + Duration::from_millis(60)).unwrap();
         level_at(&mut meter, start + Duration::from_millis(60));
         let after = lead_at(&meter, start + Duration::from_millis(60)).unwrap();
@@ -391,7 +392,7 @@ mod tests {
             let last = start + Duration::from_millis(299 * interval_ms);
             let half = Duration::from_millis(interval_ms / 2);
             // The newest bar arrives the usual lag behind the playhead and is
-            // still out past the edge half an interval later: the waveform
+            // still out past the edge half an interval later, so the waveform
             // neither runs ahead and stalls nor falls behind.
             let at_arrival = lead_at(&meter, last).unwrap();
             let between = lead_at(&meter, last + half).unwrap();

@@ -7,13 +7,14 @@ maturity: [experimental, platform-dependent]
 # Speech
 
 The speech module turns what the user says into text. `SpeechState` owns a
-dictation session: it captures audio from an `AudioInput`, feeds it to a
+dictation session. It captures audio from an `AudioInput`, feeds it to a
 `SpeechRecognizer`, keeps the transcript, and emits `SpeechEvent`s.
 `SpeechButton` starts and stops the session and `SpeechWaveform` shows the
 input level while it captures.
 
 The application owns where the text goes. The state never edits an input on its
-own; subscribe to its events and insert the final transcript where it belongs.
+own, so subscribe to its events and insert the final transcript where it
+belongs.
 
 Recognition and capture are both replaceable. Without further setup, the state
 uses the recognizer built into macOS or Windows and the default microphone.
@@ -106,7 +107,7 @@ which a cached view needs.
 | `Cancelled` | The session was cancelled and its transcript discarded. |
 | `Error(error)` | The session failed and ended. |
 
-`Partial` and `Final` carry the **whole** transcript of the session so far:
+`Partial` and `Final` carry the **whole** transcript of the session so far,
 every committed phrase followed by the current hypothesis. A later event
 replaces an earlier one, so show the latest `Partial` text as a preview and
 commit only the `Final` text. `SpeechState::transcript()` returns the same text
@@ -147,7 +148,7 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // `start` when idle, otherwi
 | `Idle` | No session is running. |
 | `Connecting` | Audio is captured while the recognizer connects. |
 | `Recording` | Audio is captured and recognized. |
-| `Stopping` | Capture stopped; waiting for the final result. |
+| `Stopping` | Capture stopped, and the final result is on its way. |
 
 `is_active()` is true for every status but `Idle`, and `is_capturing()` for
 `Connecting` and `Recording`. While `Stopping`, the button shows a spinner and
@@ -190,10 +191,10 @@ SpeechButton::new(&speech)
 
 The state picks its recognizer in this order:
 
-1. the one passed to `.recognizer(...)`;
-2. otherwise the platform's `SystemRecognizer`, unless `.system_fallback(false)`
-   turned it off;
-3. otherwise none, and `has_recognizer()` is `false`.
+1. The one passed to `.recognizer(...)`.
+2. Otherwise the platform's `SystemRecognizer`, unless `.system_fallback(false)`
+   turned it off.
+3. Otherwise none, and `has_recognizer()` is `false`.
 
 ```rust
 use gpui_kit::component::speech::SystemRecognizer;
@@ -212,9 +213,10 @@ let speech = cx.new(|cx| SpeechState::new(cx).system_fallback(false));
 ```
 
 `CloudRecognizer` stands for an application type that implements
-`SpeechRecognizer`; see [Implement a recognizer](#implement-a-recognizer).
+`SpeechRecognizer`, as [Implement a recognizer](#implement-a-recognizer)
+describes.
 
-`SystemRecognizer::new()` recognizes the system's current language;
+`SystemRecognizer::new()` recognizes the system's current language, and
 `.locale(...)` takes a BCP 47 tag such as `en-US` or `zh-CN`. A language the
 platform cannot recognize makes the recognizer unavailable.
 
@@ -276,13 +278,13 @@ A session runs as follows:
    with `sink.hypothesis(...)`, which replaces the previous hypothesis, and a
    recognized phrase with `sink.phrase(...)`, which commits it and clears the
    hypothesis.
-3. **`finish`** means the user stopped talking: send the remaining audio, wait
+3. **`finish`** means the user stopped talking. Send the remaining audio, wait
    for the last result, then call `sink.finish(cx)`. The state then emits
    `Final`.
 4. **Dropping** the session cancels it. Close the connection there and report
    nothing more.
 
-Report a failure with `sink.error(SpeechError::recognizer(error), cx)`; the
+Report a failure with `sink.error(SpeechError::recognizer(error), cx)`, and the
 session ends with `SpeechEvent::Error`.
 
 A few rules keep a recognizer simple:
@@ -351,8 +353,8 @@ background noise reads as `0.0`.
 | --- | --- | --- |
 | macOS | `SFSpeechRecognizer`, on the device only | Core Audio |
 | Windows | `Windows.Media.SpeechRecognition`, through Microsoft's online service | WASAPI |
-| Linux | None; provide a recognizer | ALSA |
-| Web | None | None; provide an input |
+| Linux | None (provide a recognizer) | ALSA |
+| Web | None | None (provide an input) |
 
 ### macOS
 
@@ -389,7 +391,7 @@ still captures through its input, but only to drive the waveform, so a custom
 ### Linux
 
 Linux has no system recognizer. Speech input works there only with an
-application recognizer; without one, `SpeechButton` renders nothing. The
+application recognizer. Without one, `SpeechButton` renders nothing. The
 `Microphone` captures through ALSA, and building it needs `libasound2-dev`.
 
 ## API Reference
@@ -399,7 +401,7 @@ application recognizer; without one, `SpeechButton` renders nothing. The
   `status`, `has_recognizer`, `is_available`, `transcript`, `levels`
 - [SpeechEvent] and [SpeechStatus]
 - [SpeechButton] — `show_when_unsupported`, plus `Sizable` and `Disableable`
-- [SpeechWaveform] — a live waveform that grows from its trailing edge as audio arrives and scrolls at a steady pace (one bar per 80 ms) until it fills its width (96 px unless styled); silence shows as dots; `Sizable` sets its height, `Styled` its width
+- [SpeechWaveform] — a live waveform that grows from its trailing edge as audio arrives and scrolls at a steady pace (one bar per 80 ms) until it fills its width (96 px unless styled). Silence shows as dots. `Sizable` sets its height, `Styled` its width
 - [SpeechRecognizer], [RecognitionSession] and [SpeechSink] — the recognition
   seam
 - [AudioInput], [AudioSink] and [AudioFormat] — the audio seam

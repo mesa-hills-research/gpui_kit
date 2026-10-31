@@ -21,7 +21,7 @@ pub enum SpeechStatus {
     Connecting,
     /// Audio is being captured and recognized.
     Recording,
-    /// Capture stopped; waiting for the recognizer's final result.
+    /// Capture stopped, and the recognizer's final result is on its way.
     Stopping,
 }
 
@@ -42,8 +42,8 @@ impl SpeechStatus {
 pub enum SpeechEvent {
     /// A session started and audio is being captured.
     Started,
-    /// The transcript changed: every committed phrase followed by the current
-    /// hypothesis. Later events supersede earlier ones.
+    /// The transcript changed. It holds every committed phrase followed by the
+    /// current hypothesis, and later events supersede earlier ones.
     Partial(SharedString),
     /// The session ended normally with this transcript, possibly empty.
     Final(SharedString),
@@ -61,17 +61,17 @@ struct Session {
     _stop_timeout: Option<Task<()>>,
 }
 
-/// The state of a speech input: captures audio from an [`AudioInput`], feeds it
-/// to a [`SpeechRecognizer`] and tracks the transcript.
+/// The state of a speech input. It captures audio from an [`AudioInput`], feeds
+/// it to a [`SpeechRecognizer`] and tracks the transcript.
 ///
 /// Render it with [`SpeechButton`](super::SpeechButton) and
 /// [`SpeechWaveform`](super::SpeechWaveform), and subscribe to [`SpeechEvent`]
 /// to receive the text.
 ///
-/// The recognizer is, in order: the one passed to [`Self::recognizer`]; else
-/// the platform's `SystemRecognizer`, unless
-/// [`Self::system_fallback`] turned it off; else none, and the state is not
-/// available. The input defaults to the `Microphone`.
+/// The recognizer is the one passed to [`Self::recognizer`], or else the
+/// platform's `SystemRecognizer`, unless [`Self::system_fallback`] turned it
+/// off. Without either, the state is not available. The input defaults to the
+/// `Microphone`.
 /// Both defaults need the `speech` feature.
 pub struct SpeechState {
     recognizer: Option<Rc<dyn SpeechRecognizer>>,
@@ -125,7 +125,7 @@ impl SpeechState {
     /// [`Self::recognizer`] is set, default `true`.
     ///
     /// On Windows the system recognizer dictates through Microsoft's online
-    /// service; turn this off when audio must not leave the application.
+    /// service. Turn this off when audio must not leave the application.
     pub fn system_fallback(mut self, system_fallback: bool) -> Self {
         self.system_fallback = system_fallback;
         self
@@ -154,8 +154,8 @@ impl SpeechState {
         self.input.is_some() && self.active_recognizer().is_some()
     }
 
-    /// Whether a session can start now: [`Self::has_recognizer`] and the
-    /// recognizer reports itself available.
+    /// Whether a session can start now, which takes [`Self::has_recognizer`]
+    /// and a recognizer that reports itself available.
     pub fn is_available(&self, cx: &App) -> bool {
         self.input.is_some()
             && self
@@ -168,7 +168,7 @@ impl SpeechState {
         self.status
     }
 
-    /// The transcript of the current or last session: every committed phrase
+    /// The transcript of the current or last session, every committed phrase
     /// followed by the current hypothesis.
     pub fn transcript(&self) -> SharedString {
         if self.hypothesis.is_empty() {
@@ -179,8 +179,8 @@ impl SpeechState {
     }
 
     /// Recent input levels in `0.0..=1.0`, oldest first, one per 80 ms of
-    /// audio. Peaks rise at once and fall back smoothly; background noise reads
-    /// as `0.0`.
+    /// audio. Peaks rise at once and fall back smoothly, and background noise
+    /// reads as `0.0`.
     pub fn levels(&self) -> impl ExactSizeIterator<Item = f32> + '_ {
         self.meter.levels()
     }
@@ -550,7 +550,7 @@ mod tests {
 
         cx.update(|cx| {
             f.sink().ready(cx);
-            // Two levels' worth: 80 ms is 1 280 samples at 16 kHz.
+            // Two levels' worth, since 80 ms is 1 280 samples at 16 kHz.
             f.audio().push(vec![i16::MAX / 2; 2_560], cx);
             f.sink().hypothesis("hello", cx);
         });

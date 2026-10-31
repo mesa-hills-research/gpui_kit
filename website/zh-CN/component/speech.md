@@ -6,9 +6,9 @@ maturity: [experimental, platform-dependent]
 
 # Speech
 
-Speech 模块把用户说的话转成文本。`SpeechState` 管理一次语音输入会话：它从 `AudioInput` 采集音频，交给 `SpeechRecognizer` 识别，保存转写文本并发出 `SpeechEvent`。`SpeechButton` 负责开始和停止会话，`SpeechWaveform` 在采集期间显示输入音量。
+Speech 模块把用户说的话转成文本。`SpeechState` 管理一次语音输入会话。它从 `AudioInput` 采集音频，交给 `SpeechRecognizer` 识别，保存转写文本并发出 `SpeechEvent`。`SpeechButton` 负责开始和停止会话，`SpeechWaveform` 在采集期间显示输入音量。
 
-文本写到哪里由应用决定。状态本身不会修改任何输入框；应用订阅它的事件，再把最终文本插入到合适的位置。
+文本写到哪里由应用决定。状态本身不会修改任何输入框，应用订阅它的事件，再把最终文本插入到合适的位置。
 
 识别和采集都可以替换。不做额外配置时，状态使用 macOS 或 Windows 自带的识别器和默认麦克风。实现 `SpeechRecognizer` 可以接入云端服务或本地模型，实现 `AudioInput` 可以从其他来源提供音频。
 
@@ -90,7 +90,7 @@ Input::new(&self.input).suffix(
 | `Cancelled` | 会话被取消，转写文本被丢弃。 |
 | `Error(error)` | 会话失败并结束。 |
 
-`Partial` 和 `Final` 携带的是本次会话到目前为止的**完整**转写文本：所有已确认的短语，加上当前的识别假设。后一个事件会取代前一个，因此把最新的 `Partial` 文本作为预览显示，只提交 `Final` 文本。在 render 中，`SpeechState::transcript()` 返回同样的文本：
+`Partial` 和 `Final` 携带的是本次会话到目前为止的**完整**转写文本，即所有已确认的短语加上当前的识别假设。后一个事件会取代前一个，因此把最新的 `Partial` 文本作为预览显示，只提交 `Final` 文本。在 render 中，`SpeechState::transcript()` 返回同样的文本：
 
 ```rust
 let speech = self.speech.read(cx);
@@ -128,7 +128,7 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // 空闲时 `start`，否则
 | `Recording` | 正在采集并识别音频。 |
 | `Stopping` | 已停止采集，等待最终结果。 |
 
-除 `Idle` 外，`is_active()` 都为 true；`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以 `Final` 和当前已有的文本结束。超时默认为 3 秒：
+除 `Idle` 外，`is_active()` 都为 true。`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以 `Final` 和当前已有的文本结束。超时默认为 3 秒：
 
 ```rust
 let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5)));
@@ -138,7 +138,7 @@ let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5
 
 ### 按钮状态
 
-`SpeechButton` 是一个 ghost 样式的图标 `Button`，带有本地化的 tooltip 和无障碍名称：空闲时显示麦克风，采集时显示按下状态的停止图标。
+`SpeechButton` 是一个 ghost 样式的图标 `Button`，带有本地化的 tooltip 和无障碍名称。空闲时显示麦克风，采集时显示按下状态的停止图标。
 
 - 当状态在当前平台上没有识别器或没有输入（`has_recognizer()` 为 `false`）时，按钮**不渲染任何内容**，应用可以无条件放置它。使用 `.show_when_unsupported(true)` 可以改为渲染禁用的按钮。
 - 当识别器报告自己不可用（`is_available(cx)` 为 `false`），例如语言未安装时，按钮会禁用，tooltip 提示不可用。
@@ -155,8 +155,8 @@ SpeechButton::new(&speech)
 
 状态按以下顺序选择识别器：
 
-1. 通过 `.recognizer(...)` 传入的识别器；
-2. 否则使用平台的 `SystemRecognizer`，除非 `.system_fallback(false)` 关闭了回退；
+1. 通过 `.recognizer(...)` 传入的识别器。
+2. 否则使用平台的 `SystemRecognizer`，除非 `.system_fallback(false)` 关闭了回退。
 3. 否则没有识别器，`has_recognizer()` 为 `false`。
 
 ```rust
@@ -177,7 +177,7 @@ let speech = cx.new(|cx| SpeechState::new(cx).system_fallback(false));
 
 `CloudRecognizer` 代表应用中实现了 `SpeechRecognizer` 的类型，参见[实现识别器](#实现识别器)。
 
-`SystemRecognizer::new()` 识别系统当前语言；`.locale(...)` 接受 BCP 47 语言标签，例如 `en-US` 或 `zh-CN`。平台无法识别的语言会使识别器不可用。
+`SystemRecognizer::new()` 识别系统当前语言，`.locale(...)` 接受 BCP 47 语言标签，例如 `en-US` 或 `zh-CN`。平台无法识别的语言会使识别器不可用。
 
 ## 实现识别器
 
@@ -228,8 +228,8 @@ impl RecognitionSession for DurationSession {
 一次会话的流程如下：
 
 1. **`start`** 打开会话。连接可能需要一段时间，因此应立即返回，缓存这期间推送的音频，并在服务开始接收音频时调用 `sink.ready(cx)`。状态随之从 `Connecting` 变为 `Recording`。
-2. **`push_audio`** 按识别器的 `audio_format()`（默认 16 kHz 单声道）传入交错的 16 位 PCM。用 `sink.hypothesis(...)` 报告正在说的短语，它会替换上一个识别假设；用 `sink.phrase(...)` 报告识别完成的短语，它会确认该短语并清空识别假设。
-3. **`finish`** 表示用户已停止说话：发送剩余音频，等待最后的结果，然后调用 `sink.finish(cx)`。状态随后发出 `Final`。
+2. **`push_audio`** 按识别器的 `audio_format()`（默认 16 kHz 单声道）传入交错的 16 位 PCM。用 `sink.hypothesis(...)` 报告正在说的短语，它会替换上一个识别假设。用 `sink.phrase(...)` 报告识别完成的短语，它会确认该短语并清空识别假设。
+3. **`finish`** 表示用户已停止说话。此时发送剩余音频，等待最后的结果，然后调用 `sink.finish(cx)`。状态随后发出 `Final`。
 4. **drop** 会话即取消会话。在 drop 时关闭连接，之后不再报告任何内容。
 
 出错时调用 `sink.error(SpeechError::recognizer(error), cx)`，会话以 `SpeechEvent::Error` 结束。
@@ -238,7 +238,7 @@ impl RecognitionSession for DurationSession {
 
 - sink 可以低成本 clone，读取服务响应的任务可以持有一份。会话停止、取消或被替换后，它的调用会被忽略，迟到的响应不会混入下一次会话。
 - sink 的调用在当前 update 结束后生效。可以在主线程的任何位置调用，包括在 `start` 或 `push_audio` 内部。
-- 短语按原样拼接。请带上语言需要的分隔符，例如英文句子之间的前导空格；中文句子之间则不需要。
+- 短语按原样拼接。请带上语言需要的分隔符，例如英文句子之间的前导空格，中文句子之间则不需要。
 - 识别器暂时无法工作时（例如用户登录之前），重写 `is_available` 返回 `false`。它在每次 render 时都会调用，应保持轻量。
 
 ## 提供音频
@@ -312,14 +312,14 @@ Windows 识别器会自行监听默认麦克风。状态仍通过其输入采集
 
 ### Linux
 
-Linux 没有系统识别器，只有在应用提供识别器时才能使用语音输入；否则 `SpeechButton` 不渲染任何内容。`Microphone` 通过 ALSA 采集，构建时需要 `libasound2-dev`。
+Linux 没有系统识别器，只有在应用提供识别器时才能使用语音输入，否则 `SpeechButton` 不渲染任何内容。`Microphone` 通过 ALSA 采集，构建时需要 `libasound2-dev`。
 
 ## API 参考
 
 - [SpeechState]：会话本身，包括 `recognizer`、`input`、`system_fallback`、`stop_timeout`、`timeout_is_error`、`start`、`stop`、`cancel`、`toggle`、`status`、`has_recognizer`、`is_available`、`transcript`、`levels`
 - [SpeechEvent] 与 [SpeechStatus]
 - [SpeechButton]：`show_when_unsupported`，以及 `Sizable` 和 `Disableable`
-- [SpeechWaveform]：实时波形。有音频进来后从末端开始出现，以固定速度滚动（每 80 ms 一根），直到铺满自身宽度（不设宽度时为 96 px）；静音时显示为圆点。`Sizable` 决定高度，`Styled` 决定宽度
+- [SpeechWaveform]：实时波形。有音频进来后从末端开始出现，以固定速度滚动（每 80 ms 一根），直到铺满自身宽度（不设宽度时为 96 px）。静音时显示为圆点。`Sizable` 决定高度，`Styled` 决定宽度
 - [SpeechRecognizer]、[RecognitionSession] 与 [SpeechSink]：识别的扩展点
 - [AudioInput]、[AudioSink] 与 [AudioFormat]：音频的扩展点
 - [SpeechError]
