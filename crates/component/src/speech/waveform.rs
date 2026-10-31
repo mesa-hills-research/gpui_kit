@@ -6,10 +6,7 @@ use gpui::{
 
 use crate::{ActiveTheme as _, Sizable, Size, StyledExt as _};
 
-use super::{
-    SpeechState,
-    level::{LEVEL_INTERVAL, PLAYHEAD_MAX_LEAD},
-};
+use super::{SpeechState, level::PLAYHEAD_MAX_LEAD};
 
 /// The width of a waveform the caller does not size.
 const DEFAULT_WIDTH: Pixels = px(96.);
@@ -86,10 +83,15 @@ impl RenderOnce for SpeechWaveform {
         // The bars follow an even clock rather than the arrival of each level,
         // which comes in uneven bursts. The newest bar slides in from just past
         // the trailing edge, so the waveform scrolls without stepping or
-        // stalling. Without motion the newest bar sits at the edge.
-        let playhead = state
-            .playhead()
-            .filter(|_| capturing && !cx.reduce_motion());
+        // stalling. Without motion, and once no level has arrived for long
+        // enough that the playhead rests, the newest bar sits at the edge.
+        let now = cx.background_executor().now();
+        let playhead = state.playhead().filter(|playhead| {
+            capturing
+                && !cx.reduce_motion()
+                && playhead.lead_at(now) > 0.
+                && !playhead.rest_after_arrival().is_zero()
+        });
         // Bars that scroll in from past the leading edge are painted too, cut off
         // until they come into view.
         let lead = if playhead.is_some() {
@@ -134,12 +136,20 @@ impl RenderOnce for SpeechWaveform {
                     let clock = cx.background_executor().clone();
                     let pitch = bar + gap;
                     bars.with_paint_animation(
-                        "bars",
-                        // The effect reads the clock itself, and the animation keeps
-                        // the frames coming.
-                        Animation::new(LEVEL_INTERVAL).repeat(),
-                        move |_| {
-                            let lead = playhead.lead_at(clock.now());
+                        // Each level starts a run of its own, as long as the playhead
+                        // takes to come to rest after it, so frames stop when levels
+                        // do. A run that starts after the level arrived ends as much
+                        // later, with the bars already at rest. The effect reads the
+                        // clock itself.
+                        ("bars", playhead.recorded()),
+                        Animation::new(playhead.rest_after_arrival()),
+                        move |progress| {
+                            // The last frame lands at rest, however the clocks line up.
+                            let lead = if progress < 1. {
+                                playhead.lead_at(clock.now())
+                            } else {
+                                0.
+                            };
                             PaintEffect::translation(point(pitch * lead, px(0.)))
                         },
                     )
@@ -337,36 +347,12 @@ mod tests {
             }
         }
 
-        /// Pushes a level of audio every 5 frames (12 levels) over 60 frames of a
-        /// 60 Hz display, with the executor parked after each. Returns how often
-        /// the pane drew and how many frames asked for the next.
-        fn listen_for_a_second(
-            window: WindowHandle<PaneWindow>,
-            audio: &AudioSink,
-            renders: &Cell<usize>,
+        /// A window whose cached pane shows the waveform of a state that is
+        /// listening and has had one level. Returns the window, the state's audio
+        /// sink and the pane's draw count.
+        fn listening(
             cx: &mut TestAppContext,
-        ) -> (usize, usize) {
-            let before = renders.get();
-            let mut asked = 0;
-            for frame in 0..60 {
-                if frame % 5 == 0 {
-                    // 80 ms of 16 kHz mono.
-                    cx.update(|cx| audio.push(vec![8_000; 1_280], cx));
-                }
-                cx.executor().advance_clock(Duration::from_micros(16_667));
-                let callbacks = window
-                    .update(cx, |_, window, cx| window.simulate_next_frame(cx))
-                    .unwrap();
-                asked += usize::from(callbacks > 0);
-                cx.run_until_parked();
-            }
-            (renders.get() - before, asked)
-        }
-
-        /// The waveform scrolls at every frame without drawing the view it is in,
-        /// which draws once per level, with motion or without.
-        #[gpui::test]
-        fn a_listening_waveform_draws_its_view_once_per_level(cx: &mut TestAppContext) {
+        ) -> (WindowHandle<PaneWindow>, AudioSink, Rc<Cell<usize>>) {
             cx.update(crate::theme::init);
             let input = Input::default();
             let speech = cx.update(|cx| {
@@ -389,8 +375,51 @@ mod tests {
             });
             speech.update(cx, |speech, cx| speech.start(cx));
             let audio = input.0.borrow().clone().unwrap();
+            push_level(&audio, cx);
+            (window, audio, renders)
+        }
+
+        /// Pushes 80 ms of 16 kHz mono, one level, and parks the executor.
+        fn push_level(audio: &AudioSink, cx: &mut TestAppContext) {
             cx.update(|cx| audio.push(vec![8_000; 1_280], cx));
             cx.run_until_parked();
+        }
+
+        /// Shows the next frame of a 60 Hz display and parks the executor.
+        /// Returns whether the frame before asked for it.
+        fn next_frame(window: WindowHandle<PaneWindow>, cx: &mut TestAppContext) -> bool {
+            cx.executor().advance_clock(Duration::from_micros(16_667));
+            let callbacks = window
+                .update(cx, |_, window, cx| window.simulate_next_frame(cx))
+                .unwrap();
+            cx.run_until_parked();
+            callbacks > 0
+        }
+
+        /// Pushes a level every 5 frames (12 levels) over 60 frames. Returns how
+        /// often the pane drew and how many frames were asked for.
+        fn listen_for_a_second(
+            window: WindowHandle<PaneWindow>,
+            audio: &AudioSink,
+            renders: &Cell<usize>,
+            cx: &mut TestAppContext,
+        ) -> (usize, usize) {
+            let before = renders.get();
+            let mut asked = 0;
+            for frame in 0..60 {
+                if frame % 5 == 0 {
+                    push_level(audio, cx);
+                }
+                asked += usize::from(next_frame(window, cx));
+            }
+            (renders.get() - before, asked)
+        }
+
+        /// The waveform scrolls at every frame without drawing the view it is in,
+        /// which draws once per level, with motion or without.
+        #[gpui::test]
+        fn a_listening_waveform_draws_its_view_once_per_level(cx: &mut TestAppContext) {
+            let (window, audio, renders) = listening(cx);
 
             let (drawn, asked) = listen_for_a_second(window, &audio, &renders, cx);
             assert!(drawn <= 12, "the pane drew {drawn} times for 12 levels");
@@ -398,13 +427,26 @@ mod tests {
 
             cx.update(|cx| cx.set_reduce_motion(true));
             // The frame the moving waveform asked for last.
-            window
-                .update(cx, |_, window, cx| window.simulate_next_frame(cx))
-                .unwrap();
-            cx.run_until_parked();
+            next_frame(window, cx);
             let (drawn, asked) = listen_for_a_second(window, &audio, &renders, cx);
             assert!(drawn <= 12, "the pane drew {drawn} times for 12 levels");
             assert_eq!(asked, 0, "a still waveform asked for frames");
+        }
+
+        /// A waveform whose input stalls stops asking for frames once its bars
+        /// come to rest, and moves again with the next level.
+        #[gpui::test]
+        fn a_stalled_waveform_comes_to_rest_and_moves_again(cx: &mut TestAppContext) {
+            let (window, audio, _) = listening(cx);
+            // Half a second with no audio after the first level, whose bar comes to
+            // rest 140 ms after it arrived.
+            let asked: Vec<bool> = (0..30).map(|_| next_frame(window, cx)).collect();
+            assert!(asked[..5].iter().all(|asked| *asked), "{asked:?}");
+            assert!(asked[15..].iter().all(|asked| !asked), "{asked:?}");
+
+            push_level(&audio, cx);
+            let asked: Vec<bool> = (0..3).map(|_| next_frame(window, cx)).collect();
+            assert!(asked.iter().all(|asked| *asked), "{asked:?}");
         }
     }
 }

@@ -63,6 +63,8 @@ pub(super) struct LevelMeter {
     /// The playhead's pace in seconds per level: [`LEVEL_INTERVAL`], tuned to
     /// how fast levels actually arrive.
     pace: f64,
+    /// When the newest level arrived, or `None` before the first.
+    arrived: Option<Instant>,
 }
 
 impl LevelMeter {
@@ -76,6 +78,7 @@ impl LevelMeter {
             recorded: 0,
             anchor: None,
             pace: LEVEL_INTERVAL.as_secs_f64(),
+            arrived: None,
         }
     }
 
@@ -106,6 +109,7 @@ impl LevelMeter {
                 self.count = 0;
                 self.recorded += 1;
                 self.align_playhead(now);
+                self.arrived = Some(now);
                 recorded = true;
             }
         }
@@ -117,11 +121,19 @@ impl LevelMeter {
     /// this arrival. Changing the pace keeps the playhead where it is, so the
     /// waveform never jumps.
     fn align_playhead(&mut self, now: Instant) {
-        let Some(anchor) = self.anchor else {
+        let Some(mut anchor) = self.anchor else {
             // The first level arrives on time by definition.
             self.anchor = now.checked_sub(LEVEL_INTERVAL);
             return;
         };
+        // A playhead that came to rest waited at the level before this one, so
+        // after a stall the new bar slides in at once, and the stall doesn't
+        // count as levels arriving late.
+        let past_rest =
+            signed_secs(now, anchor) / self.pace - PLAYHEAD_LAG - (self.recorded - 1) as f64;
+        if past_rest > 0. {
+            anchor = shift_instant(anchor, past_rest * self.pace);
+        }
         let error = signed_secs(now, anchor) - self.recorded as f64 * self.pace;
         let interval = LEVEL_INTERVAL.as_secs_f64();
         let pace = (self.pace + error * PLAYHEAD_PACE_GAIN).clamp(interval / 2., interval * 2.);
@@ -139,6 +151,7 @@ impl LevelMeter {
             recorded: self.recorded,
             anchor: self.anchor?,
             pace: self.pace,
+            arrived: self.arrived?,
         })
     }
 
@@ -156,9 +169,24 @@ pub(super) struct Playhead {
     recorded: u64,
     anchor: Instant,
     pace: f64,
+    arrived: Instant,
 }
 
 impl Playhead {
+    /// How many levels the session recorded up to this playhead, which tells
+    /// it from the next.
+    pub(super) fn recorded(&self) -> u64 {
+        self.recorded
+    }
+
+    /// How long after the newest level arrived the playhead comes to rest with
+    /// that level at the trailing edge, unless another level arrives first.
+    pub(super) fn rest_after_arrival(&self) -> Duration {
+        let rest = (self.recorded as f64 + PLAYHEAD_LAG) * self.pace
+            - signed_secs(self.arrived, self.anchor);
+        Duration::from_secs_f64(rest.max(0.))
+    }
+
     /// Where the waveform should draw the newest level at `now`, in levels past
     /// the trailing edge (0.0 at the edge, positive further out).
     pub(super) fn lead_at(&self, now: Instant) -> f32 {
@@ -301,6 +329,39 @@ mod tests {
         assert!((lead(80) - 0.75).abs() < 1e-3, "{}", lead(80));
         // Long after the audio stopped arriving, the newest bar rests at the edge.
         assert_eq!(lead(1_000), 0.);
+    }
+
+    #[test]
+    fn the_playhead_comes_to_rest_when_levels_stop() {
+        let mut meter = LevelMeter::new();
+        meter.reset(16_000, 1);
+        let start = Instant::now();
+        level_at(&mut meter, start);
+        level_at(&mut meter, start + Duration::from_millis(80));
+        let playhead = meter.playhead().unwrap();
+        let rest = playhead.rest_after_arrival();
+        let arrived = start + Duration::from_millis(80);
+        // The newest bar enters 1.75 levels out and moves one level per 80 ms.
+        assert!(rest.abs_diff(Duration::from_millis(140)) < Duration::from_millis(5));
+        assert!(playhead.lead_at(arrived + rest - Duration::from_millis(5)) > 0.);
+        assert!(playhead.lead_at(arrived + rest) < 1e-3);
+    }
+
+    #[test]
+    fn after_a_stall_the_next_level_slides_in() {
+        let mut meter = LevelMeter::new();
+        meter.reset(16_000, 1);
+        let start = Instant::now();
+        level_at(&mut meter, start);
+        let stalled = start + Duration::from_millis(500);
+        assert_eq!(lead_at(&meter, stalled), Some(0.));
+        level_at(&mut meter, stalled);
+        // The new bar sits about a step out, and the bar that rested at the edge
+        // barely moves.
+        let lead = lead_at(&meter, stalled).unwrap();
+        assert!((lead - 1.).abs() < 0.1, "{lead}");
+        let later = lead_at(&meter, stalled + Duration::from_millis(40)).unwrap();
+        assert!(later > 0. && later < lead, "{later}");
     }
 
     #[test]
