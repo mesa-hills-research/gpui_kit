@@ -49,8 +49,8 @@ use gpui_kit::component::speech::{
 
 ### Dictate into an input
 
-Create the state beside the input it fills, subscribe to it, and put the button
-and waveform in the input's suffix:
+Create the state beside the input it fills, subscribe to it, observe it, and put
+the button and waveform in the input's suffix:
 
 ```rust
 use gpui_kit::component::{
@@ -75,6 +75,7 @@ let subscription = cx.subscribe_in(&speech, window, {
         _ => {}
     }
 });
+let observation = cx.observe(&speech, |_, _, cx| cx.notify());
 ```
 
 ```rust
@@ -90,8 +91,10 @@ Input::new(&self.input).suffix(
 )
 ```
 
-Keep the subscription on the view that owns the input, for example in its
-`_subscriptions` list.
+Keep the subscription and the observation on the view that owns the input, for
+example in its `_subscriptions` list. The subscription hands over the events,
+and the observation draws the view again for new levels and status changes,
+which a cached view needs.
 
 ### Events
 

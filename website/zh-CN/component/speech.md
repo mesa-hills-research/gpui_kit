@@ -37,7 +37,7 @@ use gpui_kit::component::speech::{
 
 ### 语音输入到 Input
 
-在要填充的输入框旁边创建状态并订阅它，再把按钮和波形放到输入框的 suffix 中：
+在要填充的输入框旁边创建状态，订阅并观察它，再把按钮和波形放到输入框的 suffix 中：
 
 ```rust
 use gpui_kit::component::{
@@ -62,6 +62,7 @@ let subscription = cx.subscribe_in(&speech, window, {
         _ => {}
     }
 });
+let observation = cx.observe(&speech, |_, _, cx| cx.notify());
 ```
 
 ```rust
@@ -77,7 +78,7 @@ Input::new(&self.input).suffix(
 )
 ```
 
-把订阅保存在拥有该输入框的视图上，例如放进它的 `_subscriptions` 列表。
+把订阅和观察保存在拥有该输入框的视图上，例如放进它的 `_subscriptions` 列表。订阅负责接收事件，观察则在有新的音量和状态变化时重新绘制视图，缓存的视图需要它。
 
 ### 事件
 
