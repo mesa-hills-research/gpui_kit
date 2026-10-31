@@ -1,4 +1,11 @@
-use std::f32::consts::TAU;
+use std::{
+    f32::consts::TAU,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use anyhow::anyhow;
 use cpal::{
@@ -10,18 +17,43 @@ use smol::channel::{Sender, unbounded};
 
 use super::{AudioFormat, AudioInput, AudioSink, SpeechError};
 
+/// How much captured audio may wait for the app by default.
+const DEFAULT_MAX_BACKLOG: Duration = Duration::from_secs(15);
+
 /// The default audio input device, captured through the platform's audio API
 /// (Core Audio, WASAPI or ALSA).
 ///
 /// The device's own format is mixed down to mono and resampled to the format
 /// the recognizer asks for.
 ///
+/// Captured audio waits for the app's main thread to take it. If more than
+/// [`Self::max_backlog`] piles up, because the app is busy for that long, the
+/// session fails with [`SpeechError::Input`] rather than keep it all in memory
+/// or lose some of it.
+///
 /// On macOS the application's `Info.plist` must describe why it uses the
 /// microphone (`NSMicrophoneUsageDescription`), or the system refuses access
 /// without asking.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Microphone {
-    _private: (),
+    max_backlog: Duration,
+}
+
+impl Default for Microphone {
+    fn default() -> Self {
+        Self {
+            max_backlog: DEFAULT_MAX_BACKLOG,
+        }
+    }
+}
+
+impl Microphone {
+    /// Set how much captured audio may wait for the app before the session
+    /// fails, default 15 seconds.
+    pub fn max_backlog(mut self, max_backlog: Duration) -> Self {
+        self.max_backlog = max_backlog;
+        self
+    }
 }
 
 impl AudioInput for Microphone {
@@ -44,12 +76,16 @@ impl AudioInput for Microphone {
         let config: StreamConfig = supported.into();
         let source_rate = config.sample_rate.0;
 
+        // The channel is unbounded and the backlog bounds it, by frames of audio
+        // rather than by messages, whose sizes vary.
         let (tx, rx) = unbounded();
+        let max_backlog = self.max_backlog;
+        let backlog = Arc::new(Backlog::new(frames_in(max_backlog, source_rate)));
         let stream = match sample_format {
-            SampleFormat::F32 => build_stream::<f32>(&device, &config, tx),
-            SampleFormat::I16 => build_stream::<i16>(&device, &config, tx),
-            SampleFormat::U16 => build_stream::<u16>(&device, &config, tx),
-            SampleFormat::I32 => build_stream::<i32>(&device, &config, tx),
+            SampleFormat::F32 => build_stream::<f32>(&device, &config, tx, backlog.clone()),
+            SampleFormat::I16 => build_stream::<i16>(&device, &config, tx, backlog.clone()),
+            SampleFormat::U16 => build_stream::<u16>(&device, &config, tx, backlog.clone()),
+            SampleFormat::I32 => build_stream::<i32>(&device, &config, tx, backlog.clone()),
             other => {
                 return Err(SpeechError::input(anyhow!(
                     "unsupported sample format {other}"
@@ -69,8 +105,16 @@ impl AudioInput for Microphone {
                     std::iter::once(first).chain(std::iter::from_fn(|| rx.try_recv().ok()))
                 {
                     match capture {
-                        Capture::Samples(samples) => mono.extend_from_slice(&samples),
-                        Capture::Error(message) => error = Some(message),
+                        Capture::Samples(samples) => {
+                            backlog.take(samples.len());
+                            mono.extend_from_slice(&samples);
+                        }
+                        Capture::Overflow => {
+                            error = Some(anyhow!(
+                                "the app fell more than {max_backlog:?} behind the microphone"
+                            ));
+                        }
+                        Capture::Error(message) => error = Some(anyhow!(message)),
                     }
                 }
 
@@ -80,8 +124,8 @@ impl AudioInput for Microphone {
                     if !samples.is_empty() {
                         sink.push(samples, cx);
                     }
-                    if let Some(message) = error.take() {
-                        sink.error(SpeechError::input(anyhow!(message)), cx);
+                    if let Some(error) = error.take() {
+                        sink.error(SpeechError::input(error), cx);
                     }
                 });
             }
@@ -96,15 +140,88 @@ impl AudioInput for Microphone {
 
 enum Capture {
     Samples(Vec<f32>),
+    /// The backlog was full. The stream sends nothing after it.
+    Overflow,
+    /// The device failed. The stream sends nothing after it.
     Error(String),
 }
 
+/// The frames of `duration` at `rate`, at least one.
+fn frames_in(duration: Duration, rate: u32) -> usize {
+    ((duration.as_secs_f64() * rate as f64) as usize).max(1)
+}
+
+/// The captured audio that waits for the app, counted in frames, shared by the
+/// audio thread and the app's task.
+struct Backlog {
+    max_frames: usize,
+    frames: AtomicUsize,
+    /// Set once the stream has sent an overflow or an error, which ends the
+    /// session, so that it sends nothing more.
+    failed: AtomicBool,
+}
+
+/// Whether the audio thread may send what it captured.
+#[derive(Debug, PartialEq)]
+enum Admission {
+    Send,
+    /// The backlog is full. Send [`Capture::Overflow`] in its place.
+    Overflow,
+    /// The stream already failed. Send nothing.
+    Failed,
+}
+
+impl Backlog {
+    fn new(max_frames: usize) -> Self {
+        Self {
+            max_frames,
+            frames: AtomicUsize::new(0),
+            failed: AtomicBool::new(false),
+        }
+    }
+
+    /// Count `frames` more as waiting, if they fit. The first that don't fit
+    /// fail the stream.
+    fn admit(&self, frames: usize) -> Admission {
+        if self.failed.load(Ordering::Acquire) {
+            return Admission::Failed;
+        }
+        let fits = self
+            .frames
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |waiting| {
+                waiting
+                    .checked_add(frames)
+                    .filter(|&total| total <= self.max_frames)
+            })
+            .is_ok();
+        if fits {
+            Admission::Send
+        } else if self.fail() {
+            Admission::Overflow
+        } else {
+            Admission::Failed
+        }
+    }
+
+    /// Mark the stream failed, and return whether this call did.
+    fn fail(&self) -> bool {
+        !self.failed.swap(true, Ordering::AcqRel)
+    }
+
+    /// Count `frames` as taken by the app.
+    fn take(&self, frames: usize) {
+        self.frames.fetch_sub(frames, Ordering::AcqRel);
+    }
+}
+
 /// Open an input stream that sends each callback's frames, mixed down to mono,
-/// through `tx`. Runs on the audio thread, so it only converts and sends.
+/// through `tx`, while they fit in `backlog`. Runs on the audio thread, so it
+/// only converts and sends.
 fn build_stream<T>(
     device: &cpal::Device,
     config: &StreamConfig,
     tx: Sender<Capture>,
+    backlog: Arc<Backlog>,
 ) -> Result<cpal::Stream, SpeechError>
 where
     T: SizedSample,
@@ -112,11 +229,12 @@ where
 {
     let channels = config.channels.max(1) as usize;
     let error_tx = tx.clone();
+    let error_backlog = backlog.clone();
     device
         .build_input_stream(
             config,
             move |data: &[T], _| {
-                let mono = data
+                let mono: Vec<f32> = data
                     .chunks(channels)
                     .map(|frame| {
                         frame
@@ -126,10 +244,16 @@ where
                             / frame.len() as f32
                     })
                     .collect();
-                _ = tx.try_send(Capture::Samples(mono));
+                match backlog.admit(mono.len()) {
+                    Admission::Send => _ = tx.try_send(Capture::Samples(mono)),
+                    Admission::Overflow => _ = tx.try_send(Capture::Overflow),
+                    Admission::Failed => {}
+                }
             },
             move |error| {
-                _ = error_tx.try_send(Capture::Error(error.to_string()));
+                if error_backlog.fail() {
+                    _ = error_tx.try_send(Capture::Error(error.to_string()));
+                }
             },
             None,
         )
@@ -235,6 +359,35 @@ impl LowPass {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_stream_fails_once_when_audio_piles_up() {
+        let backlog = Backlog::new(1_000);
+        assert_eq!(backlog.admit(600), Admission::Send);
+        assert_eq!(backlog.admit(400), Admission::Send);
+        // What the app takes makes room again.
+        backlog.take(500);
+        assert_eq!(backlog.admit(500), Admission::Send);
+        // Past the limit the stream fails once and sends nothing more, even
+        // after the app catches up.
+        assert_eq!(backlog.admit(1), Admission::Overflow);
+        backlog.take(1_000);
+        assert_eq!(backlog.admit(1), Admission::Failed);
+    }
+
+    #[test]
+    fn the_stream_sends_one_error_and_nothing_after_it() {
+        let backlog = Backlog::new(1_000);
+        assert!(backlog.fail());
+        assert!(!backlog.fail());
+        assert_eq!(backlog.admit(1), Admission::Failed);
+    }
+
+    #[test]
+    fn the_backlog_counts_frames_at_the_device_rate() {
+        assert_eq!(frames_in(Duration::from_secs(15), 48_000), 720_000);
+        assert_eq!(frames_in(Duration::ZERO, 48_000), 1);
+    }
 
     #[test]
     fn converter_keeps_rate_and_duplicates_channels() {

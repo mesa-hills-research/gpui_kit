@@ -273,6 +273,8 @@ impl AudioInput for Silence {
 let speech = cx.new(|cx| SpeechState::new(cx).recognizer(recognizer).input(Silence));
 ```
 
+`Microphone` 把音频交给应用的主线程。如果主线程忙到积压的音频超过 15 秒，会话会以 `SpeechError::Input` 结束，而不是把它们全部留在内存里。可以用 `Microphone::default().max_backlog(duration)` 设置其他上限。
+
 `levels()` 返回 `SpeechWaveform` 绘制所用的近期输入音量，取值 `0.0..=1.0`，按时间从旧到新排列，每 80 ms 音频一个值，适合需要自绘音量表的应用。音量升高时立即跟上、回落时平滑下降，背景噪音记为 `0.0`。
 
 ## 平台支持

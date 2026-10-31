@@ -327,6 +327,11 @@ impl AudioInput for Silence {
 let speech = cx.new(|cx| SpeechState::new(cx).recognizer(recognizer).input(Silence));
 ```
 
+The `Microphone` hands its audio to the app's main thread. If that thread is
+busy long enough for more than 15 s of audio to wait, the session ends with
+`SpeechError::Input` rather than hold on to it all. Set another limit with
+`Microphone::default().max_backlog(duration)`.
+
 `levels()` exposes the recent input levels that `SpeechWaveform` draws, in
 `0.0..=1.0` with the oldest first, one per 80 ms of audio, for an application
 that renders its own meter. Peaks rise at once and fall back smoothly, and
