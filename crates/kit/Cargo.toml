@@ -208,3 +208,7 @@ required-features = ["test-support", "component"]
 [[test]]
 name = "spinner_motion"
 required-features = ["test-support", "component", "assets"]
+
+[[test]]
+name = "waveform_motion"
+required-features = ["test-support", "component", "assets"]

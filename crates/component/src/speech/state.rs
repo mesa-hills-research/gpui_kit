@@ -309,6 +309,12 @@ impl SpeechState {
             .clone()
     }
 
+    /// The running session's id, which tells it from the state's earlier and
+    /// later sessions.
+    pub(super) fn session_id(&self) -> Option<usize> {
+        self.session.as_ref().map(|session| session.id)
+    }
+
     pub(super) fn is_session(&self, id: usize) -> bool {
         self.session
             .as_ref()

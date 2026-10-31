@@ -1,7 +1,7 @@
 use gpui::{
-    Animation, AnimationExt as _, App, Bounds, ContentMask, Entity, IntoElement, PaintEffect,
-    ParentElement as _, Path, PathBuilder, Pixels, RenderOnce, StyleRefinement, Styled, Window,
-    canvas, div, point, px, size,
+    Animation, AnimationExt as _, App, Bounds, ContentMask, ElementId, Entity, EntityId,
+    IntoElement, PaintEffect, ParentElement as _, Path, PathBuilder, Pixels, RenderOnce,
+    StyleRefinement, Styled, Window, canvas, div, point, px, size,
 };
 
 use crate::{ActiveTheme as _, Sizable, Size, StyledExt as _};
@@ -77,6 +77,7 @@ impl RenderOnce for SpeechWaveform {
         // and stand apart so a run of silence reads as a row of dots.
         let bar = (height * 0.125).round().clamp(px(2.), px(4.));
         let gap = (bar * GAP_RATIO).round();
+        let state_id = self.state.entity_id();
         let state = self.state.read(cx);
         let capturing = state.status().is_capturing();
         let levels: Vec<f32> = state.levels().collect();
@@ -86,15 +87,18 @@ impl RenderOnce for SpeechWaveform {
         // stalling. Without motion, and once no level has arrived for long
         // enough that the playhead rests, the newest bar sits at the edge.
         let now = cx.background_executor().now();
-        let playhead = state.playhead().filter(|playhead| {
-            capturing
-                && !cx.reduce_motion()
-                && playhead.lead_at(now) > 0.
-                && !playhead.rest_after_arrival().is_zero()
-        });
+        let motion = state
+            .session_id()
+            .zip(state.playhead())
+            .filter(|(_, playhead)| {
+                capturing
+                    && !cx.reduce_motion()
+                    && playhead.lead_at(now) > 0.
+                    && !playhead.rest_after_arrival().is_zero()
+            });
         // Bars that scroll in from past the leading edge are painted too, cut off
         // until they come into view.
-        let lead = if playhead.is_some() {
+        let lead = if motion.is_some() {
             PLAYHEAD_MAX_LEAD
         } else {
             0.
@@ -128,20 +132,25 @@ impl RenderOnce for SpeechWaveform {
             .w(DEFAULT_WIDTH)
             .flex_shrink_0()
             .refine_style(&self.style)
-            .child(match playhead {
+            .child(match motion {
                 // The bars move as they paint, so the views around the waveform are
                 // not drawn again for each frame. The content mask doesn't move, so
                 // the bars are still cut at the waveform's edges.
-                Some(playhead) => {
+                Some((session, playhead)) => {
                     let clock = cx.background_executor().clone();
                     let pitch = bar + gap;
+                    let run = MotionRun {
+                        state: state_id,
+                        session,
+                        level: playhead.recorded(),
+                    };
                     bars.with_paint_animation(
                         // Each level starts a run of its own, as long as the playhead
                         // takes to come to rest after it, so frames stop when levels
                         // do. A run that starts after the level arrived ends as much
                         // later, with the bars already at rest. The effect reads the
                         // clock itself.
-                        ("bars", playhead.recorded()),
+                        run,
                         Animation::new(playhead.rest_after_arrival()),
                         move |progress| {
                             // The last frame lands at rest, however the clocks line up.
@@ -157,6 +166,24 @@ impl RenderOnce for SpeechWaveform {
                 }
                 None => bars.into_any_element(),
             })
+    }
+}
+
+/// One run of the bars' motion, from a level's arrival until the bars rest.
+/// The window keeps a run's start under its element id, so the id names the
+/// state, its session and the level. Waveforms of different states, and the
+/// sessions of one state, never share a start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MotionRun {
+    state: EntityId,
+    session: usize,
+    level: u64,
+}
+
+impl From<MotionRun> for ElementId {
+    fn from(run: MotionRun) -> Self {
+        let state = ElementId::from(("speech-waveform", run.state));
+        ElementId::from((state, format!("{}.{}", run.session, run.level)))
     }
 }
 
