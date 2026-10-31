@@ -149,8 +149,9 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // `start` when idle, otherwi
 `is_active()` is true for every status but `Idle`, and `is_capturing()` for
 `Connecting` and `Recording`. While `Stopping`, the button shows a spinner and
 ignores clicks. If the recognizer does not deliver its final result within the
-stop timeout, the session ends with the transcript so far. The timeout is
-3 seconds by default:
+stop timeout, the session ends with `SpeechEvent::Error`, for which
+`SpeechError::is_timeout()` is true, and `transcript()` keeps the words so far.
+The timeout is 3 seconds by default:
 
 ```rust
 let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5)));

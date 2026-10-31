@@ -5,6 +5,7 @@ use gpui::{App, Context, EventEmitter, SharedString, Subscription, Task, WeakEnt
 use super::{
     AudioInput, AudioSink, RecognitionSession, SpeechError, SpeechRecognizer, SpeechSink,
     level::{LevelMeter, Playhead},
+    recognizer::StopTimeout,
 };
 
 /// Default time [`SpeechState::stop`] waits for the final result.
@@ -128,8 +129,10 @@ impl SpeechState {
         self
     }
 
-    /// Set how long [`Self::stop`] waits for the recognizer's final result
-    /// before ending the session with the transcript so far, default 3 seconds.
+    /// Set how long [`Self::stop`] waits for the recognizer's final result,
+    /// default 3 seconds. Past it, the session ends with an error for which
+    /// [`SpeechError::is_timeout`] is true, and [`Self::transcript`] keeps the
+    /// words so far.
     pub fn stop_timeout(mut self, timeout: Duration) -> Self {
         self.stop_timeout = timeout;
         self
@@ -232,7 +235,8 @@ impl SpeechState {
     }
 
     /// Stop capturing and wait for the final result, which arrives as
-    /// [`SpeechEvent::Final`].
+    /// [`SpeechEvent::Final`], or as a timeout error after
+    /// [`Self::stop_timeout`].
     pub fn stop(&mut self, cx: &mut Context<Self>) {
         if !self.status.is_capturing() {
             return;
@@ -250,7 +254,8 @@ impl SpeechState {
             cx.background_executor().timer(timeout).await;
             _ = this.update(cx, |this, cx| {
                 if this.is_session(id) {
-                    this.end(SpeechEvent::Final(this.transcript()), cx);
+                    let error = SpeechError::recognizer(StopTimeout(timeout));
+                    this.end(SpeechEvent::Error(error), cx);
                 }
             });
         }));
@@ -569,10 +574,13 @@ mod tests {
     }
 
     #[gpui::test]
-    fn stop_ends_with_the_transcript_so_far_after_the_timeout(cx: &mut TestAppContext) {
+    fn stop_fails_with_a_timeout_that_keeps_the_words_so_far(cx: &mut TestAppContext) {
         let f = Fixture::new(FakeRecognizer::default(), cx);
         f.state.update(cx, |state, cx| state.start(cx));
-        cx.update(|cx| f.sink().hypothesis("half a sentence", cx));
+        cx.update(|cx| {
+            f.sink().phrase("Settled.", cx);
+            f.sink().hypothesis(" Half a", cx);
+        });
         cx.run_until_parked();
 
         f.state.update(cx, |state, cx| state.stop(cx));
@@ -582,7 +590,36 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(f.status(cx), SpeechStatus::Idle);
-        assert_eq!(f.take_events().last().unwrap(), "final:half a sentence");
+        assert!(f.recognizer.recorded.borrow().dropped);
+        let Some(SpeechEvent::Error(error)) = f.events.borrow().last().cloned() else {
+            panic!("the session didn't fail");
+        };
+        assert!(error.is_timeout(), "{error}");
+        assert_eq!(
+            error.to_string(),
+            "speech recognition failed: the last words didn't arrive within 1s"
+        );
+        assert_eq!(
+            cx.read(|cx| f.state.read(cx).transcript()),
+            SharedString::from("Settled. Half a")
+        );
+    }
+
+    #[gpui::test]
+    fn only_a_stop_timeout_is_a_timeout(cx: &mut TestAppContext) {
+        let f = Fixture::new(FakeRecognizer::default(), cx);
+        f.state.update(cx, |state, cx| state.start(cx));
+        cx.update(|cx| {
+            f.sink()
+                .error(SpeechError::recognizer(anyhow::anyhow!("offline")), cx)
+        });
+        cx.run_until_parked();
+
+        let Some(SpeechEvent::Error(error)) = f.events.borrow().last().cloned() else {
+            panic!("the session didn't fail");
+        };
+        assert!(!error.is_timeout());
+        assert!(!SpeechError::NoInputDevice.is_timeout());
     }
 
     #[gpui::test]

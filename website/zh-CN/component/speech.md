@@ -127,7 +127,7 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // 空闲时 `start`，否则
 | `Recording` | 正在采集并识别音频。 |
 | `Stopping` | 已停止采集，等待最终结果。 |
 
-除 `Idle` 外，`is_active()` 都为 true；`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以当前已有的文本结束。超时默认为 3 秒：
+除 `Idle` 外，`is_active()` 都为 true；`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以 `SpeechEvent::Error` 结束，此时 `SpeechError::is_timeout()` 为 true，`transcript()` 仍保留已识别的文字。超时默认为 3 秒：
 
 ```rust
 let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5)));

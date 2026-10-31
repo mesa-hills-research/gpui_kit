@@ -1,4 +1,4 @@
-use std::{fmt, rc::Rc, sync::Arc};
+use std::{fmt, rc::Rc, sync::Arc, time::Duration};
 
 use gpui::{App, Context, SharedString, Subscription, WeakEntity};
 
@@ -66,7 +66,26 @@ impl SpeechError {
     pub fn recognizer(error: impl Into<anyhow::Error>) -> Self {
         Self::Recognizer(Arc::new(error.into()))
     }
+
+    /// Whether the recognizer's final result didn't arrive within
+    /// [`SpeechState::stop_timeout`]. The session's words so far stay in
+    /// [`SpeechState::transcript`].
+    pub fn is_timeout(&self) -> bool {
+        matches!(self, Self::Recognizer(error) if error.is::<StopTimeout>())
+    }
 }
+
+/// The recognizer's final result didn't arrive within the stop timeout.
+#[derive(Debug)]
+pub(super) struct StopTimeout(pub(super) Duration);
+
+impl fmt::Display for StopTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "the last words didn't arrive within {:?}", self.0)
+    }
+}
+
+impl std::error::Error for StopTimeout {}
 
 impl fmt::Display for SpeechError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
