@@ -127,11 +127,13 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // 空闲时 `start`，否则
 | `Recording` | 正在采集并识别音频。 |
 | `Stopping` | 已停止采集，等待最终结果。 |
 
-除 `Idle` 外，`is_active()` 都为 true；`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以 `SpeechEvent::Error` 结束，此时 `SpeechError::is_timeout()` 为 true，`transcript()` 仍保留已识别的文字。超时默认为 3 秒：
+除 `Idle` 外，`is_active()` 都为 true；`is_capturing()` 只在 `Connecting` 和 `Recording` 时为 true。处于 `Stopping` 时，按钮显示 spinner 并忽略点击。如果识别器在停止超时内没有给出最终结果，会话会以 `Final` 和当前已有的文本结束。超时默认为 3 秒：
 
 ```rust
 let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5)));
 ```
+
+如果应用需要区分说得慢的最后几句和正常结束，可以把超时当作错误。使用 `timeout_is_error(true)` 后，会话以 `SpeechEvent::Error` 结束，此时 `SpeechError::is_timeout()` 为 true，`transcript()` 仍保留已识别的文字。
 
 ### 按钮状态
 
@@ -313,7 +315,7 @@ Linux 没有系统识别器，只有在应用提供识别器时才能使用语�
 
 ## API 参考
 
-- [SpeechState]：会话本身，包括 `recognizer`、`input`、`system_fallback`、`stop_timeout`、`start`、`stop`、`cancel`、`toggle`、`status`、`has_recognizer`、`is_available`、`transcript`、`levels`
+- [SpeechState]：会话本身，包括 `recognizer`、`input`、`system_fallback`、`stop_timeout`、`timeout_is_error`、`start`、`stop`、`cancel`、`toggle`、`status`、`has_recognizer`、`is_available`、`transcript`、`levels`
 - [SpeechEvent] 与 [SpeechStatus]
 - [SpeechButton]：`show_when_unsupported`，以及 `Sizable` 和 `Disableable`
 - [SpeechWaveform]：实时波形。有音频进来后从末端开始出现，以固定速度滚动（每 80 ms 一根），直到铺满自身宽度（不设宽度时为 96 px）；静音时显示为圆点。`Sizable` 决定高度，`Styled` 决定宽度

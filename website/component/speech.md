@@ -149,13 +149,17 @@ speech.update(cx, |speech, cx| speech.toggle(cx)); // `start` when idle, otherwi
 `is_active()` is true for every status but `Idle`, and `is_capturing()` for
 `Connecting` and `Recording`. While `Stopping`, the button shows a spinner and
 ignores clicks. If the recognizer does not deliver its final result within the
-stop timeout, the session ends with `SpeechEvent::Error`, for which
-`SpeechError::is_timeout()` is true, and `transcript()` keeps the words so far.
-The timeout is 3 seconds by default:
+stop timeout, the session ends with `Final` and the transcript so far. The
+timeout is 3 seconds by default:
 
 ```rust
 let speech = cx.new(|cx| SpeechState::new(cx).stop_timeout(Duration::from_secs(5)));
 ```
+
+An app that wants to tell slow last words from a normal end can make the
+timeout an error. With `timeout_is_error(true)` the session ends with
+`SpeechEvent::Error`, for which `SpeechError::is_timeout()` is true, and
+`transcript()` keeps the words so far.
 
 ### Button states
 
@@ -388,8 +392,8 @@ application recognizer; without one, `SpeechButton` renders nothing. The
 ## API Reference
 
 - [SpeechState] — the session: `recognizer`, `input`, `system_fallback`,
-  `stop_timeout`, `start`, `stop`, `cancel`, `toggle`, `status`,
-  `has_recognizer`, `is_available`, `transcript`, `levels`
+  `stop_timeout`, `timeout_is_error`, `start`, `stop`, `cancel`, `toggle`,
+  `status`, `has_recognizer`, `is_available`, `transcript`, `levels`
 - [SpeechEvent] and [SpeechStatus]
 - [SpeechButton] — `show_when_unsupported`, plus `Sizable` and `Disableable`
 - [SpeechWaveform] — a live waveform that grows from its trailing edge as audio arrives and scrolls at a steady pace (one bar per 80 ms) until it fills its width (96 px unless styled); silence shows as dots; `Sizable` sets its height, `Styled` its width

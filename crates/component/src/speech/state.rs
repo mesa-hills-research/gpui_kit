@@ -79,6 +79,7 @@ pub struct SpeechState {
     system_fallback: bool,
     system_recognizer: OnceCell<Option<Rc<dyn SpeechRecognizer>>>,
     stop_timeout: Duration,
+    timeout_is_error: bool,
     status: SpeechStatus,
     session: Option<Session>,
     next_session: usize,
@@ -98,6 +99,7 @@ impl SpeechState {
             system_fallback: true,
             system_recognizer: OnceCell::new(),
             stop_timeout: DEFAULT_STOP_TIMEOUT,
+            timeout_is_error: false,
             status: SpeechStatus::Idle,
             session: None,
             next_session: 0,
@@ -129,12 +131,20 @@ impl SpeechState {
         self
     }
 
-    /// Set how long [`Self::stop`] waits for the recognizer's final result,
-    /// default 3 seconds. Past it, the session ends with an error for which
-    /// [`SpeechError::is_timeout`] is true, and [`Self::transcript`] keeps the
-    /// words so far.
+    /// Set how long [`Self::stop`] waits for the recognizer's final result
+    /// before ending the session with the transcript so far, default 3 seconds.
     pub fn stop_timeout(mut self, timeout: Duration) -> Self {
         self.stop_timeout = timeout;
+        self
+    }
+
+    /// Whether a session whose final result doesn't arrive within
+    /// [`Self::stop_timeout`] ends with an error rather than with
+    /// [`SpeechEvent::Final`], default `false`. The error is one for which
+    /// [`SpeechError::is_timeout`] is true, and [`Self::transcript`] keeps the
+    /// words so far.
+    pub fn timeout_is_error(mut self, timeout_is_error: bool) -> Self {
+        self.timeout_is_error = timeout_is_error;
         self
     }
 
@@ -235,8 +245,8 @@ impl SpeechState {
     }
 
     /// Stop capturing and wait for the final result, which arrives as
-    /// [`SpeechEvent::Final`], or as a timeout error after
-    /// [`Self::stop_timeout`].
+    /// [`SpeechEvent::Final`]. [`Self::stop_timeout`] says what happens when it
+    /// doesn't.
     pub fn stop(&mut self, cx: &mut Context<Self>) {
         if !self.status.is_capturing() {
             return;
@@ -254,8 +264,12 @@ impl SpeechState {
             cx.background_executor().timer(timeout).await;
             _ = this.update(cx, |this, cx| {
                 if this.is_session(id) {
-                    let error = SpeechError::recognizer(StopTimeout(timeout));
-                    this.end(SpeechEvent::Error(error), cx);
+                    let event = if this.timeout_is_error {
+                        SpeechEvent::Error(SpeechError::recognizer(StopTimeout(timeout)))
+                    } else {
+                        SpeechEvent::Final(this.transcript())
+                    };
+                    this.end(event, cx);
                 }
             });
         }));
@@ -462,13 +476,24 @@ mod tests {
 
     impl Fixture {
         fn new(recognizer: FakeRecognizer, cx: &mut TestAppContext) -> Self {
+            Self::with(recognizer, |state| state, cx)
+        }
+
+        /// A fixture whose state `configure` sets up further.
+        fn with(
+            recognizer: FakeRecognizer,
+            configure: impl FnOnce(SpeechState) -> SpeechState,
+            cx: &mut TestAppContext,
+        ) -> Self {
             let input = FakeInput::default();
             let state = cx.update(|cx| {
                 cx.new(|cx| {
-                    SpeechState::new(cx)
-                        .recognizer(recognizer.clone())
-                        .input(input.clone())
-                        .stop_timeout(Duration::from_secs(1))
+                    configure(
+                        SpeechState::new(cx)
+                            .recognizer(recognizer.clone())
+                            .input(input.clone())
+                            .stop_timeout(Duration::from_secs(1)),
+                    )
                 })
             });
             let events = Rc::new(RefCell::new(Vec::new()));
@@ -574,8 +599,29 @@ mod tests {
     }
 
     #[gpui::test]
-    fn stop_fails_with_a_timeout_that_keeps_the_words_so_far(cx: &mut TestAppContext) {
+    fn stop_ends_with_the_transcript_so_far_after_the_timeout(cx: &mut TestAppContext) {
         let f = Fixture::new(FakeRecognizer::default(), cx);
+        f.state.update(cx, |state, cx| state.start(cx));
+        cx.update(|cx| f.sink().hypothesis("half a sentence", cx));
+        cx.run_until_parked();
+
+        f.state.update(cx, |state, cx| state.stop(cx));
+        cx.executor().advance_clock(Duration::from_millis(900));
+        assert_eq!(f.status(cx), SpeechStatus::Stopping);
+        cx.executor().advance_clock(Duration::from_millis(200));
+        cx.run_until_parked();
+
+        assert_eq!(f.status(cx), SpeechStatus::Idle);
+        assert_eq!(f.take_events().last().unwrap(), "final:half a sentence");
+    }
+
+    #[gpui::test]
+    fn a_timeout_can_fail_and_keep_the_words_so_far(cx: &mut TestAppContext) {
+        let f = Fixture::with(
+            FakeRecognizer::default(),
+            |state| state.timeout_is_error(true),
+            cx,
+        );
         f.state.update(cx, |state, cx| state.start(cx));
         cx.update(|cx| {
             f.sink().phrase("Settled.", cx);

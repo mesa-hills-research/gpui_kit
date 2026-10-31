@@ -68,8 +68,9 @@ impl SpeechError {
     }
 
     /// Whether the recognizer's final result didn't arrive within
-    /// [`SpeechState::stop_timeout`]. The session's words so far stay in
-    /// [`SpeechState::transcript`].
+    /// [`SpeechState::stop_timeout`], for a state that
+    /// [`SpeechState::timeout_is_error`] told to fail then. The session's words
+    /// so far stay in [`SpeechState::transcript`].
     pub fn is_timeout(&self) -> bool {
         matches!(self, Self::Recognizer(error) if error.is::<StopTimeout>())
     }
