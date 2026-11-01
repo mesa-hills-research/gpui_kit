@@ -1732,6 +1732,91 @@ mod tests {
         );
     }
 
+    /// On a row that holds the end of tentative text and then a token, up and
+    /// down go to the token's edge, never inside it, so they move on every
+    /// time. Selecting and paging do the same.
+    #[gpui::test]
+    fn a_row_with_the_end_of_tentative_text_and_a_token(cx: &mut TestAppContext) {
+        use crate::actions::SelectDown;
+        use crate::input::{InlineToken, MoveDown, MovePageDown, MoveUp};
+
+        // Twenty characters a row. "@note" is a token, and the tentative
+        // text fills the first row and shares the second with it.
+        const TEXT: &str = "hello\nnext";
+        const TENTATIVE_LONG: &str = "aaaa bbbb cccc dddd e ";
+        let open = |cx: &mut TestAppContext, height: f32, caret: usize| {
+            let mut test = Test::sized(cx, 205., height, TEXT);
+            test.update(|state, window, cx| {
+                state
+                    .replace_range_with_token(0..5, InlineToken::new("note", "@note"), window, cx)
+                    .unwrap();
+                state.set_selected_range(caret..caret, cx);
+                state.set_tentative_text(TENTATIVE_LONG, cx);
+            });
+            test
+        };
+        let len = TEXT.len();
+
+        let mut test = open(cx, 400., 0);
+        let rows = test.rows();
+        assert!(rows.len() == 2 && rows[1].1.is_some(), "{rows:?}");
+        let token_top = test.read(|state| state.token_bounds[&0].top());
+        let row_top = |test: &Test, row: f32| {
+            test.read(|state| {
+                state.input_bounds().top() + state.last_layout.as_ref().unwrap().line_height * row
+            })
+        };
+        assert!(
+            (token_top - row_top(&test, 1.)).abs() < px(1.),
+            "the token shares the second row"
+        );
+        let caret = |test: &Test| test.place().0;
+        let down = press(
+            &mut test,
+            |test| test.dispatch(MoveDown),
+            caret,
+            |at| at >= 6,
+        );
+        assert_eq!(down[0], 5, "past the token: {down:?}");
+        assert!(
+            *down.last().unwrap() >= 6 && down.windows(2).all(|pair| pair[0] < pair[1]),
+            "down moved on every time until \"next\": {down:?}"
+        );
+
+        let mut test = open(cx, 400., len);
+        let up = press(&mut test, |test| test.dispatch(MoveUp), caret, |at| at < 6);
+        assert!(
+            *up.last().unwrap() < 6 && up.windows(2).all(|pair| pair[0] > pair[1]),
+            "up moved on every time until the token's line: {up:?}"
+        );
+
+        let mut test = open(cx, 400., 0);
+        let end = |test: &Test| test.read(|state| state.selected_range().end);
+        let ends = press(
+            &mut test,
+            |test| test.dispatch(SelectDown),
+            end,
+            |end| end == len,
+        );
+        let before = ends[ends.len().saturating_sub(2)];
+        assert!(
+            ends[0] == 5
+                && *ends.last().unwrap() == len
+                && before >= 6
+                && ends.windows(2).all(|pair| pair[0] < pair[1]),
+            "the end of the text only from \"next\": {ends:?}"
+        );
+
+        let line_height = test.read(|state| state.last_layout.as_ref().unwrap().line_height);
+        let mut test = open(cx, (line_height * 1.5).as_f32(), 0);
+        test.dispatch(MovePageDown);
+        assert_eq!(
+            test.place(),
+            (5, false),
+            "a page of one row onto the token's row"
+        );
+    }
+
     /// A page move that ends on a row the tentative text shares with the text
     /// after it stops there, and one that ends on a row of nothing but
     /// tentative text goes on.

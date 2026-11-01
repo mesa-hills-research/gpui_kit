@@ -1296,16 +1296,9 @@ impl LineLayout {
         if !elsewhere {
             return Some((start + ix, !is_last && ix == line.len));
         }
-        // The nearest of the row's positions on either side of it.
-        let text: &str = line.text.as_ref();
-        let before = text[..ix]
-            .graphemes(true)
-            .next_back()
-            .map(|grapheme| ix - grapheme.len());
-        let after = text[ix..]
-            .graphemes(true)
-            .next()
-            .map(|grapheme| ix + grapheme.len());
+        // The nearest of the row's positions on either side of it, from its
+        // text and its tokens' edges, so already one a caret can be at.
+        let (before, after) = line.positions_around(ix);
         let distance = |ix: usize| (line.x_for_index(ix) - x).abs().as_f32();
         let nearest = [before, after]
             .into_iter()

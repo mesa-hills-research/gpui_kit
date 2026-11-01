@@ -1,6 +1,7 @@
 //! A visual row whose offsets remain in source UTF-8 bytes.
 use gpui::{App, Pixels, Point, ShapedLine, SharedString, TextAlign, Window, point, px};
 use std::ops::Range;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 /// One piece of a visual row: shaped text, a token's element, or ghost text.
 ///
@@ -47,9 +48,8 @@ impl InlineFragment {
 pub(crate) struct InlineRow {
     /// The row's byte where the inline text is.
     pub(crate) at: usize,
-    /// The bytes of the inline text this row shows, and how long it is.
+    /// The bytes of the inline text this row shows.
     pub(crate) slice: Range<usize>,
-    pub(crate) len: usize,
 }
 
 pub(crate) struct InputLine {
@@ -95,6 +95,47 @@ impl InputLine {
     pub(crate) fn with_inline(mut self, inline: Option<InlineRow>) -> Self {
         self.inline = inline;
         self
+    }
+
+    /// The row's caret positions nearest byte `ix` on either side of it, as
+    /// bytes of the row. Text has one between each pair of graphemes, and a
+    /// token's element, which is one piece, only at its two edges, so neither
+    /// is ever inside a token.
+    pub(crate) fn positions_around(&self, ix: usize) -> (Option<usize>, Option<usize>) {
+        // The graphemes on either side of `ix` within `range` of the row.
+        let graphemes = |range: Range<usize>| {
+            let local = ix.clamp(range.start, range.end);
+            let text = &self.text[range.clone()];
+            let local = local - range.start;
+            let before = text[..local]
+                .graphemes(true)
+                .next_back()
+                .map(|grapheme| range.start + local - grapheme.len());
+            let after = text[local..]
+                .graphemes(true)
+                .next()
+                .map(|grapheme| range.start + local + grapheme.len());
+            [before, after]
+        };
+        let positions: Vec<usize> = match &self.content {
+            Content::Text(_) => graphemes(0..self.len).into_iter().flatten().collect(),
+            Content::Inline(fragments) => fragments
+                .iter()
+                .flat_map(|f| {
+                    let range = f.range.clone();
+                    let text_around = f.text.is_some() && range.start <= ix && ix <= range.end;
+                    if text_around {
+                        graphemes(range)
+                    } else {
+                        [Some(range.start), Some(range.end)]
+                    }
+                })
+                .flatten()
+                .collect(),
+        };
+        let before = positions.iter().copied().filter(|p| *p < ix).max();
+        let after = positions.iter().copied().filter(|p| *p > ix).min();
+        (before, after)
     }
 
     /// The shaped text that draws byte `ix` of the row, its x in the row,

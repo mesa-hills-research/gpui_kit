@@ -170,6 +170,9 @@ impl<M: InputModeKind> InputBaseState<M> {
                     preferred_x - line.row_x(local_row, last_layout),
                 ) {
                     new_offset = line_start_offset + x;
+                    // A row's own position is never inside a token, so moving
+                    // the caret there keeps it on this row.
+                    debug_assert_eq!(self.cursor_boundary(new_offset, Bias::Left), new_offset);
                     // Landing on a wrap boundary means the preferred column pointed past the
                     // last glyph of the target row, so the caret stays on that row.
                     new_affinity = line_end_affinity;

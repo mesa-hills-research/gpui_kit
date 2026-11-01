@@ -2648,7 +2648,6 @@ impl Insertion {
         let row = InlineRow {
             at,
             slice: slice.clone(),
-            len: self.text.len(),
         };
         Some((at, &self.text[slice.clone()], row))
     }
