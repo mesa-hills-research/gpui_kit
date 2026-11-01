@@ -6035,6 +6035,29 @@ mod tests {
         });
     }
 
+    /// Moving down onto a line that ends in CR LF, with the preferred column
+    /// past its end, puts the caret at the end of that line, in front of the
+    /// CR.
+    #[gpui::test]
+    fn moving_down_onto_a_crlf_line_ends_before_its_cr(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let view = InputView::build_textarea(cx, |state| state);
+        let mut cx = VisualTestContext::from_window(view.window_handle.into(), cx);
+        cx.update(|window, cx| {
+            view.input.update(cx, |state, cx| {
+                state.set_value("abcdefghij\nx\r\nz", window, cx);
+                state.focus(window, cx);
+                state.set_selected_range(10..10, cx);
+            });
+            window.draw(cx).clear(cx);
+            view.input.update(cx, |state, cx| {
+                state.down(&crate::input::MoveDown, window, cx);
+                assert_eq!(state.cursor(), 12);
+                assert_eq!(state.text.offset_to_point(state.cursor()).row, 1);
+            });
+        });
+    }
+
     #[gpui::test]
     fn only_a_multi_line_input_paints_scrollbars(cx: &mut TestAppContext) {
         cx.update(crate::init);
