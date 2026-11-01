@@ -529,7 +529,6 @@ impl RowSpot {
         start: usize,
     ) -> Option<Self> {
         let line = layout.lines.get(line_ix)?;
-        let indent = if row == 0 { px(0.) } else { line.wrap_indent };
         Some(Self {
             line: line_ix,
             key: RowKey {
@@ -538,7 +537,7 @@ impl RowSpot {
                 start,
             },
             len: line.wrapped_lines.get(row)?.len,
-            x: layout.alignment_offset(line.longest_width) + indent,
+            x: line.row_x(row, layout),
             line_start: *layout.visible_line_byte_offsets.get(line_ix)?,
         })
     }

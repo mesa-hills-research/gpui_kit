@@ -1044,6 +1044,20 @@ impl LineLayout {
         self.len
     }
 
+    /// Where row `ix` starts, from the left edge of the line's content: its
+    /// indent, then where the alignment puts a row as wide as it is. Caret
+    /// positions, hit testing, selections and what's drawn over the text all
+    /// start rows here, and so does painting, which aligns each row the same
+    /// way within the content's width. Multi-line text is always aligned
+    /// left.
+    pub(crate) fn row_x(&self, ix: usize, last_layout: &LastLayout) -> Pixels {
+        let width = self
+            .wrapped_lines
+            .get(ix)
+            .map_or(self.longest_width, |row| row.width);
+        self.line_indent(ix) + last_layout.alignment_offset(width)
+    }
+
     /// Get the position (x, y) for the given index in this line layout.
     ///
     /// - The `offset` is a local byte index in this line layout.
@@ -1058,8 +1072,6 @@ impl LineLayout {
     ) -> Option<Point<Pixels>> {
         let mut acc_len = 0;
         let mut offset_y = px(0.);
-
-        let x_offset = last_layout.alignment_offset(self.longest_width);
 
         for (i, line) in self.wrapped_lines.iter().enumerate() {
             let is_last = i + 1 == self.wrapped_lines.len();
@@ -1078,9 +1090,8 @@ impl LineLayout {
             };
 
             if matches {
-                let x = line.x_for_index(offset.saturating_sub(acc_len))
-                    + x_offset
-                    + self.line_indent(i);
+                let x =
+                    line.x_for_index(offset.saturating_sub(acc_len)) + self.row_x(i, last_layout);
                 return Some(point(x, offset_y));
             }
 
@@ -1101,7 +1112,6 @@ impl LineLayout {
         offset: usize,
         last_layout: &LastLayout,
     ) -> Option<Point<Pixels>> {
-        let x_offset = last_layout.alignment_offset(self.longest_width);
         let mut acc_len = 0;
         let mut offset_y = px(0.);
         for (i, line) in self.wrapped_lines.iter().enumerate() {
@@ -1109,7 +1119,7 @@ impl LineLayout {
                 .checked_sub(acc_len)
                 .and_then(|local| line.element_x(local))
             {
-                return Some(point(x + x_offset + self.line_indent(i), offset_y));
+                return Some(point(x + self.row_x(i, last_layout), offset_y));
             }
             acc_len += line.len;
             offset_y += last_layout.line_height;
@@ -1124,13 +1134,10 @@ impl LineLayout {
     /// reports the caret affinity that a wrap boundary needs.
     pub(crate) fn closest_index_for_x(&self, x: Pixels, last_layout: &LastLayout) -> usize {
         let mut acc_len = 0;
-        let x_offset = last_layout.alignment_offset(self.longest_width);
-        let x = x - x_offset;
-
         for (i, line) in self.wrapped_lines.iter().enumerate() {
-            let line_indent = self.line_indent(i);
-            if x <= line_indent + line.width {
-                return acc_len + line.closest_index_for_x(x - line_indent);
+            let row_x = self.row_x(i, last_layout);
+            if x <= row_x + line.width {
+                return acc_len + line.closest_index_for_x(x - row_x);
             }
             acc_len += line.len;
         }
@@ -1149,12 +1156,11 @@ impl LineLayout {
     ) -> Option<(usize, usize, Pixels)> {
         let mut offset = 0;
         let mut line_top = px(0.);
-        let x_offset = last_layout.alignment_offset(self.longest_width);
 
         for (i, line) in self.wrapped_lines.iter().enumerate() {
             let line_bottom = line_top + last_layout.line_height;
             if pos.y >= line_top && pos.y < line_bottom {
-                return Some((i, offset, pos.x - x_offset - self.line_indent(i)));
+                return Some((i, offset, pos.x - self.row_x(i, last_layout)));
             }
 
             offset += line.len;

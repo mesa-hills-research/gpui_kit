@@ -184,18 +184,13 @@ impl<M: InputModeKind> InputBaseState<M> {
         let line_height = layout.line_height;
         let top = origin.y
             + line_height * self.display_map.buffer_line_to_display_row(buffer_line) as f32;
-        let alignment = layout.alignment_offset(line.longest_width);
-        let left = origin.x + layout.line_number_width + alignment;
+        // The rows start where the text's own rows do.
+        let left = origin.x + layout.line_number_width;
 
         let mut rows = Vec::with_capacity(line.wrapped_lines.len());
         let mut along = 0.;
         let mut start = 0;
         for (row_ix, row) in line.wrapped_lines.iter().enumerate() {
-            let indent = if row_ix == 0 {
-                px(0.)
-            } else {
-                line.wrap_indent
-            };
             let row_top = top + line_height * row_ix as f32;
             // On the bottom of the line box, below the glyphs' descent.
             let glyph_bottom = row.shaped_at(0).map_or(px(0.), |(shaped, _, _)| {
@@ -208,7 +203,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 along,
                 start,
                 len: row.len,
-                origin: point(left + indent, row_top),
+                origin: point(left + line.row_x(row_ix, layout), row_top),
                 width: row.width,
                 underline_y,
                 inserted: row.inserted_span(),
@@ -253,8 +248,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         let position = |local: usize| -> Option<f32> {
             let point = line.position_for_index(local, layout, false)?;
             let row = rows.get((point.y / line_height).round() as usize)?;
-            let indent = row.origin.x - left;
-            Some(row.along + (point.x - alignment - indent).as_f32())
+            Some(row.along + (left + point.x - row.origin.x).as_f32())
         };
         // The hairline runs under the words, from the first letter to the last.
         let text_rows = inline.map_or(&[][..], |(_, inline_rows)| {
@@ -1583,6 +1577,37 @@ mod tests {
         assert!(
             (5..12).contains(&asked),
             "the glide asked for {asked} frames"
+        );
+    }
+
+    /// Unwrapped text scrolls as far as its tentative text reaches, and the
+    /// hairline under a wrapped row starts where the row's indent puts it.
+    #[gpui::test]
+    fn tentative_text_takes_the_row_geometry_of_the_text(cx: &mut TestAppContext) {
+        let mut test = Test::new(cx, 200., "  Hello");
+        test.update(|state, window, cx| state.set_soft_wrap(false, window, cx));
+        let width = |test: &Test| test.read(|state| state.scroll_size.width);
+        let before = width(&test);
+        test.update(|state, _, cx| {
+            state.set_tentative_text(" and a long run of words after it", cx)
+        });
+        // The seven characters and the tentative text's 33.
+        assert!(
+            width(&test) >= px(40. * CHAR) && before < px(8. * CHAR),
+            "{:?} from {before:?}",
+            width(&test)
+        );
+
+        let mut test = Test::new(cx, 160., "  Hello");
+        test.cx.update(|_, cx| cx.set_reduce_motion(true));
+        test.update(|state, _, cx| state.set_tentative_text(" one two three four five", cx));
+        let frame = test.frame().expect("a hairline");
+        assert!(frame.underlines.len() >= 2);
+        let content_left = test.read(|state| state.range_to_bounds(&(0..0)).unwrap().left());
+        assert!(
+            (frame.underlines[1].left() - content_left - px(2. * CHAR)).abs() < px(0.01),
+            "{:?} from {content_left:?}",
+            frame.underlines[1]
         );
     }
 

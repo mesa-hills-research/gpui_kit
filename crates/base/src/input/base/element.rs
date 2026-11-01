@@ -838,7 +838,6 @@ impl<M: InputModeKind> TextElement<M> {
             .zip(last_layout.lines.iter())
         {
             let mut offset = line_offset;
-            let alignment = last_layout.alignment_offset(line.longest_width);
             for (row, shaped) in line.wrapped_lines.iter().enumerate() {
                 let end = offset + shaped.len;
                 let start_ix = range.start.max(offset);
@@ -848,10 +847,9 @@ impl<M: InputModeKind> TextElement<M> {
                 // A wrap boundary is not a newline and must not get such a cell.
                 let newline = is_last && range.start <= end && range.end > end;
                 if start_ix < end_ix || newline {
-                    let indent = if row == 0 { px(0.) } else { line.wrap_indent };
-                    let left = alignment + indent + shaped.x_for_index(start_ix.min(end) - offset);
-                    let right = alignment
-                        + indent
+                    let row_x = line.row_x(row, last_layout);
+                    let left = row_x + shaped.x_for_index(start_ix.min(end) - offset);
+                    let right = row_x
                         + if newline {
                             shaped.width + last_layout.space_width
                         } else {
@@ -3212,6 +3210,15 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     .as_ref()
                     .map_or(px(0.), |cache| cache.unwrapped_width)
             };
+        }
+        // Unwrapped text scrolls as far as the widest row it shows, which
+        // takes in what's shown that the text doesn't have, such as tentative
+        // text.
+        if wrap_width.is_none() && state.is_multi_line() {
+            longest_line_width = lines
+                .iter()
+                .map(|line| line.size(line_height).width)
+                .fold(longest_line_width, |widest, width| widest.max(width));
         }
         last_layout.lines = Rc::new(lines);
 
