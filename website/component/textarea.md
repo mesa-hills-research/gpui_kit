@@ -254,6 +254,35 @@ Textarea::new(&notes).suggestion_item(|item, _, _| {
 })
 ```
 
+## Tentative text
+
+A producer such as dictation can show words it hasn't settled yet.
+`set_tentative_text` shows them after the caret in the muted text colour, with a
+hairline in the accent colour under them. They take room in the line and wrap
+with it as typed words would, but they aren't in the document, so `value`,
+copying, undo, search and suggestions don't see them.
+
+```rust
+// The recognizer heard words that may still change.
+textarea.update(cx, |textarea, cx| textarea.set_tentative_text(" and send them", cx));
+
+// It's sure of the first of them now.
+textarea.update(cx, |textarea, cx| {
+    textarea.commit_tentative_text(" and".len(), window, cx);
+});
+```
+
+`commit_tentative_text` puts a prefix of the tentative text into the document as
+an edit of its own, which undo takes back, and the rest keeps showing after it.
+The glyphs stay where they are. Their colour fills in from left to right on the
+smooth caret's glide, and the hairline's left end rides the fill's edge. With
+reduced motion the colour changes at once. `set_tentative_text_at` shows the
+words at an offset that moves with edits instead of after the caret, and
+`clear_tentative_text` takes them away.
+
+While an input method composes, the tentative text hides and can't be
+committed. While it shows, no suggestions are offered.
+
 ## Text editor
 
 `TextareaState::text_editor` sets a textarea up for writing: line numbers, the

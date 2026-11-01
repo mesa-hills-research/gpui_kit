@@ -71,7 +71,7 @@ const SETTLE_AIM: f32 = 0.45;
 /// The settle time of a move by one character with the arrow keys.
 const GRAPHEME_DURATION: Duration = Duration::from_millis(80);
 /// The settle time of a move by a word.
-const WORD_DURATION: Duration = Duration::from_millis(120);
+pub(crate) const WORD_DURATION: Duration = Duration::from_millis(120);
 /// The settle time of typing, unless the application sets its own.
 const TYPING_DURATION: Duration = Duration::from_millis(100);
 /// The most movements kept for the next frame.
@@ -486,7 +486,9 @@ impl RowSpot {
         let mut start = 0;
         for (row, shaped) in rows.iter().enumerate() {
             let is_last = row + 1 == rows.len();
-            let matches = if shaped.len == 0 {
+            let matches = if shaped.inline_text_at.map(|at| start + at) == Some(local) {
+                true
+            } else if shaped.len == 0 {
                 local == start
             } else if is_last || affinity {
                 local >= start && local <= start + shaped.len

@@ -133,6 +133,24 @@ Textarea::new(&state)
 
 `EditorState` 和单行 `InputState` 使用相同的方法。`set_app_smooth_caret` 为应用中未单独设置的所有输入框开启或关闭平滑光标，已有输入框也会跟随变化。用法见 [Input](./input.md#平滑光标)。
 
+## 暂定文本
+
+听写等输入来源可以显示尚未确定的词。`set_tentative_text` 把它们显示在光标之后，使用柔和的文字颜色，下方有一条强调色的细线。它们像键入的文字一样在行内占位、随行换行，但不属于文档，所以 `value`、复制、撤销、搜索和建议都看不到它们。
+
+```rust
+// 识别器听到了仍可能变化的词。
+textarea.update(cx, |textarea, cx| textarea.set_tentative_text(" and send them", cx));
+
+// 现在它确定了其中的第一个。
+textarea.update(cx, |textarea, cx| {
+    textarea.commit_tentative_text(" and".len(), window, cx);
+});
+```
+
+`commit_tentative_text` 把暂定文本的一段前缀作为一次单独的编辑放入文档，可以撤销，其余部分继续显示在它之后。字形留在原处，颜色随平滑光标的滑动从左到右填满，细线的左端跟着填充的边缘移动。开启减少动态效果时，颜色立即改变。`set_tentative_text_at` 把词显示在一个随编辑移动的偏移处，而不是光标之后。`clear_tentative_text` 移除它们。
+
+输入法组字期间，暂定文本会隐藏，也无法提交。暂定文本显示时，不会提供建议。
+
 ## 拼写检查与单词建议
 
 Textarea 可以使用应用提供的 `SpellChecker` 标记拼写错误，并使用 `SuggestionProvider` 在光标后显示补全。正在输入的单词不会被标记：光标处的拼写错误会暂缓标记，在已标记的单词中输入会先去掉它的下划线。单词一结束（在其后输入空格、标点或换行，或光标移开）就会立即检查，下划线随即出现或消失，无需等到停止输入。Provider 的 `did_change` 收到的每个编辑都带有 `origin`，说明它的来源：`Typed`（输入）、`Suggestion`（按 Tab 接受的建议）、`Correction`（从拼写错误菜单中选择的更正）、`Pasted`（粘贴）、`History`（撤销与重做）或 `Program`（程序），因此从文本中学习的 Provider 可以只学习用户亲手写下的内容。`gpui-kit-writing` 提供了带英语词典的拼写检查器，以及从用户输入中学习的单词建议，见 [拼写检查与单词建议](../docs/writing)。

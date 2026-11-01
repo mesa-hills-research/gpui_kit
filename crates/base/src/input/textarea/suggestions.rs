@@ -785,12 +785,14 @@ impl TextareaState {
     }
 
     /// Whether the caret is somewhere suggestions can be offered: one
-    /// collapsed cursor, no IME composition, and text the user may change.
+    /// collapsed cursor, no IME composition, no tentative text, and text the
+    /// user may change.
     fn accepts_suggestions(&self) -> bool {
         self.is_editable()
             && self.selections.is_single()
             && self.active_selection().is_empty()
             && self.ime_marked_range.is_none()
+            && self.tentative.is_empty()
     }
 
     fn request_suggestions(

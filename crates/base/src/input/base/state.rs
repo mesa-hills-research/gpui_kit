@@ -291,6 +291,8 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) blink_cursor: Entity<BlinkCursor>,
     /// The smooth caret's options and the glide in progress.
     pub(super) smooth_caret: SmoothCaret,
+    /// Text a textarea shows that isn't in the document yet, such as dictation's.
+    pub(super) tentative: super::tentative::TentativeText,
     pub(super) loading: bool,
     /// The cursors and selections.
     ///
@@ -645,6 +647,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             cursor_surrounding_lines: None,
             blink_cursor,
             smooth_caret: SmoothCaret::new(cx),
+            tentative: Default::default(),
             undo_manager,
             inline_tokens: None,
             pending_token: None,

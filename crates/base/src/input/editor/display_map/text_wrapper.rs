@@ -5,7 +5,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    App, Font, LineFragment, Pixels, Point, ShapedLine, Size, TextAlign, Window, point, px, size,
+    App, Font, LineFragment, Pixels, Point, ShapedLine, SharedString, Size, TextAlign, Window,
+    point, px, size,
 };
 use ropey::Rope;
 use smallvec::SmallVec;
@@ -112,6 +113,52 @@ fn measured_wrap_boundaries(
         start = end;
     }
     result
+}
+
+/// Where `offset` is after the text at `range` is replaced by `new_len`
+/// bytes. An offset at or after the end of the range moves with the text after
+/// it, so text put in at the offset goes before it, and an offset inside the
+/// range goes to the end of what replaced it.
+pub(crate) fn offset_after_edit(offset: usize, range: &Range<usize>, new_len: usize) -> usize {
+    if offset < range.start {
+        offset
+    } else if offset >= range.end {
+        offset + new_len - range.len()
+    } else {
+        range.start + new_len
+    }
+}
+
+/// Text shown in a line that the text doesn't have, such as tentative text.
+/// It wraps with the line as if it were there, while the line's rows keep
+/// their ranges of the text, so a row that shows nothing but this text has an
+/// empty range at its offset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InlineText {
+    /// Where it shows, a byte offset in the text.
+    pub(crate) offset: usize,
+    pub(crate) text: SharedString,
+}
+
+/// The rows of its line that show the inline text.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct InlineTextRows {
+    /// The row of the line it starts on, which holds its offset.
+    pub(crate) first: usize,
+    /// The bytes of the inline text that each row from `first` on shows.
+    pub(crate) slices: SmallVec<[Range<usize>; 2]>,
+}
+
+/// Where the rest of a line starts in the text once its display line, which
+/// has `insertion` in it, is cut at the display byte `cut`, and the part of
+/// `insertion` that rest still has.
+fn rest_of_line(cut: usize, insertion: Option<(usize, &str)>) -> (usize, Option<(usize, &str)>) {
+    match insertion {
+        None => (cut, None),
+        Some((at, text)) if cut <= at => (cut, Some((at - cut, text))),
+        Some((at, text)) if cut >= at + text.len() => (cut - text.len(), None),
+        Some((at, text)) => (at, Some((0, &text[cut - at..]))),
+    }
 }
 
 /// A line with soft wrapped lines info.
@@ -240,6 +287,9 @@ pub(crate) struct TextWrapper {
     pub(crate) lines: SumTree<LineItem>,
 
     inline_metrics: Rc<[(Range<usize>, Pixels)]>,
+    inline_text: Option<InlineText>,
+    /// The rows of the inline text's line that show it.
+    inline_rows: InlineTextRows,
     _initialized: bool,
 }
 
@@ -254,6 +304,8 @@ impl TextWrapper {
             wrapping_indent: WrappingIndent::default(),
             lines: SumTree::new(&()),
             inline_metrics: Rc::from([]),
+            inline_text: None,
+            inline_rows: InlineTextRows::default(),
             _initialized: false,
         }
     }
@@ -393,8 +445,23 @@ impl TextWrapper {
             changed_text,
             range,
             new_text,
-            &mut |line_str, wrap_width, line_start| {
+            &mut |line_str, wrap_width, line_start, insertion| {
                 let line_end = line_start + line_str.len();
+                // The line as it shows, with the inline text in it. The
+                // boundaries returned are display bytes.
+                let display: Cow<str> = match insertion {
+                    Some((at, text)) => {
+                        Cow::Owned(format!("{}{text}{}", &line_str[..at], &line_str[at..]))
+                    }
+                    None => Cow::Borrowed(line_str),
+                };
+                // Where a piece of the text starts in the display line. Ghost
+                // text at the inline text's offset goes before it, and a token
+                // there after it.
+                let inserted = |ix: usize, ghost: bool| match insertion {
+                    Some((at, text)) if ix > at || (ix == at && !ghost) => ix + text.len(),
+                    _ => ix,
+                };
                 let mut fragments = Vec::new();
                 // Empty ranges are ghost text, which covers no text. One at
                 // either end of the line still belongs to it.
@@ -417,20 +484,22 @@ impl TextWrapper {
                     {
                         continue;
                     }
-                    if offset < range.start {
-                        fragments.push(LineFragment::text(&line_str[offset..range.start]));
+                    // The inline text shows where it is, between the pieces.
+                    let start = inserted(range.start, range.is_empty());
+                    if offset < start {
+                        fragments.push(LineFragment::text(&display[offset..start]));
                     }
                     if range.is_empty() {
-                        inlays.push((range.start, *width));
+                        inlays.push((start, *width));
                     } else {
                         has_tokens = true;
                     }
                     fragments.push(LineFragment::element(*width, range.len()));
-                    offset = range.end;
+                    offset = start + range.len();
                 }
                 if !has_tokens {
                     return measured_wrap_boundaries(
-                        line_str,
+                        &display,
                         wrap_width,
                         wrapping_indent,
                         &inlays,
@@ -453,8 +522,8 @@ impl TextWrapper {
                         },
                     );
                 }
-                if offset < line_str.len() {
-                    fragments.push(LineFragment::text(&line_str[offset..]));
+                if offset < display.len() {
+                    fragments.push(LineFragment::text(&display[offset..]));
                 }
                 line_wrapper
                     .wrap_line(&fragments, wrap_width, gpui::IndentAdjustment::SameIndent)
@@ -467,7 +536,54 @@ impl TextWrapper {
         !self.inline_metrics.is_empty()
     }
 
+    /// The inline text and the rows of its line that show it.
+    pub(crate) fn inline_text(&self) -> Option<(&InlineText, &InlineTextRows)> {
+        self.inline_text
+            .as_ref()
+            .map(|inline| (inline, &self.inline_rows))
+    }
+
+    /// Shows `inline` in its line, or no inline text, wrapping again the
+    /// lines it leaves and goes to.
+    pub(crate) fn set_inline_text(&mut self, inline: Option<InlineText>, cx: &mut App) {
+        if self.inline_text == inline {
+            return;
+        }
+        let text = self.text.clone();
+        let mut rows: SmallVec<[usize; 2]> = [self.inline_text.as_ref(), inline.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(|inline| text.offset_to_point(inline.offset.min(text.len())).row)
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        self.inline_text = inline;
+        self.inline_rows = InlineTextRows::default();
+        // A wrapper that hasn't wrapped yet wraps with it when it does.
+        if !self._initialized {
+            return;
+        }
+        for row in rows {
+            let start = text.line_start_offset(row);
+            let end = text.line_end_offset(row);
+            self.update(
+                &text,
+                &(start..end),
+                &Rope::from(text.slice(start..end).to_string()),
+                cx,
+            );
+        }
+    }
+
+    /// Moves the inline text with an edit of `range` to `new_len` bytes.
+    fn adjust_inline_text(&mut self, range: &Range<usize>, new_len: usize) {
+        if let Some(inline) = &mut self.inline_text {
+            inline.offset = offset_after_edit(inline.offset, range, new_len);
+        }
+    }
+
     pub(crate) fn adjust_inline_metrics(&mut self, range: &Range<usize>, new_len: usize) {
+        self.adjust_inline_text(range, new_len);
         if self.inline_metrics.is_empty() {
             return;
         }
@@ -551,7 +667,7 @@ impl TextWrapper {
         new_text: &Rope,
         wrap_line: &mut F,
     ) where
-        F: FnMut(&str, Pixels, usize) -> Vec<gpui::Boundary>,
+        F: FnMut(&str, Pixels, usize, Option<(usize, &str)>) -> Vec<gpui::Boundary>,
     {
         // Remove the old changed lines.
         let buffer_line_count = self.lines_count();
@@ -572,8 +688,16 @@ impl TextWrapper {
         // line not contains `\n`.
         for row in new_start_row..=new_end_row {
             let line = changed_text.slice_line(row);
+            let line_start = changed_text.line_start_offset(row);
+            // The inline text, if it shows in this line.
+            let inline = self.inline_text.as_ref().and_then(|inline| {
+                let at = inline.offset.checked_sub(line_start)?;
+                (at <= line.len()).then(|| (at, inline.text.clone()))
+            });
+            let insertion = inline.as_ref().map(|(at, text)| (*at, text.as_str()));
             let mut wrapped_lines = SmallVec::<[Range<usize>; 1]>::new();
-            let mut prev_boundary_ix = 0;
+            // Where the rows after the first start, in display bytes.
+            let mut boundaries = Vec::new();
             let mut indent_chars = 0;
 
             // If wrap_width is Pixels::MAX, skip wrapping to disable word wrap
@@ -584,40 +708,69 @@ impl TextWrapper {
                     WrappingIndent::Same => {
                         // Here only have wrapped line, if there is no wrap meet, the `line_wraps`
                         // result will empty.
-                        for boundary in
-                            wrap_line(&line_str, wrap_width, changed_text.line_start_offset(row))
-                        {
-                            wrapped_lines.push(prev_boundary_ix..boundary.ix);
-                            prev_boundary_ix = boundary.ix;
+                        for boundary in wrap_line(&line_str, wrap_width, line_start, insertion) {
+                            boundaries.push(boundary.ix);
                             indent_chars = boundary.next_indent;
                         }
                     }
                     WrappingIndent::None => {
                         // The first visual line keeps the line's leading indentation, so it is
                         // wrapped as is.
-                        let boundaries =
-                            wrap_line(&line_str, wrap_width, changed_text.line_start_offset(row));
-                        if let Some(first_ix) = boundaries.first().map(|b| b.ix) {
-                            wrapped_lines.push(prev_boundary_ix..first_ix);
-                            prev_boundary_ix = first_ix;
-
+                        let first = wrap_line(&line_str, wrap_width, line_start, insertion);
+                        if let Some(first_ix) = first.first().map(|b| b.ix) {
+                            boundaries.push(first_ix);
+                            let (rest, insertion) = rest_of_line(first_ix, insertion);
                             for boundary in wrap_line(
-                                &line_str[first_ix..],
+                                &line_str[rest..],
                                 wrap_width,
-                                changed_text.line_start_offset(row) + first_ix,
+                                line_start + rest,
+                                insertion,
                             ) {
-                                let ix = first_ix + boundary.ix;
-                                wrapped_lines.push(prev_boundary_ix..ix);
-                                prev_boundary_ix = ix;
+                                boundaries.push(first_ix + boundary.ix);
                             }
                         }
                     }
                 }
             }
 
-            // Reset of the line
-            if prev_boundary_ix < line.len() || prev_boundary_ix == 0 {
-                wrapped_lines.push(prev_boundary_ix..line.len());
+            match inline {
+                None => {
+                    let mut prev_boundary_ix = 0;
+                    for ix in boundaries {
+                        wrapped_lines.push(prev_boundary_ix..ix);
+                        prev_boundary_ix = ix;
+                    }
+                    // Reset of the line
+                    if prev_boundary_ix < line.len() || prev_boundary_ix == 0 {
+                        wrapped_lines.push(prev_boundary_ix..line.len());
+                    }
+                }
+                Some((at, text)) => {
+                    // Every display row is a row, and those holding nothing but
+                    // the inline text have an empty range at its offset.
+                    let len = text.len();
+                    let source = |ix: usize| {
+                        if ix <= at {
+                            ix
+                        } else {
+                            at.max(ix.saturating_sub(len))
+                        }
+                    };
+                    let starts = std::iter::once(0).chain(boundaries.iter().copied());
+                    let ends = boundaries.iter().copied().chain([line.len() + len]);
+                    let mut rows = InlineTextRows::default();
+                    for (ix, (start, end)) in starts.zip(ends).enumerate() {
+                        wrapped_lines.push(source(start)..source(end));
+                        let slice = start.clamp(at, at + len) - at..end.clamp(at, at + len) - at;
+                        if !slice.is_empty() {
+                            if rows.slices.is_empty() {
+                                rows.first = ix;
+                            }
+                            rows.slices.push(slice);
+                        }
+                    }
+                    self.inline_rows = rows;
+                }
             }
 
             new_lines.push(LineItem {
@@ -681,6 +834,21 @@ impl TextWrapper {
         };
 
         let local_offset = offset.saturating_sub(start);
+        // The inline text's offset is on the row the inline text starts on,
+        // where the caret is drawn in front of it.
+        if self
+            .inline_text
+            .as_ref()
+            .is_some_and(|inline| inline.offset == offset)
+            && let Some(range) = line.wrapped_lines.get(self.inline_rows.first)
+        {
+            let ix = self.inline_rows.first;
+            return WrapDisplayPoint::new(
+                wrapped_row + ix,
+                ix,
+                local_offset.saturating_sub(range.start),
+            );
+        }
         for (ix, range) in line.wrapped_lines.iter().enumerate() {
             // With affinity the boundary offset closes the current row instead of opening the
             // next one, so the range is matched inclusively.
@@ -896,7 +1064,9 @@ impl LineLayout {
         for (i, line) in self.wrapped_lines.iter().enumerate() {
             let is_last = i + 1 == self.wrapped_lines.len();
 
-            let matches = if line.len == 0 {
+            let matches = if line.inline_text_at.map(|at| acc_len + at) == Some(offset) {
+                true
+            } else if line.len == 0 {
                 // Empty visual lines still own their boundary offset.
                 offset == acc_len
             } else if is_last || line_end_affinity {
@@ -920,6 +1090,30 @@ impl LineLayout {
             offset_y += last_layout.line_height;
         }
 
+        None
+    }
+
+    /// Where the element of the token whose bytes start at `offset` is, relative to the top-left
+    /// corner of this line layout. Inline text in front of a token moves it, so the token's
+    /// place is its own and not that of its first byte.
+    pub(crate) fn element_position(
+        &self,
+        offset: usize,
+        last_layout: &LastLayout,
+    ) -> Option<Point<Pixels>> {
+        let x_offset = last_layout.alignment_offset(self.longest_width);
+        let mut acc_len = 0;
+        let mut offset_y = px(0.);
+        for (i, line) in self.wrapped_lines.iter().enumerate() {
+            if let Some(x) = offset
+                .checked_sub(acc_len)
+                .and_then(|local| line.element_x(local))
+            {
+                return Some(point(x + x_offset + self.line_indent(i), offset_y));
+            }
+            acc_len += line.len;
+            offset_y += last_layout.line_height;
+        }
         None
     }
 
@@ -1288,7 +1482,7 @@ mod tests {
                 &text,
                 &(start..previous.len()),
                 &inserted,
-                &mut |line, width, _| {
+                &mut |line, width, _, _| {
                     measured_wrap_boundaries(line, width, WrappingIndent::None, &[], measure)
                 },
             );
@@ -1349,6 +1543,68 @@ mod tests {
         assert!(wrap("hello", &[(5, px(6.))]).is_empty());
     }
 
+    /// Inline text wraps with its line as if it were there. The rows keep their
+    /// ranges of the text, a row showing nothing but inline text has an empty
+    /// range at its offset, and the offset is on the row the inline text
+    /// starts on.
+    #[test]
+    fn inline_text_wraps_with_its_line() {
+        let mut wrap = |line: &str, width, _, insertion: Option<(usize, &str)>| {
+            let display = match insertion {
+                Some((at, text)) => format!("{}{text}{}", &line[..at], &line[at..]),
+                None => line.to_string(),
+            };
+            measured_wrap_boundaries(&display, width, WrappingIndent::None, &[], |s| {
+                px(s.graphemes(true).count() as f32)
+            })
+        };
+        let text = Rope::from("ab cd\nnext");
+        let mut wrapper = TextWrapper::new(gpui::font("Arial"), px(14.), Some(px(3.)));
+        wrapper.inline_text = Some(InlineText {
+            offset: 3,
+            text: "xx yy zz ".into(),
+        });
+        wrapper._update(&text, &(0..text.len()), &text, &mut wrap);
+        assert_eq!(
+            wrapper.line(0).unwrap().wrapped_lines.as_slice(),
+            [0..3, 3..3, 3..3, 3..3, 3..5]
+        );
+        assert_eq!(wrapper.inline_rows.first, 1);
+        assert_eq!(wrapper.inline_rows.slices.as_slice(), [0..3, 3..6, 6..9]);
+        // Five rows, and two for "next".
+        assert_eq!(wrapper.len(), 7);
+        assert_eq!(wrapper.offset_to_display_point(3).row, 1);
+        assert_eq!(wrapper.offset_to_display_point(4).row, 4);
+
+        // Where it fits in a row with the text before and after it.
+        let mut wrapper = TextWrapper::new(gpui::font("Arial"), px(14.), Some(px(10.)));
+        let text = Rope::from("hello world");
+        wrapper.inline_text = Some(InlineText {
+            offset: 6,
+            text: "big fat ".into(),
+        });
+        wrapper._update(&text, &(0..text.len()), &text, &mut wrap);
+        // "hello big " and "fat world".
+        assert_eq!(
+            wrapper.line(0).unwrap().wrapped_lines.as_slice(),
+            [0..6, 6..11]
+        );
+        assert_eq!(wrapper.inline_rows.first, 0);
+        assert_eq!(wrapper.inline_rows.slices.as_slice(), [0..4, 4..8]);
+        assert_eq!(wrapper.offset_to_display_point(6).row, 0);
+    }
+
+    #[test]
+    fn offset_after_edit_moves_with_the_text_after_it() {
+        // Text put in at the offset goes before it.
+        assert_eq!(offset_after_edit(4, &(4..4), 3), 7);
+        assert_eq!(offset_after_edit(4, &(5..5), 3), 4);
+        assert_eq!(offset_after_edit(4, &(1..3), 0), 2);
+        // Replaced around it, it goes to the end of the replacement.
+        assert_eq!(offset_after_edit(4, &(2..6), 1), 3);
+        assert_eq!(offset_after_edit(4, &(4..6), 0), 4);
+    }
+
     #[test]
     fn test_update() {
         let font = gpui::Font {
@@ -1364,7 +1620,12 @@ mod tests {
             "Hello, 世界!\r\nThis is second line.\nThis is third line.\n这里是第 4 行。",
         );
 
-        fn fake_wrap_line(_line: &str, _wrap_width: Pixels, _: usize) -> Vec<Boundary> {
+        fn fake_wrap_line(
+            _line: &str,
+            _wrap_width: Pixels,
+            _: usize,
+            _: Option<(usize, &str)>,
+        ) -> Vec<Boundary> {
             vec![]
         }
 
@@ -1561,7 +1822,7 @@ mod tests {
     fn test_longest_row_after_shrink() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), None);
         let mut text = Rope::from("aa\nthis is the longest line\nbb");
-        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _, _| vec![]);
+        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _, _, _| vec![]);
         assert_eq!(wrapper.longest_row(), 1);
 
         // Shrink line 1 so line 2-equivalent isn't longest.
@@ -1571,7 +1832,12 @@ mod tests {
         let range = start..end;
         let new_text = "a very very long first line now";
         text.replace(range.clone(), new_text);
-        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _, _| vec![]);
+        wrapper._update(
+            &text,
+            &range,
+            &Rope::from(new_text),
+            &mut |_, _, _, _| vec![],
+        );
         assert_eq!(wrapper.longest_row(), 0);
     }
 
@@ -1580,7 +1846,7 @@ mod tests {
     fn test_edit_last_line_and_full_delete() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), None);
         let mut text = Rope::from("one\ntwo\nthree");
-        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _, _| vec![]);
+        wrapper._update(&text, &(0..text.len()), &text, &mut |_, _, _, _| vec![]);
         assert_eq!(wrapper.lines_count(), 3);
 
         // Replace the last line only.
@@ -1588,14 +1854,19 @@ mod tests {
         let range = start..text.len();
         let new_text = "THREE EDITED";
         text.replace(range.clone(), new_text);
-        wrapper._update(&text, &range, &Rope::from(new_text), &mut |_, _, _| vec![]);
+        wrapper._update(
+            &text,
+            &range,
+            &Rope::from(new_text),
+            &mut |_, _, _, _| vec![],
+        );
         assert_eq!(wrapper.lines_count(), 3);
         assert_eq!(wrapper.line(2).unwrap().len(), "THREE EDITED".len());
 
         // Delete everything.
         let range = 0..text.len();
         text.replace(range.clone(), "");
-        wrapper._update(&text, &range, &Rope::from(""), &mut |_, _, _| vec![]);
+        wrapper._update(&text, &range, &Rope::from(""), &mut |_, _, _, _| vec![]);
         assert_eq!(wrapper.lines_count(), 1);
         assert_eq!(wrapper.len(), 1);
         assert_eq!(wrapper.line(0).unwrap().wrapped_lines.as_slice(), [0..0]);
@@ -1650,16 +1921,17 @@ mod tests {
     fn test_wrap_row_queries_after_incremental_splice() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), Some(px(10.)));
         let mut text = Rope::from("aa\nbbbb\nc");
-        let mut fake_wrap_line = |line: &str, _wrap_width: Pixels, _: usize| {
-            if line.len() > 2 {
-                vec![Boundary {
-                    ix: 2,
-                    next_indent: 0,
-                }]
-            } else {
-                vec![]
-            }
-        };
+        let mut fake_wrap_line =
+            |line: &str, _wrap_width: Pixels, _: usize, _: Option<(usize, &str)>| {
+                if line.len() > 2 {
+                    vec![Boundary {
+                        ix: 2,
+                        next_indent: 0,
+                    }]
+                } else {
+                    vec![]
+                }
+            };
 
         wrapper._update(&text, &(0..text.len()), &text, &mut fake_wrap_line);
         assert_eq!(wrapper.buffer_line_to_wrap_row_range(0), 0..1);
@@ -1930,25 +2202,26 @@ mod tests {
         let mut wrapper = TextWrapper::new(test_font(), px(14.0), Some(px(10.)));
         wrapper.wrapping_indent = WrappingIndent::Same;
         let text = Rope::from("  abcdefghijklmnopqrstuv");
-        let mut fake_wrap_line = |line: &str, _wrap_width: Pixels, _: usize| {
-            if line.starts_with(' ') {
-                vec![Boundary {
-                    ix: 5,
-                    next_indent: 2,
-                }]
-            } else {
-                let mut boundaries = vec![];
-                let mut i = 8;
-                while i < line.len() {
-                    boundaries.push(Boundary {
-                        ix: i,
-                        next_indent: 0,
-                    });
-                    i += 8;
+        let mut fake_wrap_line =
+            |line: &str, _wrap_width: Pixels, _: usize, _: Option<(usize, &str)>| {
+                if line.starts_with(' ') {
+                    vec![Boundary {
+                        ix: 5,
+                        next_indent: 2,
+                    }]
+                } else {
+                    let mut boundaries = vec![];
+                    let mut i = 8;
+                    while i < line.len() {
+                        boundaries.push(Boundary {
+                            ix: i,
+                            next_indent: 0,
+                        });
+                        i += 8;
+                    }
+                    boundaries
                 }
-                boundaries
-            }
-        };
+            };
 
         wrapper._update(&text, &(0..text.len()), &text, &mut fake_wrap_line);
 
@@ -1962,25 +2235,26 @@ mod tests {
         let mut wrapper = TextWrapper::new(test_font(), px(14.0), Some(px(10.)));
         wrapper.wrapping_indent = WrappingIndent::None;
         let text = Rope::from("  abcdefghijklmnopqrstuv");
-        let mut fake_wrap_line = |line: &str, _wrap_width: Pixels, _: usize| {
-            if line.starts_with(' ') {
-                vec![Boundary {
-                    ix: 5,
-                    next_indent: 2,
-                }]
-            } else {
-                let mut boundaries = vec![];
-                let mut i = 8;
-                while i < line.len() {
-                    boundaries.push(Boundary {
-                        ix: i,
-                        next_indent: 0,
-                    });
-                    i += 8;
+        let mut fake_wrap_line =
+            |line: &str, _wrap_width: Pixels, _: usize, _: Option<(usize, &str)>| {
+                if line.starts_with(' ') {
+                    vec![Boundary {
+                        ix: 5,
+                        next_indent: 2,
+                    }]
+                } else {
+                    let mut boundaries = vec![];
+                    let mut i = 8;
+                    while i < line.len() {
+                        boundaries.push(Boundary {
+                            ix: i,
+                            next_indent: 0,
+                        });
+                        i += 8;
+                    }
+                    boundaries
                 }
-                boundaries
-            }
-        };
+            };
 
         wrapper._update(&text, &(0..text.len()), &text, &mut fake_wrap_line);
 

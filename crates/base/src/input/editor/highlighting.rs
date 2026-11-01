@@ -113,6 +113,10 @@ pub struct InputEditorStyle {
     pub border: Hsla,
     pub selection: Hsla,
     pub caret: Hsla,
+    /// The hairline under a textarea's tentative text, such as dictation's
+    /// words that haven't settled. Unset, it takes the palette's primary
+    /// colour.
+    pub tentative_underline: Hsla,
     pub diagnostics: DiagnosticColors,
     pub highlight_styles: SharedHighlightStyleResolver,
     pub editor_invisible: Option<Hsla>,
@@ -160,6 +164,7 @@ impl InputEditorStyle {
             border: or(self.border, colors.border),
             selection,
             caret: or(self.caret, foreground),
+            tentative_underline: or(self.tentative_underline, colors.primary),
             ..self.clone()
         }
     }
@@ -174,6 +179,7 @@ impl Default for InputEditorStyle {
             border: Hsla::default(),
             selection: Hsla::default(),
             caret: Hsla::default(),
+            tentative_underline: Hsla::default(),
             diagnostics: DiagnosticColors::default(),
             highlight_styles: Arc::new(NoHighlightStyles),
             editor_invisible: None,

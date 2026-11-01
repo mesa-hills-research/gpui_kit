@@ -56,6 +56,9 @@ const VOCABULARY: &[&str] = &[
     "the quick brown fox jumps over the lazy dog",
 ];
 
+/// The words the tentative text example hears, one at a time.
+const DICTATED: &[&str] = &["Meet", "me", "by", "the", "station", "at", "noon."];
+
 /// Completes the word before the caret from [`VOCABULARY`].
 ///
 /// An application ranks with its own model, a dictionary or what the user
@@ -115,6 +118,10 @@ pub struct TextareaStory {
     suggestions_menu: Entity<TextareaState>,
     suggestions_inline: Entity<TextareaState>,
     last_suggestion_event: Option<SharedString>,
+    /// A composer that takes words a recognizer hasn't settled, and how many
+    /// of [`DICTATED`] it has heard.
+    dictation: Entity<TextareaState>,
+    heard: usize,
     attachments: Vec<ComposerAttachment>,
     /// Counter for attachment ids; `Image::id` is a content hash, so pasting
     /// the same image twice would collide.
@@ -221,6 +228,12 @@ impl TextareaStory {
                 .placeholder("Paste a screenshot here, it becomes an attachment above")
         });
 
+        let dictation = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(2, 5)
+                .placeholder("Press Hear to dictate a word")
+        });
+
         let provider: Rc<dyn SuggestionProvider> = Rc::new(VocabularyProvider);
         let suggestions_menu = cx.new(|cx| {
             TextareaState::new(window, cx)
@@ -297,11 +310,46 @@ impl TextareaStory {
             suggestions_menu,
             suggestions_inline,
             last_suggestion_event: None,
+            dictation,
+            heard: 0,
             attachments: Vec::new(),
             next_attachment_id: 0,
             size: Size::Medium,
             _subscriptions,
         }
+    }
+
+    /// The next dictated word, which joins the tentative text.
+    fn hear(&mut self, cx: &mut Context<Self>) {
+        let Some(word) = DICTATED.get(self.heard % DICTATED.len()) else {
+            return;
+        };
+        self.heard += 1;
+        self.dictation.update(cx, |state, cx| {
+            let tentative = state.tentative_text();
+            let first = tentative.is_empty() && state.cursor() == 0;
+            let text = if first {
+                word.to_string()
+            } else {
+                format!("{tentative} {word}")
+            };
+            state.set_tentative_text(text, cx);
+        });
+        cx.notify();
+    }
+
+    /// The first tentative word settles, as a recognizer settles words once
+    /// it is sure of them.
+    fn settle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.dictation.update(cx, |state, cx| {
+            let tentative = state.tentative_text();
+            let len = tentative
+                .char_indices()
+                .skip(1)
+                .find(|(_, c)| *c == ' ')
+                .map_or(tentative.len(), |(ix, _)| ix);
+            state.commit_tentative_text(len, window, cx);
+        });
     }
 
     fn on_insert_text_to_textarea(
@@ -417,6 +465,40 @@ impl Render for TextareaStory {
                                             .clone()
                                             .unwrap_or_else(|| "No suggestion accepted yet".into()),
                                     ),
+                            ),
+                    ),
+            )
+            .child(
+                section("Tentative Text")
+                    .description(
+                        "Words a recognizer hasn't settled show muted after the caret, with a \
+                        line under them. Hear adds a word and Settle commits the first.",
+                    )
+                    .w(px(560.))
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .w_full()
+                            .child(Textarea::new(&self.dictation).with_size(self.size))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("hear")
+                                            .label("Hear")
+                                            .small()
+                                            .on_click(cx.listener(|this, _, _, cx| this.hear(cx))),
+                                    )
+                                    .child(Button::new("settle").label("Settle").small().on_click(
+                                        cx.listener(|this, _, window, cx| this.settle(window, cx)),
+                                    ))
+                                    .child(Button::new("clear").label("Clear").small().on_click(
+                                        cx.listener(|this, _, _, cx| {
+                                            this.dictation.update(cx, |state, cx| {
+                                                state.clear_tentative_text(cx)
+                                            })
+                                        }),
+                                    )),
                             ),
                     ),
             )

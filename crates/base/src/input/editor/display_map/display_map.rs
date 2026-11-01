@@ -240,6 +240,26 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
+    /// Shows `inline` in its line as if the text had it, or no inline text.
+    pub(crate) fn set_inline_text(
+        &mut self,
+        inline: Option<super::text_wrapper::InlineText>,
+        cx: &mut App,
+    ) {
+        self.wrap_map.set_inline_text(inline, cx);
+        self.rebuild_fold_projection();
+    }
+
+    /// The inline text and the rows of its line that show it.
+    pub(crate) fn inline_text(
+        &self,
+    ) -> Option<(
+        &super::text_wrapper::InlineText,
+        &super::text_wrapper::InlineTextRows,
+    )> {
+        self.wrap_map.wrapper().inline_text()
+    }
+
     pub fn on_layout_changed(&mut self, wrap_width: Option<Pixels>, cx: &mut App) {
         self.wrap_map.on_layout_changed(wrap_width, cx);
         self.rebuild_fold_projection();

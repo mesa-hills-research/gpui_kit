@@ -25,6 +25,7 @@ impl InputModeKind for TextareaMode {
     ) {
         state.extras.marks.adjust_for_edit(range, new_len);
         state.extras.keymap.adjust_for_edit(range, new_len);
+        state.tentative.adjust_for_edit(range, new_len);
     }
 
     fn did_edit(

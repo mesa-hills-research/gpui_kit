@@ -42,6 +42,8 @@ mod segmented_tabs;
 mod settings;
 #[path = "screenshots/table_spacing.rs"]
 mod table_spacing;
+#[path = "screenshots/tentative_text.rs"]
+mod tentative_text;
 #[path = "screenshots/text_field_focus.rs"]
 mod text_field_focus;
 

@@ -17,7 +17,12 @@ use std::{ops::Range, rc::Rc};
 
 use crate::{
     Scrollbar,
-    input::{RopeExt as _, blink_cursor::CURSOR_WIDTH, display_map::LineLayout},
+    input::{
+        RopeExt as _,
+        blink_cursor::CURSOR_WIDTH,
+        display_map::{InlineFragment, InlineTextRows, LineLayout},
+        tentative::{TentativePrepaint, TentativeStyle},
+    },
 };
 
 use super::{
@@ -1920,6 +1925,7 @@ impl<M: InputModeKind> TextElement<M> {
         font_size: Pixels,
         runs: &[TextRun],
         ghost: Option<&GhostText>,
+        insertion: Option<&Insertion>,
         window: &mut Window,
     ) -> Vec<LineLayout> {
         use crate::input::display_map::{InlineFragment, InputLine};
@@ -1977,50 +1983,77 @@ impl<M: InputModeKind> TextElement<M> {
                         let ix = pieces.partition_point(|(local, _, _)| local.start < at);
                         pieces.insert(ix, (at..at, line.width, Some(line.clone())));
                     }
+                    // Tentative text shown in this row goes into the text
+                    // around its offset, before a token that starts there.
+                    let mut insertion = insertion.and_then(|insertion| {
+                        let (at, inserted, starts) = insertion.in_row(row, sub_ix, &range)?;
+                        Some((insertion, range.start + at, inserted, starts))
+                    });
+                    let mut inline_text_at = None;
+                    let mut push_text =
+                        |part: Range<usize>,
+                         x: &mut Pixels,
+                         fragments: &mut Vec<InlineFragment>,
+                         window: &mut Window| {
+                            let inserted = insertion
+                                .take_if(|(_, at, _, _)| part.start <= *at && *at <= part.end);
+                            if part.is_empty() && inserted.is_none() {
+                                return;
+                            }
+                            let fragment_range = part.start - range.start..part.end - range.start;
+                            let part_runs = runs_for_range(runs, run_offset, &part);
+                            let fragment = match inserted {
+                                Some((insertion, at, inserted, starts)) => {
+                                    if starts {
+                                        inline_text_at = Some(at - range.start);
+                                    }
+                                    insertion.fragment(
+                                        fragment_range,
+                                        *x,
+                                        &text[part.clone()],
+                                        &part_runs,
+                                        at - part.start,
+                                        inserted,
+                                        font_size,
+                                        window,
+                                    )
+                                }
+                                None => {
+                                    let shaped = window.text_system().shape_line(
+                                        text[part.clone()].to_owned().into(),
+                                        font_size,
+                                        &part_runs,
+                                        None,
+                                    );
+                                    InlineFragment {
+                                        range: fragment_range,
+                                        x: *x,
+                                        width: shaped.width,
+                                        text: Some(shaped),
+                                        inserted: None,
+                                    }
+                                }
+                            };
+                            *x += fragment.width;
+                            fragments.push(fragment);
+                        };
                     for (local, width, piece) in pieces {
-                        if offset < local.start {
-                            let part = offset..local.start;
-                            let shaped = window.text_system().shape_line(
-                                text[part.clone()].to_owned().into(),
-                                font_size,
-                                &runs_for_range(runs, run_offset, &part),
-                                None,
-                            );
-                            let width = shaped.width;
-                            fragments.push(InlineFragment {
-                                range: part.start - range.start..part.end - range.start,
-                                x,
-                                width,
-                                text: Some(shaped),
-                            });
-                            x += width;
-                        }
+                        push_text(offset..local.start, &mut x, &mut fragments, window);
                         fragments.push(InlineFragment {
                             range: local.start - range.start..local.end - range.start,
                             x,
                             width,
                             text: piece,
+                            inserted: None,
                         });
                         x += width;
                         offset = local.end;
                     }
-                    if offset < range.end {
-                        let part = offset..range.end;
-                        let shaped = window.text_system().shape_line(
-                            text[part.clone()].to_owned().into(),
-                            font_size,
-                            &runs_for_range(runs, run_offset, &part),
-                            None,
-                        );
-                        let width = shaped.width;
-                        fragments.push(InlineFragment {
-                            range: part.start - range.start..part.end - range.start,
-                            x,
-                            width,
-                            text: Some(shaped),
-                        });
-                    }
-                    lines.push(InputLine::inline(text[range].to_owned().into(), fragments));
+                    push_text(offset..range.end, &mut x, &mut fragments, window);
+                    lines.push(
+                        InputLine::inline(text[range].to_owned().into(), fragments)
+                            .starts_inline_text(inline_text_at),
+                    );
                 }
                 let indent = state.display_map.line(row).map_or(0, |line| line.indent);
                 let wrap_indent = if indent > 0 && lines.len() > 1 {
@@ -2075,8 +2108,11 @@ impl<M: InputModeKind> TextElement<M> {
             let spans = state.token_spans();
             let first = spans.partition_point(|s| s.range().end <= start);
             for span in spans[first..].iter().take_while(|s| s.range().start < end) {
-                if let Some(position) =
-                    layout.lines[ix].position_for_index(span.range().start - start, layout, false)
+                let line = &layout.lines[ix];
+                let local = span.range().start - start;
+                if let Some(position) = line
+                    .element_position(local, layout)
+                    .or_else(|| line.position_for_index(local, layout, false))
                 {
                     placements.push((
                         state.token_context(span, layout.line_height, width),
@@ -2131,13 +2167,22 @@ impl<M: InputModeKind> TextElement<M> {
         bg_segments: &[(Range<usize>, Hsla)],
         whitespace_indicators: Option<WhitespaceIndicators>,
         ghost: Option<&GhostText>,
+        insertion: Option<&Insertion>,
         window: &mut Window,
     ) -> Vec<LineLayout> {
         use crate::input::display_map::{InlineFragment, InputLine};
 
         let is_single_line = state.is_single_line();
         if state.tokens_visible() {
-            return Self::layout_token_lines(state, last_layout, font_size, runs, ghost, window);
+            return Self::layout_token_lines(
+                state,
+                last_layout,
+                font_size,
+                runs,
+                ghost,
+                insertion,
+                window,
+            );
         }
 
         if is_single_line {
@@ -2164,6 +2209,31 @@ impl<M: InputModeKind> TextElement<M> {
 
         // Empty to use placeholder, the placeholder is not in the wrapper map.
         if state.text.len() == 0 {
+            // Tentative text in an empty input stands in for the placeholder,
+            // on as many rows as it wraps to.
+            if let Some(insertion) = insertion {
+                let rows = state.display_map.line(0).map_or(1, |line| line.lines_len());
+                let lines = (0..rows)
+                    .filter_map(|sub_ix| {
+                        let (at, inserted, starts) = insertion.in_row(0, sub_ix, &(0..0))?;
+                        let fragment = insertion.fragment(
+                            0..0,
+                            px(0.),
+                            "",
+                            &[],
+                            at,
+                            inserted,
+                            font_size,
+                            window,
+                        );
+                        Some(
+                            InputLine::inline(SharedString::default(), vec![fragment])
+                                .starts_inline_text(starts.then_some(0)),
+                        )
+                    })
+                    .collect();
+                return vec![LineLayout::new().inline_lines(lines)];
+            }
             // Ghost text offered for an empty input stands in for the
             // placeholder.
             if let Some((_, _, line)) = ghost {
@@ -2172,6 +2242,7 @@ impl<M: InputModeKind> TextElement<M> {
                     x: px(0.),
                     width: line.width,
                     text: Some(line.clone()),
+                    inserted: None,
                 };
                 let line = InputLine::inline(SharedString::default(), vec![ghost]);
                 return vec![LineLayout::new().inline_lines(smallvec::smallvec![line])];
@@ -2243,6 +2314,27 @@ impl<M: InputModeKind> TextElement<M> {
                         .shape_line(text, font_size, &runs, None)
                 };
 
+                // A row showing tentative text is shaped with it.
+                if let Some((at, inserted, starts)) =
+                    insertion.and_then(|insertion| insertion.in_row(buffer_line, sub_ix, range))
+                {
+                    let fragment = insertion.unwrap().fragment(
+                        0..sub_line.len(),
+                        px(0.),
+                        &sub_line,
+                        &line_runs,
+                        at,
+                        inserted,
+                        font_size,
+                        window,
+                    );
+                    wrapped_lines.push(
+                        InputLine::inline(sub_line, vec![fragment])
+                            .starts_inline_text(starts.then_some(at)),
+                    );
+                    continue;
+                }
+
                 let Some((at, ghost_line)) =
                     ghost.filter(|(at, _)| ghost_in_row(range, *at, sub_ix == last))
                 else {
@@ -2268,6 +2360,7 @@ impl<M: InputModeKind> TextElement<M> {
                         x,
                         width,
                         text: Some(before),
+                        inserted: None,
                     });
                     x += width;
                 }
@@ -2276,6 +2369,7 @@ impl<M: InputModeKind> TextElement<M> {
                     x,
                     width: ghost_line.width,
                     text: Some(ghost_line.clone()),
+                    inserted: None,
                 });
                 x += ghost_line.width;
                 if split < sub_line.len() {
@@ -2289,6 +2383,7 @@ impl<M: InputModeKind> TextElement<M> {
                         x,
                         width: after.width,
                         text: Some(after),
+                        inserted: None,
                     });
                 }
                 wrapped_lines.push(InputLine::inline(sub_line, fragments));
@@ -2521,6 +2616,76 @@ pub(super) struct PrepaintState {
     ghost_lines_height: Pixels,
     /// The smooth caret's glide, when one is in progress.
     caret_frame: CaretFrame,
+    /// The tentative text's hairline and its glides.
+    tentative: TentativePrepaint,
+}
+
+/// Tentative text, for shaping the line it shows in.
+///
+/// Each row that shows some of it is shaped as one line with its part of it in
+/// the middle, so the glyphs are where the same text would put them once it is
+/// committed, and committing moves nothing.
+struct Insertion {
+    buffer_line: usize,
+    /// Its byte in the line.
+    at: usize,
+    text: SharedString,
+    rows: InlineTextRows,
+    /// What it is shaped with, the text's font in the muted colour.
+    run: TextRun,
+}
+
+impl Insertion {
+    /// The part of the tentative text that the row covering `range` of
+    /// `buffer_line` shows, the row's byte it shows at, and whether the
+    /// tentative text starts in this row.
+    fn in_row(
+        &self,
+        buffer_line: usize,
+        sub_ix: usize,
+        range: &Range<usize>,
+    ) -> Option<(usize, &str, bool)> {
+        if buffer_line != self.buffer_line {
+            return None;
+        }
+        let slice = self.rows.slices.get(sub_ix.checked_sub(self.rows.first)?)?;
+        let at = self.at.clamp(range.start, range.end) - range.start;
+        Some((at, &self.text[slice.clone()], sub_ix == self.rows.first))
+    }
+
+    /// A fragment of a row drawing `text`, which is the row's bytes from `x`,
+    /// with `inserted` shown at its byte `at`, shaped with `runs`.
+    #[allow(clippy::too_many_arguments)]
+    fn fragment(
+        &self,
+        range: Range<usize>,
+        x: Pixels,
+        text: &str,
+        runs: &[TextRun],
+        at: usize,
+        inserted: &str,
+        font_size: Pixels,
+        window: &mut Window,
+    ) -> InlineFragment {
+        let display: SharedString = format!("{}{inserted}{}", &text[..at], &text[at..]).into();
+        let mut line_runs = runs_for_range(runs, 0, &(0..at));
+        line_runs.push(TextRun {
+            len: inserted.len(),
+            ..self.run.clone()
+        });
+        line_runs.extend(runs_for_range(runs, 0, &(at..text.len())));
+        let line_runs = align_runs_to_char_boundaries(&display, &line_runs).unwrap_or(line_runs);
+        let shaped = window
+            .text_system()
+            .shape_line(display, font_size, &line_runs, None);
+        InlineFragment {
+            range,
+            x,
+            width: shaped.width,
+            text: Some(shaped),
+            inserted: Some(at..at + inserted.len()),
+        }
+    }
 }
 
 /// Ghost text: a completion offered at the caret, painted in place but not
@@ -2776,6 +2941,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);
             state.display_map.ensure_text_prepared(&state.text, cx);
+            state.sync_tentative_text(cx);
         });
 
         let state = self.state.read(cx);
@@ -2963,6 +3129,23 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let whitespace_indicators =
             Self::layout_whitespace_indicators(&state, text_size, &text_style, window, cx);
 
+        let insertion = state.display_map.inline_text().map(|(inline, rows)| {
+            let point = state.text.offset_to_point(inline.offset);
+            Insertion {
+                buffer_line: point.row,
+                at: inline.offset - state.text.line_start_offset(point.row),
+                text: inline.text.clone(),
+                rows: rows.clone(),
+                run: TextRun {
+                    len: 0,
+                    font: style.font(),
+                    color: dim(state.editor_style.muted_foreground),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                },
+            }
+        });
         let lines = Self::layout_lines(
             &state,
             &display_text,
@@ -2972,6 +3155,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             &document_colors,
             whitespace_indicators,
             ghost.as_ref(),
+            insertion.as_ref(),
             window,
         );
 
@@ -3121,6 +3305,46 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let caret_frame = self.state.update(cx, |state, cx| {
             state.smooth_caret_frame(&last_layout, text_x, caret_edge, window, cx)
         });
+        // The hairline under the tentative text, and the fill of what a commit
+        // put in, with the caret riding its edge unless the caret glides.
+        let tentative = self.state.update(cx, |state, cx| {
+            let caret = cursor_infos
+                .iter()
+                .find(|info| info.is_active)
+                .filter(|_| {
+                    caret_frame.plan.is_none() && state.extras.cursor_shape() == CursorShape::Bar
+                })
+                .map(|info| {
+                    let mut caret = info.bounds;
+                    caret.origin.y += cursor_scroll_offset.y;
+                    caret
+                });
+            let line = state.tentative_line(&last_layout, bounds.origin, caret);
+            let style = TentativeStyle {
+                underline: dim(state.editor_style.tentative_underline),
+                muted: dim(state.editor_style.muted_foreground),
+                caret: state.editor_style.caret,
+                font: style.font(),
+                font_size: text_size,
+            };
+            let mut tentative = state.tentative.prepaint(line, style, window, cx);
+            // While the smooth caret glides, the text after it moves, and the
+            // hairline with it.
+            if let (Some(plan), Some(caret)) = (
+                caret_frame.plan.as_ref(),
+                cursor_infos.iter().find(|info| info.is_active),
+            ) {
+                let top = caret.bounds.top() + cursor_scroll_offset.y
+                    - (line_height - caret.bounds.size.height) / 2.;
+                tentative.follow_caret_glide(
+                    top,
+                    top + line_height,
+                    plan.tail_start - px(0.5),
+                    plan.tail_shift,
+                );
+            }
+            tentative
+        });
 
         let search_match_paths = self.layout_search_matches(&last_layout, &mut bounds, cx);
         let selection_paths = self.layout_selections(&last_layout, &mut bounds, window, cx);
@@ -3219,6 +3443,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             ghost_lines,
             ghost_lines_height,
             caret_frame,
+            tentative,
         }
     }
 
@@ -3425,32 +3650,53 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 line_y,
             );
 
-            // Paint the actual line
-            match prepaint
-                .caret_frame
-                .plan
-                .as_ref()
-                .filter(|plan| plan.buffer_line == buffer_line)
-            {
-                Some(plan) => paint_gliding_line(
-                    line,
-                    p,
-                    plan,
-                    false,
-                    line_height,
-                    text_align,
-                    Some(prepaint.last_layout.content_width),
-                    window,
-                    cx,
-                ),
-                None => line.paint(
-                    p,
-                    line_height,
-                    text_align,
-                    Some(prepaint.last_layout.content_width),
-                    window,
-                    cx,
-                ),
+            // Paint the actual line, leaving out the committed text the
+            // tentative text's fill paints.
+            let line_bottom = line_y + line.size(line_height).height;
+            let filling: SmallVec<[Bounds<Pixels>; 2]> = prepaint
+                .tentative
+                .filling
+                .iter()
+                .filter(|hole| hole.top() < line_bottom && hole.bottom() > line_y)
+                .copied()
+                .collect();
+            let masks = if filling.is_empty() {
+                smallvec::smallvec![None]
+            } else {
+                outside(window.content_mask().bounds, &filling)
+                    .into_iter()
+                    .map(Some)
+                    .collect::<SmallVec<[Option<Bounds<Pixels>>; 5]>>()
+            };
+            for mask in masks {
+                window.with_content_mask(mask.map(|bounds| ContentMask { bounds }), |window| {
+                    match prepaint
+                        .caret_frame
+                        .plan
+                        .as_ref()
+                        .filter(|plan| plan.buffer_line == buffer_line)
+                    {
+                        Some(plan) => paint_gliding_line(
+                            line,
+                            p,
+                            plan,
+                            false,
+                            line_height,
+                            text_align,
+                            Some(prepaint.last_layout.content_width),
+                            window,
+                            cx,
+                        ),
+                        None => line.paint(
+                            p,
+                            line_height,
+                            text_align,
+                            Some(prepaint.last_layout.content_width),
+                            window,
+                            cx,
+                        ),
+                    }
+                });
             }
             offset_y += line.size(line_height).height;
 
@@ -3485,6 +3731,8 @@ impl<M: InputModeKind> Element for TextElement<M> {
             }
         }
 
+        prepaint.tentative.paint(window, cx);
+
         for element in &mut prepaint.token_elements {
             element.paint(window, cx);
         }
@@ -3511,7 +3759,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 if cursor_info.is_active {
                     painted_caret = Some(bounds);
                 }
-                window.paint_quad(fill(bounds, caret));
+                // A caret riding the tentative text's fill moves as it paints.
+                match prepaint
+                    .tentative
+                    .caret
+                    .as_mut()
+                    .filter(|_| cursor_info.is_active)
+                {
+                    Some(riding) => riding.paint(window, cx),
+                    None => window.paint_quad(fill(bounds, caret)),
+                }
             }
         }
 
@@ -3630,6 +3887,31 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         self.paint_mouse_listeners(&prepaint.hitbox, window, cx);
     }
+}
+
+/// The parts of `bounds` outside `holes`, which are on rows of their own.
+fn outside(bounds: Bounds<Pixels>, holes: &[Bounds<Pixels>]) -> Vec<Bounds<Pixels>> {
+    let mut holes: SmallVec<[Bounds<Pixels>; 2]> = holes
+        .iter()
+        .map(|hole| hole.intersect(&bounds))
+        .filter(|hole| !hole.is_empty())
+        .collect();
+    holes.sort_by(|a, b| a.top().as_f32().total_cmp(&b.top().as_f32()));
+    let mut parts = Vec::with_capacity(holes.len() * 3 + 1);
+    let mut part = |left, top, right, bottom| {
+        if left < right && top < bottom {
+            parts.push(Bounds::from_corners(point(left, top), point(right, bottom)));
+        }
+    };
+    let mut top = bounds.top();
+    for hole in &holes {
+        part(bounds.left(), top, bounds.right(), hole.top());
+        part(bounds.left(), hole.top(), hole.left(), hole.bottom());
+        part(hole.right(), hole.top(), bounds.right(), hole.bottom());
+        top = top.max(hole.bottom());
+    }
+    part(bounds.left(), top, bounds.right(), bounds.bottom());
+    parts
 }
 
 /// Paint the line the smooth caret glides on, or its glyph backgrounds when

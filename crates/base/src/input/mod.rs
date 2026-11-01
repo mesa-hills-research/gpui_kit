@@ -81,6 +81,8 @@ mod state;
 mod suggestion_menu;
 #[path = "textarea/suggestions.rs"]
 mod suggestions;
+#[path = "textarea/tentative.rs"]
+mod tentative;
 mod textarea;
 #[path = "base/touch.rs"]
 mod touch;
