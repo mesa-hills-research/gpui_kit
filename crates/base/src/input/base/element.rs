@@ -3321,7 +3321,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 });
             let line = state.tentative_line(&last_layout, bounds.origin, caret);
             let style = TentativeStyle {
-                underline: dim(state.editor_style.tentative_underline),
+                // The palette's accent, which keeps 3:1 on the background.
+                underline: dim(cx.try_global::<crate::Theme>().map_or_else(
+                    || crate::ColorTokens::default().primary,
+                    |theme| theme.tokens.colors.primary,
+                )),
                 muted: dim(state.editor_style.muted_foreground),
                 caret: state.editor_style.caret,
                 font: style.font(),

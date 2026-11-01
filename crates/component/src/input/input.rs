@@ -650,7 +650,6 @@ impl RenderOnce for Input {
                 border: cx.theme().border,
                 selection: cx.theme().selection,
                 caret: cx.theme().caret,
-                tentative_underline: cx.theme().primary,
                 diagnostics: gpui_base::input::DiagnosticColors {
                     error: cx.theme().highlight_theme.style.status.error(cx),
                     warning: cx.theme().highlight_theme.style.status.warning(cx),
