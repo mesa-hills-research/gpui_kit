@@ -367,29 +367,49 @@ impl TextareaState {
             return false;
         }
         let at = inline.offset;
+        let committed = self.normalize_input(&text[..len]).into_owned();
+        let inserted = committed.len();
+        // A caret the tentative text shows after moves past what goes in, as
+        // typing would move it. Other carets stay with the text around them,
+        // and a selection doesn't grow over what goes in at its end.
+        let follows = self.tentative.offset.is_none();
+        let active = self.active_selection().id;
+        let shift = |offset: usize, after: bool| {
+            if offset > at || (offset == at && after) {
+                offset + inserted
+            } else {
+                offset
+            }
+        };
+        let selections: Vec<CursorSelection> = self
+            .selections
+            .iter()
+            .map(|selection| {
+                let mut selection = *selection;
+                if follows && selection.id == active {
+                    selection.place_at(at + inserted, None);
+                } else if selection.is_empty() {
+                    selection.place_at(shift(selection.start, true), selection.column_anchor);
+                } else {
+                    selection.start = shift(selection.start, true);
+                    selection.end = shift(selection.end, false);
+                }
+                selection
+            })
+            .collect();
         let before = self.text.len();
-        let selections: Vec<CursorSelection> = self.selections.iter().copied().collect();
+        self.pause_blink_cursor(cx);
         self.with_edits_allowed(|this| {
             this.undo_manager.set_pending_intent(EditIntent::Atomic);
-            let range = this.range_to_utf16(&(at..at));
-            this.replace_text_in_range_silent(Some(range), &text[..len], window, cx);
-        });
-        let Some(inserted) = self.text.len().checked_sub(before).filter(|len| *len > 0) else {
-            return false;
-        };
-        if self.tentative.offset.is_some() {
-            // Carets elsewhere stay with the text around them.
-            let shift = |offset: usize| offset_after_edit(offset, &(at..at), inserted);
-            self.selections.replace_all(
-                selections
-                    .into_iter()
-                    .map(|mut selection| {
-                        selection.start = shift(selection.start);
-                        selection.end = shift(selection.end);
-                        selection
-                    })
-                    .collect(),
+            this.replace_text_in_ranges_selecting(
+                &[(at..at, committed)],
+                Some(selections),
+                window,
+                cx,
             );
+        });
+        if inserted == 0 || self.text.len() != before + inserted {
+            return false;
         }
         self.tentative.text = SharedString::new(&text[len..]);
         // The rest shows after what went in.
@@ -1358,6 +1378,39 @@ mod tests {
         test.cx.dispatch_action(Undo);
         test.draw();
         assert_eq!(test.value(), "Hello");
+    }
+
+    /// Undo and redo of a commit bring back every caret where it was, the
+    /// ones elsewhere included.
+    #[gpui::test]
+    fn undo_and_redo_of_a_commit_keep_every_caret(cx: &mut TestAppContext) {
+        use crate::input::Redo;
+
+        let mut test = Test::new(cx, 400., "Hello there");
+        test.update(|state, _, cx| {
+            state.set_selected_range(2..2, cx);
+            state.add_cursor_at(11, cx);
+            state.set_tentative_text_at(5, " big", cx);
+        });
+        let carets = |test: &Test| {
+            test.read(|state| {
+                let mut carets: Vec<_> = state.selections.iter().map(|s| s.start..s.end).collect();
+                carets.sort_by_key(|range| range.start);
+                carets
+            })
+        };
+        assert_eq!(carets(&test), [2..2, 11..11]);
+        assert!(test.commit(4));
+        assert_eq!(test.value(), "Hello big there");
+        assert_eq!(carets(&test), [2..2, 15..15]);
+        test.cx.dispatch_action(Undo);
+        test.draw();
+        assert_eq!(test.value(), "Hello there");
+        assert_eq!(carets(&test), [2..2, 11..11]);
+        test.cx.dispatch_action(Redo);
+        test.draw();
+        assert_eq!(test.value(), "Hello big there");
+        assert_eq!(carets(&test), [2..2, 15..15]);
     }
 
     /// Selecting everything and copying leaves the tentative text out.

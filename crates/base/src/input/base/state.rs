@@ -3765,10 +3765,24 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// Apply a batch of edits as one atomic history transaction.
     ///
     /// `edits` are `(byte range in the current pre-edit document, replacement)`
-    /// pairs.
+    /// pairs. Each edit leaves one collapsed cursor at the end of its new text.
     pub(crate) fn replace_text_in_ranges(
         &mut self,
         edits: &[(Range<usize>, String)],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.replace_text_in_ranges_selecting(edits, None, window, cx);
+    }
+
+    /// Like [`Self::replace_text_in_ranges`], with the selections the edits
+    /// leave, in the edited document, when the caller knows them. The undo
+    /// history records those, so undo and redo bring back every cursor where
+    /// it was.
+    pub(super) fn replace_text_in_ranges_selecting(
+        &mut self,
+        edits: &[(Range<usize>, String)],
+        selections_after: Option<Vec<CursorSelection>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -3832,7 +3846,9 @@ impl<M: InputModeKind> InputBaseState<M> {
                 )
             })
             .collect();
-        let group = sorted.len() > 1;
+        // With several cursors the batch records them all, even for one
+        // edit, so undo and redo bring each back.
+        let group = sorted.len() > 1 || self.selections.len() > 1;
         if group {
             self.undo_manager.begin_transaction();
         }
@@ -3913,8 +3929,47 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.update_search(cx);
 
         // Compute the resulting cursors.
-        // One collapsed cursor per edit, at the end of its inserted text.
-        let mut ascending: Vec<(Range<usize>, &str)> = sorted.clone();
+        // One collapsed cursor per edit, at the end of its inserted text,
+        // unless the caller said where they go.
+        let new_selections = match selections_after {
+            Some(selections) => selections,
+            None => self.cursors_at_edit_ends(&sorted, original_selections),
+        };
+        self.selections.replace_all(new_selections);
+        self.selections.merge_overlapping();
+
+        // Record the cursor snapshots for undo/redo restore.
+        let selections_after: Vec<CursorSelection> = self.selections.iter().copied().collect();
+        if recorded {
+            self.undo_manager.record_auto_closed_pairs(
+                auto_closed_pairs_before,
+                self.mode.auto_closed_pairs().clone(),
+            );
+            self.undo_manager
+                .record_selections(selections_before, selections_after);
+        }
+
+        self.ime_marked_range.take();
+        self.update_preferred_column();
+        self.dismiss_touch_selection(cx);
+        if self.is_multi_line() {
+            self.mode.update_auto_grow(&self.display_map);
+        }
+        if self.emit_events {
+            cx.emit(InputEvent::Change);
+        }
+        cx.notify();
+    }
+
+    /// One collapsed cursor at the end of each of `sorted`'s new texts, the
+    /// edits highest first. Of `original_selections`, one that covered an
+    /// edit's range keeps its id there, and the others go.
+    fn cursors_at_edit_ends(
+        &mut self,
+        sorted: &[(Range<usize>, &str)],
+        original_selections: Vec<CursorSelection>,
+    ) -> Vec<CursorSelection> {
+        let mut ascending: Vec<(Range<usize>, &str)> = sorted.to_vec();
         ascending.sort_by_key(|edit| edit.0.start);
         let text_len = self.text.len();
         let mut delta: isize = 0;
@@ -3950,30 +4005,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 ));
             }
         }
-        self.selections.replace_all(new_selections);
-        self.selections.merge_overlapping();
-
-        // Record the cursor snapshots for undo/redo restore.
-        let selections_after: Vec<CursorSelection> = self.selections.iter().copied().collect();
-        if recorded {
-            self.undo_manager.record_auto_closed_pairs(
-                auto_closed_pairs_before,
-                self.mode.auto_closed_pairs().clone(),
-            );
-            self.undo_manager
-                .record_selections(selections_before, selections_after);
-        }
-
-        self.ime_marked_range.take();
-        self.update_preferred_column();
-        self.dismiss_touch_selection(cx);
-        if self.is_multi_line() {
-            self.mode.update_auto_grow(&self.display_map);
-        }
-        if self.emit_events {
-            cx.emit(InputEvent::Change);
-        }
-        cx.notify();
+        new_selections
     }
 
     /// Update fold candidates from tree-sitter syntax tree (full extraction).
