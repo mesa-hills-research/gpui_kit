@@ -9,7 +9,7 @@ name = "mhr-gpui-kit-base"
 exclude = ["examples/"]
 repository = "https://github.com/mesa-hills-research/gpui_kit"
 homepage = "https://github.com/mesa-hills-research/gpui_kit"
-version = "0.7.11"
+version = "0.7.12"
 publish = true
 edition.workspace = true
 
