@@ -105,23 +105,39 @@ impl TentativeText {
 }
 
 impl<M: InputModeKind> InputBaseState<M> {
+    /// Where tentative text at `offset` can be. That's a character boundary
+    /// of the document outside any token, which shows as one piece, so an
+    /// offset inside a token is at its end.
+    fn tentative_anchor(&self, offset: usize) -> usize {
+        let offset = self
+            .text
+            .clip_offset(offset.min(self.text.len()), Bias::Left);
+        self.token_spans()
+            .iter()
+            .map(|span| span.range())
+            .find(|range| range.start < offset && offset < range.end)
+            .map_or(offset, |range| range.end)
+    }
+
+    /// Puts the tentative text's offset where it can be, for when the tokens
+    /// changed since it was set. The offset that's kept is the one it shows
+    /// at, which edits move and commits put text at.
+    fn settle_tentative_anchor(&mut self) {
+        if let Some(offset) = self.tentative.offset {
+            self.tentative.offset = Some(self.tentative_anchor(offset));
+        }
+    }
+
     /// The tentative text as it shows now, and where, or `None` while there is
     /// none or an input method composes.
     pub(crate) fn tentative_inline_text(&self) -> Option<InlineText> {
         if self.tentative.text.is_empty() || self.ime_marked_range.is_some() {
             return None;
         }
-        let offset = self.tentative.offset.unwrap_or_else(|| self.cursor());
-        let offset = self
-            .text
-            .clip_offset(offset.min(self.text.len()), Bias::Left);
-        // A token shows as one piece, so the text goes after one it is in.
-        let offset = self
-            .token_spans()
-            .iter()
-            .map(|span| span.range())
-            .find(|range| range.start < offset && offset < range.end)
-            .map_or(offset, |range| range.end);
+        let offset = match self.tentative.offset {
+            Some(offset) => offset,
+            None => self.tentative_anchor(self.cursor()),
+        };
         Some(InlineText {
             offset,
             text: self.tentative.text.clone(),
@@ -131,6 +147,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// Lays the tentative text out in its line, and makes room for it in an
     /// input that grows with its text.
     pub(crate) fn sync_tentative_text(&mut self, cx: &mut Context<Self>) {
+        self.settle_tentative_anchor();
         let inline = self.tentative_inline_text();
         let rows = self.display_map.wrap_row_count();
         self.display_map.set_inline_text(inline, cx);
@@ -341,6 +358,7 @@ impl TextareaState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.settle_tentative_anchor();
         let Some(inline) = self.tentative_inline_text() else {
             return false;
         };
@@ -374,9 +392,12 @@ impl TextareaState {
             );
         }
         self.tentative.text = SharedString::new(&text[len..]);
-        if self.tentative.text.is_empty() {
-            self.tentative.offset = None;
-        }
+        // The rest shows after what went in.
+        self.tentative.offset = self
+            .tentative
+            .offset
+            .filter(|_| !self.tentative.text.is_empty())
+            .map(|_| at + inserted);
         self.tentative.settled = Some(at..at + inserted);
         self.tentative.commits += 1;
         self.sync_tentative_text(cx);
@@ -400,10 +421,9 @@ impl TextareaState {
         } else {
             text
         };
-        let offset = offset.filter(|_| !text.is_empty()).map(|offset| {
-            self.text
-                .clip_offset(offset.min(self.text.len()), Bias::Left)
-        });
+        let offset = offset
+            .filter(|_| !text.is_empty())
+            .map(|offset| self.tentative_anchor(offset));
         if text == self.tentative.text && offset == self.tentative.offset {
             return;
         }
@@ -1229,6 +1249,56 @@ mod tests {
         assert!(test.commit(6));
         assert_eq!(test.value(), "Well, Hello!");
         assert_eq!(test.read(|state| state.cursor()), 12);
+    }
+
+    /// Tentative text set inside a token shows after it, and what's committed
+    /// of it goes in there, so the rest follows what went in. The same holds
+    /// when the text it's in becomes a token after it was set.
+    #[gpui::test]
+    fn tentative_text_stays_out_of_tokens(cx: &mut TestAppContext) {
+        use crate::input::InlineToken;
+
+        let token = || InlineToken::new("note", "@note");
+        for token_first in [true, false] {
+            let mut test = Test::new(cx, 400., "hello world");
+            let make_token = |test: &mut Test| {
+                test.update(|state, window, cx| {
+                    state
+                        .replace_range_with_token(0..5, token(), window, cx)
+                        .unwrap()
+                });
+            };
+            if token_first {
+                make_token(&mut test);
+            }
+            test.update(|state, _, cx| state.set_tentative_text_at(2, "xy", cx));
+            if !token_first {
+                make_token(&mut test);
+            }
+            let shown = |test: &Test| {
+                test.read(|state| {
+                    state
+                        .display_map
+                        .inline_text()
+                        .map(|(inline, _)| inline.offset)
+                })
+            };
+            assert_eq!(
+                shown(&test),
+                Some(5),
+                "after the token, token first {token_first}"
+            );
+            assert!(test.commit(1));
+            assert_eq!(test.value(), "@notex world");
+            assert_eq!(test.tentative(), "y");
+            assert_eq!(
+                shown(&test),
+                Some(6),
+                "after what went in, token first {token_first}"
+            );
+            assert!(test.commit(1));
+            assert_eq!(test.value(), "@notexy world");
+        }
     }
 
     /// An input method's composition hides the tentative text, which can't be
