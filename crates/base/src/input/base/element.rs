@@ -20,7 +20,7 @@ use crate::{
     input::{
         RopeExt as _,
         blink_cursor::CURSOR_WIDTH,
-        display_map::{InlineFragment, InlineTextRows, LineLayout},
+        display_map::{InlineFragment, InlineRow, InlineTextRows, LineLayout},
         tentative::{TentativePrepaint, TentativeStyle},
     },
 };
@@ -1984,10 +1984,10 @@ impl<M: InputModeKind> TextElement<M> {
                     // Tentative text shown in this row goes into the text
                     // around its offset, before a token that starts there.
                     let mut insertion = insertion.and_then(|insertion| {
-                        let (at, inserted, starts) = insertion.in_row(row, sub_ix, &range)?;
-                        Some((insertion, range.start + at, inserted, starts))
+                        let (at, inserted, inline) = insertion.in_row(row, sub_ix, &range)?;
+                        Some((insertion, range.start + at, inserted, inline))
                     });
-                    let mut inline_text_at = None;
+                    let mut inline_row = None;
                     let mut push_text =
                         |part: Range<usize>,
                          x: &mut Pixels,
@@ -2001,10 +2001,8 @@ impl<M: InputModeKind> TextElement<M> {
                             let fragment_range = part.start - range.start..part.end - range.start;
                             let part_runs = runs_for_range(runs, run_offset, &part);
                             let fragment = match inserted {
-                                Some((insertion, at, inserted, starts)) => {
-                                    if starts {
-                                        inline_text_at = Some(at - range.start);
-                                    }
+                                Some((insertion, at, inserted, inline)) => {
+                                    inline_row = Some(inline);
                                     insertion.fragment(
                                         fragment_range,
                                         *x,
@@ -2050,7 +2048,7 @@ impl<M: InputModeKind> TextElement<M> {
                     push_text(offset..range.end, &mut x, &mut fragments, window);
                     lines.push(
                         InputLine::inline(text[range].to_owned().into(), fragments)
-                            .starts_inline_text(inline_text_at),
+                            .with_inline(inline_row),
                     );
                 }
                 let indent = state.display_map.line(row).map_or(0, |line| line.indent);
@@ -2213,7 +2211,7 @@ impl<M: InputModeKind> TextElement<M> {
                 let rows = state.display_map.line(0).map_or(1, |line| line.lines_len());
                 let lines = (0..rows)
                     .filter_map(|sub_ix| {
-                        let (at, inserted, starts) = insertion.in_row(0, sub_ix, &(0..0))?;
+                        let (at, inserted, inline) = insertion.in_row(0, sub_ix, &(0..0))?;
                         let fragment = insertion.fragment(
                             0..0,
                             px(0.),
@@ -2226,7 +2224,7 @@ impl<M: InputModeKind> TextElement<M> {
                         );
                         Some(
                             InputLine::inline(SharedString::default(), vec![fragment])
-                                .starts_inline_text(starts.then_some(0)),
+                                .with_inline(Some(inline)),
                         )
                     })
                     .collect();
@@ -2313,7 +2311,7 @@ impl<M: InputModeKind> TextElement<M> {
                 };
 
                 // A row showing tentative text is shaped with it.
-                if let Some((at, inserted, starts)) =
+                if let Some((at, inserted, inline)) =
                     insertion.and_then(|insertion| insertion.in_row(buffer_line, sub_ix, range))
                 {
                     let fragment = insertion.unwrap().fragment(
@@ -2327,8 +2325,7 @@ impl<M: InputModeKind> TextElement<M> {
                         window,
                     );
                     wrapped_lines.push(
-                        InputLine::inline(sub_line, vec![fragment])
-                            .starts_inline_text(starts.then_some(at)),
+                        InputLine::inline(sub_line, vec![fragment]).with_inline(Some(inline)),
                     );
                     continue;
                 }
@@ -2629,26 +2626,33 @@ struct Insertion {
     at: usize,
     text: SharedString,
     rows: InlineTextRows,
+    after_is_caret: bool,
     /// What it is shaped with, the text's font in the muted colour.
     run: TextRun,
 }
 
 impl Insertion {
     /// The part of the tentative text that the row covering `range` of
-    /// `buffer_line` shows, the row's byte it shows at, and whether the
-    /// tentative text starts in this row.
+    /// `buffer_line` shows, the row's byte it shows at, and what the row
+    /// knows of it.
     fn in_row(
         &self,
         buffer_line: usize,
         sub_ix: usize,
         range: &Range<usize>,
-    ) -> Option<(usize, &str, bool)> {
+    ) -> Option<(usize, &str, InlineRow)> {
         if buffer_line != self.buffer_line {
             return None;
         }
         let slice = self.rows.slices.get(sub_ix.checked_sub(self.rows.first)?)?;
         let at = self.at.clamp(range.start, range.end) - range.start;
-        Some((at, &self.text[slice.clone()], sub_ix == self.rows.first))
+        let row = InlineRow {
+            at,
+            slice: slice.clone(),
+            len: self.text.len(),
+            after_is_caret: self.after_is_caret,
+        };
+        Some((at, &self.text[slice.clone()], row))
     }
 
     /// A fragment of a row drawing `text`, which is the row's bytes from `x`,
@@ -3134,6 +3138,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 at: inline.offset - state.text.line_start_offset(point.row),
                 text: inline.text.clone(),
                 rows: rows.clone(),
+                after_is_caret: inline.after_is_caret,
                 run: TextRun {
                     len: 0,
                     font: style.font(),

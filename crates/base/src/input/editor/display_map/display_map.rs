@@ -15,7 +15,6 @@ pub use super::text_wrapper::WrappingIndent;
 use super::text_wrapper::{LineItem, WrapDisplayPoint};
 use super::wrap_map::WrapMap;
 use super::{BufferPoint, DisplayPoint};
-use crate::input::Point as TreeSitterPoint;
 use crate::input::display_map::WrapPoint;
 use crate::input::rope_ext::RopeExt as _;
 
@@ -250,6 +249,12 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
+    /// Whether wrap row `wrap_row` has somewhere a caret can be. A row that
+    /// shows nothing but the middle of inline text has none.
+    pub(crate) fn is_caret_wrap_row(&self, wrap_row: usize) -> bool {
+        self.wrap_map.wrapper().is_caret_row(wrap_row)
+    }
+
     /// The inline text and the rows of its line that show it.
     pub(crate) fn inline_text(
         &self,
@@ -333,10 +338,15 @@ impl DisplayMap {
         self.wrap_map.wrapper().display_point_to_offset(point)
     }
 
-    /// Convert wrap display point to TreeSitterPoint (buffer line/col).
-    #[inline]
-    pub(crate) fn wrap_display_point_to_point(&self, point: WrapDisplayPoint) -> TreeSitterPoint {
-        self.wrap_map.wrapper().display_point_to_point(point)
+    /// The buffer line wrap row `wrap_row` is in, and which of the line's
+    /// rows it is.
+    pub(crate) fn wrap_row_line_and_row(&self, wrap_row: usize) -> (usize, usize) {
+        let wrapper = self.wrap_map.wrapper();
+        let line = wrapper.wrap_row_to_buffer_line(wrap_row);
+        (
+            line,
+            wrap_row.saturating_sub(wrapper.buffer_line_to_first_wrap_row(line)),
+        )
     }
 
     /// Convert a wrap row to a display row (skipping folded rows).

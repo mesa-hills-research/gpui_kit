@@ -42,14 +42,25 @@ impl InlineFragment {
     }
 }
 
+/// The part of inline text, such as tentative text, that a row shows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct InlineRow {
+    /// The row's byte where the inline text is.
+    pub(crate) at: usize,
+    /// The bytes of the inline text this row shows, and how long it is.
+    pub(crate) slice: Range<usize>,
+    pub(crate) len: usize,
+    /// Whether the place after the inline text is somewhere a caret can be.
+    /// It isn't while the inline text follows the caret.
+    pub(crate) after_is_caret: bool,
+}
+
 pub(crate) struct InputLine {
     pub(crate) len: usize,
     pub(crate) width: Pixels,
     pub(crate) text: SharedString,
-    /// The byte of the row where inline text starts, if it starts in this
-    /// row. The row owns that offset even at its end, since the caret is
-    /// drawn in front of the inline text.
-    pub(crate) inline_text_at: Option<usize>,
+    /// The inline text this row shows, if it shows some.
+    pub(crate) inline: Option<InlineRow>,
     content: Content,
 }
 // Keep the ordinary shaped row inline: boxing it would add an allocation to
@@ -66,7 +77,7 @@ impl From<ShapedLine> for InputLine {
             len: line.len,
             width: line.width,
             text: line.text.clone(),
-            inline_text_at: None,
+            inline: None,
             content: Content::Text(line),
         }
     }
@@ -78,15 +89,32 @@ impl InputLine {
             len: text.len(),
             text,
             width,
-            inline_text_at: None,
+            inline: None,
             content: Content::Inline(fragments),
         }
     }
 
-    /// Marks this row as the one inline text starts on, at its byte `at`.
-    pub(crate) fn starts_inline_text(mut self, at: Option<usize>) -> Self {
-        self.inline_text_at = at;
+    /// This row with `inline`, the inline text it shows.
+    pub(crate) fn with_inline(mut self, inline: Option<InlineRow>) -> Self {
+        self.inline = inline;
         self
+    }
+
+    /// The byte of the row's inline text nearest `x`, when `x` is on it.
+    pub(crate) fn inline_byte_at(&self, x: Pixels) -> Option<usize> {
+        let (Content::Inline(fragments), Some(inline)) = (&self.content, &self.inline) else {
+            return None;
+        };
+        fragments.iter().find_map(|f| {
+            let (inserted, line) = (f.inserted.as_ref()?, f.text.as_ref()?);
+            let left = f.x + line.x_for_index(inserted.start);
+            let right = f.x + line.x_for_index(inserted.end);
+            if x < left || x > right {
+                return None;
+            }
+            let ix = line.closest_index_for_x(x - f.x);
+            Some(inline.slice.start + ix.clamp(inserted.start, inserted.end) - inserted.start)
+        })
     }
 
     /// The shaped text that draws byte `ix` of the row, its x in the row,

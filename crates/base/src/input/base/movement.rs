@@ -126,9 +126,14 @@ impl<M: InputModeKind> InputBaseState<M> {
                     .nearest_visible_display_row(display_point.row)
             });
         let max_display_row = self.display_map.display_row_count().saturating_sub(1);
-        let target_display_row = current_display_row
-            .saturating_add_signed(move_lines)
-            .min(max_display_row);
+        let target_display_row = self.caret_display_row(
+            current_display_row,
+            current_display_row
+                .saturating_add_signed(move_lines)
+                .min(max_display_row),
+            move_lines.signum(),
+            max_display_row,
+        );
         let target_wrap_row = self
             .display_map
             .display_row_to_wrap_row(target_display_row)
@@ -142,20 +147,17 @@ impl<M: InputModeKind> InputBaseState<M> {
             .or_else(|| self.preferred_column_for_with_affinity(offset, line_end_affinity));
         let mut new_affinity = false;
         if let Some((preferred_x, column)) = column_anchor {
-            // Get display point again to update local_row.
-            let mut next_display_point = self.display_map.offset_to_wrap_display_point(new_offset);
-            next_display_point.column = 0;
-            let next_point = self
-                .display_map
-                .wrap_display_point_to_point(next_display_point);
-            let line_start_offset = self.text.line_start_offset(next_point.row);
+            // The target row by its own line and place in it: its first
+            // offset can be drawn on another row, as inline text's is.
+            let (buffer_line, local_row) = self.display_map.wrap_row_line_and_row(target_wrap_row);
+            let line_start_offset = self.text.line_start_offset(buffer_line);
 
             // If in visible range, prefer to use position to get column.
-            if let Some(line) = last_layout.line(next_point.row) {
+            if let Some(line) = last_layout.line(buffer_line) {
                 if let Some((x, line_end_affinity)) = line.closest_index_for_position(
                     Point {
                         x: preferred_x,
-                        y: next_display_point.local_row * last_layout.line_height,
+                        y: local_row * last_layout.line_height,
                     },
                     last_layout,
                 ) {
@@ -166,12 +168,35 @@ impl<M: InputModeKind> InputBaseState<M> {
                 }
             } else {
                 // Not in visible range, use column directly.
-                let max_line_len = self.text.slice_line(next_point.row).len();
+                let max_line_len = self.text.slice_line(buffer_line).len();
                 new_offset = line_start_offset + column.min(max_line_len);
             }
         }
 
         (new_offset, new_affinity)
+    }
+
+    /// The display row nearest `target` that has somewhere a caret can be,
+    /// going on the way `step` points and then back toward `from`, where
+    /// the move started. A row that shows nothing but the middle of inline
+    /// text has none, so moving up and down passes over it.
+    fn caret_display_row(&self, from: usize, target: usize, step: isize, max: usize) -> usize {
+        let is_caret_row = |row: usize| {
+            self.display_map
+                .display_row_to_wrap_row(row)
+                .is_some_and(|wrap_row| self.display_map.is_caret_wrap_row(wrap_row))
+        };
+        let onward = std::iter::successors(Some(target), |row| {
+            row.checked_add_signed(step)
+                .filter(|row| *row <= max && step != 0)
+        });
+        let back = std::iter::successors(Some(target), |row| {
+            (*row != from).then(|| row.saturating_add_signed(-step))
+        });
+        onward
+            .chain(back)
+            .find(|row| *row == from || is_caret_row(*row))
+            .unwrap_or(from)
     }
 
     /// Extend to the document edge when there is no further visual row. Plain

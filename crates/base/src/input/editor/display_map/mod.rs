@@ -9,7 +9,7 @@
 /// about `BufferPoint ↔ DisplayPoint` mapping, without worrying about internal wrap/fold complexity.
 mod display_map;
 mod inline_line;
-pub(crate) use inline_line::{InlineFragment, InputLine};
+pub(crate) use inline_line::{InlineFragment, InlineRow, InputLine};
 mod fold_map;
 mod folding;
 mod text_wrapper;

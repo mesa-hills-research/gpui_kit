@@ -87,10 +87,18 @@ impl TentativeText {
     }
 
     /// Moves the text's offset and the committed bytes with an edit of
-    /// `range` to `new_len` bytes. Committed bytes the edit touches fill in
-    /// no more.
-    pub(crate) fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
-        if let Some(offset) = &mut self.offset {
+    /// `range` to `new_len` bytes. Text put in at the offset goes before the
+    /// tentative text, unless `typed_after` says a caret after the tentative
+    /// text typed it. Committed bytes the edit touches fill in no more.
+    pub(crate) fn adjust_for_edit(
+        &mut self,
+        range: &Range<usize>,
+        new_len: usize,
+        typed_after: bool,
+    ) {
+        if let Some(offset) = &mut self.offset
+            && !(typed_after && range.is_empty() && *offset == range.start)
+        {
             *offset = offset_after_edit(*offset, range, new_len);
         }
         self.settled = self.settled.take().and_then(|settled| {
@@ -141,6 +149,8 @@ impl<M: InputModeKind> InputBaseState<M> {
         Some(InlineText {
             offset,
             text: self.tentative.text.clone(),
+            // While it follows the caret, the caret is always in front of it.
+            after_is_caret: self.tentative.offset.is_some(),
         })
     }
 
@@ -300,7 +310,8 @@ impl TextareaState {
     /// accent under it, and takes room in its line as typed text would. It
     /// isn't part of the document, so [`Self::value`], copying, the undo
     /// history, search and suggestions don't see it, and the caret and the
-    /// selection can't enter it. A click on it puts the caret where it shows.
+    /// selection can't enter it. The caret stays in front of it, so a click
+    /// on it puts the caret there, and moving up and down passes over it.
     ///
     /// It shows on one line, so a line break in `text` shows as a space. An
     /// empty `text` clears it. While it shows, no suggestions are offered,
@@ -318,7 +329,11 @@ impl TextareaState {
     /// Shows `text` as tentative text at byte `offset` of the document, as
     /// [`Self::set_tentative_text`] does after the caret. The offset moves with
     /// edits before it, and text put in at the offset goes before it. An
-    /// offset past the end shows at the end.
+    /// offset past the end shows at the end, and one inside a token after it.
+    ///
+    /// The caret can be in front of the text or after it. A click on it puts
+    /// the caret at its nearer end, moving up and down stops at both, and a
+    /// caret after it types after it.
     pub fn set_tentative_text_at(
         &mut self,
         offset: usize,
@@ -444,6 +459,9 @@ impl TextareaState {
         self.tentative.text = text;
         self.tentative.offset = offset;
         self.tentative.revision += 1;
+        // The caret may be drawn somewhere else now, so up and down start
+        // from where it's drawn rather than from a column kept from before.
+        self.active_selection_mut().column_anchor = None;
         if !self.tentative.text.is_empty() {
             self.close_suggestions(cx);
         }
@@ -1093,14 +1111,17 @@ mod tests {
 
     struct Host {
         textarea: Entity<TextareaState>,
-        width: Pixels,
+        size: gpui::Size<Pixels>,
     }
 
     impl Render for Host {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div()
-                .size_full()
-                .child(div().w(self.width).h(px(200.)).child(self.textarea.clone()))
+            div().size_full().child(
+                div()
+                    .w(self.size.width)
+                    .h(self.size.height)
+                    .child(self.textarea.clone()),
+            )
         }
     }
 
@@ -1113,10 +1134,15 @@ mod tests {
 
     impl Test {
         fn new(cx: &mut TestAppContext, width: f32, text: &'static str) -> Self {
+            Self::sized(cx, width, 200., text)
+        }
+
+        /// A textarea `width` by `height`.
+        fn sized(cx: &mut TestAppContext, width: f32, height: f32, text: &'static str) -> Self {
             cx.update(crate::init);
             let window = cx.open_window(size(px(600.), px(400.)), move |window, cx| Host {
                 textarea: cx.new(|cx| TextareaState::new(window, cx).default_value(text)),
-                width: px(width),
+                size: size(px(width), px(height)),
             });
             let cx = VisualTestContext::from_window(window.into(), cx);
             let textarea = window
@@ -1184,6 +1210,27 @@ mod tests {
         /// The caret's bounds as the last frame laid it out.
         fn caret(&self) -> Bounds<Pixels> {
             self.read(|state| state.cursor_layout().unwrap().0)
+        }
+
+        /// Where the caret is, its offset and whether it's after tentative
+        /// text at that offset.
+        fn place(&self) -> (usize, bool) {
+            self.read(|state| (state.cursor(), state.cursor_line_end_affinity))
+        }
+
+        /// The display row the caret is drawn on.
+        fn caret_row(&self) -> usize {
+            self.read(|state| {
+                let layout = state.last_layout.as_ref().unwrap();
+                let caret = state.cursor_layout().unwrap().0;
+                let top = state.input_bounds().top() + state.scroll_offset().y;
+                ((caret.top() - top) / layout.line_height).floor() as usize
+            })
+        }
+
+        fn dispatch(&mut self, action: impl gpui::Action) {
+            self.cx.dispatch_action(action);
+            self.draw();
         }
 
         fn advance(&mut self, ms: u64) {
@@ -1609,6 +1656,168 @@ mod tests {
             "{:?} from {content_left:?}",
             frame.underlines[1]
         );
+    }
+
+    /// Six characters a row: "Top " and "line", then "ab " with the
+    /// tentative text "one two three " after it on rows of its own, the "cd"
+    /// after it, and "Bottom". The tentative text is at 12, in front of "cd".
+    const LINES: &str = "Top line\nab cd\nBottom";
+    const TENTATIVE: &str = "one two three ";
+    const ANCHOR: usize = 12;
+
+    /// Down and up pass over the rows that show nothing but the middle of
+    /// tentative text. The caret stops in front of it, on the row it starts
+    /// on, and after it, where the text after it starts.
+    #[gpui::test]
+    fn up_and_down_pass_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
+        use crate::input::{MoveDown, MoveUp};
+
+        let mut test = Test::sized(cx, 70., 400., LINES);
+        test.update(|state, _, cx| {
+            state.set_selected_range(0..0, cx);
+            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
+        });
+        assert_eq!(test.caret_row(), 0);
+        let mut down = Vec::new();
+        for _ in 0..6 {
+            test.dispatch(MoveDown);
+            down.push((test.caret_row(), test.place()));
+        }
+        assert_eq!(
+            down,
+            [
+                (1, (4, false)),
+                (2, (9, false)),
+                (3, (ANCHOR, false)),
+                (6, (ANCHOR, true)),
+                (7, (15, false)),
+                (7, (15, false)),
+            ]
+        );
+        let mut up = Vec::new();
+        for _ in 0..5 {
+            test.dispatch(MoveUp);
+            up.push((test.caret_row(), test.place()));
+        }
+        assert_eq!(
+            up,
+            [
+                (6, (ANCHOR, true)),
+                (3, (ANCHOR, false)),
+                (2, (9, false)),
+                (1, (4, false)),
+                (0, (0, false)),
+            ]
+        );
+    }
+
+    /// Selecting down stops at the same places, and reaches the end of the
+    /// text only from the last row.
+    #[gpui::test]
+    fn selecting_down_passes_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
+        use crate::actions::SelectDown;
+
+        let mut test = Test::sized(cx, 70., 400., LINES);
+        test.update(|state, _, cx| {
+            state.set_selected_range(0..0, cx);
+            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
+        });
+        let mut ends = Vec::new();
+        for _ in 0..7 {
+            test.dispatch(SelectDown);
+            ends.push((test.caret_row(), test.read(|state| state.selected_range())));
+        }
+        assert_eq!(
+            ends,
+            [
+                (1, 0..4),
+                (2, 0..9),
+                (3, 0..ANCHOR),
+                (6, 0..ANCHOR),
+                (7, 0..15),
+                (7, 0..LINES.len()),
+                (7, 0..LINES.len()),
+            ]
+        );
+    }
+
+    /// A page down or up that ends in the middle of tentative text goes on to
+    /// the next place a caret can be.
+    #[gpui::test]
+    fn a_page_passes_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
+        use crate::input::{MovePageDown, MovePageUp};
+
+        let line_height =
+            Test::new(cx, 70., LINES).read(|state| state.last_layout.as_ref().unwrap().line_height);
+        // Two rows a page.
+        let mut test = Test::sized(cx, 70., (line_height * 2.5).as_f32(), LINES);
+        test.update(|state, _, cx| {
+            state.set_selected_range(9..9, cx);
+            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
+        });
+        let row = |test: &Test| {
+            test.read(|state| {
+                state
+                    .display_map
+                    .offset_to_wrap_display_point_with_affinity(
+                        state.cursor(),
+                        state.cursor_line_end_affinity,
+                    )
+                    .row
+            })
+        };
+        assert_eq!(row(&test), 2);
+        test.dispatch(MovePageDown);
+        assert_eq!((row(&test), test.place()), (6, (ANCHOR, true)));
+        test.dispatch(MovePageUp);
+        assert_eq!((row(&test), test.place()), (3, (ANCHOR, false)));
+    }
+
+    /// While the tentative text follows the caret, the place after it isn't
+    /// a caret position. Down from in front of it goes to the text after it,
+    /// and a click on it leaves the caret in front of it. With an offset of
+    /// its own, a click on its second half puts the caret after it.
+    #[gpui::test]
+    fn the_place_after_tentative_text(cx: &mut TestAppContext) {
+        use crate::input::MoveDown;
+        use gpui::{Modifiers, MouseButton, point};
+
+        let mut test = Test::sized(cx, 70., 400., LINES);
+        test.update(|state, _, cx| {
+            state.set_selected_range(ANCHOR..ANCHOR, cx);
+            state.set_tentative_text(TENTATIVE, cx);
+        });
+        assert_eq!(test.caret_row(), 3);
+        test.dispatch(MoveDown);
+        assert_eq!(test.place(), (ANCHOR + 1, false));
+
+        let mut test = Test::sized(cx, 70., 400., LINES);
+        test.update(|state, _, cx| {
+            state.set_selected_range(0..0, cx);
+            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
+        });
+        let click = |test: &mut Test, row: usize, chars: f32| {
+            let (left, top, line_height) = test.read(|state| {
+                let layout = state.last_layout.as_ref().unwrap();
+                let bounds = state.input_bounds();
+                (bounds.left(), bounds.top(), layout.line_height)
+            });
+            let position = point(
+                left + px(chars * CHAR),
+                top + line_height * (row as f32 + 0.5),
+            );
+            test.cx
+                .simulate_mouse_down(position, MouseButton::Left, Modifiers::default());
+            test.cx
+                .simulate_mouse_up(position, MouseButton::Left, Modifiers::default());
+            test.draw();
+        };
+        // "three", on row 5, is in the second half.
+        click(&mut test, 5, 2.5);
+        assert_eq!((test.caret_row(), test.place()), (6, (ANCHOR, true)));
+        // "one", on row 3, is in the first.
+        click(&mut test, 3, 1.2);
+        assert_eq!((test.caret_row(), test.place()), (3, (ANCHOR, false)));
     }
 
     /// While tentative text shows, no suggestions are offered, and those

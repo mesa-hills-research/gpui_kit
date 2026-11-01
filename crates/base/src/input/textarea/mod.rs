@@ -25,7 +25,9 @@ impl InputModeKind for TextareaMode {
     ) {
         state.extras.marks.adjust_for_edit(range, new_len);
         state.extras.keymap.adjust_for_edit(range, new_len);
-        state.tentative.adjust_for_edit(range, new_len);
+        // A caret after the tentative text, at its offset, types after it.
+        let typed_after = state.cursor_line_end_affinity && state.cursor() == range.start;
+        state.tentative.adjust_for_edit(range, new_len, typed_after);
     }
 
     fn did_edit(

@@ -475,32 +475,22 @@ struct RowSpot {
 
 impl RowSpot {
     /// The row of `layout` that draws the caret at byte `local` of
-    /// `buffer_line`, the way the caret is placed when it is drawn.
-    fn find(layout: &LastLayout, buffer_line: usize, local: usize, affinity: bool) -> Option<Self> {
+    /// `buffer_line`, and the caret's x in the content, where the caret is
+    /// drawn.
+    fn find(
+        layout: &LastLayout,
+        buffer_line: usize,
+        local: usize,
+        affinity: bool,
+    ) -> Option<(Self, Pixels)> {
         let line_ix = layout
             .visible_buffer_lines
             .binary_search(&buffer_line)
             .ok()?;
         let line = layout.lines.get(line_ix)?;
-        let rows = &line.wrapped_lines;
-        let mut start = 0;
-        for (row, shaped) in rows.iter().enumerate() {
-            let is_last = row + 1 == rows.len();
-            let matches = if shaped.inline_text_at.map(|at| start + at) == Some(local) {
-                true
-            } else if shaped.len == 0 {
-                local == start
-            } else if is_last || affinity {
-                local >= start && local <= start + shaped.len
-            } else {
-                local >= start && local < start + shaped.len
-            };
-            if matches {
-                return Self::at(layout, buffer_line, line_ix, row, start);
-            }
-            start += shaped.len;
-        }
-        None
+        let (row, start, x) = line.caret_row(local, affinity)?;
+        let spot = Self::at(layout, buffer_line, line_ix, row, start)?;
+        Some((spot, spot.x + x))
     }
 
     /// The row `key` names, if `layout` has it.
@@ -805,13 +795,12 @@ impl<M: InputModeKind> InputBaseState<M> {
             && self.extras.caret_offset().is_none())
         .then(|| {
             let point = self.text.offset_to_point(stamp.caret);
-            let spot = RowSpot::find(
+            let (spot, x) = RowSpot::find(
                 layout,
                 point.row,
                 stamp.caret - self.text.line_start_offset(point.row),
                 self.cursor_line_end_affinity,
             )?;
-            let x = spot.x_of(layout, stamp.caret)?;
             (!spot.is_right_to_left(layout)).then_some((spot, x))
         })
         .flatten();
