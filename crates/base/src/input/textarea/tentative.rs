@@ -733,6 +733,15 @@ fn place(
     element
 }
 
+/// The id of a paint animation of the glide numbered `glide`, a child of it
+/// for each index of `path`, such as a row and a column of it.
+fn glide_id(part: &'static str, glide: u64, path: &[usize]) -> ElementId {
+    path.iter()
+        .fold(ElementId::NamedInteger(part.into(), glide), |id, ix| {
+            ElementId::NamedChild(std::sync::Arc::new(id), ix.to_string().into())
+        })
+}
+
 /// Where `end` is at the moment a paint animation's frame is drawn, or its
 /// target once the animation is over.
 fn end_at(end: End, clock: &BackgroundExecutor, progress: f32) -> f32 {
@@ -858,7 +867,7 @@ impl TentativeText {
                 .w(rect.size.width)
                 .h(rect.size.height)
                 .with_paint_animation(
-                    ElementId::NamedInteger("tentative-right".into(), end.id << 16 | ix as u64),
+                    glide_id("tentative-right", end.id, &[ix]),
                     Animation::new(GLIDE),
                     move |progress| {
                         let at = end_at(end, &clock, progress);
@@ -914,7 +923,7 @@ impl TentativeText {
                 .w(rect.size.width)
                 .h(rect.size.height)
                 .with_paint_animation(
-                    ElementId::NamedInteger("tentative-left".into(), end.id << 16 | ix as u64),
+                    glide_id("tentative-left", end.id, &[ix]),
                     Animation::new(GLIDE),
                     {
                         let clock = clock.clone();
@@ -985,14 +994,14 @@ impl TentativeText {
                     .w(clip.size.width)
                     .h(clip.size.height)
                     .with_paint_animation(
-                        ElementId::NamedInteger(
+                        glide_id(
                             if filled {
                                 "tentative-fill"
                             } else {
                                 "tentative-muted"
-                            }
-                            .into(),
-                            end.id << 24 | (ix as u64) << 16 | column as u64,
+                            },
+                            end.id,
+                            &[ix, column],
                         ),
                         Animation::new(GLIDE),
                         move |progress| {
@@ -1024,7 +1033,7 @@ impl TentativeText {
             .w(caret.size.width)
             .h(caret.size.height)
             .with_paint_animation(
-                ElementId::NamedInteger("tentative-caret".into(), end.id),
+                glide_id("tentative-caret", end.id, &[]),
                 Animation::new(GLIDE),
                 move |progress| {
                     let at = end_at(end, &clock, progress);
