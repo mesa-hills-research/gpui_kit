@@ -50,9 +50,6 @@ pub(crate) struct InlineRow {
     /// The bytes of the inline text this row shows, and how long it is.
     pub(crate) slice: Range<usize>,
     pub(crate) len: usize,
-    /// Whether the place after the inline text is somewhere a caret can be.
-    /// It isn't while the inline text follows the caret.
-    pub(crate) after_is_caret: bool,
 }
 
 pub(crate) struct InputLine {
@@ -98,23 +95,6 @@ impl InputLine {
     pub(crate) fn with_inline(mut self, inline: Option<InlineRow>) -> Self {
         self.inline = inline;
         self
-    }
-
-    /// The byte of the row's inline text nearest `x`, when `x` is on it.
-    pub(crate) fn inline_byte_at(&self, x: Pixels) -> Option<usize> {
-        let (Content::Inline(fragments), Some(inline)) = (&self.content, &self.inline) else {
-            return None;
-        };
-        fragments.iter().find_map(|f| {
-            let (inserted, line) = (f.inserted.as_ref()?, f.text.as_ref()?);
-            let left = f.x + line.x_for_index(inserted.start);
-            let right = f.x + line.x_for_index(inserted.end);
-            if x < left || x > right {
-                return None;
-            }
-            let ix = line.closest_index_for_x(x - f.x);
-            Some(inline.slice.start + ix.clamp(inserted.start, inserted.end) - inserted.start)
-        })
     }
 
     /// The shaped text that draws byte `ix` of the row, its x in the row,

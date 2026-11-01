@@ -2626,7 +2626,6 @@ struct Insertion {
     at: usize,
     text: SharedString,
     rows: InlineTextRows,
-    after_is_caret: bool,
     /// What it is shaped with, the text's font in the muted colour.
     run: TextRun,
 }
@@ -2650,7 +2649,6 @@ impl Insertion {
             at,
             slice: slice.clone(),
             len: self.text.len(),
-            after_is_caret: self.after_is_caret,
         };
         Some((at, &self.text[slice.clone()], row))
     }
@@ -3138,7 +3136,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 at: inline.offset - state.text.line_start_offset(point.row),
                 text: inline.text.clone(),
                 rows: rows.clone(),
-                after_is_caret: inline.after_is_caret,
                 run: TextRun {
                     len: 0,
                     font: style.font(),

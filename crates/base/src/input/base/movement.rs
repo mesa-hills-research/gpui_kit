@@ -1,5 +1,5 @@
 use crate::input::InputModeKind;
-use gpui::{Context, Pixels, Point, Window};
+use gpui::{Context, Pixels, Window};
 use sum_tree::Bias;
 
 use crate::input::{
@@ -107,8 +107,23 @@ impl<M: InputModeKind> InputBaseState<M> {
         line_end_affinity: bool,
         move_lines: isize,
     ) -> (usize, bool) {
+        self.vertical_move(offset, column_anchor, line_end_affinity, move_lines)
+            .0
+    }
+
+    /// Like [`Self::vertical_target`], and whether there was a row with a
+    /// caret position that way to move to. From the first or last such row
+    /// there isn't, and the caret stays on its own row at the preferred
+    /// column.
+    fn vertical_move(
+        &self,
+        offset: usize,
+        column_anchor: Option<(Pixels, usize)>,
+        line_end_affinity: bool,
+        move_lines: isize,
+    ) -> ((usize, bool), bool) {
         let Some(last_layout) = &self.last_layout else {
-            return (offset, line_end_affinity);
+            return ((offset, line_end_affinity), false);
         };
 
         // Start from the row the caret is drawn on, not the row the raw offset falls in: on a
@@ -126,17 +141,12 @@ impl<M: InputModeKind> InputBaseState<M> {
                     .nearest_visible_display_row(display_point.row)
             });
         let max_display_row = self.display_map.display_row_count().saturating_sub(1);
-        let target_display_row = self.caret_display_row(
-            current_display_row,
-            current_display_row
-                .saturating_add_signed(move_lines)
-                .min(max_display_row),
-            move_lines.signum(),
-            max_display_row,
-        );
+        let target_display_row =
+            self.caret_display_row(current_display_row, move_lines, max_display_row);
+        let moved = target_display_row.is_some();
         let target_wrap_row = self
             .display_map
-            .display_row_to_wrap_row(target_display_row)
+            .display_row_to_wrap_row(target_display_row.unwrap_or(current_display_row))
             .unwrap_or(display_point.row);
 
         display_point.row = target_wrap_row;
@@ -147,19 +157,17 @@ impl<M: InputModeKind> InputBaseState<M> {
             .or_else(|| self.preferred_column_for_with_affinity(offset, line_end_affinity));
         let mut new_affinity = false;
         if let Some((preferred_x, column)) = column_anchor {
-            // The target row by its own line and place in it: its first
-            // offset can be drawn on another row, as inline text's is.
+            // The target row by its own line and place in it, since its
+            // first offset can be drawn on another row, as inline text's is.
             let (buffer_line, local_row) = self.display_map.wrap_row_line_and_row(target_wrap_row);
             let line_start_offset = self.text.line_start_offset(buffer_line);
 
-            // If in visible range, prefer to use position to get column.
+            // If in visible range, take the row's own position nearest the
+            // preferred column.
             if let Some(line) = last_layout.line(buffer_line) {
-                if let Some((x, line_end_affinity)) = line.closest_index_for_position(
-                    Point {
-                        x: preferred_x,
-                        y: local_row * last_layout.line_height,
-                    },
-                    last_layout,
+                if let Some((x, line_end_affinity)) = line.closest_position_on_row(
+                    local_row,
+                    preferred_x - line.row_x(local_row, last_layout),
                 ) {
                     new_offset = line_start_offset + x;
                     // Landing on a wrap boundary means the preferred column pointed past the
@@ -173,35 +181,39 @@ impl<M: InputModeKind> InputBaseState<M> {
             }
         }
 
-        (new_offset, new_affinity)
+        ((new_offset, new_affinity), moved)
     }
 
-    /// The display row nearest `target` that has somewhere a caret can be,
-    /// going on the way `step` points and then back toward `from`, where
-    /// the move started. A row that shows nothing but the middle of inline
-    /// text has none, so moving up and down passes over it.
-    fn caret_display_row(&self, from: usize, target: usize, step: isize, max: usize) -> usize {
-        let is_caret_row = |row: usize| {
+    /// The display row `move_lines` from `from` when it has somewhere a
+    /// caret can be, else the next one on that way, or else the nearest one
+    /// back toward `from`. `None` when no row past `from` that way has one.
+    /// A row that shows nothing but the middle of inline text has none, so
+    /// moving up and down passes over it.
+    fn caret_display_row(&self, from: usize, move_lines: isize, max: usize) -> Option<usize> {
+        let target = from.saturating_add_signed(move_lines).min(max);
+        if target == from {
+            return None;
+        }
+        let step = move_lines.signum();
+        let is_caret_row = |row: &usize| {
             self.display_map
-                .display_row_to_wrap_row(row)
+                .display_row_to_wrap_row(*row)
                 .is_some_and(|wrap_row| self.display_map.is_caret_wrap_row(wrap_row))
         };
-        let onward = std::iter::successors(Some(target), |row| {
-            row.checked_add_signed(step)
-                .filter(|row| *row <= max && step != 0)
-        });
-        let back = std::iter::successors(Some(target), |row| {
-            (*row != from).then(|| row.saturating_add_signed(-step))
-        });
-        onward
-            .chain(back)
-            .find(|row| *row == from || is_caret_row(*row))
-            .unwrap_or(from)
+        std::iter::successors(Some(target), |row| {
+            row.checked_add_signed(step).filter(|row| *row <= max)
+        })
+        .find(is_caret_row)
+        .or_else(|| {
+            std::iter::successors(Some(target), |row| Some(row.saturating_add_signed(-step)))
+                .take_while(|row| *row != from)
+                .find(is_caret_row)
+        })
     }
 
-    /// Extend to the document edge when there is no further visual row. Plain
-    /// movement retains its column there, but selection must still reach the
-    /// remaining text on the first or last row.
+    /// Extend to the document edge when there is no further row with a caret
+    /// position. Plain movement retains its column there, but selection must
+    /// still reach the remaining text on the first or last row.
     pub(super) fn vertical_selection_target(
         &self,
         offset: usize,
@@ -209,18 +221,13 @@ impl<M: InputModeKind> InputBaseState<M> {
         line_end_affinity: bool,
         move_lines: isize,
     ) -> (usize, bool) {
-        let target = self.vertical_target(offset, column_anchor, line_end_affinity, move_lines);
-        if self.last_layout.is_some() {
-            let row = |offset, affinity| {
-                self.display_map
-                    .offset_to_wrap_display_point_with_affinity(offset, affinity)
-                    .row
-            };
-            if row(offset, line_end_affinity) == row(target.0, target.1) {
-                return (if move_lines < 0 { 0 } else { self.text.len() }, false);
-            }
+        if self.last_layout.is_none() {
+            return (offset, line_end_affinity);
         }
-        target
+        match self.vertical_move(offset, column_anchor, line_end_affinity, move_lines) {
+            (target, true) => target,
+            (_, false) => (if move_lines < 0 { 0 } else { self.text.len() }, false),
+        }
     }
 
     /// Move every cursor through `f`, which maps each selection to a

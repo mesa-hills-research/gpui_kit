@@ -138,9 +138,6 @@ pub(crate) struct InlineText {
     /// Where it shows, a byte offset in the text.
     pub(crate) offset: usize,
     pub(crate) text: SharedString,
-    /// Whether the place after it is somewhere a caret can be, as well as
-    /// the place in front of it. It isn't while it follows the caret.
-    pub(crate) after_is_caret: bool,
 }
 
 /// The rows of its line that show the inline text.
@@ -585,22 +582,6 @@ impl TextWrapper {
         }
     }
 
-    /// The row of `line`, the inline text's, with the place after the inline
-    /// text, which is at byte `at` of the line. That's the row it ends on,
-    /// or the next one when it ends a row with more after it.
-    fn row_after_inline_text(&self, line: &LineItem, at: usize) -> usize {
-        let last = self.inline_rows.last();
-        let ends_row = line
-            .wrapped_lines
-            .get(last)
-            .is_some_and(|row| row.end == at);
-        if ends_row && last + 1 < line.wrapped_lines.len() {
-            last + 1
-        } else {
-            last
-        }
-    }
-
     /// Whether wrap row `wrap_row` has somewhere a caret can be. A row that
     /// shows nothing but the middle of inline text has none.
     pub(crate) fn is_caret_row(&self, wrap_row: usize) -> bool {
@@ -621,15 +602,11 @@ impl TextWrapper {
         if row <= first || row > last {
             return true;
         }
+        // The row it ends on can have text after it.
         let at = inline.offset - text.line_start_offset(buffer_line);
-        // The row it ends on has text after it, or the place after it when
-        // that is a caret position and on this row.
         line.wrapped_lines
             .get(row)
             .is_some_and(|range| range.end > at)
-            || (row == last
-                && inline.after_is_caret
-                && self.row_after_inline_text(line, at) == last)
     }
 
     /// Moves the inline text with an edit of `range` to `new_len` bytes.
@@ -892,17 +869,13 @@ impl TextWrapper {
 
         let local_offset = offset.saturating_sub(start);
         // The inline text's offset is in front of it, on the row it starts
-        // on, or with the affinity after it, where that's a caret position.
-        if let Some(inline) = self
+        // on, whatever the affinity.
+        if self
             .inline_text
             .as_ref()
-            .filter(|inline| inline.offset == offset)
+            .is_some_and(|inline| inline.offset == offset)
         {
-            let ix = if line_end_affinity && inline.after_is_caret {
-                self.row_after_inline_text(line, local_offset)
-            } else {
-                self.inline_rows.first
-            };
+            let ix = self.inline_rows.first;
             if let Some(range) = line.wrapped_lines.get(ix) {
                 return WrapDisplayPoint::new(
                     wrapped_row + ix,
@@ -992,18 +965,13 @@ impl WrapDisplayPoint {
     }
 }
 
-/// Where a line's inline text is, for placing a caret around it.
+/// Where a line's inline text is, for placing a caret in front of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct InlineAnchor {
     /// The line's byte the inline text shows at.
     pub(crate) offset: usize,
-    /// The row it starts on, with the place in front of it, the row it ends
-    /// on, and the row with the place after it.
+    /// The row it starts on, which has the caret position in front of it.
     pub(crate) first_row: usize,
-    pub(crate) last_row: usize,
-    pub(crate) after_row: usize,
-    /// Whether the place after it is somewhere a caret can be.
-    pub(crate) after_is_caret: bool,
 }
 
 /// The layout info of a line with soft wrapped lines.
@@ -1120,12 +1088,12 @@ impl LineLayout {
         self.len
     }
 
-    /// Where row `ix` starts, from the left edge of the line's content: its
-    /// indent, then where the alignment puts a row as wide as it is. Caret
-    /// positions, hit testing, selections and what's drawn over the text all
-    /// start rows here, and so does painting, which aligns each row the same
-    /// way within the content's width. Multi-line text is always aligned
-    /// left.
+    /// Where row `ix` starts, measured from the left edge of the line's
+    /// content. That's its indent, then where the alignment puts a row as
+    /// wide as it is. Caret positions, hit testing, selections and what's
+    /// drawn over the text all start rows here, and so does painting, which
+    /// aligns each row the same way within the content's width. Multi-line
+    /// text is always aligned left.
     pub(crate) fn row_x(&self, ix: usize, last_layout: &LastLayout) -> Pixels {
         let width = self
             .wrapped_lines
@@ -1137,39 +1105,23 @@ impl LineLayout {
     /// Where the line's inline text is, for placing a caret around it.
     pub(crate) fn inline_anchor(&self) -> Option<InlineAnchor> {
         let mut acc_len = 0;
-        let (mut first, mut last) = (None, None);
         for (ix, row) in self.wrapped_lines.iter().enumerate() {
-            if let Some(inline) = &row.inline {
-                if inline.slice.start == 0 {
-                    first = Some((ix, acc_len + inline.at, inline.after_is_caret));
-                }
-                if inline.slice.end == inline.len {
-                    last = Some((ix, inline.at == row.len));
-                }
+            if let Some(inline) = row.inline.as_ref().filter(|inline| inline.slice.start == 0) {
+                return Some(InlineAnchor {
+                    offset: acc_len + inline.at,
+                    first_row: ix,
+                });
             }
             acc_len += row.len;
         }
-        let (first_row, offset, after_is_caret) = first?;
-        let (last_row, ends_row) = last?;
-        let after_row = if ends_row && last_row + 1 < self.wrapped_lines.len() {
-            last_row + 1
-        } else {
-            last_row
-        };
-        Some(InlineAnchor {
-            offset,
-            first_row,
-            last_row,
-            after_row,
-            after_is_caret,
-        })
+        None
     }
 
     /// The row the caret at byte `offset` of the line is drawn on, the byte
     /// that row starts at, and the caret's x in the row. `line_end_affinity`
-    /// puts an offset on a wrap boundary at the end of the row before, and
-    /// the inline text's offset after the inline text, where that's a caret
-    /// position.
+    /// puts an offset on a wrap boundary at the end of the row before. The
+    /// inline text's offset is always in front of it, on the row it starts
+    /// on.
     pub(crate) fn caret_row(
         &self,
         offset: usize,
@@ -1188,15 +1140,6 @@ impl LineLayout {
             .inline_anchor()
             .filter(|anchor| anchor.offset == offset)
         {
-            if line_end_affinity && anchor.after_is_caret {
-                let row = anchor.after_row;
-                let x = if row == anchor.last_row {
-                    self.wrapped_lines[row].inserted_span()?.end
-                } else {
-                    self.wrapped_lines[row].x_for_index(offset - starts[row])
-                };
-                return Some((row, starts[row], x));
-            }
             let row = anchor.first_row;
             let x = self.wrapped_lines[row].x_for_index(offset - starts[row]);
             return Some((row, starts[row], x));
@@ -1208,10 +1151,10 @@ impl LineLayout {
                 // Empty visual lines still own their boundary offset.
                 offset == start
             } else if is_last || line_end_affinity {
-                // Inclusive: cursor can sit at end of this visual line.
+                // Inclusive, so the cursor can sit at the end of this visual line.
                 offset >= start && offset <= start + line.len
             } else {
-                // Exclusive: boundary offset belongs to the next visual line.
+                // Exclusive, so the boundary offset belongs to the next visual line.
                 offset >= start && offset < start + line.len
             };
             if matches {
@@ -1321,62 +1264,54 @@ impl LineLayout {
         pos: Point<Pixels>,
         last_layout: &LastLayout,
     ) -> Option<(usize, bool)> {
-        let (i, offset, x) = self.wrapped_line_at(pos, last_layout)?;
-        let line = &self.wrapped_lines[i];
-        let ix = line.closest_index_for_x(x);
-        if let Some(anchor) = self
-            .inline_anchor()
-            .filter(|anchor| anchor.offset == offset + ix)
+        let (i, _, x) = self.wrapped_line_at(pos, last_layout)?;
+        let anchor = self.inline_anchor();
+        // A point on inline text puts the caret in front of it, where the
+        // caret is drawn.
+        if let Some(anchor) = anchor
+            && self.wrapped_lines[i]
+                .inserted_span()
+                .is_some_and(|span| x >= span.start && x <= span.end)
         {
-            return Some(Self::around_inline_text(anchor, i, line, ix, x));
+            return Some((anchor.offset, false));
         }
-        let line_end_affinity = i + 1 < self.wrapped_lines.len() && ix == line.len;
-
-        Some((offset + ix, line_end_affinity))
+        self.closest_position_on_row(i, x)
+            .or(anchor.map(|anchor| (anchor.offset, false)))
     }
 
-    /// Where a point at `x` on row `i` that lands on the inline text's offset
-    /// puts the caret: in front of the inline text, after it with the
-    /// affinity, or on the row's next position where the place after it
-    /// isn't a caret position.
-    fn around_inline_text(
-        anchor: InlineAnchor,
-        i: usize,
-        line: &InputLine,
-        ix: usize,
-        x: Pixels,
-    ) -> (usize, bool) {
-        let after = match (line.inserted_span(), &line.inline) {
-            (Some(span), Some(inline)) => {
-                if x <= span.start {
-                    false
-                } else if x >= span.end {
-                    true
-                } else {
-                    // On the inline text, the nearer of its two ends.
-                    let byte = line.inline_byte_at(x).unwrap_or(0);
-                    if !anchor.after_is_caret {
-                        return (anchor.offset, false);
-                    }
-                    byte * 2 > inline.len
-                }
-            }
-            // A row before the inline text ends where it starts, and one
-            // after it starts where it ends.
-            _ => i > anchor.first_row,
-        };
-        if !after {
-            (anchor.offset, false)
-        } else if anchor.after_is_caret {
-            (anchor.offset, true)
-        } else {
-            let next = line
-                .text
-                .get(ix..)
-                .and_then(|rest| rest.graphemes(true).next())
-                .map_or(0, str::len);
-            (anchor.offset + next, false)
+    /// The caret position on row `row` nearest `x`, in the row's own
+    /// coordinates, as a byte of the line and the line-end affinity it's
+    /// drawn with there. `None` when the row has no caret position. The
+    /// inline text's offset is in front of it on the row it starts on, so
+    /// other rows don't have it, and a row that shows nothing but the middle
+    /// of the inline text has none.
+    pub(crate) fn closest_position_on_row(&self, row: usize, x: Pixels) -> Option<(usize, bool)> {
+        let line = self.wrapped_lines.get(row)?;
+        let start: usize = self.wrapped_lines[..row].iter().map(|row| row.len).sum();
+        let is_last = row + 1 == self.wrapped_lines.len();
+        let ix = line.closest_index_for_x(x);
+        let elsewhere = self
+            .inline_anchor()
+            .is_some_and(|anchor| anchor.offset == start + ix && anchor.first_row != row);
+        if !elsewhere {
+            return Some((start + ix, !is_last && ix == line.len));
         }
+        // The nearest of the row's positions on either side of it.
+        let text: &str = line.text.as_ref();
+        let before = text[..ix]
+            .graphemes(true)
+            .next_back()
+            .map(|grapheme| ix - grapheme.len());
+        let after = text[ix..]
+            .graphemes(true)
+            .next()
+            .map(|grapheme| ix + grapheme.len());
+        let distance = |ix: usize| (line.x_for_index(ix) - x).abs().as_f32();
+        let nearest = [before, after]
+            .into_iter()
+            .flatten()
+            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))?;
+        Some((start + nearest, !is_last && nearest == line.len))
     }
 
     /// How many columns the given position sits past the end of the line under it.
@@ -1755,7 +1690,6 @@ mod tests {
         wrapper.inline_text = Some(InlineText {
             offset: 3,
             text: "xx yy zz ".into(),
-            after_is_caret: true,
         });
         wrapper._update(&text, &(0..text.len()), &text, &mut wrap);
         assert_eq!(
@@ -1768,10 +1702,10 @@ mod tests {
         assert_eq!(wrapper.len(), 7);
         assert_eq!(wrapper.offset_to_display_point(3).row, 1);
         assert_eq!(wrapper.offset_to_display_point(4).row, 4);
-        // The place after it starts the row after the rows it fills.
+        // Its offset is in front of it whatever the affinity.
         assert_eq!(
             wrapper.offset_to_display_point_with_affinity(3, true).row,
-            4
+            1
         );
         // The rows in the middle of it have no caret position.
         assert_eq!(
@@ -1787,7 +1721,6 @@ mod tests {
         wrapper.inline_text = Some(InlineText {
             offset: 6,
             text: "big fat ".into(),
-            after_is_caret: true,
         });
         wrapper._update(&text, &(0..text.len()), &text, &mut wrap);
         // "hello big " and "fat world".

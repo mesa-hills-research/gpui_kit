@@ -258,9 +258,11 @@ Textarea::new(&notes).suggestion_item(|item, _, _| {
 
 A producer such as dictation can show words it hasn't settled yet.
 `set_tentative_text` shows them after the caret in the muted text colour, with a
-hairline in the accent colour under them. They take room in the line and wrap
-with it as typed words would, but they aren't in the document, so `value`,
-copying, undo, search and suggestions don't see them.
+hairline in the accent colour under them, and they follow the caret wherever it
+moves. They take room in the line and wrap with it as typed words would, but
+they aren't in the document, so `value`, copying, undo, search and suggestions
+don't see them. The caret stays in front of them, so moving up and down passes
+over the rows they fill.
 
 ```rust
 // The recognizer heard words that may still change.
@@ -276,9 +278,8 @@ textarea.update(cx, |textarea, cx| {
 an edit of its own, which undo takes back, and the rest keeps showing after it.
 The glyphs stay where they are. Their colour fills in from left to right on the
 smooth caret's glide, and the hairline's left end rides the fill's edge. With
-reduced motion the colour changes at once. `set_tentative_text_at` shows the
-words at an offset that moves with edits instead of after the caret, and
-`clear_tentative_text` takes them away.
+reduced motion the colour changes at once. The caret moves past what went in,
+as typing would move it. `clear_tentative_text` takes the words away.
 
 While an input method composes, the tentative text hides and can't be
 committed. While it shows, no suggestions are offered.

@@ -17,7 +17,7 @@ mod wrap_map;
 
 // Re-export public API
 pub use self::display_map::{DisplayMap, WrappingIndent};
-pub(crate) use self::text_wrapper::{InlineText, InlineTextRows, LineLayout, offset_after_edit};
+pub(crate) use self::text_wrapper::{InlineText, InlineTextRows, LineLayout};
 
 // Re-export FoldRange and extract_fold_ranges
 pub use folding::FoldRange;

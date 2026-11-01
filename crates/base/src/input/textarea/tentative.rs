@@ -1,11 +1,11 @@
 //! Tentative text, the words a producer such as dictation shows in a textarea
 //! before they settle.
 //!
-//! The words show after the caret, or at an offset, in the muted colour with a
+//! The words show after the caret, and follow it, in the muted colour with a
 //! hairline in the accent under them. They take room in their line and wrap
 //! with it as typed words would. They aren't in the document, so the value,
-//! copying, the undo history, search and suggestions never see them, and the
-//! caret and the selection pass over them. Committing a prefix puts it in the
+//! copying, the undo history, search and suggestions never see them. The caret
+//! is always in front of them, so they're never somewhere a caret can be. Committing a prefix puts it in the
 //! document as an edit of its own, drawn by the glyphs that already showed it.
 //! Its colour then fills in from the muted colour to the text colour, left to
 //! right on the smooth caret's glide, and the hairline's left end rides the
@@ -33,7 +33,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use super::{
     InputBaseState, InputModeKind, RopeExt as _, TextareaState,
     cursor::CursorSelection,
-    display_map::{InlineText, offset_after_edit},
+    display_map::InlineText,
     layout::LastLayout,
     smooth_caret::{Glide, WORD_DURATION},
     undo_manager::EditIntent,
@@ -56,9 +56,6 @@ const MAX_COLUMNS: usize = 256;
 #[derive(Default)]
 pub(crate) struct TentativeText {
     text: SharedString,
-    /// Where the text shows. `None` is after the caret, and an offset moves
-    /// with the edits around it.
-    offset: Option<usize>,
     /// The document bytes the last commit put in, whose colour fills in.
     settled: Option<Range<usize>>,
     /// Count the changes of the text and the commits, so a frame can tell new
@@ -86,21 +83,9 @@ impl TentativeText {
         self.text.is_empty()
     }
 
-    /// Moves the text's offset and the committed bytes with an edit of
-    /// `range` to `new_len` bytes. Text put in at the offset goes before the
-    /// tentative text, unless `typed_after` says a caret after the tentative
-    /// text typed it. Committed bytes the edit touches fill in no more.
-    pub(crate) fn adjust_for_edit(
-        &mut self,
-        range: &Range<usize>,
-        new_len: usize,
-        typed_after: bool,
-    ) {
-        if let Some(offset) = &mut self.offset
-            && !(typed_after && range.is_empty() && *offset == range.start)
-        {
-            *offset = offset_after_edit(*offset, range, new_len);
-        }
+    /// Moves the committed bytes with an edit of `range` to `new_len` bytes.
+    /// Committed bytes the edit touches fill in no more.
+    pub(crate) fn adjust_for_edit(&mut self, range: &Range<usize>, new_len: usize) {
         self.settled = self.settled.take().and_then(|settled| {
             if range.end <= settled.start {
                 let start = settled.start + new_len - range.len();
@@ -113,9 +98,9 @@ impl TentativeText {
 }
 
 impl<M: InputModeKind> InputBaseState<M> {
-    /// Where tentative text at `offset` can be. That's a character boundary
-    /// of the document outside any token, which shows as one piece, so an
-    /// offset inside a token is at its end.
+    /// Where tentative text after a caret at `offset` shows. That's a
+    /// character boundary of the document outside any token, which shows as
+    /// one piece, so an offset inside a token is at its end.
     fn tentative_anchor(&self, offset: usize) -> usize {
         let offset = self
             .text
@@ -127,37 +112,21 @@ impl<M: InputModeKind> InputBaseState<M> {
             .map_or(offset, |range| range.end)
     }
 
-    /// Puts the tentative text's offset where it can be, for when the tokens
-    /// changed since it was set. The offset that's kept is the one it shows
-    /// at, which edits move and commits put text at.
-    fn settle_tentative_anchor(&mut self) {
-        if let Some(offset) = self.tentative.offset {
-            self.tentative.offset = Some(self.tentative_anchor(offset));
-        }
-    }
-
     /// The tentative text as it shows now, and where, or `None` while there is
     /// none or an input method composes.
     pub(crate) fn tentative_inline_text(&self) -> Option<InlineText> {
         if self.tentative.text.is_empty() || self.ime_marked_range.is_some() {
             return None;
         }
-        let offset = match self.tentative.offset {
-            Some(offset) => offset,
-            None => self.tentative_anchor(self.cursor()),
-        };
         Some(InlineText {
-            offset,
+            offset: self.tentative_anchor(self.cursor()),
             text: self.tentative.text.clone(),
-            // While it follows the caret, the caret is always in front of it.
-            after_is_caret: self.tentative.offset.is_some(),
         })
     }
 
     /// Lays the tentative text out in its line, and makes room for it in an
     /// input that grows with its text.
     pub(crate) fn sync_tentative_text(&mut self, cx: &mut Context<Self>) {
-        self.settle_tentative_anchor();
         let inline = self.tentative_inline_text();
         let rows = self.display_map.wrap_row_count();
         self.display_map.set_inline_text(inline, cx);
@@ -323,24 +292,7 @@ impl TextareaState {
     /// textarea.update(cx, |textarea, cx| textarea.set_tentative_text(" and the", cx));
     /// ```
     pub fn set_tentative_text(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
-        self.show_tentative_text(None, text.into(), cx);
-    }
-
-    /// Shows `text` as tentative text at byte `offset` of the document, as
-    /// [`Self::set_tentative_text`] does after the caret. The offset moves with
-    /// edits before it, and text put in at the offset goes before it. An
-    /// offset past the end shows at the end, and one inside a token after it.
-    ///
-    /// The caret can be in front of the text or after it. A click on it puts
-    /// the caret at its nearer end, moving up and down stops at both, and a
-    /// caret after it types after it.
-    pub fn set_tentative_text_at(
-        &mut self,
-        offset: usize,
-        text: impl Into<SharedString>,
-        cx: &mut Context<Self>,
-    ) {
-        self.show_tentative_text(Some(offset), text.into(), cx);
+        self.show_tentative_text(text.into(), cx);
     }
 
     /// The tentative text, or an empty string when there is none.
@@ -354,9 +306,9 @@ impl TextareaState {
     ///
     /// Nothing moves. The same glyphs stay, and their colour fills in from
     /// the tentative colour to the text colour, left to right, with the
-    /// smooth caret's glide, at once with reduced motion. A caret the text
-    /// shows after moves to the end of what went in, as typing would move
-    /// it, and other carets stay with the text around them.
+    /// smooth caret's glide, at once with reduced motion. The caret moves to
+    /// the end of what went in, as typing would move it, so the rest stays
+    /// after it, and other carets stay with the text around them.
     ///
     /// Returns whether anything went in. Nothing does while an input method
     /// composes, when `len` is 0, past the tentative text's end or inside a
@@ -367,7 +319,6 @@ impl TextareaState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        self.settle_tentative_anchor();
         let Some(inline) = self.tentative_inline_text() else {
             return false;
         };
@@ -378,10 +329,9 @@ impl TextareaState {
         let at = inline.offset;
         let committed = self.normalize_input(&text[..len]).into_owned();
         let inserted = committed.len();
-        // A caret the tentative text shows after moves past what goes in, as
-        // typing would move it. Other carets stay with the text around them,
-        // and a selection doesn't grow over what goes in at its end.
-        let follows = self.tentative.offset.is_none();
+        // The caret moves past what goes in, as typing would move it. Other
+        // carets stay with the text around them, and a selection doesn't grow
+        // over what goes in at its end.
         let active = self.active_selection().id;
         let shift = |offset: usize, after: bool| {
             if offset > at || (offset == at && after) {
@@ -395,7 +345,7 @@ impl TextareaState {
             .iter()
             .map(|selection| {
                 let mut selection = *selection;
-                if follows && selection.id == active {
+                if selection.id == active {
                     selection.place_at(at + inserted, None);
                 } else if selection.is_empty() {
                     selection.place_at(shift(selection.start, true), selection.column_anchor);
@@ -421,12 +371,6 @@ impl TextareaState {
             return false;
         }
         self.tentative.text = SharedString::new(&text[len..]);
-        // The rest shows after what went in.
-        self.tentative.offset = self
-            .tentative
-            .offset
-            .filter(|_| !self.tentative.text.is_empty())
-            .map(|_| at + inserted);
         self.tentative.settled = Some(at..at + inserted);
         self.tentative.commits += 1;
         self.sync_tentative_text(cx);
@@ -436,28 +380,19 @@ impl TextareaState {
 
     /// Takes the tentative text away, without putting it in the document.
     pub fn clear_tentative_text(&mut self, cx: &mut Context<Self>) {
-        self.show_tentative_text(None, SharedString::default(), cx);
+        self.show_tentative_text(SharedString::default(), cx);
     }
 
-    fn show_tentative_text(
-        &mut self,
-        offset: Option<usize>,
-        text: SharedString,
-        cx: &mut Context<Self>,
-    ) {
+    fn show_tentative_text(&mut self, text: SharedString, cx: &mut Context<Self>) {
         let text = if text.contains(['\n', '\r']) {
             SharedString::from(text.replace("\r\n", " ").replace(['\n', '\r'], " "))
         } else {
             text
         };
-        let offset = offset
-            .filter(|_| !text.is_empty())
-            .map(|offset| self.tentative_anchor(offset));
-        if text == self.tentative.text && offset == self.tentative.offset {
+        if text == self.tentative.text {
             return;
         }
         self.tentative.text = text;
-        self.tentative.offset = offset;
         self.tentative.revision += 1;
         // The caret may be drawn somewhere else now, so up and down start
         // from where it's drawn rather than from a column kept from before.
@@ -1306,24 +1241,9 @@ mod tests {
         assert!(test.frame().is_none());
     }
 
-    /// Text set at an offset stays there as the text around it changes, and
-    /// committing it leaves the caret where it was.
-    #[gpui::test]
-    fn tentative_text_at_an_offset(cx: &mut TestAppContext) {
-        let mut test = Test::new(cx, 400., "Hello");
-        test.update(|state, _, cx| state.set_tentative_text_at(0, "Well, ", cx));
-        assert_span(test.rows()[0].1.clone(), 0., 6.);
-        test.cx.simulate_input("!");
-        test.draw();
-        assert_eq!(test.value(), "Hello!");
-        assert!(test.commit(6));
-        assert_eq!(test.value(), "Well, Hello!");
-        assert_eq!(test.read(|state| state.cursor()), 12);
-    }
-
-    /// Tentative text set inside a token shows after it, and what's committed
-    /// of it goes in there, so the rest follows what went in. The same holds
-    /// when the text it's in becomes a token after it was set.
+    /// Tentative text after a caret next to a token shows after the token,
+    /// and stays after the caret as commits put words in. A token made around
+    /// the caret moves the caret to its end, and the tentative text with it.
     #[gpui::test]
     fn tentative_text_stays_out_of_tokens(cx: &mut TestAppContext) {
         use crate::input::InlineToken;
@@ -1340,32 +1260,19 @@ mod tests {
             };
             if token_first {
                 make_token(&mut test);
+                test.update(|state, _, cx| state.set_selected_range(5..5, cx));
+            } else {
+                test.update(|state, _, cx| state.set_selected_range(2..2, cx));
             }
-            test.update(|state, _, cx| state.set_tentative_text_at(2, "xy", cx));
+            test.update(|state, _, cx| state.set_tentative_text("xy", cx));
             if !token_first {
                 make_token(&mut test);
             }
-            let shown = |test: &Test| {
-                test.read(|state| {
-                    state
-                        .display_map
-                        .inline_text()
-                        .map(|(inline, _)| inline.offset)
-                })
-            };
-            assert_eq!(
-                shown(&test),
-                Some(5),
-                "after the token, token first {token_first}"
-            );
+            assert_eq!(shown(&test), Some(5), "token first {token_first}");
             assert!(test.commit(1));
             assert_eq!(test.value(), "@notex world");
             assert_eq!(test.tentative(), "y");
-            assert_eq!(
-                shown(&test),
-                Some(6),
-                "after what went in, token first {token_first}"
-            );
+            assert_eq!(shown(&test), Some(6), "token first {token_first}");
             assert!(test.commit(1));
             assert_eq!(test.value(), "@notexy world");
         }
@@ -1422,16 +1329,16 @@ mod tests {
     }
 
     /// Undo and redo of a commit bring back every caret where it was, the
-    /// ones elsewhere included.
+    /// ones elsewhere included, and the tentative text follows the caret.
     #[gpui::test]
     fn undo_and_redo_of_a_commit_keep_every_caret(cx: &mut TestAppContext) {
         use crate::input::Redo;
 
         let mut test = Test::new(cx, 400., "Hello there");
         test.update(|state, _, cx| {
-            state.set_selected_range(2..2, cx);
+            state.set_selected_range(5..5, cx);
             state.add_cursor_at(11, cx);
-            state.set_tentative_text_at(5, " big", cx);
+            state.set_tentative_text(" big", cx);
         });
         let carets = |test: &Test| {
             test.read(|state| {
@@ -1440,18 +1347,44 @@ mod tests {
                 carets
             })
         };
-        assert_eq!(carets(&test), [2..2, 11..11]);
+        assert_eq!(carets(&test), [5..5, 11..11]);
         assert!(test.commit(4));
         assert_eq!(test.value(), "Hello big there");
-        assert_eq!(carets(&test), [2..2, 15..15]);
+        assert_eq!(carets(&test), [9..9, 15..15]);
         test.cx.dispatch_action(Undo);
         test.draw();
         assert_eq!(test.value(), "Hello there");
-        assert_eq!(carets(&test), [2..2, 11..11]);
+        assert_eq!(carets(&test), [5..5, 11..11]);
         test.cx.dispatch_action(Redo);
         test.draw();
         assert_eq!(test.value(), "Hello big there");
-        assert_eq!(carets(&test), [2..2, 15..15]);
+        assert_eq!(carets(&test), [9..9, 15..15]);
+    }
+
+    /// The tentative text follows the caret that undo and redo bring back,
+    /// wherever the caret went in between.
+    #[gpui::test]
+    fn tentative_text_follows_the_caret_through_undo_and_redo(cx: &mut TestAppContext) {
+        use crate::input::Redo;
+
+        let mut test = Test::new(cx, 400., "AB");
+        test.update(|state, _, cx| {
+            state.set_selected_range(1..1, cx);
+            state.set_tentative_text("xy", cx);
+        });
+        assert!(test.commit(1));
+        assert_eq!((test.value(), shown(&test)), ("AxB".into(), Some(2)));
+        test.dispatch(Undo);
+        assert_eq!((test.value(), shown(&test)), ("AB".into(), Some(1)));
+        test.update(|state, _, cx| state.set_selected_range(2..2, cx));
+        assert_eq!(shown(&test), Some(2));
+        test.dispatch(Redo);
+        assert_eq!((test.value(), test.place()), ("AxB".into(), (2, false)));
+        assert_eq!(
+            shown(&test),
+            Some(2),
+            "\"Ax\", the tentative \"y\", then \"B\""
+        );
     }
 
     /// Selecting everything and copying leaves the tentative text out.
@@ -1658,166 +1591,191 @@ mod tests {
         );
     }
 
-    /// Six characters a row: "Top " and "line", then "ab " with the
-    /// tentative text "one two three " after it on rows of its own, the "cd"
-    /// after it, and "Bottom". The tentative text is at 12, in front of "cd".
+    /// Six characters a row. `LINES` shows "Top " and "line", "ab ", and
+    /// "Bottom", and with the caret at `ANCHOR`, in front of "cd", the
+    /// tentative text `TENTATIVE` on rows of its own between "ab " and "cd".
+    /// `SHORT` shows "cd" and "next", and with the caret at 0,
+    /// `TENTATIVE_SHORT` shows on "one " and on "two cd", a row it shares with
+    /// the text after it.
     const LINES: &str = "Top line\nab cd\nBottom";
     const TENTATIVE: &str = "one two three ";
     const ANCHOR: usize = 12;
+    const SHORT: &str = "cd\nnext";
+    const TENTATIVE_SHORT: &str = "one two ";
 
-    /// Down and up pass over the rows that show nothing but the middle of
-    /// tentative text. The caret stops in front of it, on the row it starts
-    /// on, and after it, where the text after it starts.
+    /// Where the tentative text shows.
+    fn shown(test: &Test) -> Option<usize> {
+        test.read(|state| {
+            state
+                .display_map
+                .inline_text()
+                .map(|(inline, _)| inline.offset)
+        })
+    }
+
+    /// A textarea of `lines` with the caret at `caret` and `tentative`
+    /// showing after it, `height` tall.
+    fn dictating(
+        cx: &mut TestAppContext,
+        height: f32,
+        lines: &'static str,
+        caret: usize,
+        tentative: &'static str,
+    ) -> Test {
+        let mut test = Test::sized(cx, 70., height, lines);
+        test.update(|state, _, cx| {
+            state.set_selected_range(caret..caret, cx);
+            state.set_tentative_text(tentative, cx);
+        });
+        test
+    }
+
+    /// Presses `step` until `done` says so, or 20 times, and gives what
+    /// `read` saw after each press.
+    fn press(
+        test: &mut Test,
+        step: impl Fn(&mut Test),
+        read: impl Fn(&Test) -> usize,
+        done: impl Fn(usize) -> bool,
+    ) -> Vec<usize> {
+        let mut seen = Vec::new();
+        for _ in 0..20 {
+            step(test);
+            seen.push(read(test));
+            assert_eq!(shown(test), Some(test.place().0), "it follows the caret");
+            if done(*seen.last().unwrap()) {
+                break;
+            }
+        }
+        seen
+    }
+
+    /// Down and up from in front of tentative text move the caret on every
+    /// time, the tentative text following it, and pass over rows that show
+    /// nothing but tentative text, until the caret is on the last or first
+    /// line.
     #[gpui::test]
-    fn up_and_down_pass_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
+    fn up_and_down_move_past_tentative_text(cx: &mut TestAppContext) {
         use crate::input::{MoveDown, MoveUp};
 
-        let mut test = Test::sized(cx, 70., 400., LINES);
-        test.update(|state, _, cx| {
-            state.set_selected_range(0..0, cx);
-            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
-        });
-        assert_eq!(test.caret_row(), 0);
-        let mut down = Vec::new();
-        for _ in 0..6 {
-            test.dispatch(MoveDown);
-            down.push((test.caret_row(), test.place()));
-        }
-        assert_eq!(
-            down,
-            [
-                (1, (4, false)),
-                (2, (9, false)),
-                (3, (ANCHOR, false)),
-                (6, (ANCHOR, true)),
-                (7, (15, false)),
-                (7, (15, false)),
-            ]
+        let caret = |test: &Test| test.place().0;
+        // A row the tentative text shares with the text after it.
+        let mut test = dictating(cx, 400., SHORT, 0, TENTATIVE_SHORT);
+        let down = press(
+            &mut test,
+            |test| test.dispatch(MoveDown),
+            caret,
+            |at| at >= 3,
         );
-        let mut up = Vec::new();
-        for _ in 0..5 {
-            test.dispatch(MoveUp);
-            up.push((test.caret_row(), test.place()));
-        }
+        assert!(
+            *down.last().unwrap() >= 3 && down.windows(2).all(|pair| pair[0] < pair[1]),
+            "down moved on every time until \"next\": {down:?}"
+        );
+        let mut test = dictating(cx, 400., SHORT, SHORT.len(), TENTATIVE_SHORT);
+        let up = press(&mut test, |test| test.dispatch(MoveUp), caret, |at| at < 3);
+        assert!(
+            *up.last().unwrap() < 3 && up.windows(2).all(|pair| pair[0] > pair[1]),
+            "up moved on every time until \"cd\": {up:?}"
+        );
+
+        // Rows of nothing but tentative text between "ab " and "cd".
+        let mut test = dictating(cx, 400., LINES, ANCHOR, TENTATIVE);
+        assert_eq!(test.caret_row(), 3);
+        test.dispatch(MoveDown);
         assert_eq!(
-            up,
-            [
-                (6, (ANCHOR, true)),
-                (3, (ANCHOR, false)),
-                (2, (9, false)),
-                (1, (4, false)),
-                (0, (0, false)),
-            ]
+            test.place(),
+            (ANCHOR + 1, false),
+            "past the rows to \"c|d\""
+        );
+        let mut test = dictating(cx, 400., LINES, ANCHOR, TENTATIVE);
+        test.dispatch(MoveUp);
+        assert_eq!((test.caret_row(), test.place()), (2, (9, false)));
+    }
+
+    /// Selecting down from in front of tentative text moves the selection's
+    /// end on every time, and reaches the end of the text only from the last
+    /// line. Selecting up reaches the start only from the first.
+    #[gpui::test]
+    fn selecting_reaches_the_edge_only_from_the_last_row(cx: &mut TestAppContext) {
+        use crate::actions::{SelectDown, SelectUp};
+
+        let mut test = dictating(cx, 400., SHORT, 0, TENTATIVE_SHORT);
+        let end = |test: &Test| test.read(|state| state.selected_range().end);
+        let ends = press(
+            &mut test,
+            |test| test.dispatch(SelectDown),
+            end,
+            |end| end == SHORT.len(),
+        );
+        let before = ends[ends.len().saturating_sub(2)];
+        assert!(
+            *ends.last().unwrap() == SHORT.len()
+                && before >= 3
+                && ends.windows(2).all(|pair| pair[0] < pair[1]),
+            "the end of the text only from \"next\": {ends:?}"
+        );
+
+        let mut test = dictating(cx, 400., SHORT, SHORT.len(), TENTATIVE_SHORT);
+        let start = |test: &Test| test.read(|state| state.selected_range().start);
+        let starts = press(
+            &mut test,
+            |test| test.dispatch(SelectUp),
+            start,
+            |start| start == 0,
+        );
+        let before = starts[starts.len().saturating_sub(2)];
+        assert!(
+            *starts.last().unwrap() == 0
+                && before < 3
+                && starts.windows(2).all(|pair| pair[0] > pair[1]),
+            "the start only from \"cd\": {starts:?}"
         );
     }
 
-    /// Selecting down stops at the same places, and reaches the end of the
-    /// text only from the last row.
+    /// A page move that ends on a row the tentative text shares with the text
+    /// after it stops there, and one that ends on a row of nothing but
+    /// tentative text goes on.
     #[gpui::test]
-    fn selecting_down_passes_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
-        use crate::actions::SelectDown;
-
-        let mut test = Test::sized(cx, 70., 400., LINES);
-        test.update(|state, _, cx| {
-            state.set_selected_range(0..0, cx);
-            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
-        });
-        let mut ends = Vec::new();
-        for _ in 0..7 {
-            test.dispatch(SelectDown);
-            ends.push((test.caret_row(), test.read(|state| state.selected_range())));
-        }
-        assert_eq!(
-            ends,
-            [
-                (1, 0..4),
-                (2, 0..9),
-                (3, 0..ANCHOR),
-                (6, 0..ANCHOR),
-                (7, 0..15),
-                (7, 0..LINES.len()),
-                (7, 0..LINES.len()),
-            ]
-        );
-    }
-
-    /// A page down or up that ends in the middle of tentative text goes on to
-    /// the next place a caret can be.
-    #[gpui::test]
-    fn a_page_passes_over_the_middle_of_tentative_text(cx: &mut TestAppContext) {
+    fn a_page_stops_on_a_shared_row_and_passes_the_others(cx: &mut TestAppContext) {
         use crate::input::{MovePageDown, MovePageUp};
 
         let line_height =
             Test::new(cx, 70., LINES).read(|state| state.last_layout.as_ref().unwrap().line_height);
-        // Two rows a page.
-        let mut test = Test::sized(cx, 70., (line_height * 2.5).as_f32(), LINES);
-        test.update(|state, _, cx| {
-            state.set_selected_range(9..9, cx);
-            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
-        });
-        let row = |test: &Test| {
-            test.read(|state| {
-                state
-                    .display_map
-                    .offset_to_wrap_display_point_with_affinity(
-                        state.cursor(),
-                        state.cursor_line_end_affinity,
-                    )
-                    .row
-            })
-        };
-        assert_eq!(row(&test), 2);
+        let rows = |rows: f32| (line_height * (rows + 0.5)).as_f32();
+        // A row a page, from "one " to "two cd".
+        let mut test = dictating(cx, rows(1.), SHORT, 0, TENTATIVE_SHORT);
         test.dispatch(MovePageDown);
-        assert_eq!((row(&test), test.place()), (6, (ANCHOR, true)));
+        assert_eq!(test.place(), (1, false));
+        // Two rows a page, from the rows of tentative text to "c|d".
+        let mut test = dictating(cx, rows(2.), LINES, ANCHOR, TENTATIVE);
+        test.dispatch(MovePageDown);
+        assert_eq!(test.place(), (ANCHOR + 1, false));
+        let mut test = dictating(cx, rows(2.), LINES, ANCHOR, TENTATIVE);
         test.dispatch(MovePageUp);
-        assert_eq!((row(&test), test.place()), (3, (ANCHOR, false)));
+        assert_eq!(test.place(), (4, false));
     }
 
-    /// While the tentative text follows the caret, the place after it isn't
-    /// a caret position. Down from in front of it goes to the text after it,
-    /// and a click on it leaves the caret in front of it. With an offset of
-    /// its own, a click on its second half puts the caret after it.
+    /// Left and right step a character, with the tentative text following the
+    /// caret. Home and End go to the start and end of the line, as they do
+    /// in a textarea without tentative text, and it follows there too.
     #[gpui::test]
-    fn the_place_after_tentative_text(cx: &mut TestAppContext) {
-        use crate::input::MoveDown;
-        use gpui::{Modifiers, MouseButton, point};
+    fn left_right_home_and_end_with_tentative_text(cx: &mut TestAppContext) {
+        use crate::input::{MoveEnd, MoveHome, MoveLeft, MoveRight};
 
-        let mut test = Test::sized(cx, 70., 400., LINES);
-        test.update(|state, _, cx| {
-            state.set_selected_range(ANCHOR..ANCHOR, cx);
-            state.set_tentative_text(TENTATIVE, cx);
-        });
-        assert_eq!(test.caret_row(), 3);
-        test.dispatch(MoveDown);
-        assert_eq!(test.place(), (ANCHOR + 1, false));
-
-        let mut test = Test::sized(cx, 70., 400., LINES);
-        test.update(|state, _, cx| {
-            state.set_selected_range(0..0, cx);
-            state.set_tentative_text_at(ANCHOR, TENTATIVE, cx);
-        });
-        let click = |test: &mut Test, row: usize, chars: f32| {
-            let (left, top, line_height) = test.read(|state| {
-                let layout = state.last_layout.as_ref().unwrap();
-                let bounds = state.input_bounds();
-                (bounds.left(), bounds.top(), layout.line_height)
-            });
-            let position = point(
-                left + px(chars * CHAR),
-                top + line_height * (row as f32 + 0.5),
-            );
-            test.cx
-                .simulate_mouse_down(position, MouseButton::Left, Modifiers::default());
-            test.cx
-                .simulate_mouse_up(position, MouseButton::Left, Modifiers::default());
-            test.draw();
-        };
-        // "three", on row 5, is in the second half.
-        click(&mut test, 5, 2.5);
-        assert_eq!((test.caret_row(), test.place()), (6, (ANCHOR, true)));
-        // "one", on row 3, is in the first.
-        click(&mut test, 3, 1.2);
-        assert_eq!((test.caret_row(), test.place()), (3, (ANCHOR, false)));
+        let mut test = dictating(cx, 400., LINES, ANCHOR, TENTATIVE);
+        let steps: [(&str, fn(&mut Test), usize); 6] = [
+            ("right", |test| test.dispatch(MoveRight), ANCHOR + 1),
+            ("left", |test| test.dispatch(MoveLeft), ANCHOR),
+            ("left again", |test| test.dispatch(MoveLeft), ANCHOR - 1),
+            ("right again", |test| test.dispatch(MoveRight), ANCHOR),
+            ("end", |test| test.dispatch(MoveEnd), 14),
+            ("home", |test| test.dispatch(MoveHome), 9),
+        ];
+        for (name, step, offset) in steps {
+            step(&mut test);
+            assert_eq!(test.place().0, offset, "{name}");
+            assert_eq!(shown(&test), Some(offset), "{name}");
+        }
     }
 
     /// While tentative text shows, no suggestions are offered, and those
