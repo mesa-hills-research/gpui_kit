@@ -251,7 +251,9 @@ Text input system based on Rope data structure:
 
 - Commit subjects are `<crate>: <behavior sentence>` (`gpui-base: A row's caret positions
   next to a token are its edges`). Messages are public and describe the change for every
-  user of the kit. They follow the `prose` skill, as does every word a user reads.
+  user of the kit. Every word a user reads uses the fewest plain words that keep the
+  meaning, as a person would explain it to a colleague. Join clauses with a period or a
+  comma, not a colon or a semicolon.
 - Follow naming and organization patterns from existing code
 - Reference macOS/Windows control API design for naming
 - AI-generated code must be refactored to match project style
