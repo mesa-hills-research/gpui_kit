@@ -75,8 +75,6 @@ cargo test --manifest-path shell/Cargo.toml --workspace --exclude gpui-shell
 
 ### Testing
 
-**Note**: Per user configuration, tests do not need to be run.
-
 For pure UI visual or sizing adjustments, do not add automated tests solely to
 assert presentation dimensions. Add tests when the change affects behavior,
 interaction, data flow, or prevents a meaningful regression.
@@ -111,8 +109,8 @@ The implemented foundation architecture is documented in
 `docs/STYLING-AND-MOTION.md`. Preserve these constraints when designing or
 implementing this architecture:
 
-- Do not modify `gpui-base` unless the user explicitly requests a Base-layer
-  change. By default, implement component behavior and visual styling in
+- Change `gpui-base` only when the fix belongs there (behavior, infrastructure,
+  accessibility, focus, overlays, layout). Visual styling belongs in
   `crates/component` or the application layer.
 
 - Keep GPUI Kit as the ecosystem and product brand; `gpui-component` is its
@@ -251,6 +249,9 @@ Text input system based on Rope data structure:
 
 ## Code Style
 
+- Commit subjects are `<crate>: <behavior sentence>` (`gpui-base: A row's caret positions
+  next to a token are its edges`). Messages are public and describe the change for every
+  user of the kit. They follow the `prose` skill, as does every word a user reads.
 - Follow naming and organization patterns from existing code
 - Reference macOS/Windows control API design for naming
 - AI-generated code must be refactored to match project style
