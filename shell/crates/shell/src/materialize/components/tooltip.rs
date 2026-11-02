@@ -34,8 +34,7 @@
 //! name of an icon-only button — for no script cost at all.
 //!
 //! A `tooltip(() => Element)` form is possible over the same overlay and is
-//! deliberately left for later; `.scratch/bindings/tooltip.md` records what it
-//! needs and the one trap in it.
+//! deliberately left for later.
 //!
 //! # Placement
 //!
