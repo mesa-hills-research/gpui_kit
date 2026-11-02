@@ -254,6 +254,8 @@ Text input system based on Rope data structure:
   user of the kit. Every word a user reads uses the fewest plain words that keep the
   meaning, as a person would explain it to a colleague. Join clauses with a period or a
   comma, not a colon or a semicolon.
+- Tests, fixtures, examples and docs use made-up paths and names (`/home/ada/src`,
+  "Acme Studio"), never a real machine's or person's.
 - Follow naming and organization patterns from existing code
 - Reference macOS/Windows control API design for naming
 - AI-generated code must be refactored to match project style
