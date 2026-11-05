@@ -185,9 +185,14 @@ impl Writing {
         })
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "replay"))]
     pub(crate) fn vocabulary(&self) -> &Rc<RefCell<Vocabulary>> {
         &self.vocabulary
+    }
+
+    #[cfg(any(test, feature = "replay"))]
+    pub(crate) fn pacing(&self) -> &SuggestionPacing {
+        &self.pacing
     }
 }
 

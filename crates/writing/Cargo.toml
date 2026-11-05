@@ -22,6 +22,9 @@ default = ["english"]
 # The English word list (SCOWL, size 70), as `WordList::English`. About 1.7 MB.
 english = []
 test-support = ["gpui/test-support", "gpui-base/test-support"]
+# Typing into the suggestions without a window, for measuring them. Not a
+# stable API.
+replay = ["english"]
 
 [dependencies]
 anyhow.workspace = true

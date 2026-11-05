@@ -61,7 +61,7 @@
 mod learned;
 pub(crate) mod local;
 mod model;
-mod pacing;
+pub(crate) mod pacing;
 mod typed;
 pub(crate) mod vocabulary;
 
@@ -70,10 +70,10 @@ pub(crate) use pacing::SuggestionPacing;
 
 use crate::classify::{TextContext, classify_context};
 use crate::text::floor_char_boundary;
-use gpui::{App, Entity, KeyBinding, Subscription, Task, Window};
+use gpui::{App, BackgroundExecutor, Entity, KeyBinding, Subscription, Task, Window};
 use gpui_base::input::{
-    AcceptSuggestionWord, Rope, RopeExt as _, Suggestion, SuggestionEvent, SuggestionProvider,
-    SuggestionRequest, TextChange, TextareaState,
+    AcceptSuggestionWord, EditOrigin, Rope, RopeExt as _, Suggestion, SuggestionEvent,
+    SuggestionProvider, SuggestionRequest, TextChange, TextEdit, TextareaState,
 };
 use learned::{LearnedSentences, typed_copies};
 use local::{Held, LocalIndex, WordTally, tally};
@@ -148,6 +148,33 @@ pub fn accept_word_bindings() -> Vec<KeyBinding> {
         "ctrl-right"
     };
     vec![KeyBinding::new(key, AcceptSuggestionWord, Some("Input"))]
+}
+
+/// One edit of the text, with the byte range it replaced in the text as it
+/// stood just before, the text that replaced it, and where that came from.
+#[derive(Clone, Debug)]
+pub(crate) struct Edit<'a> {
+    pub range: Range<usize>,
+    pub text: &'a str,
+    pub origin: EditOrigin,
+}
+
+impl<'a> From<&'a TextEdit> for Edit<'a> {
+    fn from(edit: &'a TextEdit) -> Self {
+        Self {
+            range: edit.range(),
+            text: edit.text(),
+            origin: edit.origin(),
+        }
+    }
+}
+
+/// What a request for suggestions found, the model's suggestion and what
+/// pacing lets show of it now.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Answer {
+    pub model: Option<String>,
+    pub shown: Option<String>,
 }
 
 /// Canonicalizes safe single-character prediction tokens.
@@ -556,9 +583,14 @@ impl WordSuggestions {
     }
 
     /// Brings the count of the document's words to `text`, with the word at
-    /// `caret` left out. The first count of a large text runs on another
-    /// thread, and the words join once it is done.
-    pub(crate) fn count_words(&self, text: &Rope, caret: usize, cx: &App) {
+    /// `caret` left out. The first count of a large text runs on `executor`,
+    /// and the words join once it is done. Without one it runs here.
+    pub(crate) fn count_words(
+        &self,
+        text: &Rope,
+        caret: usize,
+        executor: Option<&BackgroundExecutor>,
+    ) {
         let mut counting = self.counting.borrow_mut();
         let counted = counting
             .as_ref()
@@ -584,11 +616,11 @@ impl WordSuggestions {
             .is_some_and(|counted| counted.len() == text.len())
         {
             self.with_held(|held| index.move_caret(caret, held));
-        } else if text.len() <= LOCAL_COUNT_ON_UI_BYTES {
-            self.with_held(|held| index.build(text, caret, held));
-        } else {
+        } else if let Some(executor) = executor.filter(|_| text.len() > LOCAL_COUNT_ON_UI_BYTES) {
             index.clear();
-            *counting = Some(Counting::start(text.clone(), caret, cx));
+            *counting = Some(Counting::start(text.clone(), caret, executor));
+        } else {
+            self.with_held(|held| index.build(text, caret, held));
         }
     }
 
@@ -608,9 +640,84 @@ impl WordSuggestions {
     }
 
     /// What a request for the suggestions at `offset` in `text` offers.
+    #[cfg(test)]
     pub(crate) fn suggest_in(&self, text: &Rope, offset: usize, now: Instant) -> Option<String> {
+        self.answer_in(text, offset, now).shown
+    }
+
+    /// What a request for the suggestions at `offset` in `text` finds.
+    pub(crate) fn answer_in(&self, text: &Rope, offset: usize, now: Instant) -> Answer {
         let excerpt = Excerpt::around(text, offset);
         self.suggest(text, &excerpt, excerpt.offset_in(offset), now)
+    }
+
+    /// What a request at `offset` in `text`, made at `now`, finds, once the
+    /// count of the document's words is up to date. What [`Self::suggestions`]
+    /// offers.
+    pub(crate) fn request(
+        &self,
+        text: &Rope,
+        offset: usize,
+        now: Instant,
+        executor: Option<&BackgroundExecutor>,
+    ) -> Answer {
+        if self.pacer.mode() == SuggestionMode::Off {
+            return Answer::default();
+        }
+        self.count_words(text, offset, executor);
+        self.answer_in(text, offset, now)
+    }
+
+    /// Hears that the user typed `text` at byte `offset`, and returns
+    /// whether it asks for suggestions. What [`Self::is_trigger`] does.
+    pub(crate) fn typed_key(&self, offset: usize, text: &str, now: Instant) -> bool {
+        let triggers = self.pacer.mode() != SuggestionMode::Off
+            && text.chars().any(|character| {
+                character.is_alphanumeric()
+                    || character == '_'
+                    || character == '-'
+                    || character == ' '
+                    || is_sentence_terminator(character)
+            });
+        self.pacer.typed(offset, text, triggers, now);
+        triggers
+    }
+
+    /// Follows `edits`, which made `text`. What [`Self::did_change`] does.
+    pub(crate) fn heard(&self, edits: &[Edit], text: &Rope, now: Instant) {
+        // What is written while suggestions are off is never learned.
+        let learning = self.pacer.mode() != SuggestionMode::Off;
+        let before = len_before(edits, text.len());
+        if before != Some(self.known_len.get().unwrap_or(0)) {
+            self.missed_edits(before);
+        }
+        self.known_len.set(Some(text.len()));
+        self.typed.borrow_mut().changed(edits, learning);
+        if before.is_none() {
+            self.typed.borrow_mut().untyped_all(text.len());
+        }
+        if text.len() == 0 {
+            self.forget_cleared_text();
+        }
+        self.count_edits(
+            edits.iter().map(|edit| (edit.range.clone(), edit.text)),
+            text.len(),
+        );
+        if let Some(caret) = self.pacer.changed(edits, now) {
+            self.learn_before(text, caret);
+        }
+    }
+
+    /// Hears that Tab took the suggestion, or a word of it.
+    #[cfg(any(test, feature = "replay"))]
+    pub(crate) fn accepted(&self) {
+        self.pacer.accepted();
+    }
+
+    /// Hears that Escape closed the suggestion.
+    #[cfg(any(test, feature = "replay"))]
+    pub(crate) fn dismissed(&self, now: Instant) {
+        self.pacer.dismissed(now);
     }
 
     /// Follows `edits`, ranges and the text that replaced them, in the
@@ -653,24 +760,19 @@ impl WordSuggestions {
     /// The suggestion to offer at `offset` in `excerpt` of `whole`, if any:
     /// learns the sentence the caret just left, asks the model, and lets
     /// pacing decide whether it shows now.
-    fn suggest(
-        &self,
-        whole: &Rope,
-        excerpt: &Excerpt,
-        offset: usize,
-        now: Instant,
-    ) -> Option<String> {
+    fn suggest(&self, whole: &Rope, excerpt: &Excerpt, offset: usize, now: Instant) -> Answer {
         self.learn_preceding_sentence(whole, excerpt, offset);
 
         let text = excerpt.text.as_str();
-        let suggestion = {
+        let model = {
             let vocabulary = self.vocabulary.borrow();
             let local = self.local_index.borrow();
 
             generate_suggestion(&vocabulary, &local, text, offset)
         };
         let caret = excerpt.start + offset;
-        self.pacer.offer(text, offset, caret, suggestion, now)
+        let shown = self.pacer.offer(text, offset, caret, model.clone(), now);
+        Answer { model, shown }
     }
 
     /// Learns the most recently finished prose sentence before `offset` in
@@ -834,17 +936,17 @@ impl Excerpt {
     }
 }
 
-/// The length of the text before `change`, worked back from its length
-/// after it and its edits, which apply one after another. `None` when the
-/// edits don't fit any text.
-fn len_before(change: &TextChange) -> Option<usize> {
-    let mut len = change.text().len();
-    for edit in change.edits().iter().rev() {
-        len = len.checked_sub(edit.text().len())?;
-        if edit.range().start > len {
+/// The length of the text before `edits`, worked back from its length
+/// `len` after them, as they apply one after another. `None` when the edits
+/// don't fit any text.
+fn len_before(edits: &[Edit], len: usize) -> Option<usize> {
+    let mut len = len;
+    for edit in edits.iter().rev() {
+        len = len.checked_sub(edit.text.len())?;
+        if edit.range.start > len {
             return None;
         }
-        len += edit.range().len();
+        len += edit.range.len();
     }
     Some(len)
 }
@@ -861,10 +963,10 @@ struct Counting {
 }
 
 impl Counting {
-    fn start(text: Rope, caret: Option<usize>, cx: &App) -> Self {
+    fn start(text: Rope, caret: Option<usize>, executor: &BackgroundExecutor) -> Self {
         let (sender, result) = mpsc::channel();
         let counted = text.clone();
-        let task = cx.background_executor().spawn(async move {
+        let task = executor.spawn(async move {
             let _ = sender.send(local::count(&counted, caret));
         });
         Self {
@@ -921,31 +1023,18 @@ impl SuggestionProvider for WordSuggestions {
         _window: &mut Window,
         cx: &mut App,
     ) -> Task<anyhow::Result<Vec<Suggestion>>> {
-        if self.pacer.mode() == SuggestionMode::Off {
-            return Task::ready(Ok(Vec::new()));
-        }
-
-        self.count_words(request.text(), request.offset(), cx);
-        let suggestion = self.suggest_in(
+        let executor = cx.background_executor();
+        let answer = self.request(
             request.text(),
             request.offset(),
-            cx.background_executor().now(),
+            executor.now(),
+            Some(executor),
         );
-        Task::ready(Ok(suggestion.into_iter().map(Suggestion::new).collect()))
+        Task::ready(Ok(answer.shown.into_iter().map(Suggestion::new).collect()))
     }
 
     fn is_trigger(&self, offset: usize, text: &str, cx: &mut App) -> bool {
-        let triggers = self.pacer.mode() != SuggestionMode::Off
-            && text.chars().any(|character| {
-                character.is_alphanumeric()
-                    || character == '_'
-                    || character == '-'
-                    || character == ' '
-                    || is_sentence_terminator(character)
-            });
-        self.pacer
-            .typed(offset, text, triggers, cx.background_executor().now());
-        triggers
+        self.typed_key(offset, text, cx.background_executor().now())
     }
 
     /// Quiet waits for typing to pause, longer after ignored suggestions,
@@ -963,31 +1052,8 @@ impl SuggestionProvider for WordSuggestions {
     /// what Eager would, and at the same moments: after a typed key, never
     /// at a paste, an undo or another edit the user didn't type.
     fn did_change(&self, change: &TextChange, cx: &mut App) {
-        // What is written while suggestions are off is never learned.
-        let learning = self.pacer.mode() != SuggestionMode::Off;
-        let before = len_before(change);
-        if before != Some(self.known_len.get().unwrap_or(0)) {
-            self.missed_edits(before);
-        }
-        self.known_len.set(Some(change.text().len()));
-        self.typed.borrow_mut().changed(change, learning);
-        if before.is_none() {
-            self.typed.borrow_mut().untyped_all(change.text().len());
-        }
-        if change.text().len() == 0 {
-            self.forget_cleared_text();
-        }
-        self.count_edits(
-            change
-                .edits()
-                .iter()
-                .map(|edit| (edit.range(), edit.text())),
-            change.text().len(),
-        );
-        let now = cx.background_executor().now();
-        if let Some(caret) = self.pacer.changed(change, now) {
-            self.learn_before(change.text(), caret);
-        }
+        let edits: Vec<Edit> = change.edits().iter().map(Edit::from).collect();
+        self.heard(&edits, change.text(), cx.background_executor().now());
     }
 }
 

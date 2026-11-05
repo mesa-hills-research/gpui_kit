@@ -27,6 +27,9 @@
 mod classify;
 mod completion;
 mod options;
+#[cfg(any(test, feature = "replay"))]
+#[doc(hidden)]
+pub mod replay;
 mod spelling;
 mod text;
 #[cfg(test)]

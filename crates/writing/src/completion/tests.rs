@@ -1029,7 +1029,7 @@ fn a_large_document_is_counted_on_another_thread(cx: &mut TestAppContext) {
     assert!(content.len() > LOCAL_COUNT_ON_UI_BYTES);
     let suggestions = writing(Vocabulary::new()).word_suggestions();
     let text = Rope::from(content.as_str());
-    cx.update(|cx| suggestions.count_words(&text, text.len(), cx));
+    cx.update(|cx| suggestions.count_words(&text, text.len(), Some(cx.background_executor())));
     assert_eq!(counted(&suggestions, "wojciech"), 0);
 
     // Typed while it counts.
@@ -1039,13 +1039,13 @@ fn a_large_document_is_counted_on_another_thread(cx: &mut TestAppContext) {
     content.replace_range(0..5, "");
     let text = Rope::from(content.as_str());
     cx.run_until_parked();
-    cx.update(|cx| suggestions.count_words(&text, 0, cx));
+    cx.update(|cx| suggestions.count_words(&text, 0, Some(cx.background_executor())));
     assert_eq!(counted(&suggestions, "wojciech"), 4);
     assert_eq!(counted(&suggestions, "ferns"), 2500 - 1 + 3);
 
     let small = writing(Vocabulary::new()).word_suggestions();
     let text = Rope::from("Ask Wojciech about the ferns.");
-    cx.update(|cx| small.count_words(&text, 0, cx));
+    cx.update(|cx| small.count_words(&text, 0, Some(cx.background_executor())));
     assert_eq!(counted(&small, "wojciech"), 1);
 }
 
@@ -1146,4 +1146,323 @@ fn the_text_around_the_caret_is_enough() {
             offset += 1;
         }
     }
+}
+
+/// Made-up writing for the replay tests, sentences built from a few
+/// phrases so that suggestions come up, with greetings, lists, code, pastes,
+/// numbers, brackets and contractions among them.
+struct MadeUp {
+    state: u64,
+}
+
+/// A stretch of made-up writing, typed or pasted.
+enum Segment {
+    Typed(String),
+    Pasted(String),
+}
+
+impl MadeUp {
+    fn new(seed: u64) -> Self {
+        Self { state: seed.max(1) }
+    }
+
+    fn next(&mut self) -> u64 {
+        self.state ^= self.state << 13;
+        self.state ^= self.state >> 7;
+        self.state ^= self.state << 17;
+        self.state
+    }
+
+    fn pick<'a>(&mut self, items: &[&'a str]) -> &'a str {
+        items[(self.next() % items.len() as u64) as usize]
+    }
+
+    fn sentence(&mut self) -> String {
+        const SUBJECTS: &[&str] = &["I", "We", "The team", "Maya", "Our client", "Everyone"];
+        const VERBS: &[&str] = &[
+            "will send",
+            "needs",
+            "should review",
+            "can share",
+            "wants to discuss",
+            "finished",
+        ];
+        const OBJECTS: &[&str] = &[
+            "the report",
+            "the budget",
+            "the new design",
+            "the meeting notes",
+            "the draft",
+            "the onboarding guide",
+        ];
+        const TAILS: &[&str] = &[
+            " by Friday",
+            " tomorrow morning",
+            " before the call",
+            " next week",
+            "",
+            ", if that works",
+        ];
+        const FIXED: &[&str] = &[
+            "Thanks for the update.",
+            "Let me know if you have any questions.",
+            "Sorry for the delay.",
+            "I don't think we're ready yet.",
+            "It's on the shared drive (see the folder).",
+            "We have 3 drafts and 12 notes.",
+            "The API is down again!",
+            "Can you take a look at \"the draft\"?",
+        ];
+        match self.next() % 10 {
+            0..=3 => FIXED[(self.next() % FIXED.len() as u64) as usize].to_string(),
+            4 => format!("Hi {},", self.pick(&["Maya", "Sam", "Priya", "Tomasz"])),
+            5 => format!("- {}{}", self.pick(OBJECTS), self.pick(TAILS)),
+            _ => {
+                let end = self.pick(&[".", ".", "!", "?"]);
+                format!(
+                    "{} {} {}{}{end}",
+                    self.pick(SUBJECTS),
+                    self.pick(VERBS),
+                    self.pick(OBJECTS),
+                    self.pick(TAILS)
+                )
+            }
+        }
+    }
+
+    /// About `sentences` sentences, with line breaks, code and pastes.
+    fn segments(&mut self, sentences: usize) -> Vec<Segment> {
+        let mut segments = Vec::new();
+        let mut typed = String::new();
+        for index in 0..sentences {
+            match self.next() % 40 {
+                0 => {
+                    typed.push_str("```\nlet total = compute_total(items);\nreturn total;\n```\n");
+                }
+                1 => {
+                    segments.push(Segment::Typed(std::mem::take(&mut typed)));
+                    segments.push(Segment::Pasted(
+                        "Error: the build failed at step 4.\n".into(),
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
+            typed.push_str(&self.sentence());
+            typed.push_str(match self.next() % 6 {
+                0 => "\n",
+                1 => "\n\n",
+                _ => " ",
+            });
+            if index % 25 == 24 {
+                segments.push(Segment::Typed(std::mem::take(&mut typed)));
+            }
+        }
+        segments.push(Segment::Typed(typed));
+        segments
+    }
+}
+
+/// What a typist does next.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Key {
+    Char(char),
+    Enter,
+    Backspace,
+    Tab,
+    Word,
+    Escape,
+}
+
+/// Whether `ghost` is right where `rest` is what the writer means to type
+/// next, all of it, case included, up to the end of a word.
+fn is_right(ghost: &str, rest: &str) -> bool {
+    rest.starts_with(ghost)
+        && rest[ghost.len()..]
+            .chars()
+            .next()
+            .is_none_or(|next| !super::is_word_char_at(rest, ghost.len(), next))
+}
+
+/// The key a typist presses next, at step `step`, with `ghost` on screen
+/// and `rest` left to type. It takes a right suggestion with Tab, or now
+/// and then with the next-word key, closes a wrong one with Escape now and
+/// then, and now and then makes a typo it fixes at once.
+fn next_key(ghost: Option<&str>, rest: &str, step: u64, typo: &mut bool) -> Key {
+    if *typo {
+        *typo = false;
+        return Key::Backspace;
+    }
+    let next = rest.chars().next().expect("text left to type");
+    match ghost {
+        Some(ghost) if is_right(ghost, rest) => {
+            return if step % 4 == 0 { Key::Word } else { Key::Tab };
+        }
+        Some(_) if step % 7 == 0 => return Key::Escape,
+        _ => {}
+    }
+    if step % 53 == 0 && next.is_alphabetic() {
+        *typo = true;
+        return Key::Char('q');
+    }
+    if next == '\n' {
+        Key::Enter
+    } else {
+        Key::Char(next)
+    }
+}
+
+/// The pause before the key at `offset` of `text`. It is short within
+/// words, and longer at some word starts and at sentence starts, so that
+/// Quiet has pauses to show suggestions in.
+fn gap_before(text: &str, offset: usize, step: u64) -> Duration {
+    let before = text[..offset].chars().next_back();
+    match before {
+        None | Some('\n' | '.' | '!' | '?') => ms(700),
+        Some(' ') if step % 3 == 0 => ms(450),
+        _ if step % 11 == 0 => ms(350),
+        _ => ms(90),
+    }
+}
+
+/// Types `segments` into a replay field, as [`next_key`] decides, and calls
+/// `seen` after every key with the key and the field.
+fn type_segments(
+    field: &mut crate::replay::Field,
+    segments: &[Segment],
+    mut seen: impl FnMut(Option<Key>, &str, Duration, &crate::replay::Field),
+) {
+    let mut step = 0u64;
+    let mut typo = false;
+    for segment in segments {
+        let text = match segment {
+            Segment::Pasted(text) => {
+                field.paste(text);
+                seen(None, text, Duration::ZERO, field);
+                continue;
+            }
+            Segment::Typed(text) => text,
+        };
+        let mut offset = 0;
+        while offset < text.len() || typo {
+            step += 1;
+            let gap = gap_before(text, offset, step);
+            field.wait(gap);
+            let key = next_key(field.ghost().as_deref(), &text[offset..], step, &mut typo);
+            let inserted = match key {
+                Key::Char(character) => {
+                    field.type_key(&character.to_string());
+                    if typo { 0 } else { character.len_utf8() }
+                }
+                Key::Enter => {
+                    field.enter();
+                    1
+                }
+                Key::Backspace => {
+                    field.backspace();
+                    0
+                }
+                Key::Tab => field.tab().map_or(0, |ghost| ghost.len()),
+                Key::Word => field.accept_word().map_or(0, |word| word.len()),
+                Key::Escape => {
+                    field.escape();
+                    0
+                }
+            };
+            offset += inserted;
+            seen(Some(key), "", gap, field);
+        }
+    }
+}
+
+/// The replay offers what a real textarea offers, key for key. The text,
+/// the suggestion after every key, in Eager and in Quiet with
+/// pauses, and the words learned are the same, through Tab, the next-word
+/// key, Escape, typos, Enter and pastes.
+#[gpui::test]
+fn the_replay_offers_what_a_textarea_offers(cx: &mut TestAppContext) {
+    for mode in [SuggestionMode::Eager, SuggestionMode::Quiet] {
+        let segments = MadeUp::new(7).segments(160);
+        let mut typist = Typist::with_vocabulary(cx, mode, Vocabulary::new());
+        let replayed = writing(Vocabulary::new());
+        replayed.set_suggestion_mode(mode);
+        let writer = crate::replay::Writer::with_writing(replayed);
+        let mut field = writer.field();
+        let mut keys = 0;
+        type_segments(&mut field, &segments, |key, pasted, gap, field| {
+            match key {
+                None => paste(&mut typist, pasted),
+                Some(key) => {
+                    typist.wait(gap);
+                    match key {
+                        Key::Char(character) => typist.type_text(&character.to_string()),
+                        Key::Enter => typist.cx.simulate_keystrokes("enter"),
+                        Key::Backspace => typist.cx.simulate_keystrokes("backspace"),
+                        Key::Tab => typist.cx.simulate_keystrokes("tab"),
+                        Key::Word => typist.cx.simulate_keystrokes(if cfg!(target_os = "macos") {
+                            "cmd-right"
+                        } else {
+                            "ctrl-right"
+                        }),
+                        Key::Escape => typist.cx.simulate_keystrokes("escape"),
+                    }
+                }
+            }
+            keys += 1;
+            assert_eq!(typist.value(), field.text(), "{mode:?}, key {keys} {key:?}");
+            assert_eq!(
+                typist.ghost().as_deref(),
+                field.suggestion(),
+                "{mode:?}, key {keys} {key:?}, after {:?}",
+                &field.text()[field.text().len().saturating_sub(40)..]
+            );
+        });
+        assert!(keys > 3000, "{keys}");
+        assert_eq!(learned(&typist), writer.word_counts(), "{mode:?}");
+    }
+}
+
+/// FNV-1a, a hash that stays the same from one Rust release to the next.
+fn fnv(hash: &mut u64, bytes: &[u8]) {
+    for byte in bytes {
+        *hash ^= u64::from(*byte);
+        *hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+}
+
+/// The offers a fixed stretch of made-up writing gets, replayed in Eager
+/// and in Quiet, stay what they were, so a change meant to leave behaviour
+/// alone must leave this hash alone. A change meant to alter the offers
+/// updates it, and says what changed in its message.
+#[test]
+fn offers_on_fixed_writing_stay_the_same() {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut tabs = 0;
+    let mut shown = 0;
+    for mode in [SuggestionMode::Eager, SuggestionMode::Quiet] {
+        let segments = MadeUp::new(11).segments(800);
+        let replayed = writing(Vocabulary::new());
+        replayed.set_suggestion_mode(mode);
+        let writer = crate::replay::Writer::with_writing(replayed);
+        let mut field = writer.field();
+        type_segments(&mut field, &segments, |key, _, _, field| {
+            tabs += usize::from(matches!(key, Some(Key::Tab | Key::Word)));
+            let ghost = field.ghost();
+            shown += usize::from(ghost.is_some());
+            fnv(&mut hash, ghost.as_deref().unwrap_or("-").as_bytes());
+            fnv(&mut hash, b"\0");
+        });
+        for (word, count) in writer.word_counts() {
+            fnv(&mut hash, format!("{word} {count}\n").as_bytes());
+        }
+        // A composer's send learns the last sentence and empties it.
+        field.type_key("A");
+        field.send();
+        assert_eq!(field.text(), "");
+    }
+    assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
+    assert_eq!(
+        hash, 0x1bde_d795_7d72_5008,
+        "offers hash {hash:#x}, {tabs} taken, {shown} shown"
+    );
 }

@@ -41,8 +41,8 @@
 //!
 //! This state lives in memory for the session.
 
-use super::{extract_prefix, previous_two_words, word_end};
-use gpui_base::input::{SuggestionEvent, TextChange};
+use super::{Edit, extract_prefix, previous_two_words, word_end};
+use gpui_base::input::SuggestionEvent;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -117,6 +117,24 @@ pub(crate) struct SuggestionPacing {
     /// Lowercased ignored words, each with the lowercased leads it was
     /// ignored after and when that ends.
     suppressed: RefCell<HashMap<String, Vec<(String, Instant)>>>,
+    /// What happened to the offers, for a replay to read.
+    #[cfg(any(test, feature = "replay"))]
+    log: RefCell<Vec<Paced>>,
+}
+
+/// Something the pacing did to an offer, as a replay sees it.
+#[cfg(any(test, feature = "replay"))]
+#[derive(Clone, Debug, PartialEq)]
+pub enum Paced {
+    /// The offer of `word` after `lead` was ignored, counting `weight`.
+    Ignored {
+        word: String,
+        lead: String,
+        weight: u32,
+    },
+    /// The model's `word` after `lead` wasn't shown, as it was ignored
+    /// there before.
+    Suppressed { word: String, lead: String },
 }
 
 impl SuggestionPacing {
@@ -125,7 +143,15 @@ impl SuggestionPacing {
             mode: Cell::new(mode),
             ignored_in_a_row: Cell::new(0),
             suppressed: RefCell::new(HashMap::new()),
+            #[cfg(any(test, feature = "replay"))]
+            log: RefCell::new(Vec::new()),
         }
+    }
+
+    /// What the pacing did since this was last called.
+    #[cfg(any(test, feature = "replay"))]
+    pub fn take_log(&self) -> Vec<Paced> {
+        std::mem::take(&mut self.log.borrow_mut())
     }
 
     pub fn mode(&self) -> SuggestionMode {
@@ -148,6 +174,12 @@ impl SuggestionPacing {
     }
 
     fn ignored(&self, offer: &Offer, weight: u32, now: Instant) {
+        #[cfg(any(test, feature = "replay"))]
+        self.log.borrow_mut().push(Paced::Ignored {
+            word: offer.word.clone(),
+            lead: offer.lead.clone(),
+            weight,
+        });
         self.ignored_in_a_row
             .set(self.ignored_in_a_row.get().saturating_add(weight));
         let mut suppressed = self.suppressed.borrow_mut();
@@ -322,25 +354,25 @@ impl Pacer {
     /// Settles the pending suggestion by an edit that wasn't typing: Enter,
     /// Tab, deleting or undoing.
     ///
-    /// In Quiet, returns where the caret went when `change` holds a
-    /// keystroke after which Eager would have asked for a suggestion, and
-    /// so learned the sentence before the caret.
-    pub fn changed(&self, change: &TextChange, now: Instant) -> Option<usize> {
+    /// In Quiet, returns where the caret went when `edits` hold a keystroke
+    /// after which Eager would have asked for a suggestion, and so learned
+    /// the sentence before the caret.
+    pub fn changed(&self, edits: &[Edit], now: Instant) -> Option<usize> {
         let mut typed = self.typed.take();
         if !self.is_quiet() {
             return None;
         }
         let mut learn_at = None;
-        for edit in change.edits() {
-            let range = edit.range();
+        for edit in edits {
+            let range = edit.range.clone();
             // Edits after the keystroke move the caret it left.
             if let Some(caret) = learn_at.as_mut()
                 && range.end <= *caret
             {
-                *caret = *caret - range.len() + edit.text().len();
+                *caret = *caret - range.len() + edit.text.len();
             }
             if let Some(keystroke) = typed.take_if(|keystroke| {
-                range.start == keystroke.offset && edit.text().starts_with(&keystroke.text)
+                range.start == keystroke.offset && edit.text.starts_with(&keystroke.text)
             }) {
                 if keystroke.triggers {
                     learn_at = Some(keystroke.offset + keystroke.text.len());
@@ -350,9 +382,9 @@ impl Pacer {
             let Some(offer) = self.offer.take() else {
                 continue;
             };
-            let inserted_at_caret = range == (offer.caret..offer.caret) && !edit.text().is_empty();
+            let inserted_at_caret = range == (offer.caret..offer.caret) && !edit.text.is_empty();
             // Tab taking the suggestion inserts it, and its event follows.
-            if inserted_at_caret && !offer.ghost.starts_with(edit.text()) {
+            if inserted_at_caret && !offer.ghost.starts_with(edit.text) {
                 self.shared.ignored(&offer, 1, now);
             }
         }
@@ -361,20 +393,31 @@ impl Pacer {
 
     /// Settles the pending suggestion by Tab or Escape.
     pub fn event(&self, event: &SuggestionEvent, now: Instant) {
+        match event {
+            SuggestionEvent::Accepted { .. } => self.accepted(),
+            SuggestionEvent::Dismissed { .. } => self.dismissed(now),
+            _ => {
+                self.is_quiet();
+            }
+        }
+    }
+
+    /// Settles the pending suggestion as taken with Tab, whole or a word.
+    pub fn accepted(&self) {
         if !self.is_quiet() {
             return;
         }
-        match event {
-            SuggestionEvent::Accepted { .. } => {
-                self.offer.take();
-                self.shared.accepted();
-            }
-            SuggestionEvent::Dismissed { .. } => {
-                if let Some(offer) = self.offer.take() {
-                    self.shared.ignored(&offer, ESCAPE_WEIGHT, now);
-                }
-            }
-            _ => {}
+        self.offer.take();
+        self.shared.accepted();
+    }
+
+    /// Settles the pending suggestion as closed with Escape.
+    pub fn dismissed(&self, now: Instant) {
+        if !self.is_quiet() {
+            return;
+        }
+        if let Some(offer) = self.offer.take() {
+            self.shared.ignored(&offer, ESCAPE_WEIGHT, now);
         }
     }
 
@@ -420,6 +463,11 @@ impl Pacer {
             };
         }
         if self.shared.is_suppressed(&offer.lead, &offer.word, now) {
+            #[cfg(any(test, feature = "replay"))]
+            self.shared.log.borrow_mut().push(Paced::Suppressed {
+                word: offer.word.clone(),
+                lead: offer.lead.clone(),
+            });
             *pending = None;
             return None;
         }

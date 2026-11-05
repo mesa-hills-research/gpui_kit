@@ -11,7 +11,8 @@
 //! Insertions without a letter, such as Enter or an indent, can't add words
 //! and are left out.
 
-use gpui_base::input::{EditOrigin, TextChange};
+use super::Edit;
+use gpui_base::input::EditOrigin;
 use std::ops::Range;
 
 #[derive(Default)]
@@ -22,17 +23,17 @@ pub(super) struct TypedText {
 }
 
 impl TypedText {
-    /// Follows `change`, edit by edit. Unless `learning`, as while
+    /// Follows `edits`, one after another. Unless `learning`, as while
     /// suggestions are off, even what the user writes is untyped, so it is
     /// never learned.
-    pub fn changed(&mut self, change: &TextChange, learning: bool) {
-        for edit in change.edits() {
+    pub fn changed(&mut self, edits: &[Edit], learning: bool) {
+        for edit in edits {
             let origin = if learning {
-                edit.origin()
+                edit.origin
             } else {
                 EditOrigin::Program
             };
-            self.edit(edit.range(), edit.text(), origin);
+            self.edit(edit.range.clone(), edit.text, origin);
         }
     }
 
