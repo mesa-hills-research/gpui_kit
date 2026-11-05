@@ -886,7 +886,7 @@ impl SpellScanner {
     fn record(&mut self, content: String) -> LineRecord {
         let hash = hash_line(&content);
         let entry = self.cache.entry(hash).or_insert_with(|| CachedLine {
-            code_score: line_code_score(&content),
+            code_score: spelling_code_score(&content),
             is_fence: content.trim_start().starts_with("```"),
             misspellings: None,
         });
@@ -936,7 +936,7 @@ impl SpellScanner {
             let hash = hash_line(&content);
             if let std::collections::hash_map::Entry::Vacant(e) = new_cache.entry(hash) {
                 let entry = self.cache.remove(&hash).unwrap_or_else(|| CachedLine {
-                    code_score: line_code_score(&content),
+                    code_score: spelling_code_score(&content),
                     is_fence: content.trim_start().starts_with("```"),
                     misspellings: None,
                 });
@@ -1038,6 +1038,29 @@ fn smoothed_code_score(rows: &[LineRecord], row: usize) -> f64 {
         weight += w;
     }
     if weight == 0.0 { 0.0 } else { total / weight }
+}
+
+/// A line's code score for spell checking. A URL in a sentence and the
+/// Markdown markers around bold or italic words are no sign of code, so
+/// they are left out. Otherwise a line typed with one, such as a list item
+/// in bold or a sentence ending in a link, could read as code once the URL
+/// or the closing markers were typed, and the line's misspellings, typed
+/// before them, would lose their underlines.
+fn spelling_code_score(line: &str) -> f64 {
+    if !line.contains("://") && !line.contains("www.") && !line.contains(['*', '_']) {
+        return line_code_score(line);
+    }
+    let prose: Vec<&str> = line
+        .split(' ')
+        .map(|token| {
+            if token.contains("://") || token.starts_with("www.") {
+                ""
+            } else {
+                token.trim_matches(['*', '_'])
+            }
+        })
+        .collect();
+    line_code_score(&prose.join(" "))
 }
 
 fn hash_line(line: &str) -> u64 {
@@ -1621,6 +1644,36 @@ pub(crate) mod tests {
         assert_eq!(cost("cat", "bat"), 1.0);
         assert_eq!(cost("dont", "don't"), APOSTROPHE_COST);
         assert!(typo_distance(&chars("abc"), &chars("xyz"), 2.0).is_none());
+    }
+
+    /// A misspelling in a list item in bold, or in a sentence with a link,
+    /// is underlined, and stays underlined at every word typed after it.
+    /// Code with stars and underscores still reads as code.
+    #[test]
+    fn links_and_bold_text_leave_a_line_prose() {
+        let dictionary = english();
+        for line in [
+            "7. **Be acecssible and approachable:** answer questions quickly.",
+            "- **Leave some dead leaves and brnaches.** They shelter insects.",
+            "Designing an opreating system: https://example.com/operating_system/design.htm",
+            "Read the *offical* guide at www.example.com/guide before you start.",
+        ] {
+            let typo = ["acecssible", "brnaches", "opreating", "offical"]
+                .into_iter()
+                .find_map(|typo| line.find(typo).map(|at| at..at + typo.len()))
+                .unwrap();
+            for (end, _) in line.match_indices(' ').filter(|(end, _)| *end > typo.end) {
+                let text = Rope::from(&line[..end + 1]);
+                let found = SpellScanner::new().scan(&dictionary, &text);
+                assert!(found.contains(&typo), "{:?}", &line[..end + 1]);
+            }
+        }
+        for code in [
+            "let area = width * height;",
+            "def __init__(self, **kwargs):",
+        ] {
+            assert!(spelling_code_score(code) > LINE_CODE_SKIP_SCORE, "{code}");
+        }
     }
 
     #[test]
