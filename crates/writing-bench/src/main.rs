@@ -3,7 +3,8 @@
 //!
 //! ```sh
 //! writing-bench --corpus CORPUS --out RUN [--mode eager|quiet] [--timing fluent|hesitant|thinking]
-//!     [--policy default|frequency|frequency-always] [--typist tab|word|blind|slip]
+//!     [--policy default|ungated|frequency|frequency-always|gate] [--gate-prior F] [--gate-scale F]
+//!     [--gate-long] [--typist tab|word|blind|slip]
 //!     [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]
 //! ```
 //!
@@ -30,7 +31,8 @@ use gpui_kit_writing::replay::{Policy, SuggestionMode};
 fn usage() -> ! {
     eprintln!(
         "writing-bench --corpus DIR --out DIR [--mode eager|quiet] [--timing fluent|hesitant|thinking] \
-         [--policy default|frequency|frequency-always] [--typist tab|word|blind|slip] \
+         [--policy default|ungated|frequency|frequency-always|gate] [--gate-prior F] [--gate-scale F] \
+         [--gate-long] [--typist tab|word|blind|slip] \
          [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]"
     );
     std::process::exit(2);
@@ -43,6 +45,8 @@ fn main() {
     let mut splits = vec!["tuning".to_string(), "validation".to_string()];
     let mut prefix = String::new();
     let mut threads = 1usize;
+    let mut gate = false;
+    let (mut prior, mut scale, mut long_bar) = (2.0, 1.0, false);
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| usage());
@@ -67,11 +71,19 @@ fn main() {
             "--policy" => {
                 settings.policy = match value().as_str() {
                     "default" => Policy::Default,
+                    "ungated" => Policy::Ungated,
                     "frequency" => Policy::FrequencyOnly,
                     "frequency-always" => Policy::FrequencyAlways,
+                    "gate" => {
+                        gate = true;
+                        Policy::Default
+                    }
                     _ => usage(),
                 }
             }
+            "--gate-prior" => prior = value().parse().unwrap_or_else(|_| usage()),
+            "--gate-scale" => scale = value().parse().unwrap_or_else(|_| usage()),
+            "--gate-long" => long_bar = true,
             "--typist" => {
                 settings.typist = match value().as_str() {
                     "tab" => TypistKind::Tab,
@@ -91,6 +103,13 @@ fn main() {
     let (Some(corpus), Some(out)) = (corpus, out) else {
         usage()
     };
+    if gate {
+        settings.policy = Policy::Gate {
+            prior,
+            scale,
+            long_bar,
+        };
+    }
     let corpus = Corpus::open(&corpus).unwrap_or_else(|error| {
         eprintln!("couldn't read the corpus: {error}");
         std::process::exit(1);
