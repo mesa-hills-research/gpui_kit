@@ -106,13 +106,13 @@ impl<'a> Evidence<'a> {
     /// The form to show for `folded` after `levels`: the one it most often
     /// took after the longest context it followed.
     fn form(&self, levels: &[&Successors], folded: &str) -> String {
-        if let Some(level) = levels.iter().rev().find(|level| level.count(folded) > 0) {
-            return level.form(folded).to_string();
-        }
         let forms = self
             .counts()
             .word(folded)
             .or(self.local.counts().word(folded));
+        if let Some(level) = levels.iter().rev().find(|level| level.count(folded) > 0) {
+            return level.form(folded, forms).to_string();
+        }
         forms.map_or(folded, |forms| forms.best(folded)).to_string()
     }
 }

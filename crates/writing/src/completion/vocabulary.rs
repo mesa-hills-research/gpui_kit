@@ -162,6 +162,15 @@ impl Forms {
         self.count
     }
 
+    /// Where `form` comes among the word's forms, in the order they were
+    /// first seen, or last for a form it doesn't hold.
+    fn position(&self, form: &str) -> usize {
+        self.cased
+            .iter()
+            .position(|(cased, _)| &**cased == form)
+            .unwrap_or(usize::MAX)
+    }
+
     fn add(&mut self, form: &str, folded: &str, count: u32) {
         self.count = self.count.saturating_add(count);
         if form == folded {
@@ -317,14 +326,23 @@ impl Successors {
         }
     }
 
-    /// The form the folded word most often took after this context.
-    pub fn form<'a>(&'a self, folded: &'a str) -> &'a str {
+    /// The form the folded word most often took after this context. Of
+    /// forms taken as often, the folded one wins, then the one the word's
+    /// own `forms` saw first, as [`Forms::best`] has it, then the first in
+    /// byte order. So the choice never depends on the order the map keeps
+    /// them in.
+    pub fn form<'a>(&'a self, folded: &'a str, forms: Option<&Forms>) -> &'a str {
+        let order = |form: &str| forms.map_or(usize::MAX, |forms| forms.position(form));
         let mut plain = self.count(folded);
         let mut best: Option<(&str, u32)> = None;
         for (form, &count) in &self.cased {
             if fold(form) == folded {
                 plain = plain.saturating_sub(count);
-                if best.is_none_or(|(_, best_count)| count > best_count) {
+                if best.is_none_or(|(best_form, best_count)| {
+                    count > best_count
+                        || (count == best_count
+                            && (order(form), &**form) < (order(best_form), best_form))
+                }) {
                     best = Some((form, count));
                 }
             }
@@ -1631,6 +1649,30 @@ mod tests {
             .map_or(0, |successors| successors.count(third))
     }
 
+    /// Forms written as often after a context give the one the word was
+    /// first written in, as the word on its own does, whatever order each
+    /// map keeps them in.
+    #[test]
+    fn forms_written_as_often_give_the_one_written_first() {
+        let mut word = Forms::default();
+        for form in ["Hello", "HELLO", "HeLLo"] {
+            word.add(form, "hello", 1);
+        }
+        assert_eq!(word.best("hello"), "Hello");
+        let shown: Vec<String> = (0..64)
+            .map(|round| {
+                let mut successors = Successors::default();
+                let forms = ["HeLLo", "HELLO", "Hello"];
+                for index in 0..forms.len() {
+                    let form = forms[(index + round) % forms.len()];
+                    successors.add(form, "hello", 2);
+                }
+                successors.form("hello", Some(&word)).to_string()
+            })
+            .collect();
+        assert!(shown.iter().all(|form| form == "Hello"), "{shown:?}");
+    }
+
     #[test]
     fn folding_lowercases_and_straightens_apostrophes() {
         assert_eq!(fold("thanks"), "thanks");
@@ -1763,7 +1805,7 @@ mod tests {
                 .counts
                 .successors(&["i".into(), "can".into()])
                 .unwrap()
-                .form("see"),
+                .form("see", None),
             "see"
         );
     }
@@ -2642,9 +2684,15 @@ mod tests {
         counts.add_run(false, &["for", "the", "US", "trip"]);
         counts.add_run(false, &["the", "us"]);
         let after_the = counts.successors(&["the".into()]).unwrap();
-        assert_eq!((after_the.count("us"), after_the.form("us")), (3, "US"));
+        assert_eq!(
+            (after_the.count("us"), after_the.form("us", None)),
+            (3, "US")
+        );
         let start = counts.successors(&[SENTENCE_START.into()]).unwrap();
-        assert_eq!((start.count("thanks"), start.form("thanks")), (1, "Thanks"));
+        assert_eq!(
+            (start.count("thanks"), start.form("thanks", None)),
+            (1, "Thanks")
+        );
         assert_eq!(counts.word("thanks").unwrap().best("thanks"), "Thanks");
         assert_eq!(counts.word("us").unwrap().best("us"), "US");
     }
