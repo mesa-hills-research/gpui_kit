@@ -380,6 +380,11 @@ impl Counts {
         self.total
     }
 
+    /// How many different words there are.
+    pub fn types(&self) -> usize {
+        self.words.len()
+    }
+
     /// The words that start with `folded_prefix`, in order.
     pub fn words_with_prefix<'a>(
         &'a self,

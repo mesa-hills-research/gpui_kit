@@ -11,6 +11,29 @@ use crate::classify::{TextContext, classify_context, is_prose_shaped};
 pub(crate) struct Candidate {
     /// The probability that it is the word coming.
     pub probability: f64,
+    /// For a completion, the words that fit the prefix. None for a next
+    /// word.
+    #[cfg_attr(not(any(test, feature = "replay")), allow(dead_code))]
+    pub fitting: Option<Fitting>,
+}
+
+/// The known words that fit the prefix a completion finishes, and what the
+/// writer's vocabulary holds. Only the completion gate, which replays try,
+/// reads them so far.
+#[cfg_attr(not(any(test, feature = "replay")), allow(dead_code))]
+pub(crate) struct Fitting {
+    /// How many known words fit the prefix.
+    pub words: usize,
+    /// How many times they were seen, all together.
+    pub count: f64,
+    /// How many different words the vocabulary holds.
+    pub known: usize,
+    /// How many times it saw them, all together.
+    pub seen: f64,
+    /// How many characters the completion adds to the word.
+    pub rest_chars: usize,
+    /// Whether the text around the caret is prose.
+    pub prose: bool,
 }
 
 /// A word that may be offered in prose, with how often it was seen.
@@ -104,6 +127,57 @@ impl SuggestionPolicy for Today {}
 #[cfg(any(test, feature = "replay"))]
 pub(crate) struct FrequencyOnly {
     pub always: bool,
+}
+
+/// The completion gate. A completion shows in prose when the chance that it
+/// is the word coming, allowing for a word the vocabulary hasn't seen, is at
+/// least one half, or `long_bar`'s lower bar for a completion that adds at
+/// least that many characters.
+///
+/// A completion's probability is spread over the known words that fit the
+/// prefix and leaves nothing for a new word, so a young vocabulary's
+/// completions are overconfident. The gate estimates how often a word that
+/// starts this way is new as Witten and Bell estimate an unseen
+/// continuation. That is the number of known words that fit, times
+/// `scale`, over their count plus that number, with `prior` occurrences of
+/// the writer's overall rate of new words added to both. The writer's rate
+/// is the number of different words in the vocabulary over the number of
+/// times it saw them.
+#[cfg(any(test, feature = "replay"))]
+pub(crate) struct CompletionGate {
+    pub prior: f64,
+    pub scale: f64,
+    pub long_bar: Option<(usize, f64)>,
+}
+
+#[cfg(any(test, feature = "replay"))]
+impl CompletionGate {
+    /// The probability that `candidate` is the word coming, allowing for a
+    /// new word.
+    pub fn chance(&self, candidate: &Candidate, fitting: &Fitting) -> f64 {
+        let rate = if fitting.seen > 0.0 {
+            (fitting.known as f64 / fitting.seen).min(1.0)
+        } else {
+            1.0
+        };
+        let words = self.scale * fitting.words as f64;
+        let new = (words + self.prior * rate) / (fitting.count + words + self.prior);
+        candidate.probability * (1.0 - new)
+    }
+}
+
+#[cfg(any(test, feature = "replay"))]
+impl SuggestionPolicy for CompletionGate {
+    fn shows_completion(&self, candidate: &Candidate) -> bool {
+        let Some(fitting) = candidate.fitting.as_ref().filter(|fitting| fitting.prose) else {
+            return candidate.probability >= SHOW_THRESHOLD;
+        };
+        let bar = match self.long_bar {
+            Some((chars, bar)) if fitting.rest_chars >= chars => bar,
+            _ => SHOW_THRESHOLD,
+        };
+        self.chance(candidate, fitting) >= bar
+    }
 }
 
 #[cfg(any(test, feature = "replay"))]

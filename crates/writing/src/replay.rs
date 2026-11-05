@@ -10,7 +10,7 @@
 //! Quiet's pause on the clock, and inserts Tab's and Ctrl+Right's text with
 //! the suggestion's origin.
 
-use crate::completion::policy::{FrequencyOnly, SuggestionPolicy, Today};
+use crate::completion::policy::{CompletionGate, FrequencyOnly, SuggestionPolicy, Today};
 use crate::completion::{Answer, Edit, SuggestionPacing, WordSuggestions};
 use crate::spelling::Dictionary;
 use crate::{WordList, Writing};
@@ -29,7 +29,7 @@ pub fn english() -> Rc<Dictionary> {
 }
 
 /// How the suggestions decide what shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Policy {
     /// As the crate does.
     Default,
@@ -40,6 +40,14 @@ pub enum Policy {
     /// Word frequency alone, the most frequent fitting word whatever its
     /// share.
     FrequencyAlways,
+    /// The default rules with the completion gate, which allows for a word the
+    /// vocabulary hasn't seen. With `long_bar`, a completion that adds six
+    /// characters or more shows at a chance of 0.4.
+    Gate {
+        prior: f64,
+        scale: f64,
+        long_bar: bool,
+    },
 }
 
 impl Policy {
@@ -48,6 +56,15 @@ impl Policy {
             Self::Default => Rc::new(Today),
             Self::FrequencyOnly => Rc::new(FrequencyOnly { always: false }),
             Self::FrequencyAlways => Rc::new(FrequencyOnly { always: true }),
+            Self::Gate {
+                prior,
+                scale,
+                long_bar,
+            } => Rc::new(CompletionGate {
+                prior,
+                scale,
+                long_bar: long_bar.then_some((6, 0.4)),
+            }),
         }
     }
 }

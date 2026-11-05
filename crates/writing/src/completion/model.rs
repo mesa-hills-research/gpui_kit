@@ -17,7 +17,7 @@
 //! character never shows, since Tab is a keystroke too.
 
 use super::local::LocalIndex;
-use super::policy::{Candidate, SuggestionPolicy, Word};
+use super::policy::{Candidate, Fitting, SuggestionPolicy, Word};
 use super::vocabulary::{Counts, Forms, SENTENCE_START, Successors, Vocabulary, fold};
 use super::{
     CONTEXT_BYTES, canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
@@ -414,7 +414,11 @@ pub(super) fn generate_suggestion(
             return None;
         }
         let (word, probability, form) = best_next(&evidence, &context, Clause::Goes)?;
-        if !policy.shows_prediction(&Candidate { probability }) || !evidence.offers(&form, &word) {
+        let candidate = Candidate {
+            probability,
+            fitting: None,
+        };
+        if !policy.shows_prediction(&candidate) || !evidence.offers(&form, &word) {
             return None;
         }
         (word, probability, form)
@@ -439,10 +443,24 @@ pub(super) fn generate_suggestion(
         // The likeliest word that may be offered. Only a word the policy
         // shows can show. At today's threshold, as the probabilities add up
         // to one, at most two words reach it.
+        let fitting_count: f64 = completions.iter().map(|completion| completion.count).sum();
+        let prefix_chars = folded_prefix.chars().count();
         let mut likely: Vec<usize> = (0..completions.len())
             .filter(|&index| {
                 policy.shows_completion(&Candidate {
                     probability: probabilities[index],
+                    fitting: Some(Fitting {
+                        words: completions.len(),
+                        count: fitting_count,
+                        known: evidence.counts().types(),
+                        seen: total - 1.0,
+                        rest_chars: completions[index]
+                            .folded
+                            .chars()
+                            .count()
+                            .saturating_sub(prefix_chars),
+                        prose: evidence.prose,
+                    }),
                 })
             })
             .collect();
@@ -716,6 +734,28 @@ mod tests {
             }
         }
         assert!(sparse_cases >= 8, "{sparse_cases}");
+    }
+
+    /// The completion gate keeps back a completion seen once in a young
+    /// vocabulary, which is as likely a new word, and lets it show once the
+    /// word has been written a few times.
+    #[test]
+    fn the_completion_gate_waits_for_evidence() {
+        use super::super::policy::CompletionGate;
+        let gate = CompletionGate {
+            prior: 2.0,
+            scale: 1.0,
+            long_bar: None,
+        };
+        let suggest = |vocabulary: &Vocabulary, policy: &dyn SuggestionPolicy| {
+            let text = "We went to the ba";
+            generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), policy)
+        };
+        let once = vocabulary(&["We went to the bank"]);
+        assert_eq!(suggest(&once, &Today).as_deref(), Some("nk"));
+        assert_eq!(suggest(&once, &gate), None);
+        let often = vocabulary(&["We went to the bank"; 4]);
+        assert_eq!(suggest(&often, &gate).as_deref(), Some("nk"));
     }
 
     /// "UI/UX design" was written before. After "UI/UX, " the comma ended
