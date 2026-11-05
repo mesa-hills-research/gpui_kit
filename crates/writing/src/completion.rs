@@ -718,6 +718,7 @@ impl WordSuggestions {
         if let Some(caret) = self.pacer.changed(edits, now) {
             self.learn_before(text, caret);
         }
+        self.pacer.follow(edits, text);
     }
 
     /// Hears that Tab took the suggestion, or a word of it.

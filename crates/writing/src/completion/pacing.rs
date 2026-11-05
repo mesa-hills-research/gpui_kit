@@ -32,6 +32,13 @@
 //!   nothing. A caret move is noticed when the next typing lands away from
 //!   the suggestion, so moving away and back before typing counts as staying.
 //!
+//! A suggestion turned down by a key that leaves its word, or by Escape,
+//! was wanted after all when the user goes on to write its word there
+//! anyway, such as after a typo fixed with Backspace or an Escape pressed by
+//! mistake. Once that word is finished, turning it down counts for nothing.
+//! Finishing the word by typing its last letter isn't turning it down this
+//! way, so it still counts as ignored.
+//!
 //! An ignored or refused word is not offered again for [`SUPPRESSION`] while
 //! the user types the same word from the same start: the prefix it was
 //! ignored after or a longer one, or, for a word predicted after a space, the
@@ -45,8 +52,9 @@
 //!
 //! This state lives in memory for the session.
 
+use super::vocabulary::fold;
 use super::{Edit, extract_prefix, previous_two_words, word_end};
-use gpui_base::input::SuggestionEvent;
+use gpui_base::input::{Rope, SuggestionEvent};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -127,6 +135,8 @@ pub(crate) struct SuggestionPacing {
     /// Words typed in the session, by the spaces typed. Enter comes as an
     /// edit, not a typed key, so a run of short lines fades by time.
     words: Cell<u64>,
+    /// The number the next ignored suggestion gets.
+    next_ignore: Cell<u64>,
     /// Lowercased ignored words, each with the lowercased leads it was
     /// ignored after and when that ends.
     suppressed: RefCell<HashMap<String, Vec<(String, Instant)>>>,
@@ -148,14 +158,28 @@ pub enum Paced {
     /// The model's `word` after `lead` wasn't shown, as it was ignored
     /// there before.
     Suppressed { word: String, lead: String },
+    /// Turning `word` down counted for nothing, as the user wrote it anyway.
+    Restored { word: String },
 }
 
 /// An ignored suggestion that lengthens the pause, with its weight, Escape
 /// counting [`ESCAPE_WEIGHT`], and when it was ignored, in time and in words.
 struct Ignore {
+    id: u64,
     weight: u32,
     at: Instant,
     words: u64,
+}
+
+/// What ignoring an offer did, so that it can be undone. That is the ignore
+/// that lengthens the pause, and the suppression of the lowercased word
+/// after the lowercased lead until a time.
+#[derive(Clone, Debug, PartialEq)]
+struct Ignored {
+    id: u64,
+    word: String,
+    lead: String,
+    until: Instant,
 }
 
 impl SuggestionPacing {
@@ -164,6 +188,7 @@ impl SuggestionPacing {
             mode: Cell::new(mode),
             ignores: RefCell::new(Vec::new()),
             words: Cell::new(0),
+            next_ignore: Cell::new(0),
             suppressed: RefCell::new(HashMap::new()),
             #[cfg(any(test, feature = "replay"))]
             log: RefCell::new(Vec::new()),
@@ -217,14 +242,17 @@ impl SuggestionPacing {
         });
     }
 
-    fn ignored(&self, offer: &Offer, weight: u32, now: Instant) {
+    fn ignored(&self, offer: &Offer, weight: u32, now: Instant) -> Ignored {
         #[cfg(any(test, feature = "replay"))]
         self.log.borrow_mut().push(Paced::Ignored {
             word: offer.word.clone(),
             lead: offer.lead.clone(),
             weight,
         });
+        let id = self.next_ignore.get();
+        self.next_ignore.set(id + 1);
         self.ignores.borrow_mut().push(Ignore {
+            id,
             weight,
             at: now,
             words: self.words.get(),
@@ -234,10 +262,41 @@ impl SuggestionPacing {
             leads.retain(|(_, until)| *until > now);
             !leads.is_empty()
         });
+        let ignored = Ignored {
+            id,
+            word: offer.word.to_lowercase(),
+            lead: offer.lead.to_lowercase(),
+            until: now + SUPPRESSION,
+        };
         suppressed
-            .entry(offer.word.to_lowercase())
+            .entry(ignored.word.clone())
             .or_default()
-            .push((offer.lead.to_lowercase(), now + SUPPRESSION));
+            .push((ignored.lead.clone(), ignored.until));
+        ignored
+    }
+
+    /// Undoes `ignored`, so it no longer lengthens the pause or keeps its word
+    /// from being offered.
+    fn restore(&self, ignored: &Ignored) {
+        #[cfg(any(test, feature = "replay"))]
+        self.log.borrow_mut().push(Paced::Restored {
+            word: ignored.word.clone(),
+        });
+        self.ignores
+            .borrow_mut()
+            .retain(|ignore| ignore.id != ignored.id);
+        let mut suppressed = self.suppressed.borrow_mut();
+        if let Some(leads) = suppressed.get_mut(&ignored.word) {
+            if let Some(index) = leads
+                .iter()
+                .position(|(lead, until)| *lead == ignored.lead && *until == ignored.until)
+            {
+                leads.remove(index);
+            }
+            if leads.is_empty() {
+                suppressed.remove(&ignored.word);
+            }
+        }
     }
 
     /// Whether `word` was ignored after `lead`, or after the start of it,
@@ -320,10 +379,21 @@ impl Offer {
 pub(super) struct Pacer {
     shared: Rc<SuggestionPacing>,
     offer: RefCell<Option<Offer>>,
+    /// The suggestion turned down last, followed until its word is finished.
+    rejected: RefCell<Option<Rejection>>,
     /// The keystroke just typed, until the change report for it arrives.
     typed: RefCell<Option<Keystroke>>,
     /// Whether the last keystroke typed along the pending suggestion.
     typing_along: Cell<bool>,
+}
+
+/// A suggestion turned down by a key that leaves its word, or by Escape,
+/// with where its word starts in the text, the word, folded, and what
+/// turning it down did.
+struct Rejection {
+    start: usize,
+    word: String,
+    ignored: Ignored,
 }
 
 /// Text the user typed, as the textarea reported it.
@@ -339,6 +409,7 @@ impl Pacer {
         Self {
             shared,
             offer: RefCell::new(None),
+            rejected: RefCell::new(None),
             typed: RefCell::new(None),
             typing_along: Cell::new(false),
         }
@@ -355,6 +426,7 @@ impl Pacer {
             return true;
         }
         self.offer.take();
+        self.rejected.take();
         self.typed.take();
         self.typing_along.set(false);
         false
@@ -385,7 +457,12 @@ impl Pacer {
             *self.offer.borrow_mut() = Some(offer);
             self.typing_along.set(true);
         } else {
-            self.shared.ignored(&offer, 1, now);
+            let ignored = self.shared.ignored(&offer, 1, now);
+            // Typing the word's last letters finishes it rather than
+            // leaving it.
+            if !text.starts_with(offer.rest.as_str()) {
+                self.reject(&offer, ignored);
+            }
         }
     }
 
@@ -433,7 +510,8 @@ impl Pacer {
             let inserted_at_caret = range == (offer.caret..offer.caret) && !edit.text.is_empty();
             // Tab taking the suggestion inserts it, and its event follows.
             if inserted_at_caret && !offer.ghost.starts_with(edit.text) {
-                self.shared.ignored(&offer, 1, now);
+                let ignored = self.shared.ignored(&offer, 1, now);
+                self.reject(&offer, ignored);
             }
         }
         learn_at
@@ -465,7 +543,76 @@ impl Pacer {
             return;
         }
         if let Some(offer) = self.offer.take() {
-            self.shared.ignored(&offer, ESCAPE_WEIGHT, now);
+            let ignored = self.shared.ignored(&offer, ESCAPE_WEIGHT, now);
+            self.reject(&offer, ignored);
+        }
+    }
+
+    /// Follows `offer`, just turned down, until its word is finished.
+    fn reject(&self, offer: &Offer, ignored: Ignored) {
+        let start = offer.caret - (offer.word.len() - offer.rest.len());
+        *self.rejected.borrow_mut() = Some(Rejection {
+            start,
+            word: fold(&offer.word).into_owned(),
+            ignored,
+        });
+    }
+
+    /// Follows the suggestion turned down last through `edits`, which made
+    /// `text`. Once a word is finished at its place, turning it down counts
+    /// for nothing if that word is the one it offered. An edit before the
+    /// word that reaches into it ends the following.
+    pub fn follow(&self, edits: &[Edit], text: &Rope) {
+        if !self.is_quiet() {
+            return;
+        }
+        let mut slot = self.rejected.borrow_mut();
+        let Some(rejection) = slot.as_mut() else {
+            return;
+        };
+        for edit in edits {
+            let range = &edit.range;
+            // Text typed at the word's start is the word's own first letters.
+            let before = range.end < rejection.start
+                || (range.end == rejection.start && range.start < rejection.start);
+            if before {
+                rejection.start = rejection.start - range.len() + edit.text.len();
+            } else if range.start < rejection.start {
+                *slot = None;
+                return;
+            }
+        }
+        if rejection.start > text.len() {
+            *slot = None;
+            return;
+        }
+        let mut written = String::new();
+        let mut characters = text.chars_at(rejection.start).peekable();
+        loop {
+            let Some(character) = characters.next() else {
+                // The word may still be being written.
+                return;
+            };
+            let in_word = character.is_alphanumeric() || character == '_' || character == '-';
+            let apostrophe = (character == '\'' || character == '\u{2019}')
+                && written.chars().next_back().is_some_and(char::is_alphabetic);
+            if in_word || (apostrophe && characters.peek().is_some_and(|next| next.is_alphabetic()))
+            {
+                written.push(character);
+                if written.len() > rejection.word.len() + 64 {
+                    break;
+                }
+            } else if apostrophe && characters.peek().is_none() {
+                return;
+            } else {
+                break;
+            }
+        }
+        let Some(rejection) = slot.take() else {
+            return;
+        };
+        if fold(&written) == rejection.word {
+            self.shared.restore(&rejection.ignored);
         }
     }
 

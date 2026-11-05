@@ -486,6 +486,40 @@ fn the_pause_shortens_again_once_the_user_types_on(cx: &mut TestAppContext) {
     assert_eq!(typist.pause_before_a_suggestion(), Some(QUIET_PAUSE));
 }
 
+/// A suggestion turned down by Escape, or by a typo fixed at once, whose
+/// word the user then writes anyway was wanted after all. Turning it down
+/// counts for nothing, so the pause stays plain and the word is offered
+/// again. A different word written in its place keeps it turned down.
+#[gpui::test]
+fn writing_a_turned_down_word_anyway_undoes_turning_it_down(cx: &mut TestAppContext) {
+    let mut typist = Typist::new(cx, SuggestionMode::Quiet);
+    assert_eq!(typist.type_and_wait("hel").as_deref(), Some("lo world"));
+    typist.cx.simulate_keystrokes("escape");
+    typist.type_text("lo ");
+    typist.type_text("hel");
+    assert_eq!(typist.pause_before_a_suggestion(), Some(QUIET_PAUSE));
+    assert_eq!(typist.ghost().as_deref(), Some("lo world"));
+
+    typist.type_text("x");
+    typist.cx.simulate_keystrokes("backspace");
+    typist.type_text("lo ");
+    typist.type_text("hel");
+    assert_eq!(typist.pause_before_a_suggestion(), Some(QUIET_PAUSE));
+
+    typist.type_text("p ");
+    assert_eq!(typist.type_and_wait("hel"), None, "help written instead");
+
+    // A next word turned down and then written.
+    typist.type_text("p hello ");
+    let pause = QUIET_PAUSE + IGNORED_EXTRA_PAUSE;
+    assert_eq!(typist.pause_before_a_suggestion(), Some(pause));
+    assert_eq!(typist.ghost().as_deref(), Some("world"));
+    typist.cx.simulate_keystrokes("escape");
+    typist.type_text("world hello ");
+    assert_eq!(typist.pause_before_a_suggestion(), Some(pause));
+    assert_eq!(typist.ghost().as_deref(), Some("world"));
+}
+
 /// A new mode applies from the next keystroke.
 #[gpui::test]
 fn a_new_mode_applies_at_once(cx: &mut TestAppContext) {
@@ -1487,7 +1521,7 @@ fn offers_on_fixed_writing_stay_the_same() {
     }
     assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
     assert_eq!(
-        hash, 0x4d13_51ad_44af_d3cf,
+        hash, 0xdfa4_3ab6_7eef_c72e,
         "offers hash {hash:#x}, {tabs} taken, {shown} shown"
     );
 }
