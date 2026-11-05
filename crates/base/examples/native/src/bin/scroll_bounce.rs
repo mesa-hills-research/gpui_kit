@@ -170,6 +170,7 @@ mod tests {
     use super::*;
     use gpui::{MouseDownEvent, MouseMoveEvent, MouseUpEvent, TestAppContext};
     use gpui_base::ScrollbarHandle;
+    use std::time::Duration;
 
     #[gpui::test]
     fn mouse_drag_scrolls_and_stretches_the_example_list(cx: &mut TestAppContext) {
@@ -233,11 +234,14 @@ mod tests {
             position: anchor + point(px(0.), px(140.)),
             ..Default::default()
         });
-        // ScrollBounce uses the real monotonic clock, not the test executor's
-        // virtual timer. A delayed frame may settle fully; either is valid.
-        std::thread::sleep(std::time::Duration::from_millis(30));
+        // ScrollBounce goes by the window's clock, which the test clock moves.
+        cx.executor().advance_clock(Duration::from_millis(30));
         cx.update(|window, cx| window.draw(cx).clear(cx));
         let returning = handle.viewport_bounds().origin.y;
-        assert!(returning >= bounds.origin.y && returning < stretched);
+        assert!(
+            returning > bounds.origin.y && returning < stretched,
+            "{returning:?} between {:?} and {stretched:?}",
+            bounds.origin.y
+        );
     }
 }
