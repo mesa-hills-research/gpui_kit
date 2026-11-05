@@ -30,6 +30,9 @@ netwrok = "netwrok"
 workspce = "workspce"
 # PostgreSQL's BRIN index type, a keyword of the SQL grammar's highlight query.
 brin = "brin"
+# The ordinal ending of "2nd", among the units the code-or-prose classifier
+# reads after a number.
+nd = "nd"
 
 [files]
 extend-exclude = [
