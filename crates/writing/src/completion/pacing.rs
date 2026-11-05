@@ -419,6 +419,11 @@ impl Pacer {
         self.shared.mode()
     }
 
+    /// Whether the last keystroke typed along the suggestion on screen.
+    pub fn is_typing_along(&self) -> bool {
+        self.typing_along.get()
+    }
+
     /// Whether the mode is Quiet. In another mode it forgets what it was
     /// following, so that Quiet starts afresh when it comes back.
     fn is_quiet(&self) -> bool {

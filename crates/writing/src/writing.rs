@@ -205,7 +205,7 @@ impl Writing {
         Rc::new(WordSuggestions::with_policy(
             self.vocabulary.clone(),
             self.pacing.clone(),
-            policy,
+            Some(policy),
         ))
     }
 }

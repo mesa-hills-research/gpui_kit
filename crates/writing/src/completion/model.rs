@@ -15,6 +15,9 @@
 //! right stays at least [`ADD_WORD_THRESHOLD`], and the length offered is
 //! the one that saves the most keystrokes on average. A suggestion of one
 //! character never shows, since Tab is a keystroke too.
+//!
+//! What decides each of these is a [`SuggestionPolicy`]. In Quiet it adds
+//! the completion gate, which allows for a word the vocabulary hasn't seen.
 
 use super::local::LocalIndex;
 use super::policy::{Candidate, Fitting, SuggestionPolicy, Word};
@@ -447,18 +450,16 @@ pub(super) fn generate_suggestion(
         let prefix_chars = folded_prefix.chars().count();
         let mut likely: Vec<usize> = (0..completions.len())
             .filter(|&index| {
+                let completion = &completions[index];
                 policy.shows_completion(&Candidate {
                     probability: probabilities[index],
                     fitting: Some(Fitting {
+                        word: completion.folded,
                         words: completions.len(),
                         count: fitting_count,
                         known: evidence.counts().types(),
                         seen: total - 1.0,
-                        rest_chars: completions[index]
-                            .folded
-                            .chars()
-                            .count()
-                            .saturating_sub(prefix_chars),
+                        prefix_chars,
                         prose: evidence.prose,
                     }),
                 })
@@ -528,7 +529,7 @@ pub(super) fn generate_suggestion(
 
 #[cfg(test)]
 mod tests {
-    use super::super::policy::Today;
+    use super::super::policy::Ungated;
     use super::*;
 
     fn close(a: f64, b: f64) -> bool {
@@ -584,7 +585,7 @@ mod tests {
     }
 
     fn suggest(vocabulary: &Vocabulary, text: &str) -> Option<String> {
-        generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), &Today)
+        generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), &Ungated)
     }
 
     #[test]
@@ -645,7 +646,7 @@ mod tests {
             &|_| 0,
         );
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, text, text.len(), &Today).as_deref(),
+            generate_suggestion(&vocabulary, &local, text, text.len(), &Ungated).as_deref(),
             Some("ute_total")
         );
     }
@@ -687,7 +688,7 @@ mod tests {
             shared: &vocabulary,
             local: &local,
             prose: true,
-            policy: &Today,
+            policy: &Ungated,
         };
         let mut sparse_cases = 0;
         for context in [
@@ -752,7 +753,7 @@ mod tests {
             generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), policy)
         };
         let once = vocabulary(&["We went to the bank"]);
-        assert_eq!(suggest(&once, &Today).as_deref(), Some("nk"));
+        assert_eq!(suggest(&once, &Ungated).as_deref(), Some("nk"));
         assert_eq!(suggest(&once, &gate), None);
         let often = vocabulary(&["We went to the bank"; 4]);
         assert_eq!(suggest(&often, &gate).as_deref(), Some("nk"));

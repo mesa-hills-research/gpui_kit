@@ -10,7 +10,7 @@
 //! Quiet's pause on the clock, and inserts Tab's and Ctrl+Right's text with
 //! the suggestion's origin.
 
-use crate::completion::policy::{CompletionGate, FrequencyOnly, SuggestionPolicy, Today};
+use crate::completion::policy::{CompletionGate, FrequencyOnly, SuggestionPolicy, Ungated};
 use crate::completion::{Answer, Edit, SuggestionPacing, WordSuggestions};
 use crate::spelling::Dictionary;
 use crate::{WordList, Writing};
@@ -31,8 +31,10 @@ pub fn english() -> Rc<Dictionary> {
 /// How the suggestions decide what shows.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Policy {
-    /// As the crate does.
+    /// As the crate does, which depends on the mode.
     Default,
+    /// The rules without the completion gate, in any mode.
+    Ungated,
     /// Word frequency alone. The most frequent known word that fits the
     /// prefix shows when it holds at least half the count of the words that
     /// fit, with no next word and no words after the first.
@@ -40,9 +42,9 @@ pub enum Policy {
     /// Word frequency alone, the most frequent fitting word whatever its
     /// share.
     FrequencyAlways,
-    /// The default rules with the completion gate, which allows for a word the
-    /// vocabulary hasn't seen. With `long_bar`, a completion that adds six
-    /// characters or more shows at a chance of 0.4.
+    /// The rules with a completion gate, which allows for a word the
+    /// vocabulary hasn't seen, in any mode. With `long_bar`, a completion
+    /// that adds six characters or more shows at a chance of 0.4.
     Gate {
         prior: f64,
         scale: f64,
@@ -51,9 +53,10 @@ pub enum Policy {
 }
 
 impl Policy {
-    fn make(self) -> Rc<dyn SuggestionPolicy> {
-        match self {
-            Self::Default => Rc::new(Today),
+    fn make(self) -> Option<Rc<dyn SuggestionPolicy>> {
+        Some(match self {
+            Self::Default => return None,
+            Self::Ungated => Rc::new(Ungated),
             Self::FrequencyOnly => Rc::new(FrequencyOnly { always: false }),
             Self::FrequencyAlways => Rc::new(FrequencyOnly { always: true }),
             Self::Gate {
@@ -65,14 +68,14 @@ impl Policy {
                 scale,
                 long_bar: long_bar.then_some((6, 0.4)),
             }),
-        }
+        })
     }
 }
 
 /// One person's writing aids and clock.
 pub struct Writer {
     writing: Writing,
-    policy: Rc<dyn SuggestionPolicy>,
+    policy: Option<Rc<dyn SuggestionPolicy>>,
     start: Instant,
     clock: Rc<Cell<Duration>>,
 }
@@ -99,7 +102,7 @@ impl Writer {
     pub(crate) fn with_writing(writing: Writing) -> Self {
         Self {
             writing,
-            policy: Rc::new(Today),
+            policy: None,
             start: Instant::now(),
             clock: Rc::new(Cell::new(Duration::ZERO)),
         }
@@ -119,7 +122,10 @@ impl Writer {
     /// A new, empty textarea.
     pub fn field(&self) -> Field {
         Field {
-            suggestions: self.writing.word_suggestions_with(self.policy.clone()),
+            suggestions: match &self.policy {
+                Some(policy) => self.writing.word_suggestions_with(policy.clone()),
+                None => self.writing.word_suggestions(),
+            },
             start: self.start,
             clock: self.clock.clone(),
             text: Rope::new(),

@@ -10,7 +10,9 @@
 //!    the one coming, from the one or two words before it in the sentence and
 //!    whether the sentence starts there. A suggestion shows when that
 //!    probability is at least one half, so it is right more often than not.
-//!    See [`model`].
+//!    See [`model`]. In Quiet, a completion's probability also allows for a
+//!    word the vocabulary has never seen, which a young vocabulary often
+//!    meets, so its completions wait for the evidence. See [`policy`].
 //!
 //! 2. **Words past the current one when they are likely too.** Words are
 //!    added after the first while the chance that the whole suggestion is
@@ -79,7 +81,7 @@ use learned::{LearnedSentences, typed_copies};
 use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
-use policy::{SuggestionPolicy, Today};
+use policy::{CompletionGate, SuggestionPolicy, Ungated};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
@@ -520,19 +522,22 @@ pub struct WordSuggestions {
     /// opened with.
     known_len: Cell<Option<usize>>,
     pacer: Pacer,
-    policy: Rc<dyn SuggestionPolicy>,
+    /// The policy a replay chose, or none for the crate's own, which
+    /// depends on the mode.
+    policy: Option<Rc<dyn SuggestionPolicy>>,
 }
 
 impl WordSuggestions {
     pub(crate) fn new(vocabulary: Rc<RefCell<Vocabulary>>, pacing: Rc<SuggestionPacing>) -> Self {
-        Self::with_policy(vocabulary, pacing, Rc::new(Today))
+        Self::with_policy(vocabulary, pacing, None)
     }
 
-    /// Suggestions that decide what shows by `policy`.
+    /// Suggestions that decide what shows by `policy`, or by the crate's
+    /// own rules for the mode without one.
     pub(crate) fn with_policy(
         vocabulary: Rc<RefCell<Vocabulary>>,
         pacing: Rc<SuggestionPacing>,
-        policy: Rc<dyn SuggestionPolicy>,
+        policy: Option<Rc<dyn SuggestionPolicy>>,
     ) -> Self {
         Self {
             vocabulary,
@@ -721,6 +726,20 @@ impl WordSuggestions {
         self.pacer.follow(edits, text);
     }
 
+    /// What decides which suggestion shows. Quiet holds back completions a
+    /// young vocabulary is unsure of, and Eager offers them. The gate decides
+    /// only whether a completion first shows, so one the user is typing
+    /// along stays as the prefix narrows.
+    fn policy(&self) -> &dyn SuggestionPolicy {
+        match &self.policy {
+            Some(policy) => &**policy,
+            None if self.pacer.mode() == SuggestionMode::Quiet && !self.pacer.is_typing_along() => {
+                &CompletionGate::QUIET
+            }
+            None => &Ungated,
+        }
+    }
+
     /// Hears that Tab took the suggestion, or a word of it.
     #[cfg(any(test, feature = "replay"))]
     pub(crate) fn accepted(&self) {
@@ -781,7 +800,7 @@ impl WordSuggestions {
             let vocabulary = self.vocabulary.borrow();
             let local = self.local_index.borrow();
 
-            generate_suggestion(&vocabulary, &local, text, offset, &*self.policy)
+            generate_suggestion(&vocabulary, &local, text, offset, self.policy())
         };
         let caret = excerpt.start + offset;
         let shown = self.pacer.offer(text, offset, caret, model.clone(), now);
@@ -858,7 +877,7 @@ impl WordSuggestions {
             }
         }
 
-        if self.policy.is_code(text, terminator_offset) {
+        if self.policy().is_code(text, terminator_offset) {
             return;
         }
 

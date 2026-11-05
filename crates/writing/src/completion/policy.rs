@@ -1,6 +1,7 @@
 //! The judgements behind what the suggestions offer, gathered behind one
-//! trait so that a replay can try others. [`Today`] makes them as this
-//! crate does.
+//! trait so that a replay can try others. Eager makes them by [`Ungated`],
+//! and Quiet by [`CompletionGate::QUIET`], which also holds back
+//! completions a young vocabulary is unsure of.
 
 use super::model::{ADD_WORD_THRESHOLD, SHOW_THRESHOLD};
 use super::vocabulary::Vocabulary;
@@ -8,20 +9,19 @@ use super::{EMPTY_PREDICTION_CONTINUATION_LIMIT, PREFIX_CONTINUATION_LIMIT};
 use crate::classify::{TextContext, classify_context, is_prose_shaped};
 
 /// A word that may be offered, and how likely it is to be the one.
-pub(crate) struct Candidate {
+pub(crate) struct Candidate<'a> {
     /// The probability that it is the word coming.
     pub probability: f64,
     /// For a completion, the words that fit the prefix. None for a next
     /// word.
-    #[cfg_attr(not(any(test, feature = "replay")), allow(dead_code))]
-    pub fitting: Option<Fitting>,
+    pub fitting: Option<Fitting<'a>>,
 }
 
-/// The known words that fit the prefix a completion finishes, and what the
-/// writer's vocabulary holds. Only the completion gate, which replays try,
-/// reads them so far.
-#[cfg_attr(not(any(test, feature = "replay")), allow(dead_code))]
-pub(crate) struct Fitting {
+/// A completion's word, the known words that fit its prefix, and what the
+/// writer's vocabulary holds.
+pub(crate) struct Fitting<'a> {
+    /// The word, folded.
+    pub word: &'a str,
     /// How many known words fit the prefix.
     pub words: usize,
     /// How many times they were seen, all together.
@@ -30,10 +30,17 @@ pub(crate) struct Fitting {
     pub known: usize,
     /// How many times it saw them, all together.
     pub seen: f64,
-    /// How many characters the completion adds to the word.
-    pub rest_chars: usize,
+    /// How many characters the prefix has.
+    pub prefix_chars: usize,
     /// Whether the text around the caret is prose.
     pub prose: bool,
+}
+
+impl Fitting<'_> {
+    /// How many characters the completion adds to the word.
+    pub fn rest_chars(&self) -> usize {
+        self.word.chars().count().saturating_sub(self.prefix_chars)
+    }
 }
 
 /// A word that may be offered in prose, with how often it was seen.
@@ -79,12 +86,12 @@ pub(crate) trait SuggestionPolicy {
     }
 
     /// Whether a completion of the word being typed may show.
-    fn shows_completion(&self, candidate: &Candidate) -> bool {
+    fn shows_completion(&self, candidate: &Candidate<'_>) -> bool {
         candidate.probability >= SHOW_THRESHOLD
     }
 
     /// Whether a next word predicted after a space may show.
-    fn shows_prediction(&self, candidate: &Candidate) -> bool {
+    fn shows_prediction(&self, candidate: &Candidate<'_>) -> bool {
         candidate.probability >= SHOW_THRESHOLD
     }
 
@@ -115,10 +122,10 @@ pub(crate) trait SuggestionPolicy {
     }
 }
 
-/// The judgements as the crate makes them.
-pub(crate) struct Today;
+/// The rules without the completion gate, which Eager follows.
+pub(crate) struct Ungated;
 
-impl SuggestionPolicy for Today {}
+impl SuggestionPolicy for Ungated {}
 
 /// Word frequency alone. The most frequent known word that fits the prefix
 /// shows when it holds at least half the count of the words that fit, or
@@ -143,18 +150,26 @@ pub(crate) struct FrequencyOnly {
 /// the writer's overall rate of new words added to both. The writer's rate
 /// is the number of different words in the vocabulary over the number of
 /// times it saw them.
-#[cfg(any(test, feature = "replay"))]
 pub(crate) struct CompletionGate {
     pub prior: f64,
     pub scale: f64,
     pub long_bar: Option<(usize, f64)>,
 }
 
-#[cfg(any(test, feature = "replay"))]
 impl CompletionGate {
+    /// The gate Quiet uses, its two numbers set by reasoning. The prior
+    /// weighs two occurrences of the writer's own rate of new words, and
+    /// each known word that fits counts once towards a new one, as Witten
+    /// and Bell have it.
+    pub const QUIET: Self = Self {
+        prior: 2.0,
+        scale: 1.0,
+        long_bar: None,
+    };
+
     /// The probability that `candidate` is the word coming, allowing for a
     /// new word.
-    pub fn chance(&self, candidate: &Candidate, fitting: &Fitting) -> f64 {
+    pub fn chance(&self, candidate: &Candidate<'_>, fitting: &Fitting<'_>) -> f64 {
         let rate = if fitting.seen > 0.0 {
             (fitting.known as f64 / fitting.seen).min(1.0)
         } else {
@@ -166,14 +181,13 @@ impl CompletionGate {
     }
 }
 
-#[cfg(any(test, feature = "replay"))]
 impl SuggestionPolicy for CompletionGate {
-    fn shows_completion(&self, candidate: &Candidate) -> bool {
+    fn shows_completion(&self, candidate: &Candidate<'_>) -> bool {
         let Some(fitting) = candidate.fitting.as_ref().filter(|fitting| fitting.prose) else {
             return candidate.probability >= SHOW_THRESHOLD;
         };
         let bar = match self.long_bar {
-            Some((chars, bar)) if fitting.rest_chars >= chars => bar,
+            Some((chars, bar)) if fitting.rest_chars() >= chars => bar,
             _ => SHOW_THRESHOLD,
         };
         self.chance(candidate, fitting) >= bar
@@ -186,11 +200,11 @@ impl SuggestionPolicy for FrequencyOnly {
         false
     }
 
-    fn shows_completion(&self, candidate: &Candidate) -> bool {
+    fn shows_completion(&self, candidate: &Candidate<'_>) -> bool {
         self.always || candidate.probability >= SHOW_THRESHOLD
     }
 
-    fn shows_prediction(&self, _: &Candidate) -> bool {
+    fn shows_prediction(&self, _: &Candidate<'_>) -> bool {
         false
     }
 

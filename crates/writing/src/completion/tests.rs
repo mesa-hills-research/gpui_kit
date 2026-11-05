@@ -520,6 +520,57 @@ fn writing_a_turned_down_word_anyway_undoes_turning_it_down(cx: &mut TestAppCont
     assert_eq!(typist.ghost().as_deref(), Some("world"));
 }
 
+/// Quiet holds back a completion a young vocabulary has seen once, which is
+/// as likely a word it hasn't seen, until the word has been written a few
+/// times. Eager offers it at once.
+#[gpui::test]
+fn quiet_waits_for_a_young_vocabulary_to_know_a_word(cx: &mut TestAppContext) {
+    let once = || {
+        let mut vocabulary = Vocabulary::new();
+        vocabulary.learn_sentence("We went to the bank");
+        vocabulary
+    };
+    let mut eager = Typist::with_vocabulary(cx, SuggestionMode::Eager, once());
+    assert_eq!(
+        eager.type_and_wait("We went to the ba").as_deref(),
+        Some("nk")
+    );
+
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, once());
+    assert_eq!(quiet.type_and_wait("We went to the ba"), None);
+
+    let mut often = Vocabulary::new();
+    for _ in 0..4 {
+        often.learn_sentence("We went to the bank");
+    }
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, often);
+    assert_eq!(
+        quiet.type_and_wait("We went to the ba").as_deref(),
+        Some("nk")
+    );
+}
+
+/// A completion Quiet showed stays while the user types along it, though
+/// the narrower prefix fits a word the gate alone would hold back.
+#[gpui::test]
+fn the_gate_leaves_a_completion_typed_along(cx: &mut TestAppContext) {
+    let mut vocabulary = Vocabulary::new();
+    for _ in 0..20 {
+        vocabulary.learn_sentence("but be");
+    }
+    for n in 0..40u8 {
+        let word = format!("zz{}{}", (b'a' + n / 26) as char, (b'a' + n % 26) as char);
+        vocabulary.learn_sentence(&format!("{word} {word}x {word}y"));
+    }
+    vocabulary.learn_sentence("We went to the bank");
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary);
+    assert_eq!(
+        quiet.type_and_wait("We went to the b").as_deref(),
+        Some("ank")
+    );
+    assert_eq!(quiet.ghosts_while_typing("a"), ghosts(&[Some("nk")]));
+}
+
 /// A new mode applies from the next keystroke.
 #[gpui::test]
 fn a_new_mode_applies_at_once(cx: &mut TestAppContext) {
@@ -1134,8 +1185,8 @@ fn a_very_long_line_is_cut_around_the_caret() {
         );
         let part = excerpt.text.as_str();
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Today),
-            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Today),
+            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Ungated),
+            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Ungated),
             "at {offset}"
         );
         let sentence = preceding_sentence(part, inside).map(|(range, end)| {
@@ -1182,8 +1233,8 @@ fn the_text_around_the_caret_is_enough() {
         assert_eq!(excerpt.start + inside, offset);
         let part = excerpt.text.as_str();
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Today),
-            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Today),
+            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Ungated),
+            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Ungated),
             "at {offset}"
         );
         let sentence = preceding_sentence(part, inside).map(|(range, end)| {
@@ -1521,7 +1572,7 @@ fn offers_on_fixed_writing_stay_the_same() {
     }
     assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
     assert_eq!(
-        hash, 0xdfa4_3ab6_7eef_c72e,
+        hash, 0xe7fb_daad_9d23_0d09,
         "offers hash {hash:#x}, {tabs} taken, {shown} shown"
     );
 }
