@@ -17,14 +17,13 @@
 //! character never shows, since Tab is a keystroke too.
 
 use super::local::LocalIndex;
+use super::policy::{Candidate, SuggestionPolicy, Word};
 use super::vocabulary::{Counts, Forms, SENTENCE_START, Successors, Vocabulary, fold};
 use super::{
-    CONTEXT_BYTES, EMPTY_PREDICTION_CONTINUATION_LIMIT, PREFIX_CONTINUATION_LIMIT,
-    canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
+    CONTEXT_BYTES, canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
     has_text_after_cursor_on_line, is_clause_break, is_learnable_word, is_sentence_terminator,
     word_tokens,
 };
-use crate::classify::{TextContext, classify_context, is_prose_shaped};
 use crate::text::floor_char_boundary;
 
 /// How much of each count the interpolation holds back for the next shorter
@@ -47,6 +46,7 @@ struct Evidence<'a> {
     shared: &'a Vocabulary,
     local: &'a LocalIndex,
     prose: bool,
+    policy: &'a dyn SuggestionPolicy,
 }
 
 impl<'a> Evidence<'a> {
@@ -95,12 +95,12 @@ impl<'a> Evidence<'a> {
     /// document.
     fn offers(&self, form: &str, folded: &str) -> bool {
         !self.prose
-            || (is_prose_shaped(form)
-                && self.shared.is_trusted(
-                    form,
-                    self.shared.counts().word_count(folded),
-                    self.local.counts().word_count(folded),
-                ))
+            || self.policy.admits(&Word::new(
+                form,
+                self.shared.counts().word_count(folded),
+                self.local.counts().word_count(folded),
+                self.shared,
+            ))
     }
 
     /// The form to show for `folded` after `levels`: the one it most often
@@ -382,6 +382,7 @@ pub(super) fn generate_suggestion(
     local: &LocalIndex,
     text: &str,
     offset: usize,
+    policy: &dyn SuggestionPolicy,
 ) -> Option<String> {
     if has_text_after_cursor_on_line(text, offset) {
         return None;
@@ -397,7 +398,8 @@ pub(super) fn generate_suggestion(
     let evidence = Evidence {
         shared,
         local,
-        prose: classify_context(text, offset) == TextContext::Prose,
+        prose: !policy.is_code(text, offset),
+        policy,
     };
     let mut context = context_words(text, prefix_start, evidence.prose);
     let at_sentence_start = context.len() == 1 && context[0] == SENTENCE_START;
@@ -412,7 +414,7 @@ pub(super) fn generate_suggestion(
             return None;
         }
         let (word, probability, form) = best_next(&evidence, &context, Clause::Goes)?;
-        if probability < SHOW_THRESHOLD || !evidence.offers(&form, &word) {
+        if !policy.shows_prediction(&Candidate { probability }) || !evidence.offers(&form, &word) {
             return None;
         }
         (word, probability, form)
@@ -427,14 +429,22 @@ pub(super) fn generate_suggestion(
         let candidates: Vec<&str> = completions.iter().map(|c| c.folded).collect();
         let mut probabilities: Vec<f64> = completions.iter().map(|c| c.count / total).collect();
         let mass = probabilities.iter().sum();
-        let levels = evidence.levels(&context);
+        let levels = if policy.uses_context() {
+            evidence.levels(&context)
+        } else {
+            Vec::new()
+        };
         interpolate(&levels, &candidates, &mut probabilities, true, mass);
 
-        // The likeliest word that may be offered. Only a word at the show
-        // threshold can show, and as the probabilities add up to one, at
-        // most two words reach it.
+        // The likeliest word that may be offered. Only a word the policy
+        // shows can show. At today's threshold, as the probabilities add up
+        // to one, at most two words reach it.
         let mut likely: Vec<usize> = (0..completions.len())
-            .filter(|&index| probabilities[index] >= SHOW_THRESHOLD)
+            .filter(|&index| {
+                policy.shows_completion(&Candidate {
+                    probability: probabilities[index],
+                })
+            })
             .collect();
         likely.sort_by(|&a, &b| {
             probabilities[b]
@@ -462,11 +472,7 @@ pub(super) fn generate_suggestion(
 
     let mut options = vec![(ghost.clone(), first_probability)];
     if evidence.prose {
-        let limit = if prefix.is_empty() {
-            EMPTY_PREDICTION_CONTINUATION_LIMIT
-        } else {
-            PREFIX_CONTINUATION_LIMIT
-        };
+        let limit = policy.words_after(!prefix.is_empty());
         let mut ghost = ghost;
         let mut cumulative = first_probability;
         let mut previous = first;
@@ -480,8 +486,7 @@ pub(super) fn generate_suggestion(
                 break;
             };
             cumulative *= probability;
-            if cumulative < ADD_WORD_THRESHOLD || word == previous || !evidence.offers(&form, &word)
-            {
+            if !policy.adds_word(cumulative) || word == previous || !evidence.offers(&form, &word) {
                 break;
             }
             ghost.push(' ');
@@ -505,6 +510,7 @@ pub(super) fn generate_suggestion(
 
 #[cfg(test)]
 mod tests {
+    use super::super::policy::Today;
     use super::*;
 
     fn close(a: f64, b: f64) -> bool {
@@ -560,7 +566,7 @@ mod tests {
     }
 
     fn suggest(vocabulary: &Vocabulary, text: &str) -> Option<String> {
-        generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len())
+        generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), &Today)
     }
 
     #[test]
@@ -621,7 +627,7 @@ mod tests {
             &|_| 0,
         );
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, text, text.len()).as_deref(),
+            generate_suggestion(&vocabulary, &local, text, text.len(), &Today).as_deref(),
             Some("ute_total")
         );
     }
@@ -663,6 +669,7 @@ mod tests {
             shared: &vocabulary,
             local: &local,
             prose: true,
+            policy: &Today,
         };
         let mut sparse_cases = 0;
         for context in [

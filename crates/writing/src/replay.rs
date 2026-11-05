@@ -10,6 +10,7 @@
 //! Quiet's pause on the clock, and inserts Tab's and Ctrl+Right's text with
 //! the suggestion's origin.
 
+use crate::completion::policy::{FrequencyOnly, SuggestionPolicy, Today};
 use crate::completion::{Answer, Edit, SuggestionPacing, WordSuggestions};
 use crate::spelling::Dictionary;
 use crate::{WordList, Writing};
@@ -27,9 +28,34 @@ pub fn english() -> Rc<Dictionary> {
     Rc::new(Dictionary::load(&[WordList::English], None))
 }
 
+/// How the suggestions decide what shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Policy {
+    /// As the crate does.
+    Default,
+    /// Word frequency alone. The most frequent known word that fits the
+    /// prefix shows when it holds at least half the count of the words that
+    /// fit, with no next word and no words after the first.
+    FrequencyOnly,
+    /// Word frequency alone, the most frequent fitting word whatever its
+    /// share.
+    FrequencyAlways,
+}
+
+impl Policy {
+    fn make(self) -> Rc<dyn SuggestionPolicy> {
+        match self {
+            Self::Default => Rc::new(Today),
+            Self::FrequencyOnly => Rc::new(FrequencyOnly { always: false }),
+            Self::FrequencyAlways => Rc::new(FrequencyOnly { always: true }),
+        }
+    }
+}
+
 /// One person's writing aids and clock.
 pub struct Writer {
     writing: Writing,
+    policy: Rc<dyn SuggestionPolicy>,
     start: Instant,
     clock: Rc<Cell<Duration>>,
 }
@@ -38,16 +64,25 @@ impl Writer {
     /// A writer with an empty vocabulary that trusts `dictionary`'s words,
     /// with suggestions in `mode`.
     pub fn new(mode: SuggestionMode, dictionary: Rc<Dictionary>) -> Self {
+        Self::with_policy(mode, dictionary, Policy::Default)
+    }
+
+    /// A writer as [`Self::new`] makes, whose suggestions decide what shows
+    /// by `policy`.
+    pub fn with_policy(mode: SuggestionMode, dictionary: Rc<Dictionary>, policy: Policy) -> Self {
         let vocabulary =
             crate::completion::vocabulary::Vocabulary::with_dictionary(dictionary.clone());
         let writing = Writing::from_parts(dictionary, vocabulary);
         writing.set_suggestion_mode(mode);
-        Self::with_writing(writing)
+        let mut writer = Self::with_writing(writing);
+        writer.policy = policy.make();
+        writer
     }
 
     pub(crate) fn with_writing(writing: Writing) -> Self {
         Self {
             writing,
+            policy: Rc::new(Today),
             start: Instant::now(),
             clock: Rc::new(Cell::new(Duration::ZERO)),
         }
@@ -67,7 +102,7 @@ impl Writer {
     /// A new, empty textarea.
     pub fn field(&self) -> Field {
         Field {
-            suggestions: self.writing.word_suggestions(),
+            suggestions: self.writing.word_suggestions_with(self.policy.clone()),
             start: self.start,
             clock: self.clock.clone(),
             text: Rope::new(),

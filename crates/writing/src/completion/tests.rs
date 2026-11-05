@@ -1075,8 +1075,8 @@ fn a_very_long_line_is_cut_around_the_caret() {
         );
         let part = excerpt.text.as_str();
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, part, inside),
-            generate_suggestion(&vocabulary, &local, &text, offset),
+            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Today),
+            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Today),
             "at {offset}"
         );
         let sentence = preceding_sentence(part, inside).map(|(range, end)| {
@@ -1123,8 +1123,8 @@ fn the_text_around_the_caret_is_enough() {
         assert_eq!(excerpt.start + inside, offset);
         let part = excerpt.text.as_str();
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, part, inside),
-            generate_suggestion(&vocabulary, &local, &text, offset),
+            generate_suggestion(&vocabulary, &local, part, inside, &super::policy::Today),
+            generate_suggestion(&vocabulary, &local, &text, offset, &super::policy::Today),
             "at {offset}"
         );
         let sentence = preceding_sentence(part, inside).map(|(range, end)| {

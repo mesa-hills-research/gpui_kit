@@ -62,13 +62,13 @@ mod learned;
 pub(crate) mod local;
 mod model;
 pub(crate) mod pacing;
+pub(crate) mod policy;
 mod typed;
 pub(crate) mod vocabulary;
 
 pub use pacing::SuggestionMode;
 pub(crate) use pacing::SuggestionPacing;
 
-use crate::classify::{TextContext, classify_context};
 use crate::text::floor_char_boundary;
 use gpui::{App, BackgroundExecutor, Entity, KeyBinding, Subscription, Task, Window};
 use gpui_base::input::{
@@ -79,6 +79,7 @@ use learned::{LearnedSentences, typed_copies};
 use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
+use policy::{SuggestionPolicy, Today};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
@@ -519,10 +520,20 @@ pub struct WordSuggestions {
     /// opened with.
     known_len: Cell<Option<usize>>,
     pacer: Pacer,
+    policy: Rc<dyn SuggestionPolicy>,
 }
 
 impl WordSuggestions {
     pub(crate) fn new(vocabulary: Rc<RefCell<Vocabulary>>, pacing: Rc<SuggestionPacing>) -> Self {
+        Self::with_policy(vocabulary, pacing, Rc::new(Today))
+    }
+
+    /// Suggestions that decide what shows by `policy`.
+    pub(crate) fn with_policy(
+        vocabulary: Rc<RefCell<Vocabulary>>,
+        pacing: Rc<SuggestionPacing>,
+        policy: Rc<dyn SuggestionPolicy>,
+    ) -> Self {
         Self {
             vocabulary,
             local_index: RefCell::new(LocalIndex::new()),
@@ -534,6 +545,7 @@ impl WordSuggestions {
             typed: RefCell::new(TypedText::default()),
             known_len: Cell::new(None),
             pacer: Pacer::new(pacing),
+            policy,
         }
     }
 
@@ -768,7 +780,7 @@ impl WordSuggestions {
             let vocabulary = self.vocabulary.borrow();
             let local = self.local_index.borrow();
 
-            generate_suggestion(&vocabulary, &local, text, offset)
+            generate_suggestion(&vocabulary, &local, text, offset, &*self.policy)
         };
         let caret = excerpt.start + offset;
         let shown = self.pacer.offer(text, offset, caret, model.clone(), now);
@@ -845,7 +857,7 @@ impl WordSuggestions {
             }
         }
 
-        if classify_context(text, terminator_offset) == TextContext::Code {
+        if self.policy.is_code(text, terminator_offset) {
             return;
         }
 

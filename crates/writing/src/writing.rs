@@ -194,6 +194,20 @@ impl Writing {
     pub(crate) fn pacing(&self) -> &SuggestionPacing {
         &self.pacing
     }
+
+    /// Word suggestions for one textarea that decide what shows by
+    /// `policy`.
+    #[cfg(any(test, feature = "replay"))]
+    pub(crate) fn word_suggestions_with(
+        &self,
+        policy: Rc<dyn crate::completion::policy::SuggestionPolicy>,
+    ) -> Rc<WordSuggestions> {
+        Rc::new(WordSuggestions::with_policy(
+            self.vocabulary.clone(),
+            self.pacing.clone(),
+            policy,
+        ))
+    }
 }
 
 #[cfg(test)]
