@@ -13,6 +13,7 @@ members = [
     "crates/fps",
     "crates/webview",
     "crates/writing",
+    "crates/writing-bench",
     "crates/gpui_new",
     "examples/app_assets",
     "examples/fps_monitor",

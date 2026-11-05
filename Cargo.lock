@@ -3298,6 +3298,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-kit-writing-bench"
+version = "0.0.0"
+dependencies = [
+ "mhr-gpui-kit-writing",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gpui-pre-reqwest"
 version = "0.12.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
