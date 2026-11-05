@@ -8,14 +8,18 @@
 //! vocabulary's own count of the word, since an earlier session may have
 //! learned them. That way no text counts twice.
 //!
-//! Learnable words and their runs never cross a line break, so the counts
-//! of a document are the sum of its lines' counts. An edit takes back the
-//! counts of the lines it touches, as they were, and adds them as they are.
-//! The word at the caret, being typed, isn't counted.
+//! Learnable words and their runs never cross a sentence terminator, a
+//! line break included, so the counts of a document are the sum of its
+//! sentences' counts. An edit takes back the counts of the sentences it
+//! touches, as they were, and adds them as they are, so a key typed into a
+//! long paragraph recounts one sentence rather than the paragraph. The word
+//! at the caret, being typed, isn't counted.
 
 use super::vocabulary::{Counts, fold};
-use super::{LOCAL_COUNT_CAP, canonical_prediction_word, extract_sentences_and_words};
-use gpui_base::input::{Rope, RopeExt as _};
+use super::{
+    LOCAL_COUNT_CAP, canonical_prediction_word, extract_sentences_and_words, is_sentence_terminator,
+};
+use gpui_base::input::Rope;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
@@ -51,7 +55,7 @@ pub(crate) fn count(text: &Rope, caret: Option<usize>) -> Counts {
     counts
 }
 
-/// Counts the lines of `text` in `span`, whole lines, leaving out the word at
+/// Counts the whole sentences of `text` in `span`, leaving out the word at
 /// `caret`, and notes the words counted in `touched`.
 fn add(
     counts: &mut Counts,
@@ -60,11 +64,11 @@ fn add(
     caret: Option<usize>,
     touched: &mut HashSet<Box<str>>,
 ) {
-    let lines = text.slice(span.clone()).to_string();
+    let sentences = text.slice(span.clone()).to_string();
     let caret = caret
-        .filter(|&caret| in_lines(&span, caret, text.len()))
+        .filter(|&caret| in_span(&span, caret, text.len()))
         .map(|caret| caret - span.start);
-    for run in extract_sentences_and_words(&lines, caret) {
+    for run in extract_sentences_and_words(&sentences, caret) {
         counts.add_run(false, &run);
         touched.extend(
             run.iter()
@@ -73,7 +77,7 @@ fn add(
     }
 }
 
-/// Takes back the counts [`add`] made of the same lines.
+/// Takes back the counts [`add`] made of the same sentences.
 fn remove(
     counts: &mut Counts,
     text: &Rope,
@@ -81,11 +85,11 @@ fn remove(
     caret: Option<usize>,
     touched: &mut HashSet<Box<str>>,
 ) {
-    let lines = text.slice(span.clone()).to_string();
+    let sentences = text.slice(span.clone()).to_string();
     let caret = caret
-        .filter(|&caret| in_lines(&span, caret, text.len()))
+        .filter(|&caret| in_span(&span, caret, text.len()))
         .map(|caret| caret - span.start);
-    for run in extract_sentences_and_words(&lines, caret) {
+    for run in extract_sentences_and_words(&sentences, caret) {
         counts.remove_run(&run);
         touched.extend(
             run.iter()
@@ -94,18 +98,31 @@ fn remove(
     }
 }
 
-/// Whether `caret` is in the whole lines `span` of a text `len` bytes long:
-/// at the end of the last, too, when nothing follows it.
-fn in_lines(span: &Range<usize>, caret: usize, len: usize) -> bool {
+/// Whether `caret` is in the whole sentences `span` of a text `len` bytes
+/// long, at the end of the last too when nothing follows it.
+fn in_span(span: &Range<usize>, caret: usize, len: usize) -> bool {
     span.contains(&caret) || (caret == span.end && caret == len)
 }
 
-/// The whole lines of `text` that `range` touches, the line break after the
-/// last included.
-fn whole_lines(text: &Rope, range: Range<usize>) -> Range<usize> {
-    let first = text.offset_to_point(range.start).row;
-    let last = text.offset_to_point(range.end).row;
-    text.line_start_offset(first)..text.line_start_offset(last + 1)
+/// The whole sentences of `text` that `range` touches, from just after the
+/// last sentence terminator before it to just after the first one at or
+/// after its end, or to the ends of the text.
+fn whole_sentences(text: &Rope, range: Range<usize>) -> Range<usize> {
+    let mut start = range.start;
+    for character in text.chars_at(range.start).reversed() {
+        if is_sentence_terminator(character) {
+            break;
+        }
+        start -= character.len_utf8();
+    }
+    let mut end = range.end;
+    for character in text.chars_at(range.end) {
+        end += character.len_utf8();
+        if is_sentence_terminator(character) {
+            break;
+        }
+    }
+    start..end
 }
 
 /// The counts of one document's words.
@@ -193,10 +210,10 @@ impl LocalIndex {
             self.clear();
             return;
         }
-        let span = whole_lines(&text, range.clone());
+        let span = whole_sentences(&text, range.clone());
         let caret_in_span = self
             .caret
-            .is_some_and(|caret| in_lines(&span, caret, text.len()));
+            .is_some_and(|caret| in_span(&span, caret, text.len()));
         let mut touched = HashSet::new();
         remove(
             &mut self.counts,
@@ -231,7 +248,7 @@ impl LocalIndex {
         };
         let mut touched = HashSet::new();
         if let Some(old) = self.caret {
-            let span = whole_lines(&text, old..old);
+            let span = whole_sentences(&text, old..old);
             remove(
                 &mut self.counts,
                 &text,
@@ -243,7 +260,7 @@ impl LocalIndex {
         }
         let caret = caret.filter(|caret| *caret <= text.len() && text.is_char_boundary(*caret));
         if let Some(new) = caret {
-            let span = whole_lines(&text, new..new);
+            let span = whole_sentences(&text, new..new);
             remove(&mut self.counts, &text, span.clone(), None, &mut touched);
             add(&mut self.counts, &text, span, Some(new), &mut touched);
         }
@@ -323,6 +340,84 @@ mod tests {
             );
             assert_eq!(index.counts().total(), count(&rope, None).total());
         }
+    }
+
+    /// After many edits that add and take away words, sentence terminators
+    /// and line breaks, on long lines of several sentences, with the caret
+    /// moving between them, the counts are those of the text counted afresh.
+    #[test]
+    fn edits_across_sentences_keep_the_counts_of_the_text() {
+        let sentence = "Ferns grow slowly in shade. Mosses spread fast! Lichens wait? ";
+        let mut text = sentence.repeat(6);
+        text.push('\n');
+        text.push_str(&sentence.repeat(4));
+        let mut index = LocalIndex::new();
+        index.build(&Rope::from(text.as_str()), None, &nothing_held);
+        let inserts = [
+            ". ",
+            "\n",
+            " grow",
+            "x",
+            "Old ferns. New",
+            "?",
+            " mosses spread",
+        ];
+        let mut state = 7u64;
+        let mut next = |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound.max(1) as u64) as usize
+        };
+        for step in 0..400 {
+            let start = next(text.len() + 1);
+            let range = if step % 3 == 0 {
+                start..(start + next(12)).min(text.len())
+            } else {
+                start..start
+            };
+            let inserted = if step % 3 == 0 {
+                ""
+            } else {
+                inserts[next(inserts.len())]
+            };
+            text.replace_range(range.clone(), inserted);
+            index.edit(range, inserted, &nothing_held);
+            let caret = next(text.len() + 1);
+            index.move_caret(Some(caret), &nothing_held);
+            let rope = Rope::from(text.as_str());
+            assert_eq!(
+                summary(index.counts()),
+                summary(&count(&rope, Some(caret))),
+                "step {step}: {text:?}, caret {caret}"
+            );
+        }
+    }
+
+    /// A key typed into a long line of many sentences recounts the words
+    /// of its own sentence, not the line's.
+    #[test]
+    fn a_key_recounts_its_sentence_alone() {
+        let words: Vec<String> = (0..300).map(|n| format!("word{n}x")).collect();
+        let text: String = words
+            .chunks(6)
+            .map(|chunk| format!("{}. ", chunk.join(" ")))
+            .collect();
+        let rope = Rope::from(text.as_str());
+        let mut index = LocalIndex::new();
+        index.build(&rope, None, &nothing_held);
+        let middle = text.len() / 2;
+        let at = middle + text[middle..].find(' ').unwrap();
+        let looked_up = std::cell::Cell::new(0);
+        let held = |_: &str| {
+            looked_up.set(looked_up.get() + 1);
+            0
+        };
+        index.edit(at..at, "e", &held);
+        assert!(looked_up.get() <= 12, "{} words looked up", looked_up.get());
+        looked_up.set(0);
+        index.move_caret(Some(at + 1), &held);
+        assert!(looked_up.get() <= 12, "{} words looked up", looked_up.get());
     }
 
     /// The word at the caret isn't counted, wherever the caret goes.
