@@ -186,6 +186,9 @@ impl Backlog {
         if self.failed.load(Ordering::Acquire) {
             return Admission::Failed;
         }
+        // Newer Rust renames `fetch_update` to `try_update`. The old name
+        // still builds on the older compilers this crate supports.
+        #[allow(deprecated)]
         let fits = self
             .frames
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |waiting| {

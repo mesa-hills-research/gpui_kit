@@ -52,6 +52,7 @@ extend-glob = [
     "spelling.rs",
     "suggestion_menu.rs",
     "suggestions.rs",
+    "tentative.rs",
     "textarea.rs",
     "timings.rs",
 ]
@@ -61,6 +62,7 @@ accomodate = "accomodate"
 adress = "adress"
 ba = "ba"
 becuase = "becuase"
+brnaches = "brnaches"
 defin = "defin"
 definately = "definately"
 hel = "hel"
@@ -69,8 +71,11 @@ langauge = "langauge"
 mial = "mial"
 mississipi = "mississipi"
 occured = "occured"
+offical = "offical"
+opreating = "opreating"
 photograhpy = "photograhpy"
 recieve = "recieve"
+retrun = "retrun"
 seperate = "seperate"
 teh = "teh"
 tha = "tha"
