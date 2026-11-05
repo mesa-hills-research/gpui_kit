@@ -909,8 +909,7 @@ impl WordSuggestions {
 /// prose or code.
 const EXCERPT_BEFORE_BYTES: usize = 16 * 1024;
 
-/// How much of the text after the caret's line an [`Excerpt`] holds, for
-/// the lines below that classifying reads.
+/// How much of the text after the caret's line an [`Excerpt`] holds.
 const EXCERPT_AFTER_BYTES: usize = 2 * 1024;
 
 /// The most an [`Excerpt`] holds before the caret, however long its lines.

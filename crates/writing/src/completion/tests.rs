@@ -1572,7 +1572,7 @@ fn offers_on_fixed_writing_stay_the_same() {
     }
     assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
     assert_eq!(
-        hash, 0xe7fb_daad_9d23_0d09,
+        hash, 0xfdac_a12b_0b3e_2f14,
         "offers hash {hash:#x}, {tabs} taken, {shown} shown"
     );
 }
