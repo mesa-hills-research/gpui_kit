@@ -116,7 +116,8 @@ const MAX_CHECK_TOKEN_CHARS: usize = 48;
 /// A line whose own code score exceeds this is never spell checked.
 const LINE_CODE_SKIP_SCORE: f64 = 0.5;
 
-/// A line whose neighborhood-smoothed code score exceeds this is skipped.
+/// A line whose neighborhood-smoothed code score exceeds this is skipped,
+/// when a line near it reads as code.
 const SMOOTHED_CODE_SKIP_SCORE: f64 = 0.1;
 
 /// A spelling dictionary: the words of some word lists, the words the user
@@ -861,7 +862,7 @@ impl SpellScanner {
                 if !span.contains(&row)
                     || in_fence
                     || record.code_score > LINE_CODE_SKIP_SCORE
-                    || smoothed_code_score(&records, index) > SMOOTHED_CODE_SKIP_SCORE
+                    || inherits_code(&records, index)
                 {
                     continue;
                 }
@@ -962,7 +963,7 @@ impl SpellScanner {
             if in_fence || record.code_score > LINE_CODE_SKIP_SCORE {
                 continue;
             }
-            if smoothed_code_score(&rows, row) > SMOOTHED_CODE_SKIP_SCORE {
+            if inherits_code(&rows, row) {
                 continue;
             }
 
@@ -1019,6 +1020,19 @@ fn fence_lines(text: &Rope, range: Range<usize>) -> usize {
         offset += chunk.len();
     }
     count
+}
+
+/// Whether a line reads as code from the lines around it, as a line inside
+/// a block of code does. That takes a line nearby that reads as code on its
+/// own, and a neighborhood that leans to code. A terse line, such as a note
+/// with a semicolon, would otherwise be skipped with no code anywhere near
+/// it, and a one-line message never checked.
+fn inherits_code(rows: &[LineRecord], row: usize) -> bool {
+    let nearby = row.saturating_sub(SMOOTHING_MARGIN)..(row + SMOOTHING_MARGIN + 1).min(rows.len());
+    nearby
+        .filter(|&near| near != row)
+        .any(|near| rows[near].code_score > LINE_CODE_SKIP_SCORE)
+        && smoothed_code_score(rows, row) > SMOOTHED_CODE_SKIP_SCORE
 }
 
 /// Weighted average of code scores over a five-line neighborhood, so lines
@@ -1673,6 +1687,33 @@ pub(crate) mod tests {
             "def __init__(self, **kwargs):",
         ] {
             assert!(spelling_code_score(code) > LINE_CODE_SKIP_SCORE, "{code}");
+        }
+    }
+
+    /// A terse line leans a little to code, by its semicolon and its few
+    /// small words. On its own, or among lines like it, it is still prose
+    /// and its misspellings are underlined.
+    #[test]
+    fn a_terse_line_away_from_code_is_checked() {
+        let dictionary = english();
+        let lines = [
+            "Theo shdaows; ownership unchanged.",
+            "Kestrel quiet; September spkie stays parked.",
+            "Print alram counts; credit observers.",
+        ];
+        for line in lines {
+            assert!(
+                spelling_code_score(line) > SMOOTHED_CODE_SKIP_SCORE,
+                "{line}"
+            );
+        }
+        let all = lines.join("\n");
+        for (line, typo) in lines.iter().zip(["shdaows", "spkie", "alram"]) {
+            for text in [*line, all.as_str()] {
+                let at = text.find(typo).unwrap();
+                let found = SpellScanner::new().scan(&dictionary, &Rope::from(text));
+                assert!(found.contains(&(at..at + typo.len())), "{typo} in {text:?}");
+            }
         }
     }
 
