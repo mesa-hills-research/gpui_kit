@@ -37,7 +37,11 @@
 //! ignored after or a longer one, or, for a word predicted after a space, the
 //! same previous word. When it is the model's best answer, nothing shows.
 //! Each ignored suggestion also lengthens the pause before the next one by
-//! [`IGNORED_EXTRA_PAUSE`], up to [`MAX_QUIET_PAUSE`].
+//! [`IGNORED_EXTRA_PAUSE`], up to [`MAX_QUIET_PAUSE`], for the next
+//! [`IGNORED_FADE_WORDS`] words typed or [`IGNORED_FADE`], whichever ends
+//! first. So someone who types past a few suggestions sees fewer for a
+//! while, and someone whose pauses are shorter than the longest pause still
+//! finds suggestions once they have typed on.
 //!
 //! This state lives in memory for the session.
 
@@ -61,6 +65,12 @@ pub(crate) const IGNORED_EXTRA_PAUSE: Duration = Duration::from_millis(150);
 /// The longest Quiet waits, however many suggestions were ignored. A real
 /// hesitation still brings one up.
 pub(crate) const MAX_QUIET_PAUSE: Duration = Duration::from_millis(1000);
+
+/// How many words typed an ignored suggestion lengthens the pause for.
+pub(crate) const IGNORED_FADE_WORDS: u64 = 20;
+
+/// How long an ignored suggestion lengthens the pause for, at most.
+pub(crate) const IGNORED_FADE: Duration = Duration::from_secs(2 * 60);
 
 /// How long an ignored word stays unoffered after the prefix it was ignored
 /// at: the rest of a stretch of writing, after which it may be wanted again.
@@ -111,9 +121,12 @@ impl<'de> Deserialize<'de> for SuggestionMode {
 /// how the user has been answering suggestions.
 pub(crate) struct SuggestionPacing {
     mode: Cell<SuggestionMode>,
-    /// Ignored suggestions since the last accepted one, Escape counting
-    /// [`ESCAPE_WEIGHT`].
-    ignored_in_a_row: Cell<u32>,
+    /// Suggestions ignored since the last accepted one that still lengthen
+    /// the pause.
+    ignores: RefCell<Vec<Ignore>>,
+    /// Words typed in the session, by the spaces typed. Enter comes as an
+    /// edit, not a typed key, so a run of short lines fades by time.
+    words: Cell<u64>,
     /// Lowercased ignored words, each with the lowercased leads it was
     /// ignored after and when that ends.
     suppressed: RefCell<HashMap<String, Vec<(String, Instant)>>>,
@@ -137,11 +150,20 @@ pub enum Paced {
     Suppressed { word: String, lead: String },
 }
 
+/// An ignored suggestion that lengthens the pause, with its weight, Escape
+/// counting [`ESCAPE_WEIGHT`], and when it was ignored, in time and in words.
+struct Ignore {
+    weight: u32,
+    at: Instant,
+    words: u64,
+}
+
 impl SuggestionPacing {
     pub fn new(mode: SuggestionMode) -> Self {
         Self {
             mode: Cell::new(mode),
-            ignored_in_a_row: Cell::new(0),
+            ignores: RefCell::new(Vec::new()),
+            words: Cell::new(0),
             suppressed: RefCell::new(HashMap::new()),
             #[cfg(any(test, feature = "replay"))]
             log: RefCell::new(Vec::new()),
@@ -165,12 +187,34 @@ impl SuggestionPacing {
 
     /// How long typing must pause before Quiet offers a suggestion now.
     pub fn pause(&self) -> Duration {
-        let extra = IGNORED_EXTRA_PAUSE.saturating_mul(self.ignored_in_a_row.get());
+        let weight: u32 = self
+            .ignores
+            .borrow()
+            .iter()
+            .map(|ignore| ignore.weight)
+            .sum();
+        let extra = IGNORED_EXTRA_PAUSE.saturating_mul(weight);
         (QUIET_PAUSE + extra).min(MAX_QUIET_PAUSE)
     }
 
     fn accepted(&self) {
-        self.ignored_in_a_row.set(0);
+        self.ignores.borrow_mut().clear();
+    }
+
+    /// Hears that the user typed `text` at `now`, which counts the words it
+    /// ends and lets ignored suggestions stop lengthening the pause once
+    /// their stretch of words or time is over.
+    fn typed(&self, text: &str, now: Instant) {
+        let ended = text
+            .chars()
+            .filter(|character| character.is_whitespace())
+            .count();
+        let words = self.words.get() + ended as u64;
+        self.words.set(words);
+        self.ignores.borrow_mut().retain(|ignore| {
+            words - ignore.words < IGNORED_FADE_WORDS
+                && now.duration_since(ignore.at) < IGNORED_FADE
+        });
     }
 
     fn ignored(&self, offer: &Offer, weight: u32, now: Instant) {
@@ -180,8 +224,11 @@ impl SuggestionPacing {
             lead: offer.lead.clone(),
             weight,
         });
-        self.ignored_in_a_row
-            .set(self.ignored_in_a_row.get().saturating_add(weight));
+        self.ignores.borrow_mut().push(Ignore {
+            weight,
+            at: now,
+            words: self.words.get(),
+        });
         let mut suppressed = self.suppressed.borrow_mut();
         suppressed.retain(|_, leads| {
             leads.retain(|(_, until)| *until > now);
@@ -320,6 +367,7 @@ impl Pacer {
         if !self.is_quiet() {
             return;
         }
+        self.shared.typed(text, now);
         *self.typed.borrow_mut() = Some(Keystroke {
             offset,
             text: text.to_string(),
@@ -508,6 +556,36 @@ mod tests {
         assert_eq!(pacing.pause(), QUIET_PAUSE);
         pacing.ignored(&offer, ESCAPE_WEIGHT, now);
         assert_eq!(pacing.pause(), ms(600));
+    }
+
+    /// Ignored suggestions lengthen the pause for the next twenty words or
+    /// two minutes, whichever ends first.
+    #[test]
+    fn ignored_suggestions_lengthen_the_pause_for_a_stretch_of_words_or_time() {
+        let shared = Rc::new(SuggestionPacing::new(SuggestionMode::Quiet));
+        let pacer = Pacer::new(shared.clone());
+        let offer = Offer::new("he", 2, "llo").unwrap();
+        let ms = |ms| Duration::from_millis(ms);
+        let now = Instant::now();
+        shared.ignored(&offer, 1, now);
+        pacer.typed(0, "a b ", true, now);
+        shared.ignored(&offer, 1, now);
+        shared.ignored(&offer, 1, now);
+        assert_eq!(shared.pause(), ms(750));
+        for _ in 0..IGNORED_FADE_WORDS - 3 {
+            pacer.typed(0, " ", true, now);
+        }
+        assert_eq!(shared.pause(), ms(750), "nineteen words on from the first");
+        pacer.typed(0, " ", true, now);
+        assert_eq!(shared.pause(), ms(600), "twenty words on from the first");
+        pacer.typed(0, "  ", true, now);
+        assert_eq!(shared.pause(), QUIET_PAUSE);
+
+        shared.ignored(&offer, ESCAPE_WEIGHT, now);
+        pacer.typed(0, "a", true, now + IGNORED_FADE - Duration::from_secs(1));
+        assert_eq!(shared.pause(), ms(600));
+        pacer.typed(0, "a", true, now + IGNORED_FADE);
+        assert_eq!(shared.pause(), QUIET_PAUSE);
     }
 
     #[test]

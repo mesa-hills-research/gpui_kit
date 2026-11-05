@@ -461,6 +461,31 @@ fn ignored_suggestions_lengthen_the_pause_until_one_is_accepted(cx: &mut TestApp
     assert_eq!(typist.pause_before_a_suggestion(), Some(QUIET_PAUSE));
 }
 
+/// Suggestions typed past lengthen the pause only for a stretch of writing,
+/// so someone whose pauses are shorter than the longest pause still finds
+/// suggestions once they have typed on for a while.
+#[gpui::test]
+fn the_pause_shortens_again_once_the_user_types_on(cx: &mut TestAppContext) {
+    let names = ["alpha", "bravo", "charlie", "delta", "echoes", "foxtrot"];
+    let vocabulary = words(&names.map(|name| (name, 10)));
+    let mut typist = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary);
+    for name in &names[..5] {
+        typist.type_text(&name[..2]);
+        assert!(typist.pause_before_a_suggestion().is_some());
+        typist.type_text(" ");
+    }
+    // After five ignored in a row, a pause of 700 ms no longer brings one up.
+    typist.type_text("fo");
+    typist.wait(ms(700));
+    assert_eq!(typist.ghost(), None);
+    typist.cx.simulate_keystrokes("backspace backspace");
+    for _ in 0..super::pacing::IGNORED_FADE_WORDS {
+        typist.type_text("zz ");
+    }
+    typist.type_text("fo");
+    assert_eq!(typist.pause_before_a_suggestion(), Some(QUIET_PAUSE));
+}
+
 /// A new mode applies from the next keystroke.
 #[gpui::test]
 fn a_new_mode_applies_at_once(cx: &mut TestAppContext) {
@@ -1462,7 +1487,7 @@ fn offers_on_fixed_writing_stay_the_same() {
     }
     assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
     assert_eq!(
-        hash, 0x1bde_d795_7d72_5008,
+        hash, 0x4d13_51ad_44af_d3cf,
         "offers hash {hash:#x}, {tabs} taken, {shown} shown"
     );
 }
