@@ -1060,7 +1060,20 @@ fn smoothed_code_score(rows: &[LineRecord], row: usize) -> f64 {
 /// in bold or a sentence ending in a link, could read as code once the URL
 /// or the closing markers were typed, and the line's misspellings, typed
 /// before them, would lose their underlines.
+///
+/// A colon or a semicolon that ends a line that isn't indented is left out
+/// too. While a line is typed, the one just typed ends it, as in "Stay
+/// hydrated:" before its explanation or "Flights booked;" before the next
+/// clause, and the line would read as code until the next word came. An
+/// indented line keeps it, since blocks of code such as Python's and YAML's
+/// are indented and end their lines that way.
 fn spelling_code_score(line: &str) -> f64 {
+    let line = line.trim_end();
+    let line = if line.starts_with([' ', '\t']) {
+        line
+    } else {
+        line.strip_suffix([':', ';']).unwrap_or(line)
+    };
     if !line.contains("://") && !line.contains("www.") && !line.contains(['*', '_']) {
         return line_code_score(line);
     }
@@ -1714,6 +1727,52 @@ pub(crate) mod tests {
                 let found = SpellScanner::new().scan(&dictionary, &Rope::from(text));
                 assert!(found.contains(&(at..at + typo.len())), "{typo} in {text:?}");
             }
+        }
+    }
+
+    /// A misspelling is underlined as soon as the colon or semicolon after
+    /// its word is typed, as in a list item before its explanation, and
+    /// stays underlined as each word after it is finished. Code that ends
+    /// in a semicolon or a colon still reads as code.
+    #[test]
+    fn a_colon_or_semicolon_just_typed_leaves_a_line_prose() {
+        let dictionary = english();
+        for (line, typo) in [
+            ("1. Stay hyrdated: drink water through the day.", "hyrdated"),
+            ("Flights bokoed; the train set comes with us.", "bokoed"),
+            ("Ingredients for the stwe:", "stwe"),
+        ] {
+            let at = line.find(typo).unwrap();
+            // The textarea checks as each word is finished.
+            let finished = line
+                .char_indices()
+                .filter(|&(end, c)| end >= at + typo.len() && !c.is_alphanumeric())
+                .map(|(end, c)| end + c.len_utf8());
+            for end in finished {
+                let found = SpellScanner::new().scan(&dictionary, &Rope::from(&line[..end]));
+                assert!(found.contains(&(at..at + typo.len())), "{:?}", &line[..end]);
+            }
+        }
+        for code in [
+            "let area = width * height;",
+            "for (i = 0; i < n; i++) {",
+            "if x > 0:",
+        ] {
+            assert!(spelling_code_score(code) > LINE_CODE_SKIP_SCORE, "{code}");
+        }
+    }
+
+    /// Indented lines that end in a colon, in a block of code or a config
+    /// file, still read as code, so the block's words aren't underlined.
+    #[test]
+    fn indented_code_ending_in_colons_stays_unchecked() {
+        let dictionary = english();
+        for block in [
+            "def load(path):\n    if not ret:\n        return None\n    else:\n        retrun path",
+            "name: build\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    stpes:",
+        ] {
+            let found = SpellScanner::new().scan(&dictionary, &Rope::from(block));
+            assert_eq!(found, Vec::<Range<usize>>::new(), "{block}");
         }
     }
 
