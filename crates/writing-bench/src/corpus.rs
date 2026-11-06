@@ -34,6 +34,12 @@ pub struct Segment {
     #[serde(default)]
     pub pasted: bool,
     pub text: String,
+    /// For typed text with recorded timing, the gap before each character
+    /// in milliseconds, since the previous input of any kind, and `null`
+    /// for a character the writer didn't type, such as one a suggestion
+    /// inserted.
+    #[serde(default)]
+    pub gaps_ms: Option<Vec<Option<u32>>>,
 }
 
 pub struct Corpus {

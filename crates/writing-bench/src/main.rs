@@ -2,9 +2,10 @@
 //! keystroke, and measures what they offer.
 //!
 //! ```sh
-//! writing-bench --corpus CORPUS --out RUN [--mode eager|quiet] [--timing fluent|hesitant|thinking]
-//!     [--policy default|ungated|frequency|frequency-always|gate] [--gate-prior F] [--gate-scale F]
-//!     [--gate-long] [--typist tab|word|blind|slip]
+//! writing-bench --corpus CORPUS --out RUN [--mode eager|quiet]
+//!     [--timing fluent|hesitant|thinking|recorded|MEDIAN_MS] [--quiet-timing fixed|rhythm]
+//!     [--reaction MS] [--policy default|ungated|frequency|frequency-always|gate|confidence]
+//!     [--gate-prior F] [--gate-scale F] [--gate-long] [--typist tab|word|blind|slip]
 //!     [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]
 //! ```
 //!
@@ -15,6 +16,12 @@
 //! field, a document or a composer that sends at the end. The run writes
 //! `writers.jsonl`, one line of counts per writer, and `run.json`, its
 //! settings. Held-out writers are replayed only when `--splits` names them.
+//!
+//! A number for `--timing` is a typist whose letters come that many
+//! milliseconds apart in the median, with the spread, hitches and pauses
+//! real typists have. `--reaction` is how long a ghost must have been on
+//! screen before the typist can take it. `--quiet-timing rhythm` times
+//! Quiet by the typist's own rhythm instead of the fixed pause.
 
 mod corpus;
 mod typist;
@@ -23,16 +30,17 @@ use corpus::Corpus;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use typist::{Settings, Timing, TypistKind};
 
-use gpui_kit_writing::replay::{Policy, SuggestionMode};
+use gpui_kit_writing::replay::{Policy, QuietTiming, SuggestionMode};
 
 fn usage() -> ! {
     eprintln!(
-        "writing-bench --corpus DIR --out DIR [--mode eager|quiet] [--timing fluent|hesitant|thinking] \
-         [--policy default|ungated|frequency|frequency-always|gate] [--gate-prior F] [--gate-scale F] \
-         [--gate-long] [--typist tab|word|blind|slip] \
+        "writing-bench --corpus DIR --out DIR [--mode eager|quiet] \
+         [--timing fluent|hesitant|thinking|recorded|MEDIAN_MS] [--quiet-timing fixed|rhythm] \
+         [--reaction MS] [--policy default|ungated|frequency|frequency-always|gate|confidence] \
+         [--gate-prior F] [--gate-scale F] [--gate-long] [--typist tab|word|blind|slip] \
          [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]"
     );
     std::process::exit(2);
@@ -65,8 +73,20 @@ fn main() {
                     "fluent" => Timing::Fluent,
                     "hesitant" => Timing::Hesitant,
                     "thinking" => Timing::Thinking,
+                    "recorded" => Timing::Recorded,
+                    median => Timing::Natural(median.parse().unwrap_or_else(|_| usage())),
+                }
+            }
+            "--quiet-timing" => {
+                settings.quiet_timing = match value().as_str() {
+                    "fixed" => QuietTiming::FixedPause,
+                    "rhythm" => QuietTiming::Rhythm,
                     _ => usage(),
                 }
+            }
+            "--reaction" => {
+                settings.reaction =
+                    Duration::from_millis(value().parse().unwrap_or_else(|_| usage()))
             }
             "--policy" => {
                 settings.policy = match value().as_str() {
@@ -74,6 +94,7 @@ fn main() {
                     "ungated" => Policy::Ungated,
                     "frequency" => Policy::FrequencyOnly,
                     "frequency-always" => Policy::FrequencyAlways,
+                    "confidence" => Policy::Confidence,
                     "gate" => {
                         gate = true;
                         Policy::Default
