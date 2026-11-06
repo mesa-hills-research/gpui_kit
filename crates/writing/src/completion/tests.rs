@@ -4,7 +4,9 @@ use super::pacing::{
     ESCAPE_WEIGHT, IGNORED_EXTRA_PAUSE, MAX_QUIET_PAUSE, QUIET_PAUSE, SUPPRESSION,
 };
 use super::vocabulary::Vocabulary;
-use super::{LOCAL_COUNT_ON_UI_BYTES, SuggestionMode, WordSuggestions, accept_word_bindings};
+use super::{
+    LOCAL_COUNT_ON_UI_BYTES, QuietTiming, SuggestionMode, WordSuggestions, accept_word_bindings,
+};
 use crate::Writing;
 use crate::spelling::Dictionary;
 use gpui::{
@@ -335,6 +337,62 @@ fn quiet_waits_for_typing_to_pause(cx: &mut TestAppContext) {
     assert_eq!(typist.ghost(), None);
     typist.wait(ms(1));
     assert_eq!(typist.ghost().as_deref(), Some("ld"));
+}
+
+/// Timed by the typist's rhythm, Quiet asks at every key and holds the
+/// suggestion back for a few of the typist's gaps between keys. Keys at a
+/// steady 100 ms show nothing, the ghost shows once its hold is up, and a
+/// key typed before then drops the suggestion held.
+#[gpui::test]
+fn quiet_timed_by_rhythm_holds_a_suggestion_back(cx: &mut TestAppContext) {
+    let mut typist = Typist::new(cx, SuggestionMode::Quiet);
+    typist.writing.set_quiet_timing(QuietTiming::Rhythm);
+    // The same keys at the same times in a replay say how long each
+    // suggestion is held.
+    let replayed = writing(vocabulary());
+    replayed.set_suggestion_mode(SuggestionMode::Quiet);
+    let writer = crate::replay::Writer::with_writing(replayed);
+    writer.set_quiet_timing(QuietTiming::Rhythm);
+    let mut field = writer.field();
+    let gap = ms(100);
+    // Types `text` a key every `gap`, and returns how long the last key's
+    // suggestion is held.
+    let type_steadily = |typist: &mut Typist, field: &mut crate::replay::Field, text: &str| {
+        let mut hold = Duration::ZERO;
+        for key in text.chars() {
+            typist.wait(gap);
+            field.wait(gap);
+            assert_eq!(typist.ghost(), None, "held before {key:?}");
+            typist.type_text(&key.to_string());
+            field.type_key(&key.to_string());
+            assert_eq!(typist.ghost(), None, "held after {key:?}");
+            hold = field
+                .take_answers()
+                .pop()
+                .filter(|asked| asked.shown.is_some())
+                .map_or(Duration::ZERO, |asked| asked.hold);
+            assert!(hold.is_zero() || hold > gap, "{key:?} held for {hold:?}");
+        }
+        hold
+    };
+
+    let hold = type_steadily(&mut typist, &mut field, "hello wor");
+    typist.wait(hold - ms(1));
+    assert_eq!(typist.ghost(), None);
+    typist.wait(ms(1));
+    assert_eq!(typist.ghost().as_deref(), Some("ld"));
+    typist.cx.simulate_keystrokes("tab");
+    field.wait(hold);
+    assert_eq!(field.tab().as_deref(), Some("ld"));
+
+    let hold = type_steadily(&mut typist, &mut field, " hel");
+    assert!(!hold.is_zero());
+    typist.wait(hold - ms(1));
+    assert_eq!(typist.ghost(), None);
+    typist.type_text("x");
+    assert_eq!(typist.value(), "hello world helx");
+    typist.wait(2 * MAX_QUIET_PAUSE);
+    assert_eq!(typist.ghost(), None, "dropped by the key");
 }
 
 /// A suggestion on screen stays there, without a pause, while the user types
