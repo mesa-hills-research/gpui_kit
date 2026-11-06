@@ -33,7 +33,7 @@ pub fn english() -> Rc<Dictionary> {
 pub enum Policy {
     /// As the crate does, which depends on the mode.
     Default,
-    /// The rules without the completion gate, in any mode.
+    /// The rules without a gate, which Eager follows, in any mode.
     Ungated,
     /// Word frequency alone. The most frequent known word that fits the
     /// prefix shows when it holds at least half the count of the words that

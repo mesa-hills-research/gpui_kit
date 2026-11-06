@@ -16,11 +16,12 @@
 //! the one that saves the most keystrokes on average. A suggestion of one
 //! character never shows, since Tab is a keystroke too.
 //!
-//! What decides each of these is a [`SuggestionPolicy`]. In Quiet it adds
-//! the completion gate, which allows for a word the vocabulary hasn't seen.
+//! What decides each of these is a [`SuggestionPolicy`]. In Quiet it also
+//! weighs signs the probability leaves out, such as whether the document
+//! holds the word, and holds back a first word more likely wrong than right.
 
 use super::local::LocalIndex;
-use super::policy::{Candidate, Fitting, SuggestionPolicy, Word};
+use super::policy::{Candidate, Fitting, Predicted, SuggestionPolicy, Word};
 use super::vocabulary::{Counts, Forms, SENTENCE_START, Successors, Vocabulary, fold};
 use super::{
     CONTEXT_BYTES, canonical_prediction_word, extract_prefix, has_closing_punctuation_before,
@@ -189,12 +190,20 @@ enum Clause {
     Goes,
 }
 
-/// The likeliest next word after `context`, with its probability.
-fn best_next(
-    evidence: &Evidence,
-    context: &[String],
-    clause: Clause,
-) -> Option<(String, f64, String)> {
+/// The likeliest next word after a context, with its probability and the
+/// form to show it in.
+struct Next<'a> {
+    word: String,
+    probability: f64,
+    form: String,
+    /// What followed the longest run of the words before that anything
+    /// followed, and how many words long that run is.
+    context: &'a Successors,
+    context_words: usize,
+}
+
+/// The likeliest next word after `context`.
+fn best_next<'a>(evidence: &Evidence<'a>, context: &[String], clause: Clause) -> Option<Next<'a>> {
     let levels = evidence.levels(context);
     let (shortest, longer) = levels.split_first()?;
     // What follows a longer context followed the shorter one too, as they
@@ -228,7 +237,13 @@ fn best_next(
                 best
             }
         })?;
-    Some((word.to_string(), probability, evidence.form(&levels, word)))
+    Some(Next {
+        word: word.to_string(),
+        probability,
+        form: evidence.form(&levels, word),
+        context: levels[levels.len() - 1],
+        context_words: levels.len(),
+    })
 }
 
 /// The words before `prefix_start` in its sentence that predict the next
@@ -416,15 +431,21 @@ pub(super) fn generate_suggestion(
         {
             return None;
         }
-        let (word, probability, form) = best_next(&evidence, &context, Clause::Goes)?;
+        let next = best_next(&evidence, &context, Clause::Goes)?;
         let candidate = Candidate {
-            probability,
+            probability: next.probability,
             fitting: None,
+            predicted: Some(Predicted {
+                word: &next.word,
+                context: next.context,
+                context_words: next.context_words,
+                local,
+            }),
         };
-        if !policy.shows_prediction(&candidate) || !evidence.offers(&form, &word) {
+        if !policy.shows_prediction(&candidate) || !evidence.offers(&next.form, &next.word) {
             return None;
         }
-        (word, probability, form)
+        (next.word, next.probability, next.form)
     } else {
         // The rest of the word being typed.
         let folded_prefix = fold(prefix);
@@ -461,7 +482,10 @@ pub(super) fn generate_suggestion(
                         seen: total - 1.0,
                         prefix_chars,
                         prose: evidence.prose,
+                        context: levels.last().copied(),
+                        local,
                     }),
+                    predicted: None,
                 })
             })
             .collect();
@@ -500,19 +524,21 @@ pub(super) fn generate_suggestion(
             if context.len() > 2 {
                 context.drain(..context.len() - 2);
             }
-            let Some((word, probability, form)) = best_next(&evidence, &context, Clause::MayEnd)
-            else {
+            let Some(next) = best_next(&evidence, &context, Clause::MayEnd) else {
                 break;
             };
-            cumulative *= probability;
-            if !policy.adds_word(cumulative) || word == previous || !evidence.offers(&form, &word) {
+            cumulative *= next.probability;
+            if !policy.adds_word(cumulative)
+                || next.word == previous
+                || !evidence.offers(&next.form, &next.word)
+            {
                 break;
             }
             ghost.push(' ');
-            ghost.push_str(&form);
+            ghost.push_str(&next.form);
             options.push((ghost.clone(), cumulative));
-            context.push(word.clone());
-            previous = word;
+            context.push(next.word.clone());
+            previous = next.word;
         }
     }
 

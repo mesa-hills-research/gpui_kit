@@ -161,7 +161,7 @@ keystroke:
 | `SuggestionMode` | Behavior |
 | --- | --- |
 | `Off` | No suggestions. Nothing typed while Off is learned, then or later. |
-| `Quiet` (default) | After typing pauses for 300 ms. Each suggestion typed past adds 150 ms, up to a second, for the next 20 words or two minutes, and a word typed past is not offered again after the same start for ten minutes. A suggestion turned down by a stray key or Escape and then written anyway doesn't lengthen the pause or keep the word from being offered. A suggestion stays while the user types along it. In a new vocabulary, a completion waits until the word has been written a few times. |
+| `Quiet` (default) | After typing pauses for 300 ms. Each suggestion typed past adds 150 ms, up to a second, for the next 20 words or two minutes, and a word typed past is not offered again after the same start for ten minutes. A suggestion turned down by a stray key or Escape and then written anyway doesn't lengthen the pause or keep the word from being offered. A suggestion shows only when it's more likely right than wrong, judging by how often the word was written, whether it came after the same words before, whether the document already has it and how much of it is left to type. A word written only once or twice usually waits until it has been written a few times, but can show at once when the document has it or it comes after the same words as before. A long word the document doesn't have waits until more of it is typed. Once shown, a suggestion stays while the user types along it. |
 | `Eager` | After every keystroke. |
 
 `SuggestionMode` serializes as `"off"`, `"quiet"` or `"eager"`, and reads

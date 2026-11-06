@@ -10,9 +10,11 @@
 //!    the one coming, from the one or two words before it in the sentence and
 //!    whether the sentence starts there. A suggestion shows when that
 //!    probability is at least one half, so it is right more often than not.
-//!    See [`model`]. In Quiet, a completion's probability also allows for a
-//!    word the vocabulary has never seen, which a young vocabulary often
-//!    meets, so its completions wait for the evidence. See [`policy`].
+//!    See [`model`]. In Quiet, a suggestion's first word must also be right
+//!    more often than not by a chance that weighs what the probability
+//!    leaves out, such as a word the vocabulary has never seen, whether the
+//!    document holds the word and how much of it is left to type. See
+//!    [`policy`].
 //!
 //! 2. **Words past the current one when they are likely too.** Words are
 //!    added after the first while the chance that the whole suggestion is
@@ -81,7 +83,7 @@ use learned::{LearnedSentences, typed_copies};
 use local::{Held, LocalIndex, WordTally, tally};
 use model::generate_suggestion;
 use pacing::Pacer;
-use policy::{CompletionGate, SuggestionPolicy, Ungated};
+use policy::{ConfidenceGate, SuggestionPolicy, Ungated};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
@@ -726,15 +728,15 @@ impl WordSuggestions {
         self.pacer.follow(edits, text);
     }
 
-    /// What decides which suggestion shows. Quiet holds back completions a
-    /// young vocabulary is unsure of, and Eager offers them. The gate decides
-    /// only whether a completion first shows, so one the user is typing
+    /// What decides which suggestion shows. Quiet holds back a suggestion
+    /// more likely wrong than right, and Eager offers it. The gate decides
+    /// only whether a suggestion first shows, so one the user is typing
     /// along stays as the prefix narrows.
     fn policy(&self) -> &dyn SuggestionPolicy {
         match &self.policy {
             Some(policy) => &**policy,
             None if self.pacer.mode() == SuggestionMode::Quiet && !self.pacer.is_typing_along() => {
-                &CompletionGate::QUIET
+                &ConfidenceGate
             }
             None => &Ungated,
         }

@@ -522,7 +522,8 @@ fn writing_a_turned_down_word_anyway_undoes_turning_it_down(cx: &mut TestAppCont
 
 /// Quiet holds back a completion a young vocabulary has seen once, which is
 /// as likely a word it hasn't seen, until the word has been written a few
-/// times. Eager offers it at once.
+/// times. Eager offers it at once, and so does Quiet after the words it
+/// followed before.
 #[gpui::test]
 fn quiet_waits_for_a_young_vocabulary_to_know_a_word(cx: &mut TestAppContext) {
     let once = || {
@@ -532,12 +533,17 @@ fn quiet_waits_for_a_young_vocabulary_to_know_a_word(cx: &mut TestAppContext) {
     };
     let mut eager = Typist::with_vocabulary(cx, SuggestionMode::Eager, once());
     assert_eq!(
-        eager.type_and_wait("We went to the ba").as_deref(),
+        eager.type_and_wait("We went to a ba").as_deref(),
         Some("nk")
     );
 
     let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, once());
-    assert_eq!(quiet.type_and_wait("We went to the ba"), None);
+    assert_eq!(quiet.type_and_wait("We went to a ba"), None);
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, once());
+    assert_eq!(
+        quiet.type_and_wait("We went to the ba").as_deref(),
+        Some("nk")
+    );
 
     let mut often = Vocabulary::new();
     for _ in 0..4 {
@@ -545,15 +551,73 @@ fn quiet_waits_for_a_young_vocabulary_to_know_a_word(cx: &mut TestAppContext) {
     }
     let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, often);
     assert_eq!(
-        quiet.type_and_wait("We went to the ba").as_deref(),
+        quiet.type_and_wait("We went to a ba").as_deref(),
         Some("nk")
     );
 }
 
-/// A completion Quiet showed stays while the user types along it, though
-/// the narrower prefix fits a word the gate alone would hold back.
+/// Quiet holds back a long completion of a word the document doesn't hold
+/// until more of it is typed, since the more is left to type, the likelier
+/// the user means another word. Eager offers it at once, and so does Quiet
+/// once the document holds the word.
 #[gpui::test]
-fn the_gate_leaves_a_completion_typed_along(cx: &mut TestAppContext) {
+fn quiet_waits_for_more_of_a_long_word_the_document_lacks(cx: &mut TestAppContext) {
+    let vocabulary = || words(&[("photosynthesis", 5)]);
+    let mut eager = Typist::with_vocabulary(cx, SuggestionMode::Eager, vocabulary());
+    assert_eq!(
+        eager.type_and_wait("Tomorrow ph").as_deref(),
+        Some("otosynthesis")
+    );
+
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary());
+    assert_eq!(quiet.type_and_wait("Tomorrow ph"), None);
+    assert_eq!(quiet.type_and_wait("otosynth").as_deref(), Some("esis"));
+
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary());
+    assert_eq!(
+        quiet
+            .type_and_wait("Photosynthesis needs light. Tomorrow ph")
+            .as_deref(),
+        Some("otosynthesis")
+    );
+}
+
+/// Quiet holds back a next word the document doesn't have unless the model
+/// is surer of it, since it may come from writing on another subject. Eager
+/// offers it, and so does Quiet once the document has the word.
+#[gpui::test]
+fn quiet_holds_back_a_next_word_the_document_lacks(cx: &mut TestAppContext) {
+    let vocabulary = || {
+        let mut vocabulary = Vocabulary::new();
+        for _ in 0..4 {
+            vocabulary.learn_sentence("We went to the bank");
+        }
+        for _ in 0..2 {
+            vocabulary.learn_sentence("We went to the park");
+        }
+        vocabulary
+    };
+    let mut eager = Typist::with_vocabulary(cx, SuggestionMode::Eager, vocabulary());
+    assert_eq!(
+        eager.type_and_wait("We went to the ").as_deref(),
+        Some("bank")
+    );
+
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary());
+    assert_eq!(quiet.type_and_wait("We went to the "), None);
+    let mut quiet = Typist::with_vocabulary(cx, SuggestionMode::Quiet, vocabulary());
+    assert_eq!(
+        quiet
+            .type_and_wait("Our bank was shut. We went to the ")
+            .as_deref(),
+        Some("bank")
+    );
+}
+
+/// A completion Quiet showed stays while the user types along it, though
+/// Quiet would hold back the word after the narrower prefix.
+#[gpui::test]
+fn quiet_keeps_a_completion_typed_along_that_it_would_hold_back(cx: &mut TestAppContext) {
     let mut vocabulary = Vocabulary::new();
     for _ in 0..20 {
         vocabulary.learn_sentence("but be");
@@ -1572,7 +1636,7 @@ fn offers_on_fixed_writing_stay_the_same() {
     }
     assert!(tabs > 1000 && shown > 3000, "{tabs} {shown}");
     assert_eq!(
-        hash, 0xfdac_a12b_0b3e_2f14,
+        hash, 0x5b19_fc22_1bad_281b,
         "offers hash {hash:#x}, {tabs} taken, {shown} shown"
     );
 }
