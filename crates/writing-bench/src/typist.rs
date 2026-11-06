@@ -14,7 +14,7 @@
 
 use crate::corpus::Piece;
 use gpui_kit_writing::Dictionary;
-use gpui_kit_writing::replay::{Field, Paced, Policy, QuietTiming, SuggestionMode, Writer};
+use gpui_kit_writing::replay::{Field, Hold, Paced, Policy, QuietTiming, SuggestionMode, Writer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -184,6 +184,8 @@ pub struct Settings {
     pub typist: TypistKind,
     /// How Quiet times its suggestions.
     pub quiet_timing: QuietTiming,
+    /// The weights of the rhythm timing's hold.
+    pub hold: Hold,
     /// How long a ghost must have been on screen before the typist can
     /// take it.
     pub reaction: Duration,
@@ -199,6 +201,7 @@ impl Default for Settings {
             policy: Policy::Default,
             typist: TypistKind::Tab,
             quiet_timing: QuietTiming::FixedPause,
+            hold: Hold::HAND_WRITTEN,
             reaction: Duration::ZERO,
             latency: false,
         }
@@ -213,6 +216,7 @@ impl Settings {
             "policy": format!("{:?}", self.policy),
             "typist": format!("{:?}", self.typist),
             "quiet_timing": format!("{:?}", self.quiet_timing),
+            "hold": format!("{:?}", self.hold),
             "reaction_ms": self.reaction.as_millis(),
             "latency": self.latency,
         })
@@ -377,6 +381,7 @@ pub fn replay(
     let started = Instant::now();
     let writer = Writer::with_policy(settings.mode, dictionary.clone(), settings.policy);
     writer.set_quiet_timing(settings.quiet_timing);
+    writer.set_hold_weights(settings.hold);
     let mut state = State {
         settings,
         writer: &writer,

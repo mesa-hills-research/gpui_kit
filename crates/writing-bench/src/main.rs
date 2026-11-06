@@ -6,6 +6,7 @@
 //!     [--timing fluent|hesitant|thinking|recorded|MEDIAN_MS] [--quiet-timing fixed|rhythm]
 //!     [--reaction MS] [--policy default|ungated|frequency|frequency-always|gate|confidence]
 //!     [--gate-prior F] [--gate-scale F] [--gate-long] [--typist tab|word|blind|slip]
+//!     [--hold-base F] [--hold-surer F] [--hold-doubling F] [--hold-ignored F] [--hold-hesitation F]
 //!     [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]
 //! ```
 //!
@@ -41,6 +42,7 @@ fn usage() -> ! {
          [--timing fluent|hesitant|thinking|recorded|MEDIAN_MS] [--quiet-timing fixed|rhythm] \
          [--reaction MS] [--policy default|ungated|frequency|frequency-always|gate|confidence] \
          [--gate-prior F] [--gate-scale F] [--gate-long] [--typist tab|word|blind|slip] \
+         [--hold-base F] [--hold-surer F] [--hold-doubling F] [--hold-ignored F] [--hold-hesitation F] \
          [--splits tuning,validation] [--writers PREFIX] [--threads N] [--latency]"
     );
     std::process::exit(2);
@@ -87,6 +89,17 @@ fn main() {
             "--reaction" => {
                 settings.reaction =
                     Duration::from_millis(value().parse().unwrap_or_else(|_| usage()))
+            }
+            "--hold-base" => settings.hold.base = value().parse().unwrap_or_else(|_| usage()),
+            "--hold-surer" => settings.hold.surer = value().parse().unwrap_or_else(|_| usage()),
+            "--hold-doubling" => {
+                settings.hold.per_doubling = value().parse().unwrap_or_else(|_| usage())
+            }
+            "--hold-ignored" => {
+                settings.hold.per_ignored = value().parse().unwrap_or_else(|_| usage())
+            }
+            "--hold-hesitation" => {
+                settings.hold.per_hesitation = value().parse().unwrap_or_else(|_| usage())
             }
             "--policy" => {
                 settings.policy = match value().as_str() {

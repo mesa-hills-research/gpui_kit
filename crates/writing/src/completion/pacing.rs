@@ -273,25 +273,41 @@ impl Rhythm {
 /// when they pause. Gaps inside a word spread so that about one in a hundred
 /// typed in flow is longer than 2.2 times their median, so that is what a
 /// suggestion no surer than even waits.
-pub(crate) struct Hold;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hold {
+    /// The logarithm of the multiple a suggestion at a chance of one half,
+    /// worth three keys, waits.
+    pub base: f64,
+    /// Added as the chance goes from one half to one.
+    pub surer: f64,
+    /// Per doubling of the keys a Tab would save.
+    pub per_doubling: f64,
+    /// Per ignored suggestion, by its weight.
+    pub per_ignored: f64,
+    /// Per unit of hesitation, the log ratio of the last gaps to the rhythm.
+    pub per_hesitation: f64,
+}
 
 impl Hold {
-    /// The logarithm of the multiple a suggestion at a chance of one half,
-    /// worth three keys, waits: 2.2 gaps.
-    const BASE: f64 = 0.788;
-    /// Taken off as the chance goes from one half to one. A sure word
-    /// flickers past a typist in flow without being wrong, so it waits 0.61
-    /// of the base.
-    const SURER: f64 = -0.5;
-    /// Per doubling of the keys a Tab would save. A word worth twice as much
-    /// shows 22% sooner.
-    const PER_DOUBLING: f64 = -0.25;
-    /// Per ignored suggestion, by its weight. Each lengthens the wait by
-    /// 35%, as the fixed pause's first extra does by half.
-    const PER_IGNORED: f64 = 0.3;
-    /// Per unit of hesitation. Keys coming at twice the rhythm, a log ratio
-    /// of 0.69, shorten the wait by 24%.
-    const PER_HESITATION: f64 = -0.4;
+    /// The weights set by reasoning.
+    ///
+    /// - A suggestion at an even chance worth three keys waits ln 2.2 =
+    ///   0.788, that is 2.2 gaps.
+    /// - A sure word flickers past a typist in flow without being wrong, so
+    ///   it waits 0.61 of the base: −0.5.
+    /// - A word worth twice as many keys shows 22% sooner: −0.25 a doubling.
+    /// - Each ignored suggestion lengthens the wait by 35%, as the fixed
+    ///   pause's first extra does by half: +0.3.
+    /// - Keys coming at twice the rhythm, a log ratio of 0.69, shorten the
+    ///   wait by 24%: −0.4.
+    pub const HAND_WRITTEN: Self = Self {
+        base: 0.788,
+        surer: -0.5,
+        per_doubling: -0.25,
+        per_ignored: 0.3,
+        per_hesitation: -0.4,
+    };
+
     /// The longest hold, however many suggestions were ignored or however
     /// slow the typist.
     const MAX: Duration = Duration::from_millis(1500);
@@ -300,17 +316,18 @@ impl Hold {
     /// and which saves `gain` keys, for a typist with `rhythm` who ignored
     /// suggestions weighing `ignored`.
     fn wait(
+        &self,
         rhythm: &Rhythm,
         at_word_start: bool,
         chance: f64,
         gain: usize,
         ignored: u32,
     ) -> Duration {
-        let log_multiple = Self::BASE
-            + Self::SURER * (2.0 * chance - 1.0).clamp(0.0, 1.0)
-            + Self::PER_DOUBLING * (gain.max(1) as f64 / 3.0).log2()
-            + Self::PER_IGNORED * f64::from(ignored)
-            + Self::PER_HESITATION * rhythm.hesitation.max(0.0);
+        let log_multiple = self.base
+            + self.surer * (2.0 * chance - 1.0).clamp(0.0, 1.0)
+            + self.per_doubling * (gain.max(1) as f64 / 3.0).log2()
+            + self.per_ignored * f64::from(ignored)
+            + self.per_hesitation * rhythm.hesitation.max(0.0);
         let ms = rhythm.gap_ms(at_word_start) * log_multiple.exp();
         Duration::from_secs_f64(ms / 1000.0).min(Self::MAX)
     }
@@ -321,6 +338,7 @@ impl Hold {
 pub(crate) struct SuggestionPacing {
     mode: Cell<SuggestionMode>,
     timing: Cell<QuietTiming>,
+    hold_weights: Cell<Hold>,
     rhythm: RefCell<Rhythm>,
     /// Suggestions ignored since the last accepted one that still lengthen
     /// the pause.
@@ -380,6 +398,7 @@ impl SuggestionPacing {
         Self {
             mode: Cell::new(mode),
             timing: Cell::new(QuietTiming::default()),
+            hold_weights: Cell::new(Hold::HAND_WRITTEN),
             rhythm: RefCell::new(Rhythm::new()),
             ignores: RefCell::new(Vec::new()),
             words: Cell::new(0),
@@ -414,6 +433,12 @@ impl SuggestionPacing {
         self.timing.set(timing);
     }
 
+    /// Sets the weights of the hold, for a replay to try others.
+    #[cfg(any(test, feature = "replay"))]
+    pub fn set_hold_weights(&self, weights: Hold) {
+        self.hold_weights.set(weights);
+    }
+
     /// The weight of the ignored suggestions that still lengthen the wait.
     fn ignored_weight(&self) -> u32 {
         self.ignores
@@ -433,7 +458,7 @@ impl SuggestionPacing {
     /// How long Quiet holds back a suggestion whose first word is right with
     /// `chance` and which saves `gain` keys, by the typist's rhythm.
     pub fn hold(&self, at_word_start: bool, chance: f64, gain: usize) -> Duration {
-        Hold::wait(
+        self.hold_weights.get().wait(
             &self.rhythm.borrow(),
             at_word_start,
             chance,
@@ -1063,7 +1088,9 @@ mod tests {
     fn the_hold_weighs_the_suggestion_and_the_typist() {
         let mut rhythm = Rhythm::new();
         let hold = |rhythm: &Rhythm, at_word_start, chance, gain, ignored| {
-            Hold::wait(rhythm, at_word_start, chance, gain, ignored).as_millis()
+            Hold::HAND_WRITTEN
+                .wait(rhythm, at_word_start, chance, gain, ignored)
+                .as_millis()
         };
         // Even chance, three keys: e^0.788 = 2.2 gaps, 396 ms.
         assert_eq!(hold(&rhythm, false, 0.5, 3, 0), 395);

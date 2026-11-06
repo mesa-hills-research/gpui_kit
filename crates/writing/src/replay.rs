@@ -23,7 +23,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 pub use crate::completion::SuggestionMode;
-pub use crate::completion::pacing::{Paced, QuietTiming};
+pub use crate::completion::pacing::{Hold, Paced, QuietTiming};
 
 /// The bundled English word list, loaded on this thread.
 pub fn english() -> Rc<Dictionary> {
@@ -151,6 +151,11 @@ impl Writer {
     /// Switches how Quiet times its suggestions.
     pub fn set_quiet_timing(&self, timing: QuietTiming) {
         self.pacing().set_timing(timing);
+    }
+
+    /// Sets the weights of the rhythm timing's hold.
+    pub fn set_hold_weights(&self, weights: Hold) {
+        self.pacing().set_hold_weights(weights);
     }
 
     /// The gap the typist's keys usually come at, as Quiet's rhythm has
