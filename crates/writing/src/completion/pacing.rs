@@ -51,9 +51,21 @@
 //! finds suggestions once they have typed on.
 //!
 //! This state lives in memory for the session.
+//!
+//! # Timing by the typist's rhythm
+//!
+//! With [`QuietTiming::Rhythm`], Quiet asks the model at the key, as Eager
+//! does, and holds its suggestion back for a share of the gap the typist's
+//! own keys come at, shorter for a surer or longer word and for a typist
+//! whose last keys came slowly, longer after ignored suggestions. The next
+//! key drops a suggestion still held. A suggestion held in one textarea is
+//! settled by time: when the next key or edit comes after it was due to
+//! show, it showed, and counts as any shown suggestion does. [`Rhythm`]
+//! learns the typist's gaps, and [`Hold`] is the unit that sets the wait.
 
+use super::model::Suggested;
 use super::vocabulary::fold;
-use super::{Edit, extract_prefix, previous_two_words, word_end};
+use super::{Edit, extract_prefix, is_word_char, previous_two_words, word_end};
 use gpui_base::input::{Rope, SuggestionEvent};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::cell::{Cell, RefCell};
@@ -125,10 +137,191 @@ impl<'de> Deserialize<'de> for SuggestionMode {
     }
 }
 
+/// How Quiet times a suggestion after the key.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum QuietTiming {
+    /// The model is asked once typing has paused for [`QUIET_PAUSE`], and
+    /// longer after ignored suggestions, the same for every typist.
+    #[default]
+    FixedPause,
+    /// The model is asked at the key, and its suggestion is held back for a
+    /// share of the typist's own gap between keys. See [`Hold`].
+    Rhythm,
+}
+
+/// The typist's rhythm: the gap their keys usually come at inside a word
+/// and at the start of one, and whether their last few came slower.
+///
+/// Each median is a running mean of the logarithm of the gaps, so a pause
+/// moves it little, and a gap enters it no further than [`Median::CLIP`]
+/// from it. The first keys of a session count more, so a new typist's
+/// rhythm is known within a few words. Only a key typed right after the
+/// previous one, as one character, teaches it: a gap between two letters of
+/// a word, or before the space that ends it, is inside the word, and a gap
+/// after a space is at the start of one. Gaps after punctuation or a line
+/// break are the writer's, not the typist's, and teach nothing.
+pub(crate) struct Rhythm {
+    /// The last key: the byte its text ended at, its last character, and
+    /// when it came.
+    last: Option<(usize, char, Instant)>,
+    in_word: Median,
+    word_start: Median,
+    /// The mean of the last few gaps' logarithms over the rhythm's, halving
+    /// in weight at each key. Above zero, the typist is slowing down.
+    hesitation: f64,
+}
+
+/// A running median of gaps, as the mean of their logarithms.
+struct Median {
+    log_ms: f64,
+    keys: u32,
+}
+
+impl Median {
+    /// How far from the median a gap may enter, as a factor of three either
+    /// way, so a pause counts as a slow key and no more.
+    const CLIP: f64 = 1.0986;
+    /// How many keys the median remembers once it is learned.
+    const MEMORY: f64 = 32.0;
+
+    fn new(prior_ms: f64) -> Self {
+        Self {
+            log_ms: prior_ms.ln(),
+            keys: 0,
+        }
+    }
+
+    fn learn(&mut self, gap_ms: f64) {
+        let log = gap_ms
+            .max(1.0)
+            .ln()
+            .clamp(self.log_ms - Self::CLIP, self.log_ms + Self::CLIP);
+        let rate = (1.0 / (f64::from(self.keys) + 2.0)).max(1.0 / Self::MEMORY);
+        self.log_ms += rate * (log - self.log_ms);
+        self.keys += 1;
+    }
+
+    fn ms(&self) -> f64 {
+        self.log_ms.exp()
+    }
+}
+
+impl Rhythm {
+    /// A rhythm before any key: a touch typist of about 65 words a minute,
+    /// 180 ms between letters, and 300 ms before a word.
+    const IN_WORD_PRIOR_MS: f64 = 180.0;
+    const WORD_START_PRIOR_MS: f64 = 300.0;
+
+    fn new() -> Self {
+        Self {
+            last: None,
+            in_word: Median::new(Self::IN_WORD_PRIOR_MS),
+            word_start: Median::new(Self::WORD_START_PRIOR_MS),
+            hesitation: 0.0,
+        }
+    }
+
+    /// Hears that `text` was typed at byte `offset` at `now`.
+    fn key(&mut self, offset: usize, text: &str, now: Instant) {
+        let mut chars = text.chars();
+        let Some(first) = chars.next() else {
+            return;
+        };
+        let single = chars.next().is_none();
+        let last = self.last.replace((
+            offset + text.len(),
+            text.chars().last().unwrap_or(first),
+            now,
+        ));
+        let Some((end, previous, at)) = last.filter(|_| single) else {
+            return;
+        };
+        if end != offset {
+            return;
+        }
+        let gap_ms = now.duration_since(at).as_secs_f64() * 1000.0;
+        let median = if is_word_char(previous) && (is_word_char(first) || first == ' ') {
+            &mut self.in_word
+        } else if previous == ' ' && first.is_alphanumeric() {
+            &mut self.word_start
+        } else {
+            return;
+        };
+        let ratio = (gap_ms.max(1.0) / median.ms()).ln().clamp(-1.0, 1.5);
+        self.hesitation += 0.5 * (ratio - self.hesitation);
+        median.learn(gap_ms);
+    }
+
+    /// The gap the typist's keys usually come at, inside a word or, with
+    /// `at_word_start`, after the space before one.
+    fn gap_ms(&self, at_word_start: bool) -> f64 {
+        if at_word_start {
+            self.word_start.ms()
+        } else {
+            self.in_word.ms()
+        }
+    }
+}
+
+/// How long Quiet holds a suggestion back after the key, as a multiple of
+/// the typist's own gap at that place: one linear unit over what the
+/// suggestion is worth and how the typist is going, in the logarithm of the
+/// multiple, so each weight is a factor. Each number was set by reasoning.
+///
+/// The hold trades a suggestion that shows while the typist goes on
+/// typing, which flickers and tells them nothing, against one that is there
+/// when they pause. Gaps inside a word spread so that about one in a hundred
+/// typed in flow is longer than 2.2 times their median, so that is what a
+/// suggestion no surer than even waits.
+pub(crate) struct Hold;
+
+impl Hold {
+    /// The logarithm of the multiple a suggestion at a chance of one half,
+    /// worth three keys, waits: 2.2 gaps.
+    const BASE: f64 = 0.788;
+    /// Taken off as the chance goes from one half to one. A sure word
+    /// flickers past a typist in flow without being wrong, so it waits 0.61
+    /// of the base.
+    const SURER: f64 = -0.5;
+    /// Per doubling of the keys a Tab would save. A word worth twice as much
+    /// shows 22% sooner.
+    const PER_DOUBLING: f64 = -0.25;
+    /// Per ignored suggestion, by its weight. Each lengthens the wait by
+    /// 35%, as the fixed pause's first extra does by half.
+    const PER_IGNORED: f64 = 0.3;
+    /// Per unit of hesitation. Keys coming at twice the rhythm, a log ratio
+    /// of 0.69, shorten the wait by 24%.
+    const PER_HESITATION: f64 = -0.4;
+    /// The longest hold, however many suggestions were ignored or however
+    /// slow the typist.
+    const MAX: Duration = Duration::from_millis(1500);
+
+    /// How long to hold a suggestion whose first word is right with `chance`
+    /// and which saves `gain` keys, for a typist with `rhythm` who ignored
+    /// suggestions weighing `ignored`.
+    fn wait(
+        rhythm: &Rhythm,
+        at_word_start: bool,
+        chance: f64,
+        gain: usize,
+        ignored: u32,
+    ) -> Duration {
+        let log_multiple = Self::BASE
+            + Self::SURER * (2.0 * chance - 1.0).clamp(0.0, 1.0)
+            + Self::PER_DOUBLING * (gain.max(1) as f64 / 3.0).log2()
+            + Self::PER_IGNORED * f64::from(ignored)
+            + Self::PER_HESITATION * rhythm.hesitation.max(0.0);
+        let ms = rhythm.gap_ms(at_word_start) * log_multiple.exp();
+        Duration::from_secs_f64(ms / 1000.0).min(Self::MAX)
+    }
+}
+
 /// What every textarea's suggestions share for the session: the mode, and
 /// how the user has been answering suggestions.
 pub(crate) struct SuggestionPacing {
     mode: Cell<SuggestionMode>,
+    timing: Cell<QuietTiming>,
+    rhythm: RefCell<Rhythm>,
     /// Suggestions ignored since the last accepted one that still lengthen
     /// the pause.
     ignores: RefCell<Vec<Ignore>>,
@@ -186,6 +379,8 @@ impl SuggestionPacing {
     pub fn new(mode: SuggestionMode) -> Self {
         Self {
             mode: Cell::new(mode),
+            timing: Cell::new(QuietTiming::default()),
+            rhythm: RefCell::new(Rhythm::new()),
             ignores: RefCell::new(Vec::new()),
             words: Cell::new(0),
             next_ignore: Cell::new(0),
@@ -210,26 +405,60 @@ impl SuggestionPacing {
         self.mode.set(mode);
     }
 
-    /// How long typing must pause before Quiet offers a suggestion now.
-    pub fn pause(&self) -> Duration {
-        let weight: u32 = self
-            .ignores
+    pub fn timing(&self) -> QuietTiming {
+        self.timing.get()
+    }
+
+    /// Switches how Quiet times its suggestions from the next keystroke.
+    pub fn set_timing(&self, timing: QuietTiming) {
+        self.timing.set(timing);
+    }
+
+    /// The weight of the ignored suggestions that still lengthen the wait.
+    fn ignored_weight(&self) -> u32 {
+        self.ignores
             .borrow()
             .iter()
             .map(|ignore| ignore.weight)
-            .sum();
-        let extra = IGNORED_EXTRA_PAUSE.saturating_mul(weight);
+            .sum()
+    }
+
+    /// How long typing must pause before Quiet offers a suggestion now,
+    /// with the fixed pause.
+    pub fn pause(&self) -> Duration {
+        let extra = IGNORED_EXTRA_PAUSE.saturating_mul(self.ignored_weight());
         (QUIET_PAUSE + extra).min(MAX_QUIET_PAUSE)
+    }
+
+    /// How long Quiet holds back a suggestion whose first word is right with
+    /// `chance` and which saves `gain` keys, by the typist's rhythm.
+    pub fn hold(&self, at_word_start: bool, chance: f64, gain: usize) -> Duration {
+        Hold::wait(
+            &self.rhythm.borrow(),
+            at_word_start,
+            chance,
+            gain,
+            self.ignored_weight(),
+        )
+    }
+
+    /// The gap the typist's keys usually come at, inside a word or at the
+    /// start of one, as the rhythm has learned it.
+    #[cfg(any(test, feature = "replay"))]
+    pub fn rhythm_ms(&self, at_word_start: bool) -> f64 {
+        self.rhythm.borrow().gap_ms(at_word_start)
     }
 
     fn accepted(&self) {
         self.ignores.borrow_mut().clear();
     }
 
-    /// Hears that the user typed `text` at `now`, which counts the words it
-    /// ends and lets ignored suggestions stop lengthening the pause once
-    /// their stretch of words or time is over.
-    fn typed(&self, text: &str, now: Instant) {
+    /// Hears that the user typed `text` at byte `offset` at `now`, which
+    /// teaches the typist's rhythm, counts the words it ends and lets
+    /// ignored suggestions stop lengthening the pause once their stretch of
+    /// words or time is over.
+    fn typed(&self, offset: usize, text: &str, now: Instant) {
+        self.rhythm.borrow_mut().key(offset, text, now);
         let ended = text
             .chars()
             .filter(|character| character.is_whitespace())
@@ -379,6 +608,9 @@ impl Offer {
 pub(super) struct Pacer {
     shared: Rc<SuggestionPacing>,
     offer: RefCell<Option<Offer>>,
+    /// A suggestion held back by the typist's rhythm, and when it shows
+    /// unless a key comes first.
+    held: RefCell<Option<(Offer, Instant)>>,
     /// The suggestion turned down last, followed until its word is finished.
     rejected: RefCell<Option<Rejection>>,
     /// The keystroke just typed, until the change report for it arrives.
@@ -409,6 +641,7 @@ impl Pacer {
         Self {
             shared,
             offer: RefCell::new(None),
+            held: RefCell::new(None),
             rejected: RefCell::new(None),
             typed: RefCell::new(None),
             typing_along: Cell::new(false),
@@ -431,10 +664,21 @@ impl Pacer {
             return true;
         }
         self.offer.take();
+        self.held.take();
         self.rejected.take();
         self.typed.take();
         self.typing_along.set(false);
         false
+    }
+
+    /// Settles the suggestion held back, at `now`: one due to show by then
+    /// showed, and is pending from here on, and one still held is dropped.
+    fn settle_held(&self, now: Instant) {
+        if let Some((offer, shows_at)) = self.held.take()
+            && shows_at <= now
+        {
+            *self.offer.borrow_mut() = Some(offer);
+        }
     }
 
     /// The user typed `text` at byte `offset`. `triggers` when Eager would
@@ -444,7 +688,8 @@ impl Pacer {
         if !self.is_quiet() {
             return;
         }
-        self.shared.typed(text, now);
+        self.settle_held(now);
+        self.shared.typed(offset, text, now);
         *self.typed.borrow_mut() = Some(Keystroke {
             offset,
             text: text.to_string(),
@@ -472,9 +717,14 @@ impl Pacer {
     }
 
     /// How long typing must pause before suggestions are requested, for the
-    /// keystroke [`Self::typed`] just reported.
+    /// keystroke [`Self::typed`] just reported. Timed by the typist's
+    /// rhythm, the request comes at once, and [`Self::offer`] says how long
+    /// its suggestion is held back.
     pub fn debounce(&self) -> Duration {
-        if self.is_quiet() && !self.typing_along.get() {
+        if self.is_quiet()
+            && !self.typing_along.get()
+            && self.shared.timing() == QuietTiming::FixedPause
+        {
             self.shared.pause()
         } else {
             Duration::ZERO
@@ -492,6 +742,7 @@ impl Pacer {
         if !self.is_quiet() {
             return None;
         }
+        self.settle_held(now);
         let mut learn_at = None;
         for edit in edits {
             let range = edit.range.clone();
@@ -534,18 +785,24 @@ impl Pacer {
     }
 
     /// Settles the pending suggestion as taken with Tab, whole or a word.
+    /// Only a suggestion on screen can be taken, so one held back showed.
     pub fn accepted(&self) {
         if !self.is_quiet() {
             return;
         }
+        self.held.take();
         self.offer.take();
         self.shared.accepted();
     }
 
-    /// Settles the pending suggestion as closed with Escape.
+    /// Settles the pending suggestion as closed with Escape. Only a
+    /// suggestion on screen can be closed, so one held back showed.
     pub fn dismissed(&self, now: Instant) {
         if !self.is_quiet() {
             return;
+        }
+        if let Some((offer, _)) = self.held.take() {
+            *self.offer.borrow_mut() = Some(offer);
         }
         if let Some(offer) = self.offer.take() {
             let ignored = self.shared.ignored(&offer, ESCAPE_WEIGHT, now);
@@ -622,45 +879,50 @@ impl Pacer {
     }
 
     /// What to offer of the model's `suggestion` for the caret at `offset`
-    /// in `text`, which is at `caret` in the whole text.
+    /// in `text`, which is at `caret` in the whole text, and how long after
+    /// `now` it shows. Timed by the typist's rhythm, a suggestion is held
+    /// back for that long, and shows unless a key comes first.
     pub fn offer(
         &self,
         text: &str,
         offset: usize,
         caret: usize,
-        suggestion: Option<String>,
+        suggestion: Option<Suggested>,
         now: Instant,
-    ) -> Option<String> {
+    ) -> (Option<String>, Duration) {
         if !self.is_quiet() {
-            return suggestion;
+            return (suggestion.map(|suggested| suggested.ghost), Duration::ZERO);
         }
+        // A request replaces whatever was held back for the key before.
+        self.held.take();
         let typing_along = self.typing_along.replace(false);
         let mut pending = self.offer.borrow_mut();
-        let Some(suggestion) = suggestion else {
+        let Some(Suggested { ghost, chance }) = suggestion else {
             // While the user types along a suggestion it stays pending, even
             // when the model has nothing to add at this letter.
             if !typing_along {
                 *pending = None;
             }
-            return None;
+            return (None, Duration::ZERO);
         };
-        let Some(mut offer) = Offer::new(text, offset, &suggestion) else {
+        let Some(mut offer) = Offer::new(text, offset, &ghost) else {
             *pending = None;
-            return Some(suggestion);
+            return (Some(ghost), Duration::ZERO);
         };
         offer.caret = caret;
         if typing_along {
             // Keep showing the suggestion being typed along. Should the model
             // change its mind mid-word, the new word waits for a pause.
-            return match pending.as_mut() {
+            let shown = match pending.as_mut() {
                 Some(typed_along)
                     if typed_along.caret == caret && typed_along.word == offer.word =>
                 {
                     typed_along.ghost = offer.ghost;
-                    Some(suggestion)
+                    Some(ghost)
                 }
                 _ => None,
             };
+            return (shown, Duration::ZERO);
         }
         if self.shared.is_suppressed(&offer.lead, &offer.word, now) {
             #[cfg(any(test, feature = "replay"))]
@@ -669,10 +931,23 @@ impl Pacer {
                 lead: offer.lead.clone(),
             });
             *pending = None;
-            return None;
+            return (None, Duration::ZERO);
         }
-        *pending = Some(offer);
-        Some(suggestion)
+        let hold = match self.shared.timing() {
+            QuietTiming::FixedPause => Duration::ZERO,
+            QuietTiming::Rhythm => {
+                let at_word_start = offer.lead.ends_with(' ');
+                let gain = ghost.chars().count().saturating_sub(1);
+                self.shared.hold(at_word_start, chance, gain)
+            }
+        };
+        if hold.is_zero() {
+            *pending = Some(offer);
+        } else {
+            *pending = None;
+            *self.held.borrow_mut() = Some((offer, now + hold));
+        }
+        (Some(ghost), hold)
     }
 }
 
@@ -738,6 +1013,141 @@ mod tests {
         assert_eq!(shared.pause(), ms(600));
         pacer.typed(0, "a", true, now + IGNORED_FADE);
         assert_eq!(shared.pause(), QUIET_PAUSE);
+    }
+
+    /// The rhythm learns the gaps inside a word and before one apart, from
+    /// keys typed one after another, and notices the typist slowing down.
+    #[test]
+    fn the_rhythm_learns_the_typists_gaps() {
+        let mut rhythm = Rhythm::new();
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let mut clock = 0;
+        // "hello world", 100 ms between letters, 400 ms before "world".
+        for (index, character) in "hello world".char_indices() {
+            clock += if index == 6 { 400 } else { 100 };
+            rhythm.key(index, &character.to_string(), at(clock));
+        }
+        // Ten gaps of 100 ms inside words, the one before the space
+        // included, against a prior of 180 ms weighing one key.
+        let in_word = rhythm.gap_ms(false);
+        assert!((in_word - 105.5).abs() < 1.0, "{in_word}");
+        // One gap of 400 ms before a word, against a prior of 300 ms.
+        let word_start = rhythm.gap_ms(true);
+        assert!((word_start - 346.4).abs() < 1.0, "{word_start}");
+        assert!(rhythm.hesitation < 0.1, "{}", rhythm.hesitation);
+
+        // Two keys at three times the rhythm: the typist is slowing down.
+        clock += 300;
+        rhythm.key(11, "s", at(clock));
+        clock += 300;
+        rhythm.key(12, "l", at(clock));
+        assert!(rhythm.hesitation > 0.7, "{}", rhythm.hesitation);
+        // A pause enters the median as a slow key and no more: the median
+        // moves, but far less than a 30 s gap would move a plain mean.
+        clock += 30_000;
+        rhythm.key(13, "o", at(clock));
+        assert!(rhythm.gap_ms(false) < 160.0, "{}", rhythm.gap_ms(false));
+
+        // A key typed somewhere else, or after punctuation, teaches nothing.
+        let before = rhythm.gap_ms(false);
+        rhythm.key(40, "a", at(clock + 5000));
+        rhythm.key(41, ".", at(clock + 5100));
+        rhythm.key(42, "b", at(clock + 9000));
+        assert_eq!(rhythm.gap_ms(false), before);
+    }
+
+    /// Cases worked by hand, with the arithmetic beside each, for a rhythm
+    /// still at its priors of 180 ms inside a word and 300 ms before one.
+    #[test]
+    fn the_hold_weighs_the_suggestion_and_the_typist() {
+        let mut rhythm = Rhythm::new();
+        let hold = |rhythm: &Rhythm, at_word_start, chance, gain, ignored| {
+            Hold::wait(rhythm, at_word_start, chance, gain, ignored).as_millis()
+        };
+        // Even chance, three keys: e^0.788 = 2.2 gaps, 396 ms.
+        assert_eq!(hold(&rhythm, false, 0.5, 3, 0), 395);
+        // Sure: e^(0.788 - 0.5) = 1.33 gaps, 240 ms. Twelve keys at an even
+        // chance, two doublings: the same.
+        assert_eq!(hold(&rhythm, false, 1.0, 3, 0), 240);
+        assert_eq!(hold(&rhythm, false, 0.5, 12, 0), 240);
+        // Two ignored: e^(0.788 + 0.6) = 4.0 gaps, 721 ms.
+        assert_eq!(hold(&rhythm, false, 0.5, 3, 2), 721);
+        // Before a word, 2.2 of 300 ms: 660 ms.
+        assert_eq!(hold(&rhythm, true, 0.5, 3, 0), 659);
+        // Six ignored would be 13 gaps: the cap.
+        assert_eq!(hold(&rhythm, false, 0.5, 3, 6), 1500);
+        // Slowing down to twice the rhythm, a log ratio of 0.69:
+        // e^(0.788 - 0.277) = 1.67 gaps, 300 ms.
+        rhythm.hesitation = 0.693;
+        assert_eq!(hold(&rhythm, false, 0.5, 3, 0), 299);
+    }
+
+    /// Timed by the rhythm, a suggestion is held back after the key. A key
+    /// before it was due to show drops it, and it counts for nothing. A key
+    /// after that time finds it shown, and types along it or past it as
+    /// with any shown suggestion.
+    #[test]
+    fn a_held_suggestion_shows_by_time_or_is_dropped_by_the_next_key() {
+        let shared = Rc::new(SuggestionPacing::new(SuggestionMode::Quiet));
+        shared.set_timing(QuietTiming::Rhythm);
+        let pacer = Pacer::new(shared.clone());
+        let suggested = |ghost: &str| {
+            Some(Suggested {
+                ghost: ghost.to_string(),
+                chance: 0.5,
+            })
+        };
+        let start = Instant::now();
+        pacer.typed(1, "e", true, start);
+        assert_eq!(pacer.debounce(), Duration::ZERO);
+        let (shown, hold) = pacer.offer("he", 2, 2, suggested("llo world"), start);
+        assert_eq!(shown.as_deref(), Some("llo world"));
+        assert_eq!(hold, shared.hold(false, 0.5, 8));
+        assert!(hold > Duration::ZERO);
+
+        // Typed past before it showed: nothing was ignored.
+        let now = start + hold / 2;
+        pacer.typed(2, "x", true, now);
+        assert_eq!(shared.take_log(), vec![]);
+        assert_eq!(shared.pause(), QUIET_PAUSE);
+
+        // Shown, then typed along: it stays, without a hold.
+        let (_, hold) = pacer.offer("hex", 3, 3, suggested("agon"), now);
+        let now = now + hold;
+        pacer.typed(3, "a", true, now);
+        assert!(pacer.is_typing_along());
+        assert_eq!(pacer.debounce(), Duration::ZERO);
+        assert_eq!(
+            pacer.offer("hexa", 4, 4, suggested("gon"), now),
+            (Some("gon".to_string()), Duration::ZERO)
+        );
+
+        // Shown, then typed past: ignored, as with the fixed pause.
+        pacer.typed(4, "x", true, now);
+        assert_eq!(
+            shared.take_log(),
+            vec![Paced::Ignored {
+                word: "hexagon".to_string(),
+                lead: "hex".to_string(),
+                weight: 1,
+            }]
+        );
+        let (_, hold) = pacer.offer("hexax", 5, 5, suggested("yz"), now);
+        assert!(
+            hold > shared.hold(false, 0.5, 2),
+            "ignoring lengthens the hold"
+        );
+        let now = now + hold + Duration::from_millis(1);
+        pacer.typed(5, "q", true, now);
+        assert_eq!(shared.take_log().len(), 1);
+
+        // With the fixed pause, nothing is held back.
+        shared.set_timing(QuietTiming::FixedPause);
+        pacer.typed(6, "r", true, now);
+        assert_eq!(pacer.debounce(), shared.pause());
+        let (shown, hold) = pacer.offer("hexaxqr", 7, 7, suggested("st"), now);
+        assert_eq!((shown.as_deref(), hold), (Some("st"), Duration::ZERO));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::WritingOptions;
 use crate::completion::vocabulary::{LoadedVocabulary, Vocabulary};
-use crate::completion::{SuggestionMode, SuggestionPacing, WordSuggestions};
+use crate::completion::{QuietTiming, SuggestionMode, SuggestionPacing, WordSuggestions};
 use crate::spelling::{Dictionary, DictionaryChecker, Words};
 use gpui::{App, Task};
 use gpui_base::input::refresh_spelling;
@@ -155,6 +155,17 @@ impl Writing {
     /// Switches every textarea to `mode` from its next keystroke.
     pub fn set_suggestion_mode(&self, mode: SuggestionMode) {
         self.pacing.set_mode(mode);
+    }
+
+    /// How Quiet times its suggestions in every textarea.
+    pub fn quiet_timing(&self) -> QuietTiming {
+        self.pacing.timing()
+    }
+
+    /// Switches how Quiet times its suggestions, in every textarea, from
+    /// the next keystroke.
+    pub fn set_quiet_timing(&self, timing: QuietTiming) {
+        self.pacing.set_timing(timing);
     }
 
     /// Adds what the suggestions learned since the last save to the

@@ -36,7 +36,7 @@ mod text;
 mod timings;
 mod writing;
 
-pub use completion::{SuggestionMode, WordSuggestions, accept_word_bindings};
+pub use completion::{QuietTiming, SuggestionMode, WordSuggestions, accept_word_bindings};
 pub use options::{WordList, WritingOptions};
 pub use spelling::{Dictionary, DictionaryChecker};
 pub use writing::Writing;

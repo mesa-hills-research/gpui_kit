@@ -394,6 +394,15 @@ fn completions<'a>(evidence: &Evidence<'a>, folded_prefix: &'a str) -> Vec<Compl
     completions
 }
 
+/// What the model suggests at the caret.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Suggested {
+    /// The ghost text that would complete the text at the caret.
+    pub ghost: String,
+    /// The chance that its first word is right, as the policy weighs it.
+    pub chance: f64,
+}
+
 /// Generates an inline suggestion at the cursor.
 pub(super) fn generate_suggestion(
     shared: &Vocabulary,
@@ -401,7 +410,7 @@ pub(super) fn generate_suggestion(
     text: &str,
     offset: usize,
     policy: &dyn SuggestionPolicy,
-) -> Option<String> {
+) -> Option<Suggested> {
     if has_text_after_cursor_on_line(text, offset) {
         return None;
     }
@@ -422,7 +431,7 @@ pub(super) fn generate_suggestion(
     let mut context = context_words(text, prefix_start, evidence.prose);
     let at_sentence_start = context.len() == 1 && context[0] == SENTENCE_START;
 
-    let (first, first_probability, ghost) = if prefix.is_empty() {
+    let (first, first_probability, ghost, chance) = if prefix.is_empty() {
         // A next word, after a word and a space, in prose.
         if !evidence.prose
             || !text[..offset].ends_with(' ')
@@ -445,7 +454,8 @@ pub(super) fn generate_suggestion(
         if !policy.shows_prediction(&candidate) || !evidence.offers(&next.form, &next.word) {
             return None;
         }
-        (next.word, next.probability, next.form)
+        let chance = policy.confidence(&candidate);
+        (next.word, next.probability, next.form, chance)
     } else {
         // The rest of the word being typed.
         let folded_prefix = fold(prefix);
@@ -469,25 +479,24 @@ pub(super) fn generate_suggestion(
         // to one, at most two words reach it.
         let fitting_count: f64 = completions.iter().map(|completion| completion.count).sum();
         let prefix_chars = folded_prefix.chars().count();
+        let known = evidence.counts().types();
+        let candidate = |index: usize| Candidate {
+            probability: probabilities[index],
+            fitting: Some(Fitting {
+                word: completions[index].folded,
+                words: completions.len(),
+                count: fitting_count,
+                known,
+                seen: total - 1.0,
+                prefix_chars,
+                prose: evidence.prose,
+                context: levels.last().copied(),
+                local,
+            }),
+            predicted: None,
+        };
         let mut likely: Vec<usize> = (0..completions.len())
-            .filter(|&index| {
-                let completion = &completions[index];
-                policy.shows_completion(&Candidate {
-                    probability: probabilities[index],
-                    fitting: Some(Fitting {
-                        word: completion.folded,
-                        words: completions.len(),
-                        count: fitting_count,
-                        known: evidence.counts().types(),
-                        seen: total - 1.0,
-                        prefix_chars,
-                        prose: evidence.prose,
-                        context: levels.last().copied(),
-                        local,
-                    }),
-                    predicted: None,
-                })
-            })
+            .filter(|&index| policy.shows_completion(&candidate(index)))
             .collect();
         likely.sort_by(|&a, &b| {
             probabilities[b]
@@ -510,7 +519,13 @@ pub(super) fn generate_suggestion(
             // Most likely the word is already complete.
             return None;
         }
-        (completion.folded.to_string(), probabilities[index], rest)
+        let chance = policy.confidence(&candidate(index));
+        (
+            completion.folded.to_string(),
+            probabilities[index],
+            rest,
+            chance,
+        )
     };
 
     let mut options = vec![(ghost.clone(), first_probability)];
@@ -550,7 +565,7 @@ pub(super) fn generate_suggestion(
         };
         value(a).total_cmp(&value(b))
     })?;
-    (ghost.chars().count() >= MIN_GHOST_CHARS).then_some(ghost)
+    (ghost.chars().count() >= MIN_GHOST_CHARS).then_some(Suggested { ghost, chance })
 }
 
 #[cfg(test)]
@@ -612,6 +627,7 @@ mod tests {
 
     fn suggest(vocabulary: &Vocabulary, text: &str) -> Option<String> {
         generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), &Ungated)
+            .map(|suggested| suggested.ghost)
     }
 
     #[test]
@@ -672,7 +688,9 @@ mod tests {
             &|_| 0,
         );
         assert_eq!(
-            generate_suggestion(&vocabulary, &local, text, text.len(), &Ungated).as_deref(),
+            generate_suggestion(&vocabulary, &local, text, text.len(), &Ungated)
+                .map(|suggested| suggested.ghost)
+                .as_deref(),
             Some("ute_total")
         );
     }
@@ -777,6 +795,7 @@ mod tests {
         let suggest = |vocabulary: &Vocabulary, policy: &dyn SuggestionPolicy| {
             let text = "We went to the ba";
             generate_suggestion(vocabulary, &LocalIndex::new(), text, text.len(), policy)
+                .map(|suggested| suggested.ghost)
         };
         let once = vocabulary(&["We went to the bank"]);
         assert_eq!(suggest(&once, &Ungated).as_deref(), Some("nk"));

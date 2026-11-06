@@ -139,6 +139,12 @@ pub(crate) trait SuggestionPolicy {
         candidate.probability >= SHOW_THRESHOLD
     }
 
+    /// The chance that `candidate` is the word coming, as this policy weighs
+    /// it. Quiet's timing waits less for a surer word.
+    fn confidence(&self, candidate: &Candidate<'_>) -> f64 {
+        candidate.probability
+    }
+
     /// How many words may follow the first, after a completion or after a
     /// prediction.
     fn words_after(&self, completing: bool) -> usize {
@@ -353,6 +359,16 @@ impl SuggestionPolicy for ConfidenceGate {
             && candidate.predicted.as_ref().is_none_or(|predicted| {
                 PredictionConfidence::chance(candidate, predicted) >= SHOW_THRESHOLD
             })
+    }
+
+    fn confidence(&self, candidate: &Candidate<'_>) -> f64 {
+        if let Some(fitting) = candidate.fitting.as_ref().filter(|fitting| fitting.prose) {
+            CompletionConfidence::chance(candidate, fitting)
+        } else if let Some(predicted) = candidate.predicted.as_ref() {
+            PredictionConfidence::chance(candidate, predicted)
+        } else {
+            candidate.probability
+        }
     }
 }
 

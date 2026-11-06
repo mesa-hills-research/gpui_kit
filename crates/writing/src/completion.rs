@@ -70,8 +70,8 @@ pub(crate) mod policy;
 mod typed;
 pub(crate) mod vocabulary;
 
-pub use pacing::SuggestionMode;
 pub(crate) use pacing::SuggestionPacing;
+pub use pacing::{QuietTiming, SuggestionMode};
 
 use crate::text::floor_char_boundary;
 use gpui::{App, BackgroundExecutor, Entity, KeyBinding, Subscription, Task, Window};
@@ -174,12 +174,14 @@ impl<'a> From<&'a TextEdit> for Edit<'a> {
     }
 }
 
-/// What a request for suggestions found, the model's suggestion and what
-/// pacing lets show of it now.
+/// What a request for suggestions found, the model's suggestion, what
+/// pacing lets show of it, and how long after the request it shows, unless
+/// the text changes first.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Answer {
     pub model: Option<String>,
     pub shown: Option<String>,
+    pub hold: Duration,
 }
 
 /// Canonicalizes safe single-character prediction tokens.
@@ -798,15 +800,16 @@ impl WordSuggestions {
         self.learn_preceding_sentence(whole, excerpt, offset);
 
         let text = excerpt.text.as_str();
-        let model = {
+        let suggested = {
             let vocabulary = self.vocabulary.borrow();
             let local = self.local_index.borrow();
 
             generate_suggestion(&vocabulary, &local, text, offset, self.policy())
         };
+        let model = suggested.as_ref().map(|suggested| suggested.ghost.clone());
         let caret = excerpt.start + offset;
-        let shown = self.pacer.offer(text, offset, caret, model.clone(), now);
-        Answer { model, shown }
+        let (shown, hold) = self.pacer.offer(text, offset, caret, suggested, now);
+        Answer { model, shown, hold }
     }
 
     /// Learns the most recently finished prose sentence before `offset` in
@@ -1063,7 +1066,17 @@ impl SuggestionProvider for WordSuggestions {
             executor.now(),
             Some(executor),
         );
-        Task::ready(Ok(answer.shown.into_iter().map(Suggestion::new).collect()))
+        let suggestions: Vec<Suggestion> = answer.shown.into_iter().map(Suggestion::new).collect();
+        if answer.hold.is_zero() {
+            return Task::ready(Ok(suggestions));
+        }
+        // Held back by the typist's rhythm. The textarea drops the answer
+        // if the text changes before it comes.
+        let timer = executor.timer(answer.hold);
+        cx.spawn(async move |_| {
+            timer.await;
+            Ok(suggestions)
+        })
     }
 
     fn is_trigger(&self, offset: usize, text: &str, cx: &mut App) -> bool {

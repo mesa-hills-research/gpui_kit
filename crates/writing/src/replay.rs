@@ -10,7 +10,9 @@
 //! Quiet's pause on the clock, and inserts Tab's and Ctrl+Right's text with
 //! the suggestion's origin.
 
-use crate::completion::policy::{CompletionGate, FrequencyOnly, SuggestionPolicy, Ungated};
+use crate::completion::policy::{
+    CompletionGate, ConfidenceGate, FrequencyOnly, SuggestionPolicy, Ungated,
+};
 use crate::completion::{Answer, Edit, SuggestionPacing, WordSuggestions};
 use crate::spelling::Dictionary;
 use crate::{WordList, Writing};
@@ -21,7 +23,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 pub use crate::completion::SuggestionMode;
-pub use crate::completion::pacing::Paced;
+pub use crate::completion::pacing::{Paced, QuietTiming};
 
 /// The bundled English word list, loaded on this thread.
 pub fn english() -> Rc<Dictionary> {
@@ -50,6 +52,9 @@ pub enum Policy {
         scale: f64,
         long_bar: bool,
     },
+    /// Quiet's rules, which hold back a first word more likely wrong than
+    /// right, in any mode.
+    Confidence,
 }
 
 impl Policy {
@@ -57,6 +62,7 @@ impl Policy {
         Some(match self {
             Self::Default => return None,
             Self::Ungated => Rc::new(Ungated),
+            Self::Confidence => Rc::new(ConfidenceGate),
             Self::FrequencyOnly => Rc::new(FrequencyOnly { always: false }),
             Self::FrequencyAlways => Rc::new(FrequencyOnly { always: true }),
             Self::Gate {
@@ -137,9 +143,20 @@ impl Writer {
         }
     }
 
-    /// How long a pause Quiet waits for now.
+    /// How long a pause Quiet waits for now, with the fixed pause.
     pub fn pause(&self) -> Duration {
         self.pacing().pause()
+    }
+
+    /// Switches how Quiet times its suggestions.
+    pub fn set_quiet_timing(&self, timing: QuietTiming) {
+        self.pacing().set_timing(timing);
+    }
+
+    /// The gap the typist's keys usually come at, as Quiet's rhythm has
+    /// learned it, inside a word or at the start of one, in milliseconds.
+    pub fn rhythm_ms(&self, at_word_start: bool) -> f64 {
+        self.pacing().rhythm_ms(at_word_start)
     }
 
     /// What the pacing did to offers since this was last called.
@@ -173,12 +190,14 @@ impl Writer {
     }
 }
 
-/// A suggestion on offer, with its text and where its range starts. Tab
-/// replaces the range, from its start to the caret, with the text.
+/// A suggestion on offer, with its text, where its range starts, and when
+/// on the clock it shows. Tab replaces the range, from its start to the
+/// caret, with the text.
 #[derive(Clone, Debug, PartialEq)]
 struct Offer {
     text: String,
     start: usize,
+    shows_at: Duration,
 }
 
 /// One request's answer, at the caret it was made for.
@@ -189,6 +208,8 @@ pub struct Asked {
     pub model: Option<String>,
     /// What pacing let show of it.
     pub shown: Option<String>,
+    /// How long after the request it shows, unless a key comes first.
+    pub hold: Duration,
 }
 
 /// One textarea of a [`Writer`].
@@ -217,9 +238,16 @@ impl Field {
         self.caret
     }
 
+    /// The suggestion on offer, once the clock has reached its showing.
+    fn visible(&self) -> Option<&Offer> {
+        self.offer
+            .as_ref()
+            .filter(|offer| offer.shows_at <= self.clock.get())
+    }
+
     /// The ghost text after the caret, which Tab would add.
     pub fn ghost(&self) -> Option<String> {
-        let offer = self.offer.as_ref()?;
+        let offer = self.visible()?;
         let typed = self.text.slice(offer.start..self.caret).to_string();
         offer
             .text
@@ -228,9 +256,14 @@ impl Field {
             .map(str::to_string)
     }
 
+    /// When on the clock the ghost text showed.
+    pub fn shown_at(&self) -> Option<Duration> {
+        self.visible().map(|offer| offer.shows_at)
+    }
+
     /// The whole suggestion on offer, as the textarea lists it.
     pub fn suggestion(&self) -> Option<&str> {
-        self.offer.as_ref().map(|offer| offer.text.as_str())
+        self.visible().map(|offer| offer.text.as_str())
     }
 
     /// The requests answered since this was last called.
@@ -324,9 +357,10 @@ impl Field {
     /// on offer.
     pub fn escape(&mut self) -> bool {
         self.send_due();
-        if self.offer.take().is_none() {
+        if self.visible().is_none() {
             return false;
         }
+        self.offer = None;
         self.suggestions.dismissed(self.now());
         true
     }
@@ -390,7 +424,7 @@ impl Field {
 
     fn ask(&mut self) {
         self.report();
-        let Answer { model, shown } =
+        let Answer { model, shown, hold } =
             self.suggestions
                 .request(&self.text, self.caret, self.now(), None);
         self.offer = shown
@@ -399,11 +433,13 @@ impl Field {
             .map(|text| Offer {
                 text,
                 start: self.caret,
+                shows_at: self.clock.get() + hold,
             });
         self.answers.push(Asked {
             caret: self.caret,
             model,
             shown,
+            hold,
         });
     }
 }
