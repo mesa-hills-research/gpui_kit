@@ -2213,7 +2213,12 @@ mod tests {
         test.update(|state, window, cx| {
             state.set_value("Dear Ada, ", window, cx);
             state.set_selected_range(10..10, cx);
-            state.attach_key_log(crate::input::KeyLog::new(&path).mode(|| "eager".into()));
+            state.attach_key_log(
+                crate::input::KeyLog::new(&path)
+                    .mode(|| "eager".into())
+                    .header("timing", "fixed")
+                    .header("mode", "ignored"),
+            );
         });
         test.draw();
         assert!(!path.exists(), "the file waits for the first edit");
@@ -2248,6 +2253,7 @@ mod tests {
         assert_eq!(header["text"], "Dear Ada, ");
         assert_eq!(header["caret"], 10);
         assert_eq!(header["mode"], "eager");
+        assert_eq!(header["timing"], "fixed");
         let events: Vec<serde_json::Value> = lines.collect();
         let times: Vec<u64> = events.iter().map(|e| e["t"].as_u64().unwrap()).collect();
         assert!(times.is_sorted());

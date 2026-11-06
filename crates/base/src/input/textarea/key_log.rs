@@ -5,7 +5,8 @@
 //! textarea with [`TextareaState::key_log`]. The record goes to one JSON
 //! Lines file on this machine. It starts at the first edit, with the text as
 //! it stood when the log was attached, so a reader can rebuild the text event
-//! by event.
+//! by event. That first line, the header, also holds the suggestion mode and
+//! any fields the application adds with [`KeyLog::header`].
 //!
 //! Every event has `t`, milliseconds since the log was attached, and `k`, its
 //! kind:
@@ -52,6 +53,8 @@ pub struct KeyLog {
     started: Instant,
     started_unix_ms: u128,
     mode: Box<dyn Fn() -> String>,
+    /// The application's own fields for the header.
+    header: Vec<(&'static str, String)>,
     /// The text and caret when the log was attached, for the header.
     text: Rope,
     caret: usize,
@@ -83,6 +86,7 @@ impl KeyLog {
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |since| since.as_millis()),
             mode: Box::new(String::new),
+            header: Vec::new(),
             text: Rope::new(),
             caret: 0,
             pending: Vec::new(),
@@ -97,6 +101,14 @@ impl KeyLog {
     /// Names the suggestion mode, asked again at each shown suggestion.
     pub fn mode(mut self, mode: impl Fn() -> String + 'static) -> Self {
         self.mode = Box::new(mode);
+        self
+    }
+
+    /// Adds `value` to the header under `key`, for anything else a reader
+    /// should know about the recording. The log's own fields keep their
+    /// values.
+    pub fn header(mut self, key: &'static str, value: impl Into<String>) -> Self {
+        self.header.push((key, value.into()));
         self
     }
 
@@ -130,13 +142,18 @@ impl KeyLog {
 
     /// Creates the file with the header, the lines kept so far and `line`.
     fn open(&mut self, line: String) {
-        let header = json!({
+        let mut header = json!({
             "v": 1,
             "started_unix_ms": self.started_unix_ms,
             "mode": (self.mode)(),
             "text": self.text.to_string(),
             "caret": self.caret,
         });
+        if let Value::Object(fields) = &mut header {
+            for (key, value) in &self.header {
+                fields.entry(*key).or_insert_with(|| json!(value));
+            }
+        }
         let mut lines = header.to_string();
         lines.push('\n');
         lines.extend(self.pending.drain(..));
