@@ -36,6 +36,7 @@ impl InputModeKind for TextareaMode {
     ) {
         state.record_suggestion_edit(range, new_len, cx);
         state.record_spelling_edit(range, new_len, cx);
+        state.log_edit(range, new_len);
     }
 
     fn on_render(

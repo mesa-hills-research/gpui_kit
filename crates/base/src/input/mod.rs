@@ -43,6 +43,8 @@ pub use token_presentation::{
     InlineTokenClickEvent, InlineTokenClickListener, InlineTokenContext, InlineTokenHoverEvent,
     InlineTokenHoverListener, InlineTokenRenderer,
 };
+#[path = "textarea/key_log.rs"]
+mod key_log;
 #[path = "textarea/keymap/mod.rs"]
 mod keymap;
 #[path = "base/kind.rs"]
@@ -112,6 +114,7 @@ pub use highlighting::{
 };
 pub use indent::TabSize;
 pub use input::{Input, InputState};
+pub use key_log::KeyLog;
 pub use keymap::cua;
 pub use keymap::{
     ConvertToLowerCase, ConvertToTitleCase, ConvertToUpperCase, CursorShape, DeleteLine, JoinLines,
