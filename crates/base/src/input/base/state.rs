@@ -29,6 +29,7 @@ use super::{
         EditorScrollbar, EditorScrollbarSnapshot, LongestLineKey, TextElement,
         clamp_horizontal_scroll_offset, clamp_vertical_scroll_offset,
     },
+    key_log::logged,
     kind::InputModeKind,
     mask_pattern::normalize_number_input,
     mode::LayoutMode,
@@ -262,6 +263,9 @@ pub struct InputBaseState<M: InputModeKind> {
     ///
     /// [`TextEdit::origin`]: crate::input::TextEdit::origin
     pub(crate) edit_origin: crate::input::EditOrigin,
+    /// Records the editing, when an application asked for it. See
+    /// [`crate::input::KeyLog`].
+    pub(crate) key_log: Option<Box<crate::input::KeyLog>>,
     pub(super) validated_token_edit: bool,
     pub(super) document_revision: u64,
     pub(super) token_presentation: super::InlineTokenPresentation,
@@ -619,8 +623,12 @@ impl<M: InputModeKind> InputBaseState<M> {
             cx.observe_window_activation(window, |input, window, cx| {
                 if window.is_window_active() && input.focus_handle.is_focused(window) {
                     input.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
+                    input.log_focus(true);
                 } else {
                     input.blink_cursor.update(cx, |cursor, cx| cursor.stop(cx));
+                    if input.focus_handle.is_focused(window) {
+                        input.log_focus(false);
+                    }
                 }
             }),
             cx.on_focus(&focus_handle, window, Self::on_focus),
@@ -653,6 +661,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             pending_token: None,
             replaying_history: false,
             edit_origin: crate::input::EditOrigin::Program,
+            key_log: None,
             validated_token_edit: false,
             document_revision: 0,
             token_presentation: Default::default(),
@@ -3481,6 +3490,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         if window.is_window_active() {
             self.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
         }
+        self.log_focus(true);
         cx.emit(InputEvent::Focus);
     }
 
@@ -3491,6 +3501,7 @@ impl<M: InputModeKind> InputBaseState<M> {
 
         M::hide_context_menu(self, cx);
         self.undo_manager.break_transaction_coalescing();
+        self.log_focus(false);
 
         // NOTE: Do not cancel select, when blur.
         // Because maybe user want to copy the selected text by AppMenuBar (will take focus handle).
@@ -4583,6 +4594,7 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
             .resolved(&crate::Theme::global(cx).tokens);
         let entity = cx.entity();
         M::on_render(self, window, cx);
+        self.log_selection();
         if self._pending_update {
             self.mode.update_highlighter::<M>(
                 super::mode::HighlighterUpdate {
@@ -4610,26 +4622,41 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
             .key_context(key_context)
             .track_focus(&self.focus_handle)
             .when(self.is_editable(), |this| {
-                this.on_action(window.listener_for(&entity, InputBaseState::backspace))
-                    .on_action(window.listener_for(&entity, InputBaseState::delete))
-                    .on_action(
-                        window.listener_for(&entity, InputBaseState::delete_to_beginning_of_line),
-                    )
-                    .on_action(window.listener_for(&entity, InputBaseState::delete_to_end_of_line))
-                    .on_action(window.listener_for(&entity, InputBaseState::delete_previous_word))
-                    .on_action(window.listener_for(&entity, InputBaseState::delete_next_word))
-                    .on_action(window.listener_for(&entity, InputBaseState::enter))
-                    .on_action(window.listener_for(&entity, InputBaseState::escape))
-                    .on_action(window.listener_for(&entity, InputBaseState::paste))
-                    .on_action(window.listener_for(&entity, InputBaseState::cut))
-                    .on_action(window.listener_for(&entity, InputBaseState::undo))
-                    .on_action(window.listener_for(&entity, InputBaseState::redo))
-                    .when(self.is_multi_line(), |this| {
-                        this.on_action(window.listener_for(&entity, InputBaseState::indent_inline))
-                            .on_action(window.listener_for(&entity, InputBaseState::outdent_inline))
-                            .on_action(window.listener_for(&entity, InputBaseState::indent_block))
-                            .on_action(window.listener_for(&entity, InputBaseState::outdent_block))
-                    })
+                this.on_action(
+                    window.listener_for(&entity, logged("backspace", InputBaseState::backspace)),
+                )
+                .on_action(window.listener_for(&entity, logged("delete", InputBaseState::delete)))
+                .on_action(window.listener_for(
+                    &entity,
+                    logged(
+                        "backspace-line",
+                        InputBaseState::delete_to_beginning_of_line,
+                    ),
+                ))
+                .on_action(window.listener_for(
+                    &entity,
+                    logged("delete-line", InputBaseState::delete_to_end_of_line),
+                ))
+                .on_action(window.listener_for(
+                    &entity,
+                    logged("backspace-word", InputBaseState::delete_previous_word),
+                ))
+                .on_action(window.listener_for(
+                    &entity,
+                    logged("delete-word", InputBaseState::delete_next_word),
+                ))
+                .on_action(window.listener_for(&entity, logged("enter", InputBaseState::enter)))
+                .on_action(window.listener_for(&entity, InputBaseState::escape))
+                .on_action(window.listener_for(&entity, InputBaseState::paste))
+                .on_action(window.listener_for(&entity, logged("cut", InputBaseState::cut)))
+                .on_action(window.listener_for(&entity, logged("undo", InputBaseState::undo)))
+                .on_action(window.listener_for(&entity, logged("redo", InputBaseState::redo)))
+                .when(self.is_multi_line(), |this| {
+                    this.on_action(window.listener_for(&entity, InputBaseState::indent_inline))
+                        .on_action(window.listener_for(&entity, InputBaseState::outdent_inline))
+                        .on_action(window.listener_for(&entity, InputBaseState::indent_block))
+                        .on_action(window.listener_for(&entity, InputBaseState::outdent_block))
+                })
             })
             .on_action(window.listener_for(&entity, InputBaseState::left))
             .on_action(window.listener_for(&entity, InputBaseState::right))

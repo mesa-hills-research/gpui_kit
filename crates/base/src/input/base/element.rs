@@ -4292,15 +4292,23 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
             // still composing does not, nor does text the platform inserts
             // in place of other text.
             self.state.update(cx, |state, cx| {
-                state.with_edit_origin(EditOrigin::Typed, |state| {
-                    state.caret_motion(CaretMotion::Typing, |state| {
-                        gpui::EntityInputHandler::replace_text_in_range(
-                            state,
-                            replacement_range,
-                            text,
-                            window,
-                            cx,
-                        )
+                // Text that ends a composition is the input method's commit.
+                let kind = if state.ime_marked_range.is_some() {
+                    "ime"
+                } else {
+                    "type"
+                };
+                state.with_key_log_kind(kind, |state| {
+                    state.with_edit_origin(EditOrigin::Typed, |state| {
+                        state.caret_motion(CaretMotion::Typing, |state| {
+                            gpui::EntityInputHandler::replace_text_in_range(
+                                state,
+                                replacement_range,
+                                text,
+                                window,
+                                cx,
+                            )
+                        })
                     })
                 })
             });
@@ -4320,6 +4328,12 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
             let origin = self.state.update(cx, |state, _| {
                 std::mem::replace(&mut state.edit_origin, EditOrigin::Typed)
             });
+            let kind = self.state.update(cx, |state, _| {
+                state
+                    .key_log
+                    .as_mut()
+                    .map(|log| log.kind.replace("compose"))
+            });
             self.inner.replace_and_mark_text_in_range(
                 range_utf16,
                 new_text,
@@ -4327,7 +4341,12 @@ impl<M: InputModeKind> gpui::InputHandler for TypedTextHandler<M> {
                 window,
                 cx,
             );
-            self.state.update(cx, |state, _| state.edit_origin = origin);
+            self.state.update(cx, |state, _| {
+                state.edit_origin = origin;
+                if let (Some(log), Some(kind)) = (state.key_log.as_mut(), kind) {
+                    log.kind = kind;
+                }
+            });
         }
     }
 
@@ -5716,6 +5735,45 @@ mod tests {
             state: textarea.clone(),
         };
         (textarea, handler, cx)
+    }
+
+    /// The key log tells text an input method is composing from its commit.
+    #[gpui::test]
+    fn the_key_log_marks_input_method_text(cx: &mut TestAppContext) {
+        use gpui::InputHandler as _;
+        let heard = Rc::new(HeardEdits::default());
+        let (textarea, mut handler, mut cx) = heard_textarea(cx, heard);
+        let path = std::env::temp_dir().join(format!(
+            "gpui-kit-key-log-ime-test-{}.jsonl",
+            std::process::id()
+        ));
+        _ = std::fs::remove_file(&path);
+        textarea.update(&mut cx, |state, _| {
+            state.attach_key_log(crate::input::KeyLog::new(&path))
+        });
+        cx.update(|window, cx| {
+            handler.replace_text_in_range(None, "a", window, cx);
+            handler.replace_and_mark_text_in_range(None, "n", None, window, cx);
+            handler.replace_and_mark_text_in_range(None, "ni", None, window, cx);
+            handler.replace_text_in_range(None, "\u{4f60}", window, cx);
+        });
+        textarea.update(&mut cx, |state, _| state.key_log = None);
+
+        let log = std::fs::read_to_string(&path).unwrap();
+        _ = std::fs::remove_file(&path);
+        let mut text = String::new();
+        let mut kinds = Vec::new();
+        for line in log.lines().skip(1) {
+            let event: serde_json::Value = serde_json::from_str(line).unwrap();
+            if let Some(at) = event["at"].as_u64() {
+                let at = at as usize;
+                let removed = event["n"].as_u64().unwrap() as usize;
+                text.replace_range(at..at + removed, event["s"].as_str().unwrap());
+                kinds.push(event["k"].as_str().unwrap().to_string());
+            }
+        }
+        assert_eq!(kinds, ["type", "compose", "compose", "ime"]);
+        assert_eq!(text, "a\u{4f60}");
     }
 
     /// A paste the platform delivers, as a browser's paste event does, is a

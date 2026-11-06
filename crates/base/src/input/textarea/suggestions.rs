@@ -686,6 +686,7 @@ impl TextareaState {
         let Some(suggestion) = self.extras.suggestions.selected().cloned() else {
             return false;
         };
+        self.log_dismissed();
         self.close_suggestions(cx);
         cx.emit(SuggestionEvent::Dismissed { suggestion });
         true
@@ -705,6 +706,7 @@ impl TextareaState {
             suggestions.ghost = None;
             cx.notify();
         }
+        self.log_ghost();
     }
 
     /// Record an edit for the provider. See [`crate::input::InputModeKind::did_edit`].
@@ -806,6 +808,7 @@ impl TextareaState {
         if self.extras.suggestions.provider.is_none() || !self.accepts_suggestions() {
             return;
         }
+        self.log_request(debounce);
         let id = self.extras.suggestions.request_id;
         if debounce.is_zero() {
             self.send_suggestion_request(id, trigger, window, cx);
@@ -944,6 +947,7 @@ impl TextareaState {
             None
         };
         self.extras.suggestions.ghost = ghost;
+        self.log_ghost();
     }
 
     fn accept_selected_suggestion(
@@ -979,6 +983,7 @@ impl TextareaState {
             Some(word) => (offset..offset, word.as_str()),
             None => (range, suggestion.text.as_ref()),
         };
+        self.log_accepted(partial, text);
 
         // An accepted suggestion is one step of its own in the history, apart
         // from the typing before it.
@@ -2191,5 +2196,134 @@ mod tests {
             assert!(state.suggestions().is_empty());
         });
         assert!(provider.requests.borrow().is_empty());
+    }
+
+    /// A key log records each edit with where it came from, the caret's
+    /// moves and how each shown suggestion ended, and its edits rebuild the
+    /// text from the header's.
+    #[gpui::test]
+    fn key_log_records_the_editing(cx: &mut TestAppContext) {
+        let provider = Rc::new(WordProvider::new(&["hello", "world"]));
+        let mut test = Test::new(cx, Some(provider), inline());
+        let path = std::env::temp_dir().join(format!(
+            "gpui-kit-key-log-test-{}.jsonl",
+            std::process::id()
+        ));
+        _ = std::fs::remove_file(&path);
+        test.update(|state, window, cx| {
+            state.set_value("Dear Ada, ", window, cx);
+            state.set_selected_range(10..10, cx);
+            state.attach_key_log(crate::input::KeyLog::new(&path).mode(|| "eager".into()));
+        });
+        test.draw();
+        assert!(!path.exists(), "the file waits for the first edit");
+
+        test.cx.simulate_input("hel");
+        test.cx.simulate_keystrokes("tab");
+        test.cx.simulate_input(" wox");
+        test.cx.simulate_keystrokes("backspace");
+        test.cx.simulate_input("r");
+        test.cx.simulate_keystrokes("escape");
+        test.cx
+            .write_to_clipboard(gpui::ClipboardItem::new_string("!".into()));
+        test.cx.dispatch_action(crate::input::Paste);
+        test.cx.dispatch_action(Undo);
+        test.cx.simulate_keystrokes("left");
+        test.draw();
+        test.cx.dispatch_action(crate::input::SelectAll);
+        test.draw();
+        test.cx.dispatch_action(crate::input::Cut);
+        test.cx.dispatch_action(crate::input::Paste);
+        test.draw();
+        let text = test.value();
+        assert_eq!(text, "Dear Ada, hello wor");
+        test.update(|state, _, _| state.key_log = None);
+
+        let log = std::fs::read_to_string(&path).unwrap();
+        _ = std::fs::remove_file(&path);
+        let mut lines = log
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap());
+        let header = lines.next().unwrap();
+        assert_eq!(header["text"], "Dear Ada, ");
+        assert_eq!(header["caret"], 10);
+        assert_eq!(header["mode"], "eager");
+        let events: Vec<serde_json::Value> = lines.collect();
+        let times: Vec<u64> = events.iter().map(|e| e["t"].as_u64().unwrap()).collect();
+        assert!(times.is_sorted());
+
+        let kind = |event: &serde_json::Value| event["k"].as_str().unwrap().to_string();
+        let mut rebuilt = header["text"].as_str().unwrap().to_string();
+        let mut edits = Vec::new();
+        for event in events.iter().filter(|event| event.get("at").is_some()) {
+            let at = event["at"].as_u64().unwrap() as usize;
+            let removed = event["n"].as_u64().unwrap() as usize;
+            rebuilt.replace_range(at..at + removed, event["s"].as_str().unwrap());
+            assert_eq!(rebuilt.len() as u64, event["len"].as_u64().unwrap());
+            edits.push(kind(event));
+        }
+        assert_eq!(rebuilt, text);
+        assert_eq!(
+            edits,
+            [
+                "type",
+                "type",
+                "type",
+                "suggestion",
+                "type",
+                "type",
+                "type",
+                "type",
+                "backspace",
+                "type",
+                "paste",
+                "undo",
+                "cut",
+                "paste"
+            ]
+        );
+
+        let endings: Vec<String> = events
+            .iter()
+            .map(kind)
+            .filter(|kind| {
+                [
+                    "accepted",
+                    "dismissed",
+                    "typed-along",
+                    "typed-past",
+                    "hidden",
+                ]
+                .contains(&kind.as_str())
+            })
+            .collect();
+        assert_eq!(
+            endings,
+            [
+                "typed-along",
+                "typed-along",
+                "accepted",
+                "typed-along",
+                "typed-past",
+                "dismissed"
+            ]
+        );
+        let shown: Vec<&str> = events
+            .iter()
+            .filter(|event| event["k"] == "shown")
+            .map(|event| event["s"].as_str().unwrap())
+            .collect();
+        assert_eq!(shown, ["ello", "llo", "lo", "orld", "rld", "ld"]);
+        let accepted = events.iter().find(|e| e["k"] == "accepted").unwrap();
+        assert_eq!(
+            (&accepted["key"], &accepted["s"]),
+            (&"tab".into(), &"hello".into())
+        );
+
+        let moves: Vec<&serde_json::Value> = events.iter().filter(|e| e["k"] == "move").collect();
+        assert_eq!(moves.len(), 2);
+        assert_eq!(moves[0]["c"], 18);
+        assert_eq!(moves[1]["sel"], serde_json::json!([0, 19]));
+        assert_eq!(kind(events.last().unwrap()), "end");
     }
 }
