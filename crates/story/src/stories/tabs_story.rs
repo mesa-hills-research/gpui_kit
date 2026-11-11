@@ -278,9 +278,7 @@ impl Render for TabsStory {
             )
             .child(
                 section("Segmented Tabs")
-                    .description(
-                        "A filled, outlined option marks the selection inside a bordered track.",
-                    )
+                    .description("An outlined option marks the selection inside a bordered track.")
                     .w_full()
                     .child(
                         TabBar::new("segmented")

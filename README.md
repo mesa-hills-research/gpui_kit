@@ -26,9 +26,9 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
   at the corners of their frame, so a square fill no longer pokes past a rounded border. See
   [Style](website/docs/style.md).
 - **Bordered segmented tabs** (`gpui-component`). Segmented tabs sit on the window background
-  inside a 1 px border, and the selected option has a `secondary` fill with a thin outline that
-  shows in every theme. Other options use muted text that brightens on hover. Disabled options are
-  dimmer and stay out of keyboard navigation.
+  inside a 1 px border that shows in every theme. The selected option has a thin outline, with the
+  window's own fill on light themes and a `secondary` fill on dark ones. Other options use muted
+  text that brightens on hover. Disabled options are dimmer and stay out of keyboard navigation.
 - **Tables end at their content** (`gpui-base`). A final Markdown table has no outside bottom
   gap, like a final paragraph. Tables before another block use `TextViewStyle`'s paragraph gap
   in both wrapping and horizontal-scroll layouts.
