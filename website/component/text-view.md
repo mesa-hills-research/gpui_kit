@@ -136,11 +136,11 @@ highlighted only as far as its shown lines. The highlights are kept as
 highlight names and take the theme's colors when the block is drawn, so a
 theme change recolors code without parsing it.
 
-A language is prepared the first time a block needs it. Its grammar is
-decoded and its queries are compiled on a background thread, which takes from
-a millisecond to about a second depending on the grammar (Swift and F# take
-longest), and its blocks show plain code until then. An application that
-knows which languages it will show can prepare them at startup:
+A language is prepared the first time a block needs it. Its queries are
+compiled on a background thread, which takes from under a millisecond to
+about 400 ms depending on the language (Swift and F# take longest), and its
+blocks show plain code until then. An application that knows which languages
+it will show can prepare them at startup:
 
 ```rust
 use gpui_kit::component::highlighter::LanguageRegistry;
@@ -148,8 +148,8 @@ use gpui_kit::component::highlighter::LanguageRegistry;
 LanguageRegistry::singleton().warm_up(["rust", "typescript", "python", "bash"], cx);
 ```
 
-A prepared grammar stays in memory, from under a megabyte to about 27 MB for
-F#, so warm up the languages an application is likely to show rather than
+A prepared language stays in memory, from under a megabyte to about 8 MB for
+SQL, so warm up the languages an application is likely to show rather than
 every one it enables.
 
 ### A long document as rows

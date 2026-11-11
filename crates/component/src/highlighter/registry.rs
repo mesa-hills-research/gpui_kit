@@ -392,10 +392,6 @@ pub type LanguageParserFactory =
 
 /// A registered language, an application's configuration or one of the
 /// kit's own, whose configuration is built the first time it is asked for.
-///
-/// Building a configuration decodes the grammar's tables, which takes tens
-/// of milliseconds and megabytes per grammar, so the registry builds only
-/// those of the languages something highlights.
 #[derive(Clone)]
 enum Grammar {
     Config(GrammarConfig),
@@ -505,15 +501,15 @@ impl LanguageRegistry {
     }
 
     /// Prepares `languages` for highlighting on a background thread. It
-    /// decodes their grammars and compiles their highlight queries, so the
-    /// first code block in one of them is highlighted from its first frame.
+    /// compiles their highlight queries, so the first code block in one of
+    /// them is highlighted from its first frame.
     ///
     /// Without this, a language is prepared on that thread the first time a
-    /// code block needs it, which takes from a millisecond to about a second
-    /// (Swift and F# take longest), and the block shows plain text until it
-    /// is ready. A prepared grammar stays in memory, from under a megabyte
-    /// to about 27 MB (F#), so warm up the languages an application is likely
-    /// to show rather than every one it enables.
+    /// code block needs it, which takes from under a millisecond to about
+    /// 400 ms (Swift and F# take longest), and the block shows plain text
+    /// until it is ready. A prepared language stays in memory, from under a
+    /// megabyte to about 8 MB (SQL), so warm up the languages an application
+    /// is likely to show rather than every one it enables.
     ///
     /// ```no_run
     /// # mod gpui_kit { pub extern crate gpui_component as component; }

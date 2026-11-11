@@ -105,8 +105,8 @@ The language set via `.language()` selects syntax highlighting. Enable the
 matching Cargo feature, such as `tree-sitter-rust` or `tree-sitter-markdown`;
 use `tree-sitter-languages` to bundle all built-in grammars.
 
-A grammar is decoded the first time something highlights its language, and
-the first editor of a language waits for that. `LanguageRegistry::warm_up`
+A language is prepared the first time something highlights it, and the first
+editor of a language waits for that. `LanguageRegistry::warm_up`
 prepares languages on a background thread ahead of time, as
 [TextView: code highlighting while streaming](text-view.md#code-highlighting-while-streaming)
 explains.
@@ -116,13 +116,13 @@ a pure Rust port, so these features build without a C compiler.
 
 To highlight another language, register a grammar from one of Mesquite's grammar
 crates with a highlight query, as `examples/editor` does for Haskell. Take the
-crate from crates.io at the same `0.1` release series as the grammars
+crate from crates.io at the same `0.2` release series as the grammars
 `gpui-component` uses, so the grammar and the kit's parser share one
 `mesquite_language` crate:
 
 ```toml
 [dependencies]
-tree-sitter-haskell = { package = "mesquite_haskell", version = "0.1" }
+tree-sitter-haskell = { package = "mesquite_haskell", version = "0.2" }
 ```
 
 ```rust

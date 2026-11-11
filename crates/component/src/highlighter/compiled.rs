@@ -7,10 +7,9 @@
 //! part of opening one. A compiled query is immutable, so one copy serves all
 //! of them, on any thread.
 //!
-//! A language can also be compiled on a background thread, where its
-//! grammar's tables are decoded too (another 20 to 600 ms the first time a
-//! grammar is used). Code blocks ask for languages that way. Until a language
-//! is ready its blocks show plain text, and whoever asked is told when it is.
+//! A language can also be compiled on a background thread. Code blocks ask
+//! for languages that way. Until a language is ready its blocks show plain
+//! text, and whoever asked is told when it is.
 
 use std::{
     collections::HashMap,
