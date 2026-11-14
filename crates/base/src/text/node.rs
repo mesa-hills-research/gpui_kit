@@ -40,9 +40,10 @@ use super::{
 
 const CHECK_SVG_LIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 const CHECK_SVG_DARK: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
-/// A task's checkbox, and the gap between it and the task's text.
+/// A task's checkbox, and the column it sits at the left of, which leaves a
+/// gap before the task's text.
 const CHECKBOX_SIZE: Rems = rems(0.875);
-const CHECKBOX_GAP: Rems = rems(0.375);
+const CHECKBOX_COLUMN: Rems = rems(1.25);
 
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
@@ -3436,6 +3437,11 @@ impl BlockNode {
     /// The width of a list's marker column, that of its widest marker, so
     /// that every item's text starts at the same x. A task's marker is its
     /// checkbox, and the plain items of a list inside a task show no marker.
+    ///
+    /// A marker's text lays itself out rounded up to a whole pixel and then
+    /// to a whole device pixel, so its width here is rounded the same way. A
+    /// column any narrower would push its widest marker past the list's left
+    /// edge.
     fn list_marker_width(
         children: &[BlockNode],
         options: NodeRenderOptions,
@@ -3443,8 +3449,10 @@ impl BlockNode {
     ) -> Pixels {
         let text_style = window.text_style();
         let rem_size = window.rem_size();
+        let scale = window.scale_factor();
         let font_size = text_style.font_size.to_pixels(rem_size);
-        let checkbox = CHECKBOX_SIZE.to_pixels(rem_size) + CHECKBOX_GAP.to_pixels(rem_size);
+        // The checkbox's own column is this length too, so the two round alike.
+        let checkbox = CHECKBOX_COLUMN.to_pixels(rem_size);
         let mut width = Pixels::ZERO;
         for (ix, item) in children
             .iter()
@@ -3460,10 +3468,11 @@ impl BlockNode {
                     let prefix =
                         list_item_prefix(ix, options.list_start, options.ordered, options.depth);
                     let runs = [text_style.to_run(prefix.len())];
-                    window
+                    let width = window
                         .text_system()
                         .layout_line(prefix.as_str(), font_size, &runs, None)
-                        .width
+                        .width;
+                    px((f32::from(width.ceil()) * scale).ceil() / scale)
                 }
             };
             width = width.max(marker);
@@ -3512,11 +3521,10 @@ impl BlockNode {
                         this.child(
                             div()
                                 .flex()
-                                .mr(CHECKBOX_GAP)
+                                .w(CHECKBOX_COLUMN)
                                 .h(line_height)
                                 .flex_none()
                                 .items_center()
-                                .justify_center()
                                 .child(
                                     div()
                                         .flex()

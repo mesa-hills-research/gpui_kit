@@ -2678,15 +2678,16 @@ mod tests {
         );
     }
 
-    /// Markdown painted with a background behind every run of text, and its
-    /// code blocks on a background of their own, so a test can see where each
-    /// run and block starts and ends.
+    /// Markdown painted with a background behind every run of text, its code
+    /// blocks on a background of their own and its checkboxes in a color of
+    /// their own, so a test can see where each run and block starts and ends.
     struct PaintedListRoot {
         text_view: Entity<TextViewState>,
     }
 
     const LIST_TEXT_BACKGROUND: u32 = 0x20f0b0;
     const LIST_CODE_BACKGROUND: u32 = 0xb020f0;
+    const LIST_FOREGROUND: u32 = 0x2040f0;
 
     impl Render for PaintedListRoot {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -2696,18 +2697,33 @@ mod tests {
                 .child(
                     TextView::new(&self.text_view).style(
                         TextViewStyle::default()
+                            .with_foreground(gpui::rgb(LIST_FOREGROUND).into())
                             .with_code_background(gpui::rgb(LIST_CODE_BACKGROUND).into()),
                     ),
                 )
         }
     }
 
+    /// Where a list paints, in logical pixels from the view's left edge.
+    struct PaintedList {
+        /// The start and end of each run of text, line by line from the top
+        /// and left to right. The text in code blocks is left out.
+        lines: Vec<Vec<(f32, f32)>>,
+        /// The left edge of each code block.
+        code: Vec<f32>,
+        /// The left edge of each task's checkbox.
+        checkboxes: Vec<f32>,
+    }
+
     /// Where `markdown` paints in a test font whose every glyph is half an em
-    /// wide, in logical pixels from the view's left edge. It gives the start
-    /// and end of each run of text, line by line from the top and left to
-    /// right, and the left edge of each code block, whose own text is left
-    /// out.
-    fn painted_list(markdown: &str) -> (Vec<Vec<(f32, f32)>>, Vec<f32>) {
+    /// wide, at 16px.
+    fn painted_list(markdown: &str) -> PaintedList {
+        painted_list_at(markdown, 16., None)
+    }
+
+    /// Where `markdown` paints with a rem of `rem` pixels, which the text's
+    /// size follows, and `scale` device pixels to a pixel.
+    fn painted_list_at(markdown: &str, rem: f32, scale: Option<f32>) -> PaintedList {
         use crate::text::inline::test_fonts::WideMonoTextSystem;
         use gpui::{TestApp, WindowBounds, WindowOptions, size};
 
@@ -2725,6 +2741,10 @@ mod tests {
                 text_view: cx.new(|cx| TextViewState::markdown(markdown, cx)),
             },
         );
+        if let Some(scale) = scale {
+            window.simulate_scale_factor_change(scale);
+        }
+        window.update(|_, window, _| window.set_rem_size(px(rem)));
         window.draw();
         app.run_until_parked();
         window.draw();
@@ -2734,6 +2754,7 @@ mod tests {
             let view = root.text_view.read(cx).bounds().scale(scale);
             let text_background: gpui::Background = gpui::rgb(LIST_TEXT_BACKGROUND).into();
             let code_background: gpui::Background = gpui::rgb(LIST_CODE_BACKGROUND).into();
+            let foreground: gpui::Hsla = gpui::rgb(LIST_FOREGROUND).into();
             let quads = window.painted_quads();
             let code = quads
                 .iter()
@@ -2764,8 +2785,17 @@ mod tests {
                     runs
                 })
                 .collect();
+            let checkboxes = quads
+                .iter()
+                .filter(|quad| quad.border_color == foreground && quad.border_widths.left.0 > 0.)
+                .map(|quad| x(quad.bounds.left()))
+                .collect();
             let code = code.iter().map(|bounds| x(bounds.left())).collect();
-            (lines, code)
+            PaintedList {
+                lines,
+                code,
+                checkboxes,
+            }
         })
     }
 
@@ -2790,7 +2820,7 @@ mod tests {
         );
         let column = test_font_width(&format!("{last}. "));
 
-        let (lines, _) = painted_list(&markdown);
+        let lines = painted_list(&markdown).lines;
         assert_eq!(
             lines.len(),
             count as usize + 1,
@@ -2852,7 +2882,7 @@ mod tests {
         );
         let column = test_font_width("10. ");
 
-        let (lines, code) = painted_list(&markdown);
+        let PaintedList { lines, code, .. } = painted_list(&markdown);
         let starts = lines
             .iter()
             .map(|line| line.last().expect("a line paints its text").0)
@@ -2881,7 +2911,7 @@ mod tests {
         let bullet = test_font_width("◦ ");
         let letter = test_font_width("A. ");
 
-        let (lines, _) = painted_list(&markdown);
+        let lines = painted_list(&markdown).lines;
         assert_eq!(lines.len(), 15, "{lines:?}");
         for (line, marker) in lines[10..14].iter().zip([bullet, bullet, letter, letter]) {
             let [(marker_start, marker_end), (text_start, _)] = line[..] else {
@@ -2898,7 +2928,7 @@ mod tests {
         };
         assert_eq!(after_start, column, "{lines:?}");
 
-        let (lines, _) = painted_list("- one\n- two\n  - inner\n\n  later\n");
+        let lines = painted_list("- one\n- two\n  - inner\n\n  later\n").lines;
         let bullet = test_font_width("• ");
         let inner = test_font_width("◦ ");
         assert_eq!(
@@ -2916,7 +2946,7 @@ mod tests {
         // An item that opens with a nested list shows its number beside it,
         // and an item with no text shows its number alone.
         let number = test_font_width("1. ");
-        let (lines, _) = painted_list("1. - inner\n2.\n3. three\n");
+        let lines = painted_list("1. - inner\n2.\n3. three\n").lines;
         assert_eq!(
             lines,
             [
@@ -2936,7 +2966,7 @@ mod tests {
     /// paragraph.
     #[test]
     fn a_task_lists_text_starts_after_its_checkboxes() {
-        let (lines, _) = painted_list("- [ ] task\n\n  later\n- plain\n");
+        let lines = painted_list("- [ ] task\n\n  later\n- plain\n").lines;
         // The checkbox and the gap after it, 0.875rem and 0.375rem.
         let column = 20.;
         let bullet = test_font_width("• ");
@@ -2950,6 +2980,41 @@ mod tests {
                     (column, column + test_font_width("plain"))
                 ],
             ]
+        );
+    }
+
+    /// A marker column is as wide as its widest marker lays out, rounded up
+    /// to a whole pixel and then a whole device pixel, so no marker starts
+    /// left of its list, and a nested list's markers start at its item's
+    /// text. At a rem of 15px the test font's glyphs are 7.5px wide, so "100. "
+    /// and "A. " are 37.5px and 22.5px, here at 1.25 device pixels to a pixel.
+    #[test]
+    fn markers_stay_inside_their_list_at_fractional_widths() {
+        let lines = painted_list_at("98. a\n99. b\n100. c\n", 15., Some(1.25)).lines;
+        let text_start = lines[0][1].0;
+        for line in &lines {
+            let [(marker_start, marker_end), (start, _)] = line[..] else {
+                panic!("an item paints its number and its text: {lines:?}");
+            };
+            assert!(marker_start >= 0. && marker_end <= text_start, "{lines:?}");
+            assert_eq!(start, text_start, "{lines:?}");
+        }
+        assert_eq!(lines[2][0].0, 0., "the widest number: {lines:?}");
+
+        let lines = painted_list_at("1. a\n   1. b\n", 15., Some(1.25)).lines;
+        assert_eq!(lines[1][0].0, lines[0][1].0, "the nested letter: {lines:?}");
+
+        // A checkbox column of 1.25rem is 22.5px at a rem of 18px.
+        let painted = painted_list_at("- [ ] task\n- plain\n", 18., Some(1.));
+        assert!(
+            !painted.checkboxes.is_empty() && painted.checkboxes.iter().all(|x| *x == 0.),
+            "the checkbox's edges: {:?}",
+            painted.checkboxes
+        );
+        assert_eq!(
+            painted.lines[0][0].0, painted.lines[1][1].0,
+            "{:?}",
+            painted.lines
         );
     }
 
