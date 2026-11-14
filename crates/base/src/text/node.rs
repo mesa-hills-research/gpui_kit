@@ -35,7 +35,10 @@ use crate::{
 
 use super::{
     SelectionFormat, TextViewStyle,
-    utils::{data_url_image, list_item_prefix, ordered_list_ordinal},
+    utils::{
+        TWO_DIGIT_MARKERS, data_url_image, list_item_prefix, list_shows_numbers,
+        ordered_list_ordinal,
+    },
 };
 
 const CHECK_SVG_LIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
@@ -3436,7 +3439,8 @@ impl BlockNode {
 impl BlockNode {
     /// The width of a list's marker column, that of its widest marker, so
     /// that every item's text starts at the same x. A task's marker is its
-    /// checkbox.
+    /// checkbox. Numbers leave room for two digits, so a list that streams
+    /// in doesn't move when its tenth item comes.
     ///
     /// A marker's text lays itself out rounded up to a whole pixel and then
     /// to a whole device pixel, so its width here is rounded the same way. A
@@ -3451,8 +3455,18 @@ impl BlockNode {
         let rem_size = window.rem_size();
         let scale = window.scale_factor();
         let font_size = text_style.font_size.to_pixels(rem_size);
+        let text_width = |marker: &str| {
+            let runs = [text_style.to_run(marker.len())];
+            let width = window
+                .text_system()
+                .layout_line(marker, font_size, &runs, None)
+                .width;
+            px((f32::from(width.ceil()) * scale).ceil() / scale)
+        };
         // The checkbox's own column is this length too, so the two round alike.
         let checkbox = CHECKBOX_COLUMN.to_pixels(rem_size);
+        let numbers = list_shows_numbers(options.ordered, options.list_start, options.depth);
+        let mut shows_a_number = false;
         let mut width = Pixels::ZERO;
         for (ix, item) in children
             .iter()
@@ -3464,17 +3478,22 @@ impl BlockNode {
                     checked: Some(_), ..
                 } => checkbox,
                 _ => {
-                    let prefix =
-                        list_item_prefix(ix, options.list_start, options.ordered, options.depth);
-                    let runs = [text_style.to_run(prefix.len())];
-                    let width = window
-                        .text_system()
-                        .layout_line(prefix.as_str(), font_size, &runs, None)
-                        .width;
-                    px((f32::from(width.ceil()) * scale).ceil() / scale)
+                    shows_a_number |= numbers;
+                    text_width(&list_item_prefix(
+                        ix,
+                        options.list_start,
+                        options.ordered,
+                        options.depth,
+                    ))
                 }
             };
             width = width.max(marker);
+        }
+        if shows_a_number {
+            width = TWO_DIGIT_MARKERS
+                .iter()
+                .map(|marker| text_width(marker))
+                .fold(width, Pixels::max);
         }
         width
     }

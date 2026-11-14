@@ -15,6 +15,18 @@ pub(super) fn ordered_list_ordinal(start: Option<u32>, ix: usize) -> u32 {
         .saturating_add(u32::try_from(ix).unwrap_or(u32::MAX))
 }
 
+/// Whether a list's markers are numbers. A nested ordered list is lettered
+/// unless it starts at zero.
+pub(super) fn list_shows_numbers(ordered: bool, start: Option<u32>, depth: usize) -> bool {
+    ordered && (depth == 0 || start == Some(0))
+}
+
+/// Two-digit markers of one digit twice. Whichever digit is widest in a
+/// font, the widest two-digit number is among them.
+pub(super) const TWO_DIGIT_MARKERS: [&str; 10] = [
+    "00. ", "11. ", "22. ", "33. ", "44. ", "55. ", "66. ", "77. ", "88. ", "99. ",
+];
+
 /// Returns the prefix for a list item.
 pub(super) fn list_item_prefix(
     ix: usize,
@@ -24,7 +36,7 @@ pub(super) fn list_item_prefix(
 ) -> String {
     if ordered {
         let ordinal = ordered_list_ordinal(start, ix);
-        if depth == 0 || start == Some(0) {
+        if list_shows_numbers(ordered, start, depth) {
             return format!("{ordinal}. ");
         }
 

@@ -2609,6 +2609,7 @@ mod tests {
     #[test]
     fn ordered_markdown_list_start_reaches_layout_marker() {
         use crate::text::inline::test_fonts::{WideMonoTextSystem, record_shaped_lines};
+        use crate::text::utils::TWO_DIGIT_MARKERS;
         use gpui::TestApp;
 
         struct MarkdownRoot {
@@ -2642,9 +2643,11 @@ mod tests {
                 window.draw();
             });
 
+            // A numbered list's column also shapes the two-digit numbers it
+            // leaves room for.
             let mut markers = shaped_lines
                 .into_iter()
-                .filter(|line| line.ends_with(". "))
+                .filter(|line| line.ends_with(". ") && !TWO_DIGIT_MARKERS.contains(&line.as_str()))
                 .collect::<Vec<_>>();
             markers.dedup();
             markers
@@ -2807,8 +2810,8 @@ mod tests {
 
     /// Checks a numbered list from `start` with `count` items, the last with a
     /// second paragraph. Its numbers right-align in a column as wide as the
-    /// widest of them, and every item's text, the later paragraph too, starts
-    /// where that column ends.
+    /// widest of them and at least two digits wide, and every item's text,
+    /// the later paragraph too, starts where that column ends.
     fn assert_numbers_share_a_column(start: u32, count: u32) {
         let last = start + count - 1;
         let indent = " ".repeat(format!("{last}. ").len());
@@ -2818,7 +2821,7 @@ mod tests {
                 .map(|n| format!("{n}. item {n}\n"))
                 .collect::<String>()
         );
-        let column = test_font_width(&format!("{last}. "));
+        let column = test_font_width(&format!("{last}. ")).max(test_font_width("00. "));
 
         let lines = painted_list(&markdown).lines;
         assert_eq!(
@@ -2843,9 +2846,19 @@ mod tests {
         assert_eq!(later_start, column, "the later paragraph of {last}");
     }
 
+    /// Numbers leave room for two digits, so a list that streams in doesn't
+    /// move when its tenth item comes.
     #[test]
-    fn nine_numbers_keep_a_column_of_one_digit() {
+    fn nine_numbers_leave_room_for_a_second_digit() {
         assert_numbers_share_a_column(1, 9);
+        let text_start = |count: u32| {
+            let markdown = (1..=count)
+                .map(|n| format!("{n}. item {n}\n"))
+                .collect::<String>();
+            painted_list(&markdown).lines[0][1].0
+        };
+        assert_eq!(text_start(1), text_start(10));
+        assert_eq!(text_start(9), text_start(10));
     }
 
     #[test]
@@ -2945,18 +2958,22 @@ mod tests {
 
         // An item that opens with a nested list shows its number beside it,
         // and an item with no text shows its number alone.
-        let number = test_font_width("1. ");
+        let column = test_font_width("00. ");
+        let number = column - test_font_width("1. ");
         let lines = painted_list("1. - inner\n2.\n3. three\n").lines;
         assert_eq!(
             lines,
             [
                 vec![
-                    (0., number),
-                    (number, number + inner),
-                    (number + inner, number + inner + test_font_width("inner"))
+                    (number, column),
+                    (column, column + inner),
+                    (column + inner, column + inner + test_font_width("inner"))
                 ],
-                vec![(0., number)],
-                vec![(0., number), (number, number + test_font_width("three"))],
+                vec![(number, column)],
+                vec![
+                    (number, column),
+                    (column, column + test_font_width("three"))
+                ],
             ]
         );
     }
