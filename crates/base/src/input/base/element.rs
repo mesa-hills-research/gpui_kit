@@ -1,4 +1,4 @@
-use crate::input::{CursorShape, EditOrigin, InputExtras as _, InputModeKind};
+use crate::input::{CursorShape, EditOrigin, InputEditorStyle, InputExtras as _, InputModeKind};
 use gpui::Corners;
 use gpui::Half;
 use gpui::{
@@ -56,22 +56,110 @@ const BOTTOM_MARGIN_ROWS: usize = 3;
 /// The thickness of an underline caret.
 const UNDERLINE_CURSOR_HEIGHT: Pixels = px(2.);
 pub(super) const RIGHT_MARGIN: Pixels = px(10.);
-/// The space between the line numbers and what follows them in the gutter.
-pub(super) const LINE_NUMBER_RIGHT_MARGIN: Pixels = px(8.);
+/// The space before the text of a code editor that shows no line numbers.
+const TEXT_MARGIN_WITHOUT_LINE_NUMBERS: Pixels = px(8.);
 const FOLD_ICON_WIDTH: Pixels = px(14.);
 const FOLD_ICON_HITBOX_WIDTH: Pixels = px(18.);
 const MAX_HIGHLIGHT_LINE_LENGTH: usize = 10_000;
+/// The number column has room for the last line's number, and never less
+/// than two digits.
 const MIN_LINE_NUMBER_DIGITS: usize = 2;
 const MAX_LINE_NUMBER_DIGITS: usize = 7;
 const MAX_DISPLAYED_LINE_NUMBER: usize = 9_999_999;
+/// The space before the number column and between it and the gutter's
+/// edge, in digits.
+const LINE_NUMBER_MARGIN_DIGITS: f32 = 1.;
+/// The space between the gutter's edge and the text, in digits. It holds the
+/// fold markers.
+const TEXT_MARGIN_DIGITS: f32 = 2.;
 
 fn line_number_len(total_lines: usize) -> usize {
     (total_lines.max(1).ilog10() as usize + 1).clamp(MIN_LINE_NUMBER_DIGITS, MAX_LINE_NUMBER_DIGITS)
 }
 
+/// Where the gutter's parts sit, measured from the left edge of the editor's
+/// content, which is the frame's padding in from its border.
+///
+/// From the frame's left border: a one-digit margin, the number column, as
+/// many digits wide as the last line's number and at least two, with the
+/// numbers right-aligned in it, another one-digit margin, then the gutter's
+/// edge, where a theme's gutter background ends and its border is drawn.
+/// After the edge, two digits and at least a fold marker's width hold the fold
+/// markers, and the text begins. A digit is the advance of the numbers' font at
+/// the text's size, so the code editor and the text editor share the gutter at
+/// the same text size, and it scales with the text.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct GutterLayout {
+    /// Where the numbers end. They are right-aligned to it.
+    pub(super) numbers_end: Pixels,
+    /// The gutter's edge.
+    pub(super) edge: Pixels,
+    /// Where the text begins.
+    pub(super) width: Pixels,
+}
+
+impl GutterLayout {
+    /// The gutter for `digits` line-number digits, each `digit_width` wide,
+    /// in a frame whose left padding is `padding`.
+    fn with_line_numbers(digit_width: Pixels, digits: usize, padding: Pixels) -> Self {
+        let margin = digit_width * LINE_NUMBER_MARGIN_DIGITS;
+        // The margin is measured from the frame's border, so it takes back
+        // the frame's padding.
+        let numbers_end = margin - padding + digit_width * digits as f32;
+        let edge = numbers_end + margin;
+        Self {
+            numbers_end,
+            edge,
+            width: edge + (digit_width * TEXT_MARGIN_DIGITS).max(FOLD_ICON_HITBOX_WIDTH),
+        }
+    }
+
+    /// The gutter of a code editor without line numbers: only the fold
+    /// markers, when folding is on.
+    fn without_line_numbers(folding: bool) -> Self {
+        let width = if folding {
+            FOLD_ICON_HITBOX_WIDTH
+        } else {
+            px(0.)
+        } + TEXT_MARGIN_WITHOUT_LINE_NUMBERS;
+        Self {
+            numbers_end: px(0.),
+            edge: px(0.),
+            width,
+        }
+    }
+
+    /// Where a fold marker's hitbox starts: in the middle of the space between
+    /// the gutter's edge and the text.
+    fn fold_icon_x(&self) -> Pixels {
+        self.edge + (self.width - self.edge - FOLD_ICON_HITBOX_WIDTH).half()
+    }
+}
+
+/// The line numbers' font: the editor style's, or the text's when it sets
+/// none, with tabular figures, so every digit is the same width and the
+/// numbers line up by place in proportional fonts too.
+fn line_number_font(editor_style: &InputEditorStyle, text_style: &TextStyle) -> gpui::Font {
+    let mut font = editor_style
+        .editor_line_number_font
+        .clone()
+        .unwrap_or_else(|| text_style.font());
+    let mut features: Vec<(String, u32)> = font
+        .features
+        .tag_value_list()
+        .iter()
+        .filter(|(tag, _)| tag != "tnum")
+        .cloned()
+        .collect();
+    features.push(("tnum".into(), 1));
+    font.features = gpui::FontFeatures(std::sync::Arc::new(features));
+    font
+}
+
 fn displayed_line_number(number: usize) -> usize {
     number.min(MAX_DISPLAYED_LINE_NUMBER)
 }
+
 const FOLD_CHEVRON_RIGHT_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>"#;
 const FOLD_CHEVRON_DOWN_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>"#;
 
@@ -160,7 +248,7 @@ impl EditorScrollbarSnapshot {
         Self {
             layout: EditorScrollbarLayout::new(
                 input_bounds,
-                last_layout.line_number_width,
+                last_layout.gutter,
                 scroll_size,
                 state.editor_paddings,
             ),
@@ -173,14 +261,15 @@ impl EditorScrollbarSnapshot {
 impl EditorScrollbarLayout {
     fn new(
         input_bounds: Bounds<Pixels>,
-        line_number_width: Pixels,
+        gutter: GutterLayout,
         scroll_size: Size<Pixels>,
         paddings: Edges<Pixels>,
     ) -> Self {
-        let left = if line_number_width == px(0.) {
+        // The horizontal scrollbar starts at the gutter's edge.
+        let left = if gutter.width == px(0.) {
             px(0.)
         } else {
-            paddings.left + line_number_width - LINE_NUMBER_RIGHT_MARGIN
+            paddings.left + gutter.edge
         };
 
         Self {
@@ -339,9 +428,11 @@ fn clamp_auto_grow_vertical_scroll_offset(
     }
 }
 
+/// The gutter from the frame's left border to its edge, `edge` past the
+/// content's left side, over the frame's full height.
 fn editor_gutter_bounds(
     input_bounds: Bounds<Pixels>,
-    line_number_width: Pixels,
+    edge: Pixels,
     ghost_lines_height: Pixels,
     paddings: Edges<Pixels>,
 ) -> Bounds<Pixels> {
@@ -351,22 +442,25 @@ fn editor_gutter_bounds(
             input_bounds.origin.y - paddings.top,
         ),
         size: size(
-            line_number_width + paddings.left,
+            edge + paddings.left,
             input_bounds.size.height + ghost_lines_height + paddings.top + paddings.bottom,
         ),
     }
 }
 
-/// The line between the gutter and the text, over the gutter's full height.
-/// It is one pixel wide, rounded to whole device pixels the way borders are,
-/// and sits on a device pixel in the middle of the margin before the text, so
-/// it stays crisp at fractional scale factors.
-fn gutter_separator_bounds(gutter_bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
+/// The line a theme may draw at the gutter's edge, `edge` being its x, over
+/// the gutter's full height. It is one pixel wide, rounded to whole device
+/// pixels the way borders are, and starts on a device pixel, so it stays crisp
+/// at fractional scale factors.
+fn gutter_separator_bounds(
+    gutter_bounds: Bounds<Pixels>,
+    edge: Pixels,
+    window: &Window,
+) -> Bounds<Pixels> {
     let device_pixel = px(1. / window.scale_factor());
     let width = window.pixel_snap(px(1.)).max(device_pixel);
-    let left = window.pixel_snap(gutter_bounds.right() - LINE_NUMBER_RIGHT_MARGIN.half());
     Bounds::new(
-        point(left, gutter_bounds.top()),
+        point(window.pixel_snap(edge), gutter_bounds.top()),
         size(width, gutter_bounds.size.height),
     )
 }
@@ -571,7 +665,7 @@ impl<M: InputModeKind> TextElement<M> {
         let line_height = last_layout.line_height;
         let visible_range = &last_layout.visible_range;
         let lines = &last_layout.lines;
-        let line_number_width = last_layout.line_number_width;
+        let line_number_width = last_layout.gutter.width;
 
         let active_id = state.active_selection().id;
         let mut scroll_offset = state.scroll_handle.offset();
@@ -807,7 +901,7 @@ impl<M: InputModeKind> TextElement<M> {
     ) -> Option<Path<Pixels>> {
         let corners = Self::layout_range_corners(&range, last_layout)?;
         let points = frame_outline_points(&corners);
-        let origin = bounds.origin + point(last_layout.line_number_width, px(0.));
+        let origin = bounds.origin + point(last_layout.gutter.width, px(0.));
         let mut builder = gpui::PathBuilder::fill();
         builder.move_to(origin + *points.first()?);
         for point in points.iter().skip(1) {
@@ -913,7 +1007,7 @@ impl<M: InputModeKind> TextElement<M> {
                     else {
                         continue;
                     };
-                    let origin = bounds.origin + point(last_layout.line_number_width, px(0.));
+                    let origin = bounds.origin + point(last_layout.gutter.width, px(0.));
                     let corners = pad_frame_corners(&corners, px(1.));
                     let points = frame_outline_points(&corners)
                         .into_iter()
@@ -1158,50 +1252,43 @@ impl<M: InputModeKind> TextElement<M> {
         (visible_range, visible_buffer_lines, visible_top)
     }
 
-    /// Return (line_number_width, line_number_len, the width of the column
-    /// the numbers are right-aligned in)
-    fn layout_line_numbers(
+    /// Lay out the gutter: room for the last line's number, four digits for
+    /// documents under 10,000 lines and the actual count up to seven digits,
+    /// then the fold markers' column and the margin before the text.
+    fn layout_gutter(
         state: &InputBaseState<M>,
         text: &Rope,
         font_size: Pixels,
         style: &TextStyle,
         window: &mut Window,
-    ) -> (Pixels, usize, Pixels) {
-        let total_lines = text.lines_len();
-        // Room for the last line's number: two digits for small documents,
-        // then the actual count up to seven digits.
-        let line_number_len = line_number_len(total_lines);
-        let mut number_column = px(0.);
-
-        let mut line_number_width = if state.shows_line_numbers() {
-            let widest_number = window.text_system().shape_line(
-                "0".repeat(line_number_len).into(),
-                font_size,
-                &[TextRun {
-                    len: line_number_len,
-                    font: style.font(),
-                    color: gpui::black(),
-                    background_color: None,
-                    underline: None,
-                    strikethrough: None,
-                }],
-                None,
-            );
-            number_column = widest_number.width;
-
-            number_column + LINE_NUMBER_RIGHT_MARGIN
-        } else if state.is_code_editor() {
-            LINE_NUMBER_RIGHT_MARGIN
-        } else {
-            px(0.)
-        };
-
-        if state.mode.is_folding() {
-            // Add extra space for fold icons
-            line_number_width += FOLD_ICON_HITBOX_WIDTH
+    ) -> GutterLayout {
+        if !state.shows_line_numbers() {
+            return if state.is_code_editor() {
+                GutterLayout::without_line_numbers(state.mode.is_folding())
+            } else {
+                GutterLayout::default()
+            };
         }
 
-        (line_number_width, line_number_len, number_column)
+        let digits = line_number_len(text.lines_len());
+        let widest_number = window.text_system().shape_line(
+            "0".repeat(digits).into(),
+            font_size,
+            &[TextRun {
+                len: digits,
+                font: line_number_font(&state.editor_style, style),
+                color: gpui::black(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+        );
+        GutterLayout::with_line_numbers(
+            widest_number.width / digits as f32,
+            digits,
+            state.editor_paddings.left,
+        )
     }
 
     /// Layout shaped lines for whitespace indicators (space and tab).
@@ -1374,7 +1461,6 @@ impl<M: InputModeKind> TextElement<M> {
         }
     }
 
-    /// Return (line_number_width, line_number_len)
     /// Layout fold icon hitboxes during prepaint phase.
     ///
     /// This creates hitboxes for the fold icon area, positioned to the right of line numbers.
@@ -1398,7 +1484,7 @@ impl<M: InputModeKind> TextElement<M> {
         let line_number_hitbox = window.insert_hitbox(
             Bounds::new(
                 point(origin_x, bounds.origin.y + last_layout.visible_top),
-                size(last_layout.line_number_width, bounds.size.height),
+                size(last_layout.gutter.width, bounds.size.height),
             ),
             HitboxBehavior::Normal,
         );
@@ -1440,8 +1526,7 @@ impl<M: InputModeKind> TextElement<M> {
 
         // Second pass: create and prepaint icons
         let line_height = last_layout.line_height;
-        let line_number_width =
-            last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN - FOLD_ICON_HITBOX_WIDTH;
+        let fold_icon_x = last_layout.gutter.fold_icon_x();
         let icon_relative_pos = point(
             (FOLD_ICON_HITBOX_WIDTH - FOLD_ICON_WIDTH).half(),
             (line_height - FOLD_ICON_WIDTH).half(),
@@ -1452,7 +1537,7 @@ impl<M: InputModeKind> TextElement<M> {
             // Use origin_x (unscrolled) so icons stay fixed in the gutter during horizontal scroll.
             let fold_icon_bounds = Bounds::new(
                 point(
-                    origin_x + icon_relative_pos.x + line_number_width,
+                    origin_x + icon_relative_pos.x + fold_icon_x,
                     bounds.origin.y + icon_relative_pos.y + info.offset_y,
                 ),
                 size(FOLD_ICON_HITBOX_WIDTH, line_height),
@@ -2112,7 +2197,7 @@ impl<M: InputModeKind> TextElement<M> {
                 {
                     placements.push((
                         state.token_context(span, layout.line_height, width),
-                        bounds.origin + position + point(layout.line_number_width, y),
+                        bounds.origin + position + point(layout.gutter.width, y),
                     ));
                 }
             }
@@ -2582,8 +2667,8 @@ pub(super) struct PrepaintState {
     ///
     /// The child is the soft lines.
     line_numbers: Option<Vec<SmallVec<[ShapedLine; 1]>>>,
-    /// The width the line numbers are right-aligned in.
-    line_number_column: Pixels,
+    /// How far down the line numbers sit to share the text's baseline.
+    line_number_shift: Pixels,
     /// Size of the scrollable area by entire lines.
     scroll_size: Size<Pixels>,
     /// Caret bounds for every selection, active flagged.
@@ -2967,9 +3052,8 @@ impl<M: InputModeKind> Element for TextElement<M> {
             (&text, fg)
         };
 
-        // Calculate the width of the line numbers
-        let (line_number_width, _, line_number_column) =
-            Self::layout_line_numbers(&state, &text, text_size, &text_style, window);
+        let gutter = Self::layout_gutter(&state, &text, text_size, &text_style, window);
+        let line_number_width = gutter.width;
 
         let mut bounds = bounds;
         let wrap_width = if multi_line && state.soft_wrap {
@@ -3058,7 +3142,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             line_height,
             wrap_width,
             wrapping_indent,
-            line_number_width,
+            gutter,
             space_width,
             lines: Rc::new(vec![]),
             cursor_bounds: None,
@@ -3305,7 +3389,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             .map(|info| info.bounds);
         // The smooth caret draws the caret behind where it is while it glides
         // there. Menus, scrolling and the input method keep using the caret.
-        let text_x = bounds.origin.x + last_layout.line_number_width;
+        let text_x = bounds.origin.x + last_layout.gutter.width;
         // Right-aligned text keeps the caret inside the viewport edge, as
         // `layout_cursors` keeps it where it is.
         let caret_edge = (last_layout.text_align == TextAlign::Right)
@@ -3374,9 +3458,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let state = self.state.read(cx);
         let line_numbers = if state.shows_line_numbers() {
             let mut line_numbers = Vec::with_capacity(last_layout.visible_buffer_lines.len());
+            let font = line_number_font(&state.editor_style, &style);
             let run = |len: usize, color: Hsla| TextRun {
                 len,
-                font: style.font(),
+                font: font.clone(),
                 color,
                 background_color: None,
                 underline: None,
@@ -3414,6 +3499,18 @@ impl<M: InputModeKind> Element for TextElement<M> {
         } else {
             None
         };
+        // Numbers in another font than the text's sit on the text's baseline.
+        let line_number_shift = if line_numbers.is_some() {
+            let text_system = window.text_system();
+            let line_height = last_layout.line_height;
+            let text_font = text_system.resolve_font(&style.font());
+            let number_font =
+                text_system.resolve_font(&line_number_font(&state.editor_style, &style));
+            text_system.baseline_offset(text_font, text_size, line_height)
+                - text_system.baseline_offset(number_font, text_size, line_height)
+        } else {
+            px(0.)
+        };
 
         let hover_definition_hitbox = M::hover_definition_hitbox(state, window, cx);
         let indent_guides_path =
@@ -3439,7 +3536,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             last_layout,
             scroll_size,
             line_numbers,
-            line_number_column,
+            line_number_shift,
             cursor_infos,
             cursor_scroll_offset,
             current_row,
@@ -3524,11 +3621,12 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 let is_active = prepaint.current_row == Some(buffer_line);
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let height = line_height * lines.len() as f32;
-                // Paint the current line background
+                // Paint the current line background, out to the frame's right
+                // edge as the gutter covers its left padding.
                 if is_active {
                     if let Some(bg_color) = active_line_color {
                         window.paint_quad(fill(
-                            Bounds::new(p, size(bounds.size.width, height)),
+                            Bounds::new(p, size(bounds.size.width + editor_paddings.right, height)),
                             bg_color,
                         ));
                     }
@@ -3561,7 +3659,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             .zip(prepaint.last_layout.visible_buffer_lines.iter())
         {
             let p = point(
-                origin.x + prepaint.last_layout.line_number_width + scroll_offset,
+                origin.x + prepaint.last_layout.gutter.width + scroll_offset,
                 origin.y + offset_y,
             );
 
@@ -3658,7 +3756,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             let row = buffer_line;
             let line_y = origin.y + offset_y;
             let p = point(
-                origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
+                origin.x + prepaint.last_layout.gutter.width + (scroll_offset),
                 line_y,
             );
 
@@ -3714,7 +3812,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
             // After the cursor row, paint ghost lines (which shifts subsequent content down)
             if has_ghost_lines && Some(row) == prepaint.current_row {
-                let ghost_x = origin.x + prepaint.last_layout.line_number_width;
+                let ghost_x = origin.x + prepaint.last_layout.gutter.width;
 
                 for ghost_line in ghost_lines {
                     let ghost_p = point(ghost_x, origin.y + offset_y);
@@ -3723,7 +3821,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     let ghost_bounds = Bounds::new(
                         ghost_p,
                         size(
-                            bounds.size.width - prepaint.last_layout.line_number_width,
+                            bounds.size.width - prepaint.last_layout.gutter.width,
                             line_height,
                         ),
                     );
@@ -3791,17 +3889,25 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
             // The gutter is a fixed overlay above horizontally scrolling text.
             // Always give it an opaque editor background when the theme does not
-            // provide a dedicated gutter color, and cover the complete gutter so
-            // text cannot show through its right-side spacing/fold-icon area.
+            // provide a dedicated gutter color.
             let gutter_bg = editor_style
                 .editor_gutter_background
                 .unwrap_or(editor_background);
             let gutter_bounds = editor_gutter_bounds(
                 input_bounds,
-                prepaint.last_layout.line_number_width,
+                prepaint.last_layout.gutter.edge,
                 prepaint.ghost_lines_height,
                 editor_paddings,
             );
+            // The margin after the edge holds the fold markers. It takes the
+            // editor's background, over text scrolled to the left.
+            let covered_bounds = editor_gutter_bounds(
+                input_bounds,
+                prepaint.last_layout.gutter.width,
+                prepaint.ghost_lines_height,
+                editor_paddings,
+            );
+            window.paint_quad(fill(covered_bounds, editor_background));
             window.paint_quad(fill(gutter_bounds, gutter_bg));
 
             // Each item is the normal lines.
@@ -3818,8 +3924,8 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     if let Some(bg_color) = active_line_color {
                         window.paint_quad(fill(
                             Bounds::new(
-                                point(gutter_bounds.origin.x, p.y),
-                                size(gutter_bounds.size.width, height),
+                                point(covered_bounds.origin.x, p.y),
+                                size(covered_bounds.size.width, height),
                             ),
                             bg_color,
                         ));
@@ -3827,10 +3933,10 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 }
 
                 for line in lines {
-                    // Right-aligned in the column, so the digits line up.
-                    let x = p.x + (prepaint.line_number_column - line.width).max(px(0.));
+                    // Right-aligned to the end of the numbers' column.
+                    let x = p.x + prepaint.last_layout.gutter.numbers_end - line.width;
                     _ = line.paint(
-                        point(x, p.y),
+                        point(x, p.y + prepaint.line_number_shift),
                         line_height,
                         TextAlign::Left,
                         None,
@@ -3847,7 +3953,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
             }
 
             if let Some(color) = gutter_border_color {
-                window.paint_quad(fill(gutter_separator_bounds(gutter_bounds, window), color));
+                let edge = input_bounds.origin.x + prepaint.last_layout.gutter.edge;
+                window.paint_quad(fill(
+                    gutter_separator_bounds(gutter_bounds, edge, window),
+                    color,
+                ));
             }
         }
 
@@ -4415,12 +4525,10 @@ mod tests {
     #[test]
     fn line_number_column_stays_at_two_digits_then_grows_up_to_seven() {
         assert_eq!(line_number_len(1), 2);
-        assert_eq!(line_number_len(9), 2);
-        assert_eq!(line_number_len(10), 2);
         assert_eq!(line_number_len(99), 2);
         assert_eq!(line_number_len(100), 3);
-        assert_eq!(line_number_len(999), 3);
         assert_eq!(line_number_len(1_000), 4);
+        assert_eq!(line_number_len(10_000), 5);
         assert_eq!(line_number_len(999_999), 6);
         assert_eq!(line_number_len(9_999_999), 7);
         assert_eq!(line_number_len(10_000_000), 7);
@@ -4603,49 +4711,51 @@ mod tests {
         });
     }
 
+    /// The gutter is as wide as the last line's number, two digits up to 99
+    /// lines, and widens by a digit at 100 and at 1,000.
     #[gpui::test]
-    fn editor_line_number_gutter_resizes_with_document_lines(cx: &mut TestAppContext) {
+    fn editor_line_number_gutter_follows_the_line_count(cx: &mut TestAppContext) {
         let (editor, window) = decoration_editor(cx, &"x\n".repeat(8), false);
         let mut cx = VisualTestContext::from_window(window.into(), cx);
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            let narrow = editor
-                .read(cx)
-                .last_layout
-                .as_ref()
-                .unwrap()
-                .line_number_width;
-
-            let longer_text = "x\n".repeat(98);
-            editor.update(cx, |state, cx| {
-                state.set_value(longer_text.as_str(), window, cx)
-            });
-            window.draw(cx).clear(cx);
-            let middle = editor
-                .read(cx)
-                .last_layout
-                .as_ref()
-                .unwrap()
-                .line_number_width;
-            assert_eq!(middle, narrow, "one and two digits must share a width");
-
-            let longest_text = "x\n".repeat(999);
-            editor.update(cx, |state, cx| {
-                state.set_value(longest_text.as_str(), window, cx)
-            });
-            window.draw(cx).clear(cx);
-            let wide = editor
-                .read(cx)
-                .last_layout
-                .as_ref()
-                .unwrap()
-                .line_number_width;
-
+            let gutter_width = |lines: usize, window: &mut Window, cx: &mut App| {
+                let text = "x\n".repeat(lines - 1);
+                editor.update(cx, |state, cx| state.set_value(text.as_str(), window, cx));
+                window.draw(cx).clear(cx);
+                editor.read(cx).last_layout.as_ref().unwrap().gutter.width
+            };
+            let two = gutter_width(9, window, cx);
+            assert_eq!(gutter_width(10, window, cx), two);
+            assert_eq!(gutter_width(99, window, cx), two);
+            let three = gutter_width(100, window, cx);
+            let four = gutter_width(1_000, window, cx);
+            assert!(three > two && four > three);
+            let step = |a: Pixels, b: Pixels| b - a;
             assert!(
-                wide > narrow,
-                "more line-number digits must widen the gutter"
+                (step(three, four) - step(two, three)).abs() < px(0.01),
+                "each digit adds the same width"
             );
         });
+    }
+
+    /// From the frame's border: a digit, the numbers, a digit to the edge,
+    /// then two digits and at least a fold marker's width to the text.
+    #[test]
+    fn gutter_layout_is_measured_in_digits() {
+        let padding = px(6.);
+        // 12 px digits, three of them.
+        let gutter = GutterLayout::with_line_numbers(px(12.), 3, padding);
+        assert_eq!(padding + gutter.numbers_end, px(12. + 36.));
+        assert_eq!(gutter.edge - gutter.numbers_end, px(12.));
+        assert_eq!(gutter.width - gutter.edge, px(24.));
+        // The fold marker's hitbox sits in the middle of the margin.
+        assert_eq!(gutter.fold_icon_x(), gutter.edge + px(3.));
+
+        // 7 px digits: the margin after the edge keeps a fold marker's 18 px.
+        let small = GutterLayout::with_line_numbers(px(7.), 2, padding);
+        assert_eq!(padding + small.numbers_end, px(7. + 14.));
+        assert_eq!(small.width - small.edge, px(18.));
+        assert_eq!(small.fold_icon_x(), small.edge);
     }
 
     #[gpui::test]
@@ -4704,7 +4814,8 @@ mod tests {
 
     #[gpui::test]
     fn geometric_decorations_use_shaped_wrap_boundaries_and_newline_cells(cx: &mut TestAppContext) {
-        let text = "    héllo world héllo world héllo world héllo world\n\nlast";
+        // Short enough for the blank line and the last to fit under it.
+        let text = "    héllo world héllo world héllo world\n\nlast";
         let (editor, window) = decoration_editor(cx, text, true);
         let mut cx = VisualTestContext::from_window(window.into(), cx);
         cx.update(|window, cx| {
@@ -5084,8 +5195,13 @@ mod tests {
             left: px(7.),
         };
 
+        let gutter = GutterLayout {
+            numbers_end: px(20.),
+            edge: px(32.),
+            width: px(40.),
+        };
         let layout =
-            EditorScrollbarLayout::new(input_bounds, px(40.), size(px(1000.), px(200.)), paddings);
+            EditorScrollbarLayout::new(input_bounds, gutter, size(px(1000.), px(200.)), paddings);
 
         assert_eq!(
             layout.bounds,
@@ -5093,8 +5209,12 @@ mod tests {
         );
         assert_eq!(layout.scroll_size, size(px(974.), px(200.)));
 
-        let layout_without_gutter =
-            EditorScrollbarLayout::new(input_bounds, px(0.), size(px(500.), px(120.)), paddings);
+        let layout_without_gutter = EditorScrollbarLayout::new(
+            input_bounds,
+            GutterLayout::default(),
+            size(px(500.), px(120.)),
+            paddings,
+        );
 
         assert_eq!(
             layout_without_gutter.bounds,

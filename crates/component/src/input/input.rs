@@ -658,13 +658,14 @@ impl RenderOnce for Input {
                 },
                 highlight_styles: cx.theme().highlight_theme.clone(),
                 editor_invisible: cx.theme().highlight_theme.style.editor_invisible,
-                // A code editor marks the caret's line. A textarea doesn't.
+                // A code editor and a text editor mark the caret's line. A
+                // textarea doesn't.
                 editor_active_line: cx
                     .theme()
                     .highlight_theme
                     .style
                     .editor_active_line
-                    .filter(|_| state.presentation(cx).is_code_editor()),
+                    .filter(|_| editor_surface),
                 editor_gutter_background: cx.theme().highlight_theme.style.editor_gutter_background,
                 editor_gutter_border: Some(cx.theme().editor_gutter_border()),
                 editor_line_number: cx.theme().highlight_theme.style.editor_line_number,
@@ -673,6 +674,14 @@ impl RenderOnce for Input {
                     .highlight_theme
                     .style
                     .editor_active_line_number,
+                // Line numbers are in the code font. A code editor's text is
+                // already, in the font it was given.
+                editor_line_number_font: (!state.presentation(cx).is_code_editor()).then(|| {
+                    gpui::Font {
+                        features: cx.theme().mono_font_features.clone(),
+                        ..gpui::font(cx.theme().mono_font_family.clone())
+                    }
+                }),
                 fold_icon_renderer: Some(Rc::new(|ix, is_folded| {
                     Button::new(("fold-icon", ix))
                         .ghost()

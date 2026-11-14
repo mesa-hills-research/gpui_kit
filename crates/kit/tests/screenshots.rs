@@ -36,6 +36,8 @@ use gpui_screenshot::{Goldens, Screenshot, ScreenshotApp, Tolerance};
 
 #[path = "screenshots/concentric_radii.rs"]
 mod concentric_radii;
+#[path = "screenshots/line_numbers.rs"]
+mod line_numbers;
 #[path = "screenshots/segmented_tabs.rs"]
 mod segmented_tabs;
 #[path = "screenshots/settings.rs"]
@@ -1216,9 +1218,9 @@ impl Render for Gutters {
     }
 }
 
-/// Line-number gutters sized to the last line's number: a text editor with a few lines takes
-/// two digits, one scrolled to its end shows three, and a code editor keeps a column for its
-/// folding markers. A thin line separates each gutter from the text.
+/// Line-number gutters as wide as the last line's number: a text editor with a few lines takes
+/// two digits, one scrolled to its end shows three, and a code editor holds its folding markers
+/// after the gutter's edge. A thin line marks each gutter's edge.
 fn gutters(scale: f32) -> Screenshot {
     let mut app = app(ThemeMode::Light);
     let opened = Rc::new(std::cell::RefCell::new(None));
@@ -1949,7 +1951,7 @@ fn compact_line_number_gutters() {
     goldens().assert("gutters", &gutters(SCALE));
 }
 
-/// The line beside each gutter covers whole device pixels at a fractional scale too.
+/// The line at each gutter's edge covers whole device pixels at a fractional scale too.
 #[test]
 fn compact_line_number_gutters_at_a_fractional_scale() {
     goldens().assert("gutters@2.625x", &gutters(2.625));

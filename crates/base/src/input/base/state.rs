@@ -852,7 +852,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             let local_offset = offset.saturating_sub(prev_lines_offset);
             if let Some(pos) = line.position_for_index(local_offset, last_layout, false) {
                 let sub_line_index = (pos.y / line_height) as usize;
-                let adjusted_pos = point(pos.x + last_layout.line_number_width, pos.y + y_offset);
+                let adjusted_pos = point(pos.x + last_layout.gutter.width, pos.y + y_offset);
                 return (vi, sub_line_index, Some(adjusted_pos));
             }
 
@@ -2640,7 +2640,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             let line = &last_layout.lines[vi];
             let local_offset = offset.saturating_sub(last_layout.visible_line_byte_offsets[vi]);
             if let Some(pos) = line.position_for_index(local_offset, last_layout, false) {
-                let bounds_width = bounds.size.width - last_layout.line_number_width;
+                let bounds_width = bounds.size.width - last_layout.gutter.width;
                 let col_offset_x = pos.x;
                 if col_offset_x - safety_margin < -scroll_offset.x {
                     // If the position is out of the visible area, scroll to make it visible
@@ -3170,7 +3170,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         };
 
         let line_height = last_layout.line_height;
-        let line_number_width = last_layout.line_number_width;
+        let line_number_width = last_layout.gutter.width;
 
         // TIP: About the IBeam cursor
         //
@@ -4494,7 +4494,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
     ) -> Option<Bounds<Pixels>> {
         let last_layout = self.last_layout.as_ref()?;
         let line_height = last_layout.line_height;
-        let line_number_width = last_layout.line_number_width;
+        let line_number_width = last_layout.gutter.width;
         let range = self.range_from_utf16(&range_utf16);
 
         let mut start_origin = None;
@@ -8616,7 +8616,7 @@ mod tests {
                         .unwrap();
                     origin
                         + point(
-                            layout.line_number_width + local.x,
+                            layout.gutter.width + local.x,
                             layout.line_height * (row as f32 + 0.5),
                         )
                 };
@@ -8672,7 +8672,7 @@ mod tests {
             let local = layout.lines[0]
                 .position_for_index(1, layout, false)
                 .unwrap();
-            let x = layout.line_number_width + local.x;
+            let x = layout.gutter.width + local.x;
             (
                 origin + point(x, layout.line_height * 2.5),
                 origin + point(x, layout.line_height * 0.5),
@@ -8703,7 +8703,7 @@ mod tests {
             let layout = state.last_layout.as_ref().unwrap();
             let origin = state.last_bounds.unwrap().origin;
             let x_of = |index| {
-                layout.line_number_width
+                layout.gutter.width
                     + layout.lines[0]
                         .position_for_index(index, layout, false)
                         .unwrap()
@@ -8739,7 +8739,7 @@ mod tests {
         let position = view.input.read_with(&cx, |state, _| {
             let layout = state.last_layout.as_ref().unwrap();
             state.last_bounds.unwrap().origin
-                + point(layout.line_number_width + px(2.), layout.line_height * 0.5)
+                + point(layout.gutter.width + px(2.), layout.line_height * 0.5)
         });
         let modifiers = gpui::Modifiers {
             alt: true,
@@ -8953,7 +8953,7 @@ mod tests {
         let position = view.input.read_with(&cx, |state, _| {
             let bounds = state.last_bounds.unwrap();
             let layout = state.last_layout.as_ref().unwrap();
-            bounds.origin + point(layout.line_number_width + px(2.), layout.line_height * 1.5)
+            bounds.origin + point(layout.gutter.width + px(2.), layout.line_height * 1.5)
         });
         cx.simulate_click(
             position,

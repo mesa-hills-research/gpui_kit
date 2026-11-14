@@ -305,8 +305,11 @@ let document = cx.new(|cx| {
 TextEditor::new(&document)
 ```
 
-A thin line separates the line numbers from the text, in the theme's
-`editor.gutter.border` color, `border` by default.
+Its gutter is the code editor's. The line numbers are in the theme's code
+font at the text's size, right-aligned in a column as wide as the last line's
+number, with a digit's space on each side, and the caret's line is marked
+across the gutter and the text. A line in the theme's `editor.gutter.border`
+color, `border` by default, marks the gutter's edge.
 
 Each part also works on its own, on any textarea: `line_number(true)`,
 `searchable(true)`, `spell_checker` and [suggestions](#suggestions).

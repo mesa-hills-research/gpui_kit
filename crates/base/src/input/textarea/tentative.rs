@@ -164,7 +164,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         let top = origin.y
             + line_height * self.display_map.buffer_line_to_display_row(buffer_line) as f32;
         // The rows start where the text's own rows do.
-        let left = origin.x + layout.line_number_width;
+        let left = origin.x + layout.gutter.width;
 
         let mut rows = Vec::with_capacity(line.wrapped_lines.len());
         let mut along = 0.;

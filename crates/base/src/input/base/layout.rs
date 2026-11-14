@@ -2,7 +2,7 @@ use std::{ops::Range, rc::Rc};
 
 use gpui::{Bounds, Half, Pixels, ShapedLine, TextAlign, px};
 
-use super::{WrappingIndent, display_map::LineLayout};
+use super::{WrappingIndent, display_map::LineLayout, element::GutterLayout};
 
 #[derive(Clone, Default)]
 pub(crate) struct WhitespaceIndicators {
@@ -21,7 +21,8 @@ pub(super) struct LastLayout {
     pub(super) line_height: Pixels,
     pub(super) wrap_width: Option<Pixels>,
     pub(super) wrapping_indent: WrappingIndent,
-    pub(super) line_number_width: Pixels,
+    /// Where the line numbers, the fold markers and the text sit.
+    pub(super) gutter: GutterLayout,
     /// Width of one space in the editor font.
     ///
     /// Past the end of a line there are no glyphs to hit-test against, so this is the
