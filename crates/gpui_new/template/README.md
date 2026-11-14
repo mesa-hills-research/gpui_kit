@@ -24,7 +24,7 @@ and on Linux a C compiler with the fontconfig, Wayland, xkbcommon and X11 develo
 | `src/main.rs` | The app's name and id, logging, startup |
 | `src/chrome.rs` | Window options and `can_close`, the check every way of closing a window goes through |
 | `src/menus.rs` | Actions, key bindings and the menus |
-| `src/title_bar.rs` | The title bar, its menus and buttons |
+| `src/title_bar.rs` | The title bar with its menus and buttons |
 | `src/workspace.rs` | The window's root view, where the app's content goes |
 | `build.rs` | Embeds `assets/icon.ico` in Windows builds |
 | `assets/` | The app icon, as SVG and Windows `.ico` |

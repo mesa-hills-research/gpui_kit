@@ -450,10 +450,10 @@ in the type instead.
 projection and never construct one directly; every mutation goes through
 `PaneTree`'s edit methods (`insert_panel`, `remove_panel`, `move_panel`,
 `split`, `set_active`, `set_sizes`), each
-of which runs `normalize` before returning. When base needs a fact about a
-panel — its name, its visibility, its dump — it asks a `PanelSource` rather
-than the entity directly, which is what makes the layout algebra testable as
-pure functions with no `TestAppContext`.
+of which runs `normalize` before returning. When base needs a panel's name,
+visibility or dump, it asks a `PanelSource` rather than the entity directly,
+which is what makes the layout algebra testable as pure functions with no
+`TestAppContext`.
 
 Building a layout is entity-free too: `DockLayout` (`h_split`, `v_split`,
 `tabs`, chained with `.child(...)`, `.panel_view(...)`, and

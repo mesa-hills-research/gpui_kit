@@ -3035,7 +3035,7 @@ cannot do for a directory run from the command line.
 
 ### 18.3 Authority travels with the code, not with the moment
 
-Each loaded plugin holds a `Policy` — its grant, its storage, its native modules —
+Each loaded plugin holds a `Policy` with its grant, storage and native modules,
 built once from its manifest at load. The policy rides on the **call frame**
 (`scope::Frame`), so every call to `fs` or `localStorage` answers with the
 grant of whichever plugin owns the code that is running. Two plugins loaded at

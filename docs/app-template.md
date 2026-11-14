@@ -26,7 +26,7 @@ build.rs            embeds the icon and app name in Windows executables
 src/main.rs         the app's name and id, logging, startup
 src/chrome.rs       window options and can_close, the one close check
 src/menus.rs        actions, key bindings and the menus
-src/title_bar.rs    the title bar, its menus and buttons
+src/title_bar.rs    the title bar with its menus and buttons
 src/workspace.rs    the window's root view
 assets/             the icon as SVG and Windows .ico
 packaging/linux/    <app id>.desktop and a 256 px icon
