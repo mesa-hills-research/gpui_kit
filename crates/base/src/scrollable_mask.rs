@@ -5,8 +5,8 @@ use gpui::{
     App, Axis, BorderStyle, Bounds, ContentMask, Edges, Element, ElementId, GlobalElementId,
     Hitbox, Hsla, InteractiveElement as _, IntoElement, IsZero as _, LayoutId, OngoingScroll,
     PaintQuad, ParentElement as _, Point, Position, ScrollHandle, ScrollWheelEvent,
-    StatefulInteractiveElement as _, Style, StyleRefinement, Styled as _, Window, div, px,
-    relative,
+    StatefulInteractiveElement as _, Style, StyleRefinement, Styled as _, TouchPhase, Window, div,
+    px, relative,
 };
 use gpui::{Corners, Pixels};
 
@@ -254,6 +254,14 @@ impl<H: ScrollbarHandle + Clone> Element for ScrollableMask<H> {
                     }
 
                     if !is_horizontal {
+                        // A list laid out by queued moves takes the wheel as a move of its
+                        // own, its gesture's start and end included.
+                        let moves = !delta.y.is_zero() || event.touch_phase != TouchPhase::Moved;
+                        if moves && scroll_handle.take_wheel(event, delta, cx) {
+                            cx.notify(view_id);
+                            cx.stop_propagation();
+                            return;
+                        }
                         // The current offset must be clamped too: after a
                         // bubbled event, the scrolled element's own listener
                         // pushes the shared offset beyond the edge unclamped
@@ -536,6 +544,45 @@ mod tests {
         // At the edge the mask lets the event bubble to the ancestor.
         assert_eq!(list_state.scroll_px_offset_for_scrollbar().y, px(-320.));
         assert_eq!(outer_handle.offset().y, px(-40.));
+    }
+
+    /// A list laid out by queued moves takes the wheel as a move, which its layout applies over
+    /// the rows it measures, and it doesn't hand the wheel to the ancestor at its edge.
+    #[gpui::test]
+    fn vertical_mask_queues_the_wheel_for_a_list_laid_out_by_moves(cx: &mut TestAppContext) {
+        let outer_handle = ScrollHandle::new();
+        let list_state = ListState::new(10, ListAlignment::Top, px(100.)).with_queued_moves();
+        list_state.queue_move(gpui::ListMove::ToEnd);
+        let cx = setup_vertical_mask_test(cx, &outer_handle, &list_state);
+        let end = list_state.logical_scroll_top();
+
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(10.), px(10.)),
+            delta: ScrollDelta::Pixels(point(px(0.), px(30.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        // The lines moved down 30, so the end is 30 below the bottom edge.
+        let report = list_state.report();
+        assert!(!report.end_shows, "{report:?}");
+        assert_eq!(report.below, px(30.), "{report:?}");
+        assert_ne!(list_state.logical_scroll_top(), end);
+        // A scroll down at the end moves nothing and stays in the list.
+        for _ in 0..3 {
+            cx.simulate_event(ScrollWheelEvent {
+                position: point(px(10.), px(10.)),
+                delta: ScrollDelta::Pixels(point(px(0.), px(-40.))),
+                ..Default::default()
+            });
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        }
+        assert!(list_state.report().end_shows);
+        assert_eq!(outer_handle.offset().y, px(0.));
     }
 
     #[gpui::test]

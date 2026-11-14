@@ -81,6 +81,13 @@ pub trait ScrollbarHandle: 'static {
     fn start_drag(&self) {}
     /// Called when end dragging the scrollbar thumb.
     fn end_drag(&self) {}
+    /// Takes a wheel event as a move of its own and says whether it did, `delta` being the
+    /// event's distance along the axis its gesture keeps to. A list laid out by queued moves
+    /// takes every one, which its layout applies over the rows it measures there. Other handles
+    /// take none, and the mask scrolls them by their offsets.
+    fn take_wheel(&self, _event: &ScrollWheelEvent, _delta: Point<Pixels>, _cx: &App) -> bool {
+        false
+    }
 }
 
 impl ScrollbarHandle for ScrollHandle {
@@ -143,6 +150,17 @@ impl ScrollbarHandle for ListState {
 
     fn end_drag(&self) {
         self.scrollbar_drag_ended();
+    }
+
+    fn take_wheel(&self, event: &ScrollWheelEvent, delta: Point<Pixels>, cx: &App) -> bool {
+        if !self.has_queued_moves() {
+            return false;
+        }
+        self.queue_move(gpui::ListMove::Scroll {
+            delta: -delta.y,
+            gesture: gpui::ScrollGesture::of(event, cx.background_executor().now()),
+        });
+        true
     }
 }
 
