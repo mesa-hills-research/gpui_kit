@@ -1,5 +1,5 @@
 use gpui::{
-    App, IntoElement, ListState, ParentElement as _, SharedString, Styled as _, Window, div,
+    App, IntoElement, ListState, ParentElement as _, Pixels, SharedString, Styled as _, Window, div,
 };
 
 use std::{
@@ -30,6 +30,8 @@ pub(crate) struct NodeRenderOptions {
     pub(crate) todo: bool,
     pub(crate) ordered: bool,
     pub(crate) list_start: Option<u32>,
+    /// The width of the list's marker column, where its items' text starts.
+    pub(crate) marker_width: Pixels,
     pub(crate) depth: usize,
     pub(crate) is_last: bool,
 }

@@ -40,6 +40,9 @@ use super::{
 
 const CHECK_SVG_LIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 const CHECK_SVG_DARK: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="m3.25 8.25 3 3 6.5-7" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
+/// A task's checkbox, and the gap between it and the task's text.
+const CHECKBOX_SIZE: Rems = rems(0.875);
+const CHECKBOX_GAP: Rems = rems(0.375);
 
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
@@ -3430,8 +3433,46 @@ impl BlockNode {
 }
 
 impl BlockNode {
+    /// The width of a list's marker column, that of its widest marker, so
+    /// that every item's text starts at the same x. A task's marker is its
+    /// checkbox, and the plain items of a list inside a task show no marker.
+    fn list_marker_width(
+        children: &[BlockNode],
+        options: NodeRenderOptions,
+        window: &mut Window,
+    ) -> Pixels {
+        let text_style = window.text_style();
+        let rem_size = window.rem_size();
+        let font_size = text_style.font_size.to_pixels(rem_size);
+        let checkbox = CHECKBOX_SIZE.to_pixels(rem_size) + CHECKBOX_GAP.to_pixels(rem_size);
+        let mut width = Pixels::ZERO;
+        for (ix, item) in children
+            .iter()
+            .filter(|item| item.is_list_item())
+            .enumerate()
+        {
+            let marker = match item {
+                BlockNode::ListItem {
+                    checked: Some(_), ..
+                } => checkbox,
+                _ if options.todo => Pixels::ZERO,
+                _ => {
+                    let prefix =
+                        list_item_prefix(ix, options.list_start, options.ordered, options.depth);
+                    let runs = [text_style.to_run(prefix.len())];
+                    window
+                        .text_system()
+                        .layout_line(prefix.as_str(), font_size, &runs, None)
+                        .width
+                }
+            };
+            width = width.max(marker);
+        }
+        width
+    }
+
     fn render_list_item_row(
-        content: AnyElement,
+        content: Vec<AnyElement>,
         ix: usize,
         options: NodeRenderOptions,
         checked: Option<bool>,
@@ -3444,52 +3485,64 @@ impl BlockNode {
             .relative()
             .items_start()
             .content_start()
-            .when(!options.todo && checked.is_none(), |this| {
-                this.child(list_item_prefix(
-                    ix,
-                    options.list_start,
-                    options.ordered,
-                    options.depth,
-                ))
-            })
-            .when_some(checked, |this, checked| {
-                // Todo list checkbox
-                let check_svg = if style.is_dark() {
-                    CHECK_SVG_DARK
-                } else {
-                    CHECK_SVG_LIGHT
-                };
-                this.child(
-                    div()
-                        .flex()
-                        .mr_1p5()
-                        .h(line_height)
-                        .flex_none()
-                        .items_center()
-                        .justify_center()
-                        .child(
+            .child(
+                // The list's marker column. Each marker ends at its right
+                // edge, so "9." ends where "10." does.
+                div()
+                    .flex()
+                    .flex_none()
+                    .justify_end()
+                    .w(options.marker_width)
+                    .whitespace_nowrap()
+                    .when(!options.todo && checked.is_none(), |this| {
+                        this.child(list_item_prefix(
+                            ix,
+                            options.list_start,
+                            options.ordered,
+                            options.depth,
+                        ))
+                    })
+                    .when_some(checked, |this, checked| {
+                        // Todo list checkbox
+                        let check_svg = if style.is_dark() {
+                            CHECK_SVG_DARK
+                        } else {
+                            CHECK_SVG_LIGHT
+                        };
+                        this.child(
                             div()
                                 .flex()
-                                .size(rems(0.875))
+                                .mr(CHECKBOX_GAP)
+                                .h(line_height)
+                                .flex_none()
                                 .items_center()
                                 .justify_center()
-                                .border_1()
-                                .border_color(style.foreground())
-                                .when(checked, |this| {
-                                    this.bg(style.foreground()).child(
-                                        img(Arc::new(Image::from_bytes(
-                                            ImageFormat::Svg,
-                                            check_svg.to_vec(),
-                                        )))
-                                        .size(rems(0.625)),
-                                    )
-                                }),
-                        ),
-                )
-            })
-            .child(div().flex_1().min_w_0().overflow_hidden().child(content))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .size(CHECKBOX_SIZE)
+                                        .items_center()
+                                        .justify_center()
+                                        .border_1()
+                                        .border_color(style.foreground())
+                                        .when(checked, |this| {
+                                            this.bg(style.foreground()).child(
+                                                img(Arc::new(Image::from_bytes(
+                                                    ImageFormat::Svg,
+                                                    check_svg.to_vec(),
+                                                )))
+                                                .size(rems(0.625)),
+                                            )
+                                        }),
+                                ),
+                        )
+                    }),
+            )
+            .child(div().flex_1().min_w_0().overflow_hidden().children(content))
     }
 
+    /// An item is one row, its marker and then all of its blocks stacked
+    /// where its text starts, its later paragraphs and nested lists too.
     fn render_list_item(
         item: &BlockNode,
         ix: usize,
@@ -3498,130 +3551,55 @@ impl BlockNode {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        match item {
-            BlockNode::ListItem {
-                children,
-                spread,
-                checked,
-                ..
-            } => div()
-                .w_full()
-                .min_w_0()
-                .when(*spread, |this| this.child(div()))
-                .children({
-                    let mut items: Vec<Div> = Vec::with_capacity(children.len());
+        let BlockNode::ListItem {
+            children,
+            spread,
+            checked,
+            ..
+        } = item
+        else {
+            return div().into_any_element();
+        };
+        let line_height = window.line_height();
+        let child_options = NodeRenderOptions {
+            depth: options.depth + 1,
+            todo: checked.is_some(),
+            is_last: true,
+            ..options
+        };
+        let content = children
+            .iter()
+            .filter(|child| match child {
+                BlockNode::Root { .. }
+                | BlockNode::Paragraph(_)
+                | BlockNode::Heading { .. }
+                | BlockNode::Blockquote { .. }
+                | BlockNode::List { .. }
+                | BlockNode::CodeBlock(_)
+                | BlockNode::Custom(_)
+                | BlockNode::Table(_)
+                | BlockNode::HorizontalRule { .. } => true,
+                BlockNode::ListItem { .. }
+                | BlockNode::Break { .. }
+                | BlockNode::Definition { .. }
+                | BlockNode::Unknown => false,
+            })
+            .map(|child| child.render_block(child_options, node_cx, window, cx))
+            .collect();
 
-                    for (child_ix, child) in children.iter().enumerate() {
-                        match child {
-                            BlockNode::Paragraph { .. } => {
-                                let last_not_list = child_ix > 0
-                                    && !matches!(children[child_ix - 1], BlockNode::List { .. });
-
-                                let text = child.render_block(
-                                    NodeRenderOptions {
-                                        depth: options.depth + 1,
-                                        todo: checked.is_some(),
-                                        is_last: true,
-                                        ..options
-                                    },
-                                    node_cx,
-                                    window,
-                                    cx,
-                                );
-
-                                // Continuation paragraph — stack vertically below
-                                // the previous row, indented to align with the text
-                                // column (past bullet/number prefix).
-                                if last_not_list {
-                                    if let Some(preceding_row) = items.pop() {
-                                        items.push(
-                                            div().child(preceding_row).child(
-                                                div()
-                                                    .w_full()
-                                                    .pl(rems(1.))
-                                                    .overflow_hidden()
-                                                    .child(text),
-                                            ),
-                                        );
-                                        continue;
-                                    }
-                                }
-
-                                items.push(Self::render_list_item_row(
-                                    text,
-                                    ix,
-                                    options,
-                                    *checked,
-                                    &node_cx.style,
-                                    window.line_height(),
-                                ));
-                            }
-                            BlockNode::List { .. } => {
-                                items.push(div().ml(rems(1.)).child(child.render_block(
-                                    NodeRenderOptions {
-                                        depth: options.depth + 1,
-                                        todo: checked.is_some(),
-                                        is_last: true,
-                                        ..options
-                                    },
-                                    node_cx,
-                                    window,
-                                    cx,
-                                )));
-                            }
-                            BlockNode::Root { .. }
-                            | BlockNode::Heading { .. }
-                            | BlockNode::Blockquote { .. }
-                            | BlockNode::CodeBlock(_)
-                            | BlockNode::Custom(_)
-                            | BlockNode::Table(_)
-                            | BlockNode::HorizontalRule { .. } => {
-                                let block = child.render_block(
-                                    NodeRenderOptions {
-                                        depth: options.depth + 1,
-                                        todo: checked.is_some(),
-                                        is_last: true,
-                                        ..options
-                                    },
-                                    node_cx,
-                                    window,
-                                    cx,
-                                );
-
-                                if child_ix == 0 {
-                                    items.push(Self::render_list_item_row(
-                                        block,
-                                        ix,
-                                        options,
-                                        *checked,
-                                        &node_cx.style,
-                                        window.line_height(),
-                                    ));
-                                } else {
-                                    // Indent continuation blocks to align with a
-                                    // nested sub-list (`ml(rems(1.))`) and with
-                                    // continuation paragraphs.
-                                    items.push(
-                                        div()
-                                            .w_full()
-                                            .min_w_0()
-                                            .pl(rems(1.))
-                                            .overflow_hidden()
-                                            .child(block),
-                                    );
-                                }
-                            }
-                            BlockNode::ListItem { .. }
-                            | BlockNode::Break { .. }
-                            | BlockNode::Definition { .. }
-                            | BlockNode::Unknown => {}
-                        }
-                    }
-                    items
-                })
-                .into_any_element(),
-            _ => div().into_any_element(),
-        }
+        div()
+            .w_full()
+            .min_w_0()
+            .when(*spread, |this| this.child(div()))
+            .child(Self::render_list_item_row(
+                content,
+                ix,
+                options,
+                *checked,
+                &node_cx.style,
+                line_height,
+            ))
+            .into_any_element()
     }
 
     /// Render a Markdown table. Dispatches to a horizontally scrollable layout
@@ -4026,37 +4004,44 @@ impl BlockNode {
                 ordered,
                 start,
                 ..
-            } => div()
-                .w_full()
-                .min_w_0()
-                .pb(mb)
-                .children({
-                    let mut items = Vec::with_capacity(children.len());
-                    let mut item_index = 0;
-                    for (ix, item) in children.into_iter().enumerate() {
-                        let is_item = item.is_list_item();
+            } => {
+                let options = NodeRenderOptions {
+                    ordered: *ordered,
+                    list_start: *start,
+                    ..options
+                };
+                let marker_width = Self::list_marker_width(children, options, window);
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .pb(mb)
+                    .children({
+                        let mut items = Vec::with_capacity(children.len());
+                        let mut item_index = 0;
+                        for (ix, item) in children.into_iter().enumerate() {
+                            let is_item = item.is_list_item();
 
-                        items.push(Self::render_list_item(
-                            item,
-                            item_index,
-                            NodeRenderOptions {
-                                ix,
-                                ordered: *ordered,
-                                list_start: *start,
-                                ..options
-                            },
-                            node_cx,
-                            window,
-                            cx,
-                        ));
+                            items.push(Self::render_list_item(
+                                item,
+                                item_index,
+                                NodeRenderOptions {
+                                    ix,
+                                    marker_width,
+                                    ..options
+                                },
+                                node_cx,
+                                window,
+                                cx,
+                            ));
 
-                        if is_item {
-                            item_index += 1;
+                            if is_item {
+                                item_index += 1;
+                            }
                         }
-                    }
-                    items
-                })
-                .into_any_element(),
+                        items
+                    })
+                    .into_any_element()
+            }
             BlockNode::CodeBlock(code_block) => code_block.render(&options, node_cx, window, cx),
             BlockNode::Custom(node) => {
                 let inner = match node_cx.markdown_extensions.render_block(node, window, cx) {

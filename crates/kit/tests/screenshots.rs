@@ -300,6 +300,26 @@ fn markdown_code_block() {
     }
 }
 
+/// Markdown lists. The numbers from 8 to 11 end in one place and their text starts in one place,
+/// and so do an item's second paragraph, a nested list and the text of a task beside a plain item.
+struct MarkdownLists;
+
+impl Render for MarkdownLists {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        page(cx).child(TextView::markdown(
+            "markdown-lists",
+            "8. Eight\n9. Nine\n10. Ten, then a paragraph\n\n    under its text.\n11. Eleven\n    - A bullet\n    1. A letter\n\n- [x] A task\n- A plain item\n  - Nested",
+        ))
+    }
+}
+
+#[test]
+fn markdown_lists_start_their_text_in_one_column() {
+    let mut app = app(ThemeMode::Light);
+    let window = open(&mut app, (320., 310.), SCALE, |_, _| MarkdownLists);
+    goldens().assert("markdown-lists", &app.capture(window).unwrap());
+}
+
 /// Find results in a paragraph with a link and a code span. The current one sits on a strong
 /// background with a text color of its own, so it stays readable.
 struct FindHighlights {

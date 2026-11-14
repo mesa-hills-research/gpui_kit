@@ -2678,6 +2678,281 @@ mod tests {
         );
     }
 
+    /// Markdown painted with a background behind every run of text, and its
+    /// code blocks on a background of their own, so a test can see where each
+    /// run and block starts and ends.
+    struct PaintedListRoot {
+        text_view: Entity<TextViewState>,
+    }
+
+    const LIST_TEXT_BACKGROUND: u32 = 0x20f0b0;
+    const LIST_CODE_BACKGROUND: u32 = 0xb020f0;
+
+    impl Render for PaintedListRoot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .w(px(600.))
+                .text_bg(gpui::rgb(LIST_TEXT_BACKGROUND))
+                .child(
+                    TextView::new(&self.text_view).style(
+                        TextViewStyle::default()
+                            .with_code_background(gpui::rgb(LIST_CODE_BACKGROUND).into()),
+                    ),
+                )
+        }
+    }
+
+    /// Where `markdown` paints in a test font whose every glyph is half an em
+    /// wide, in logical pixels from the view's left edge. It gives the start
+    /// and end of each run of text, line by line from the top and left to
+    /// right, and the left edge of each code block, whose own text is left
+    /// out.
+    fn painted_list(markdown: &str) -> (Vec<Vec<(f32, f32)>>, Vec<f32>) {
+        use crate::text::inline::test_fonts::WideMonoTextSystem;
+        use gpui::{TestApp, WindowBounds, WindowOptions, size};
+
+        let mut app = TestApp::with_text_system(Arc::new(WideMonoTextSystem));
+        app.update(crate::init);
+        // Tall enough for a hundred and one lines, since text past the
+        // window's edge isn't painted.
+        let bounds = Bounds::new(point(px(0.), px(0.)), size(px(640.), px(4000.)));
+        let mut window = app.open_window_with_options(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            |_, cx| PaintedListRoot {
+                text_view: cx.new(|cx| TextViewState::markdown(markdown, cx)),
+            },
+        );
+        window.draw();
+        app.run_until_parked();
+        window.draw();
+
+        window.update(|root, window, cx| {
+            let scale = window.scale_factor();
+            let view = root.text_view.read(cx).bounds().scale(scale);
+            let text_background: gpui::Background = gpui::rgb(LIST_TEXT_BACKGROUND).into();
+            let code_background: gpui::Background = gpui::rgb(LIST_CODE_BACKGROUND).into();
+            let quads = window.painted_quads();
+            let code = quads
+                .iter()
+                .filter(|quad| quad.background == code_background)
+                .map(|quad| quad.bounds)
+                .collect::<Vec<_>>();
+            let x = |x: gpui::ScaledPixels| (x - view.left()).0 / scale;
+
+            let mut lines: Vec<(f32, Vec<(f32, f32)>)> = Vec::new();
+            for bounds in quads
+                .iter()
+                .filter(|quad| quad.background == text_background)
+                .map(|quad| quad.bounds)
+                .filter(|bounds| !code.iter().any(|code| code.contains(&bounds.center())))
+            {
+                let top = bounds.top().0 / scale;
+                let run = (x(bounds.left()), x(bounds.right()));
+                match lines.iter_mut().find(|(line, _)| (line - top).abs() < 0.5) {
+                    Some((_, runs)) => runs.push(run),
+                    None => lines.push((top, vec![run])),
+                }
+            }
+            lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let lines = lines
+                .into_iter()
+                .map(|(_, mut runs)| {
+                    runs.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    runs
+                })
+                .collect();
+            let code = code.iter().map(|bounds| x(bounds.left())).collect();
+            (lines, code)
+        })
+    }
+
+    /// The width of `text` in the test font at the default 16px.
+    fn test_font_width(text: &str) -> f32 {
+        use crate::text::inline::test_fonts::{BODY, WideMonoTextSystem};
+        f32::from(WideMonoTextSystem::width_of(text, BODY, px(16.)))
+    }
+
+    /// Checks a numbered list from `start` with `count` items, the last with a
+    /// second paragraph. Its numbers right-align in a column as wide as the
+    /// widest of them, and every item's text, the later paragraph too, starts
+    /// where that column ends.
+    fn assert_numbers_share_a_column(start: u32, count: u32) {
+        let last = start + count - 1;
+        let indent = " ".repeat(format!("{last}. ").len());
+        let markdown = format!(
+            "{}\n{indent}later\n",
+            (start..=last)
+                .map(|n| format!("{n}. item {n}\n"))
+                .collect::<String>()
+        );
+        let column = test_font_width(&format!("{last}. "));
+
+        let (lines, _) = painted_list(&markdown);
+        assert_eq!(
+            lines.len(),
+            count as usize + 1,
+            "{start} to {last}: {lines:?}"
+        );
+        for (n, line) in (start..=last).zip(&lines) {
+            let number = test_font_width(&format!("{n}. "));
+            let [(number_start, number_end), (text_start, _)] = line[..] else {
+                panic!("item {n} paints its number and its text: {line:?}");
+            };
+            assert_eq!(
+                (number_start, number_end, text_start),
+                (column - number, column, column),
+                "item {n} of {start} to {last}"
+            );
+        }
+        let [(later_start, _)] = lines[count as usize][..] else {
+            panic!("the later paragraph paints alone: {lines:?}");
+        };
+        assert_eq!(later_start, column, "the later paragraph of {last}");
+    }
+
+    #[test]
+    fn nine_numbers_keep_a_column_of_one_digit() {
+        assert_numbers_share_a_column(1, 9);
+    }
+
+    #[test]
+    fn ten_numbers_have_a_column_of_two_digits() {
+        assert_numbers_share_a_column(1, 10);
+    }
+
+    #[test]
+    fn ninety_nine_numbers_have_a_column_of_two_digits() {
+        assert_numbers_share_a_column(1, 99);
+    }
+
+    #[test]
+    fn a_hundred_numbers_have_a_column_of_three_digits() {
+        assert_numbers_share_a_column(1, 100);
+    }
+
+    #[test]
+    fn a_list_that_starts_below_a_digit_boundary_has_a_column_for_the_numbers_past_it() {
+        assert_numbers_share_a_column(8, 3);
+        assert_numbers_share_a_column(98, 3);
+        assert_numbers_share_a_column(999, 2);
+    }
+
+    /// An item's later paragraphs and blocks start where its text does, from
+    /// "10." on as before it.
+    #[test]
+    fn an_items_later_paragraphs_and_blocks_start_at_its_text() {
+        let markdown = format!(
+            "{}10. first\n\n    second\n\n    ```\n    code\n    ```\n\n    third\n",
+            (1..10)
+                .map(|n| format!("{n}. item {n}\n"))
+                .collect::<String>()
+        );
+        let column = test_font_width("10. ");
+
+        let (lines, code) = painted_list(&markdown);
+        let starts = lines
+            .iter()
+            .map(|line| line.last().expect("a line paints its text").0)
+            .collect::<Vec<_>>();
+        assert_eq!(starts, [column; 12], "{lines:?}");
+        assert!(
+            lines[10..].iter().all(|line| line.len() == 1),
+            "later paragraphs have no number: {lines:?}"
+        );
+        assert_eq!(code, [column], "the code block");
+    }
+
+    /// A nested list starts where its item's text does, so its own markers
+    /// sit under that text, and the paragraph after it neither moves nor
+    /// repeats the item's number. A bullet list keeps its text right after its
+    /// bullets.
+    #[test]
+    fn a_nested_list_starts_at_its_items_text() {
+        let markdown = format!(
+            "{}10. ten\n    - inner\n    - inner\n\n    1. lettered\n    2. lettered\n\n    after\n",
+            (1..10)
+                .map(|n| format!("{n}. item {n}\n"))
+                .collect::<String>()
+        );
+        let column = test_font_width("10. ");
+        let bullet = test_font_width("◦ ");
+        let letter = test_font_width("A. ");
+
+        let (lines, _) = painted_list(&markdown);
+        assert_eq!(lines.len(), 15, "{lines:?}");
+        for (line, marker) in lines[10..14].iter().zip([bullet, bullet, letter, letter]) {
+            let [(marker_start, marker_end), (text_start, _)] = line[..] else {
+                panic!("a nested item paints its marker and its text: {lines:?}");
+            };
+            assert_eq!(
+                (marker_start, marker_end, text_start),
+                (column, column + marker, column + marker),
+                "{lines:?}"
+            );
+        }
+        let [(after_start, _)] = lines[14][..] else {
+            panic!("the paragraph after the nested lists has no number: {lines:?}");
+        };
+        assert_eq!(after_start, column, "{lines:?}");
+
+        let (lines, _) = painted_list("- one\n- two\n  - inner\n\n  later\n");
+        let bullet = test_font_width("• ");
+        let inner = test_font_width("◦ ");
+        assert_eq!(
+            lines.iter().map(|line| line[0]).collect::<Vec<_>>(),
+            [
+                (0., bullet),
+                (0., bullet),
+                (bullet, bullet + inner),
+                (bullet, bullet + test_font_width("later")),
+            ],
+            "{lines:?}"
+        );
+        assert_eq!(lines[2][1].0, bullet + inner, "{lines:?}");
+
+        // An item that opens with a nested list shows its number beside it,
+        // and an item with no text shows its number alone.
+        let number = test_font_width("1. ");
+        let (lines, _) = painted_list("1. - inner\n2.\n3. three\n");
+        assert_eq!(
+            lines,
+            [
+                vec![
+                    (0., number),
+                    (number, number + inner),
+                    (number + inner, number + inner + test_font_width("inner"))
+                ],
+                vec![(0., number)],
+                vec![(0., number), (number, number + test_font_width("three"))],
+            ]
+        );
+    }
+
+    /// A task's checkbox is its marker, so the text of a task and of a
+    /// plain item beside it start in one place, and so does a task's later
+    /// paragraph.
+    #[test]
+    fn a_task_lists_text_starts_after_its_checkboxes() {
+        let (lines, _) = painted_list("- [ ] task\n\n  later\n- plain\n");
+        // The checkbox and the gap after it, 0.875rem and 0.375rem.
+        let column = 20.;
+        let bullet = test_font_width("• ");
+        assert_eq!(
+            lines,
+            [
+                vec![(column, column + test_font_width("task"))],
+                vec![(column, column + test_font_width("later"))],
+                vec![
+                    (column - bullet, column),
+                    (column, column + test_font_width("plain"))
+                ],
+            ]
+        );
+    }
+
     /// A capped code block lays out its first lines only.
     #[test]
     fn a_code_block_shows_at_most_its_max_lines() {
