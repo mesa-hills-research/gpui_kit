@@ -5353,7 +5353,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "chrono",
  "lsp-types 0.97.0",
@@ -5370,7 +5370,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-assets"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "anyhow",
  "gpui-pre-reqwest",
@@ -5384,7 +5384,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-base"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -5430,7 +5430,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-component"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "anyhow",
  "block2 0.6.2",
@@ -5532,7 +5532,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-component-macros"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -5542,7 +5542,7 @@ dependencies = [
 
 [[package]]
 name = "mhr-gpui-kit-writing"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "anyhow",
  "log",
