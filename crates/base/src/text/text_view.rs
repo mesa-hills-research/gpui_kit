@@ -2983,6 +2983,30 @@ mod tests {
         );
     }
 
+    /// A list under a task shows its bullets and letters, and its text starts
+    /// after them.
+    #[test]
+    fn a_list_under_a_task_shows_its_markers() {
+        let lines = painted_list("- [ ] task\n  - bullet\n  1. letter\n").lines;
+        let column = 20.;
+        let bullet = test_font_width("◦ ");
+        let letter = test_font_width("A. ");
+        assert_eq!(
+            lines,
+            [
+                vec![(column, column + test_font_width("task"))],
+                vec![
+                    (column, column + bullet),
+                    (column + bullet, column + bullet + test_font_width("bullet"))
+                ],
+                vec![
+                    (column, column + letter),
+                    (column + letter, column + letter + test_font_width("letter"))
+                ],
+            ]
+        );
+    }
+
     /// A marker column is as wide as its widest marker lays out, rounded up
     /// to a whole pixel and then a whole device pixel, so no marker starts
     /// left of its list, and a nested list's markers start at its item's

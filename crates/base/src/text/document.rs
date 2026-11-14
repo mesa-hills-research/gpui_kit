@@ -27,7 +27,6 @@ pub(crate) struct ParsedDocument {
 pub(crate) struct NodeRenderOptions {
     pub(crate) ix: usize,
     pub(crate) in_list: bool,
-    pub(crate) todo: bool,
     pub(crate) ordered: bool,
     pub(crate) list_start: Option<u32>,
     /// The width of the list's marker column, where its items' text starts.

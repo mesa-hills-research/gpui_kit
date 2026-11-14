@@ -3436,7 +3436,7 @@ impl BlockNode {
 impl BlockNode {
     /// The width of a list's marker column, that of its widest marker, so
     /// that every item's text starts at the same x. A task's marker is its
-    /// checkbox, and the plain items of a list inside a task show no marker.
+    /// checkbox.
     ///
     /// A marker's text lays itself out rounded up to a whole pixel and then
     /// to a whole device pixel, so its width here is rounded the same way. A
@@ -3463,7 +3463,6 @@ impl BlockNode {
                 BlockNode::ListItem {
                     checked: Some(_), ..
                 } => checkbox,
-                _ if options.todo => Pixels::ZERO,
                 _ => {
                     let prefix =
                         list_item_prefix(ix, options.list_start, options.ordered, options.depth);
@@ -3503,7 +3502,7 @@ impl BlockNode {
                     .justify_end()
                     .w(options.marker_width)
                     .whitespace_nowrap()
-                    .when(!options.todo && checked.is_none(), |this| {
+                    .when(checked.is_none(), |this| {
                         this.child(list_item_prefix(
                             ix,
                             options.list_start,
@@ -3571,7 +3570,6 @@ impl BlockNode {
         let line_height = window.line_height();
         let child_options = NodeRenderOptions {
             depth: options.depth + 1,
-            todo: checked.is_some(),
             is_last: true,
             ..options
         };
