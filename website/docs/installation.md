@@ -39,7 +39,7 @@ sudo apt install -y gcc g++ clang libfontconfig-dev libwayland-dev \
 
 ## Rust and Cargo
 
-Install Rust and Cargo with the [official Rust installer](https://rust-lang.org/tools/install/). Use Rust 1.92 or later for this repository's current locked dependency graph: its Linux GPUI platform dependency includes `oo7 0.6.0`, which declares Rust 1.92 as its minimum. Then check the tools in the same terminal that will build the app:
+Install Rust and Cargo with the [official Rust installer](https://rust-lang.org/tools/install/). The `mhr-gpui` crates need Rust 1.95 or later. Then check the tools in the same terminal that will build the app:
 
 ```sh
 rustc --version

@@ -39,7 +39,7 @@ sudo apt install -y gcc g++ clang libfontconfig-dev libwayland-dev \
 
 ## Rust 和 Cargo
 
-通过 [Rust 官方安装页面](https://rust-lang.org/tools/install/)安装 Rust 和 Cargo。按本仓库当前锁定的依赖图，请使用 Rust 1.92 或更新版本：其中的 Linux GPUI 平台依赖 `oo7 0.6.0` 明确要求至少 Rust 1.92。然后在准备用来构建应用的同一个终端中检查：
+通过 [Rust 官方安装页面](https://rust-lang.org/tools/install/)安装 Rust 和 Cargo。`mhr-gpui` 各 crate 需要 Rust 1.95 或更新版本。然后在准备用来构建应用的同一个终端中检查：
 
 ```sh
 rustc --version
