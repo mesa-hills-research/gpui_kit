@@ -4,7 +4,7 @@ One dependency for building desktop applications with GPUI:
 
 ```toml
 [dependencies]
-mhr-gpui-kit = "0.7"
+mhr-gpui-kit = "0.8"
 ```
 
 `mhr-gpui-kit` depends on the matching set of GPUI crates, so an application

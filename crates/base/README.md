@@ -52,7 +52,7 @@ features to skip the styled layers:
 
 ```toml
 [dependencies]
-mhr-gpui-kit = { version = "0.7", default-features = false }
+mhr-gpui-kit = { version = "0.8", default-features = false }
 ```
 
 If Cargo reports incompatible GPUI types, check whether your application pulls

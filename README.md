@@ -361,7 +361,7 @@ GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates
 
 ```toml
 [dependencies]
-mhr-gpui-kit = "0.7"
+mhr-gpui-kit = "0.8"
 ```
 
 The kit depends on the published `mhr-gpui` crates, which Cargo fetches from crates.io, so the app
@@ -514,7 +514,7 @@ commercial desktop application rather than designed in isolation.
 
 ```toml
 [dependencies]
-mhr-gpui-kit = "0.7"
+mhr-gpui-kit = "0.8"
 ```
 
 `gpui-kit` always brings in GPUI and `gpui-base`; `gpui-component` and the
