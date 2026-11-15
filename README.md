@@ -1,14 +1,27 @@
-# gpui_kit
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mesa-hills-research/gpui_kit/main/assets/readme-header-dark.svg">
+    <img src="https://raw.githubusercontent.com/mesa-hills-research/gpui_kit/main/assets/readme-header-light.svg" alt="gpui_kit" width="360">
+  </picture>
+</h1>
 
-This repository is Mesa Hills Research's fork of [GPUI Kit](https://github.com/longbridge/gpui-kit)
-(formerly gpui-component), the Rust desktop UI framework built on GPUI. It follows upstream
-releases and adds the changes listed below.
+[GPUI Kit](https://github.com/longbridge/gpui-kit) (formerly gpui-component) is a Rust desktop UI
+framework built on GPUI, and this repository is Mesa Hills Research's fork of it. The fork started
+from GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1) and is maintained on
+its own, without later upstream releases. It's published on crates.io as
+[`mhr-gpui-kit`](https://crates.io/crates/mhr-gpui-kit) and its sibling crates, and takes GPUI
+from the `mhr-gpui` crates of [the lab's gpui fork](https://github.com/mesa-hills-research/gpui).
 
-It is based on GPUI Kit [v0.7.1](https://github.com/longbridge/gpui-kit/tree/v0.7.1), which pins
-GPUI to the `gpui-pre` 0.3.8 snapshot, and takes GPUI from the `mhr-gpui` crates on crates.io,
-[Mesa Hills Research's fork of Zed's gpui](https://github.com/mesa-hills-research/gpui).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mesa-hills-research/gpui_kit/main/docs/images/kit-dark.png">
+  <img src="https://raw.githubusercontent.com/mesa-hills-research/gpui_kit/main/docs/images/kit-light.png" alt="A notes window built with GPUI Kit, with Rust code highlighted on the left and a spelling menu open in a text editor on the right." width="830">
+</picture>
 
-## Changes from upstream
+The changes below include a text editor mode with spell checking and CUA, Emacs and Vim keys, a
+font picker, Mesquite syntax highlighting, more themes, golden screenshot tests, a generator for
+new apps and many fixes.
+
+## Changes from GPUI Kit 0.7.1
 
 - **Published as `mhr-gpui-kit`**. The published crates are `mhr-gpui-kit`, `mhr-gpui-kit-base`,
   `mhr-gpui-kit-component`, `mhr-gpui-kit-component-macros`, `mhr-gpui-kit-assets` and
@@ -382,11 +395,6 @@ cd my-app && cargo run
 ```
 
 [docs/app-template.md](docs/app-template.md) describes the generated app.
-
-## Following upstream
-
-Each upstream release lands as one commit that holds the release as tagged, minus upstream's
-Dependabot config. The fork's own changes follow as separate commits, each with its test.
 
 ---
 
