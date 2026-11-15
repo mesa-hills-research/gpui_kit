@@ -298,10 +298,13 @@ fn render_scrollbar<H: ScrollbarHandle + Clone>(
         )
 }
 
-#[cfg(feature = "test-support")]
-impl<E> ScrollableElement for gpui_base::test_support::Observed<E> where
-    E: ScrollableElement + Element<PrepaintState = Option<gpui::Hitbox>>
-{
+// `test_support()` returns `Observed` whenever gpui-base's `test-support` is on,
+// which another crate in the build can turn on without this crate's feature.
+gpui_base::with_test_support! {
+    impl<E> ScrollableElement for gpui_base::test_support::Observed<E> where
+        E: ScrollableElement + Element<PrepaintState = Option<gpui::Hitbox>>
+    {
+    }
 }
 
 #[cfg(test)]

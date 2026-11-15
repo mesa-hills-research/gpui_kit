@@ -77,6 +77,30 @@ jobs:
       - name: Test without default features
         run: python3 script/check-ai rust
 
+  # The `test` job turns on the gallery's test support, and Cargo merges the
+  # features every crate in a build asks for. This job builds the six crates
+  # that publish together with only their own features, as an application
+  # gets them, so a crate that relies on a feature only the gallery turns on
+  # fails here.
+  published-crates:
+    name: Published crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Replaces the system `ld` on Linux and is a no-op elsewhere.
+      - uses: rui314/setup-mold@v1
+      - name: Install system dependencies
+        run: script/bootstrap
+      - name: Test the published crates on their own features
+        run: >-
+          cargo test --locked
+          -p mhr-gpui-kit -p mhr-gpui-kit-component -p mhr-gpui-kit-base
+          -p mhr-gpui-kit-writing -p mhr-gpui-kit-assets
+          -p mhr-gpui-kit-component-macros
+
   test:
     name: Test
     strategy:

@@ -102,6 +102,12 @@ CI tests the workspace with the gallery's test support, which also turns on the 
 cargo test --workspace --features gpui-component-story/test-support
 ```
 
+It also tests the published crates together on their own features, so none of them relies on a feature that only the gallery turns on:
+
+```bash
+cargo test -p mhr-gpui-kit -p mhr-gpui-kit-component -p mhr-gpui-kit-base -p mhr-gpui-kit-writing -p mhr-gpui-kit-assets -p mhr-gpui-kit-component-macros
+```
+
 Test behavior, interaction, data flow and regressions. A change that only adjusts sizes or looks needs no test that asserts them. Use a plain `#[test]` where no GPUI context is needed, and `#[gpui::test]` when the test renders, opens a window or sends events.
 
 ### Accessibility-driven UI testing

@@ -8,6 +8,26 @@ pub type ObservedElement<E> = crate::test_support::Observed<E>;
 #[cfg(not(feature = "test-support"))]
 pub type ObservedElement<E> = E;
 
+/// Keeps its items when this crate's `test-support` feature is on, which is
+/// when [`TestSupportExt::test_support`] returns an observed element. A crate
+/// above implements its element traits for `test_support::Observed` inside it,
+/// so the impls exist whenever the type does, whichever crate turned the
+/// feature on.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "test-support")]
+macro_rules! with_test_support {
+    ($($item:item)*) => {
+        $($item)*
+    };
+}
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "test-support"))]
+macro_rules! with_test_support {
+    ($($item:item)*) => {};
+}
+
 /// Registers an existing element for UI queries. Its native accessibility
 /// properties are read automatically; there are no test-only property setters.
 ///
