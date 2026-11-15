@@ -195,7 +195,7 @@ cpal = { version = "0.15.3", optional = true }
 # (`tree_sitter`, `tree_sitter_rust`, ...), and the dependency names below keep the
 # upstream crates' names. The grammars share the `mesquite_language` crate with
 # `mesquite`, so keep them on releases that agree, and keep examples/editor/Cargo.toml
-# and the Editor page (website/component/editor.md) on the same grammar release.
+# on the same grammar release.
 tree-sitter                   = { package = "mesquite", version = "0.26.0", optional = true }
 tree-sitter-astro-next        = { package = "mesquite_astro", version = "0.2.0", optional = true }
 tree-sitter-bash              = { package = "mesquite_bash", version = "0.2.0", optional = true }

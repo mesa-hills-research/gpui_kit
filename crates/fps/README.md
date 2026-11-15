@@ -26,11 +26,9 @@ which is `1 / FRAME` capped by the display's refresh rate. It is derived rather
 than counted, because the only way to *count* it is to keep the window drawing
 back to back — a full layout and paint per frame, charged to the application.
 Right-click switches it to `FPS`, frames actually presented per second; click
-collapses the HUD to a tag. The reasoning is in the [FPS Monitor docs].
+collapses the HUD to a tag.
 
 It does not depend on `gpui-component`, so it works in any GPUI application.
-
-[FPS Monitor docs]: https://github.com/mesa-hills-research/gpui_kit/blob/main/website/docs/fps.md
 
 ## Usage
 

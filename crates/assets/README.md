@@ -65,8 +65,7 @@ On native platforms, this embeds only the original component icons listed in
 `default-icons.txt`. Existing `Assets::get`, `Assets::iter`, `Assets::new` and
 `AssetSource` behavior remain available. Applications can embed additional SVGs
 with their own asset source and fall back to `Assets` for component paths, as
-before. See [Icons & Assets](https://github.com/mesa-hills-research/gpui_kit/blob/main/website/docs/assets.md) and
-[the extra-assets example](examples/extra_assets.rs) for source composition.
+before. See [the extra-assets example](examples/extra_assets.rs) for source composition.
 
 For selecting bundled extras without copying SVG files, the optional macro
 creates a separate source:

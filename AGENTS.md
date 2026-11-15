@@ -9,8 +9,8 @@ Before changing UI, interaction, interface language, layout, styling,
 components, or application architecture, read and follow the repository's
 canonical guides:
 
-- [Design Guides](website/docs/design-guides.md)
-- [Coding Guides](website/docs/coding-guides.md)
+- [Design Guides](skills/gpui-kit-design-guides/references/design-guides.md)
+- [Coding Guides](skills/gpui-kit/references/coding-guides.md)
 
 These guides are requirements, not optional inspiration. Do not copy generic
 web conventions, infer a design system from one existing screen, or add a
@@ -21,7 +21,7 @@ finished work against both guides before considering it complete.
 
 ## Project Overview
 
-GPUI Kit is a Rust desktop application framework built on GPUI, published at <https://gpui-kit.com>. It ships as three crates: `gpui-base` (unstyled behavior and infrastructure), `gpui-shell` (JavaScript extensions for a Rust host), and `gpui-component` (GPUI Component, the styled component library with 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design). Applications depend on the umbrella crate `gpui-kit` (`crates/kit`, published as `mhr-gpui-kit` because crates.io's `gpui-kit`, `gpui-base` and `gpui-component` belong to other projects, with the library names unchanged), which pins the matching `mhr-gpui` crates and puts GPUI at its root (`use gpui_kit::*;`) with `gpui_kit::platform`, `gpui_kit::base`, `gpui_kit::component` and `gpui_kit::assets` reachable by name, so they never list GPUI itself. `gpui-shell` is not part of `gpui-kit` and is not published yet (its `llrt_*` dependencies are git-only); use it as a git dependency.
+GPUI Kit is a Rust desktop application framework built on GPUI. It ships as three crates: `gpui-base` (unstyled behavior and infrastructure), `gpui-shell` (JavaScript extensions for a Rust host), and `gpui-component` (GPUI Component, the styled component library with 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design). Applications depend on the umbrella crate `gpui-kit` (`crates/kit`, published as `mhr-gpui-kit` because crates.io's `gpui-kit`, `gpui-base` and `gpui-component` belong to other projects, with the library names unchanged), which pins the matching `mhr-gpui` crates and puts GPUI at its root (`use gpui_kit::*;`) with `gpui_kit::platform`, `gpui_kit::base`, `gpui_kit::component` and `gpui_kit::assets` reachable by name, so they never list GPUI itself. `gpui-shell` is not part of `gpui-kit` and is not published yet (its `llrt_*` dependencies are git-only); use it as a git dependency.
 
 This is a Rust workspace project with the following main crates:
 
@@ -302,22 +302,14 @@ Uses `rust-i18n` crate.
 
 ## Documentation
 
-- The documentation site source is in `website/`.
-- Site docs are English only (`website/docs/`).
-- `docs/` holds internal architecture specifications (RFC, migration status, reviews).
-  These are single-language and are not published to the site; see `docs/README.md`.
+- API documentation is the rustdoc of each crate, built on docs.rs. Upstream's site,
+  <https://gpui-kit.com>, covers GPUI Kit in general.
+- `docs/` holds internal architecture specifications (RFC, migration status, reviews). See
+  `docs/README.md`.
 - `skills/gpui-kit/references/coding-guides.md` and
-  `skills/gpui-kit-design-guides/references/design-guides.md` are verbatim copies
-  of the English `website/docs/` originals, vendored so the skills work after
-  `npx skills add` in a project that does not have this repo. After editing either
-  guide, copy it across:
-
-  ```bash
-  cp website/docs/design-guides.md skills/gpui-kit-design-guides/references/design-guides.md
-  cp website/docs/coding-guides.md skills/gpui-kit/references/coding-guides.md
-  ```
-
-  Never edit the copy directly — edit `website/docs/`.
+  `skills/gpui-kit-design-guides/references/design-guides.md` are the canonical guides. They are
+  vendored in the skills so the skills work after `npx skills add` in a project that does not have
+  this repo. Edit them in place.
 
 ## Platform Support
 

@@ -13,8 +13,7 @@ Spell checking and learned word suggestions for GPUI Kit's `TextareaState`.
   `WritingOptions` says where its files live.
 
 Applications usually enable it through `mhr-gpui-kit`'s `writing` feature and
-reach it as `gpui_kit::writing`. See
-[Spell Checking and Word Suggestions](../../website/docs/writing.md).
+reach it as `gpui_kit::writing`.
 
 The bundled word list comes from SCOWL by Kevin Atkinson, under its own
 permissive license: see [NOTICE](NOTICE).

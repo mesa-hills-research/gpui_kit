@@ -5367,7 +5367,7 @@ mod tests {
         }
         assert_uri("https://example.com/logo.png");
         assert_uri("http://example.com/logo.png");
-        assert_uri("website/public/logo.svg");
+        assert_uri("assets/readme-header-light.svg");
         assert_uri("./images/a.png");
         assert_uri("../images/a.png");
         assert_uri("/absolute/path/logo.svg");

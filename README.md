@@ -21,6 +21,9 @@ The changes below include a text editor mode with spell checking and CUA, Emacs 
 font picker, Mesquite syntax highlighting, more themes, golden screenshot tests, a generator for
 new apps and many fixes.
 
+For general documentation, see [upstream GPUI Kit's own site](https://gpui-kit.com). The entries
+below link to this fork's API pages on docs.rs.
+
 ## Changes from GPUI Kit 0.7.1
 
 - **Published as `mhr-gpui-kit`**. The published crates are `mhr-gpui-kit`, `mhr-gpui-kit-base`,
@@ -37,7 +40,7 @@ new apps and many fixes.
   use it. The fills of Markdown table
   headers, DataTable headers, bordered DescriptionList labels and bordered Accordion items round
   at the corners of their frame, so a square fill no longer pokes past a rounded border. See
-  [Style](website/docs/style.md).
+  [`concentric_radius`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/fn.concentric_radius.html).
 - **Bordered segmented tabs** (`gpui-component`). Segmented tabs sit on the window background
   inside a 1 px border that shows in every theme. The selected option has a thin outline, with the
   window's own fill on light themes and a `secondary` fill on dark ones. Other options use muted
@@ -62,36 +65,36 @@ new apps and many fixes.
   color keeps the edge where that surface matches the page, and `TextViewStyle::with_code_border`
   sets it for other styles. `Theme::editor_background()` is public, so an application that draws
   code of its own can fill the same surface. See
-  [Theme: editor colors](website/component/theme.md#editor-colors).
+  [`Theme::editor_background`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/theme/struct.Theme.html#method.editor_background).
 - **Streaming tables grow a row at a time** (`gpui-base`). While text is appended, a table's last
   row that starts with a pipe shows once it is whole. Each word of a row drawn as it came could
   widen its column and re-wrap every row, so a table kept at the bottom of a view jumped up and
   down. Call `TextViewState::finish` when the text is done, so a row it stopped in shows. A
   `TextView::markdown(id, text)` view shows rows as they come. See
-  [TextView: retained state and streaming updates](website/base/text-view.md#retained-state-and-streaming-updates).
+  [`TextViewState`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.TextViewState.html).
 - **A copy button that confirms** (`gpui-component`). `Clipboard` cross-fades its copy icon to a
   check mark in the theme's success color, holds it for a second and fades back, where the icon
   swapped for two seconds with no motion. Reduced motion swaps them at once. `Clipboard::tab_stop`
   and its styles, which go to the button, let an application use it for copy buttons that show on
-  hover. See [Clipboard](website/component/clipboard.md).
+  hover. See [`Clipboard`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/clipboard/struct.Clipboard.html).
 - **A selection ends on every release** (`gpui-base`). The window's text selection sees the button
   come up even when a drop target stops the release, as the end of a pane resized by dragging
   does. Text no longer highlights as the pointer moves over it afterwards.
 - **Keys still reach a focused row scrolled out of view** (`gpui-base`). While the window has a
   selection, a text view holding focus keeps its keys when a list no longer draws it, so Cmd-C
   or Ctrl-C copies the whole selection, and Select All and the context menu keys still work. See
-  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
+  [`TextView`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.TextView.html).
 - **Separate views in one document** (`gpui-base`, `gpui-component`). `TextView::document_position`
   and `SelectableText::document_position` place views the application shows apart, such as the
   messages of a conversation, in one document, so a selection across them keeps both ends and
   copies whole while one scrolls out of view. See
-  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
+  [`TextView::document_position`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.TextView.html#method.document_position).
 - **A context menu for selectable text** (`gpui-base`, `gpui-component`). A right-click on a
   selectable `TextView` or `SelectableText`, or Shift-F10 and the Menu key in a focused text view,
   opens a menu with Copy and Select All in the application's context menu style. Copy copies the
   whole window selection as Ctrl-C does, and the right-click leaves the selection as it is.
   `TextSelectionMenu::set_builder` adds an application's own items. See
-  [TextView: context menu](website/component/text-view.md#context-menu).
+  [`TextSelectionMenu`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/text/struct.TextSelectionMenu.html).
 - **A right-click keeps the selection it lands on** (`gpui-base`). A right-click on a selection,
   just past its end or below the text after Select All, opens the menu with the selection kept,
   and so do Shift-F10 and the Menu key, so Copy, Cut and Paste act on it.
@@ -99,7 +102,7 @@ new apps and many fixes.
   `ContextMenuStyle::set_app_default` chooses between the operating system's menu and the menu
   GPUI draws in the theme's colors for every input, textarea and editor without a style of its
   own, the ones inside other components too, such as the Settings search field. See
-  [Input: context menu](website/component/input.md#context-menu).
+  [`ContextMenuStyle`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/input/enum.ContextMenuStyle.html).
 - **Long paragraphs with inline code stream faster** (`gpui-base`). A paragraph with inline code,
   images or inline objects lays out and paints only the lines in view, unless a selection needs
   every line, and text streamed onto its end lays out again only the lines it can change.
@@ -115,7 +118,7 @@ new apps and many fixes.
   that holds an end copies only the part that is selected, and a row's position can be any
   `u64`. Shift-click extends the selection from an end scrolled out of view.
   `TextSelectionRegistration::with_document_position` gives other participants the same. See
-  [TextView](website/component/text-view.md#a-long-document-as-rows).
+  [`TextSelectionRegistration`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/struct.TextSelectionRegistration.html).
 - **Less memory after scrolling a long transcript** (`gpui-base`). Text views let go of the
   shaped text of rows a list scrolled past, which they kept for as long as the views lived. One
   pass through 160 answers (318 KB of Markdown) now leaves 2 MB on the heap, where it left 25 MB.
@@ -126,45 +129,45 @@ new apps and many fixes.
 - **The menu bar's keys with nothing focused** (`gpui-component`). F10, a tap of Alt and Alt with
   a menu's letter reach the `AppMenuBar` on Windows and Linux in a window where nothing has focus
   yet, and holding Alt underlines the menus' letters there too. See
-  [Title Bar](website/component/title-bar.md#menu-bar-and-the-keyboard).
+  [`AppMenuBar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/menu/struct.AppMenuBar.html).
 - **Paging a message scroller** (`gpui-component`). `MessageScrollerState` scrolls by a distance
   with `scroll_by`, reports the viewport's height with `viewport_height`, and keeps and restores
   the reader's place with `logical_scroll_top` and `scroll_to_offset`. See
-  [MessageScroller](website/component/message-scroller.md#page-and-keep-the-readers-place).
+  [`MessageScrollerState`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/message_scroller/struct.MessageScrollerState.html).
 - **Cmd-Left and Cmd-Right in the Emacs and Vim keys on macOS** (`gpui-base`). They go to the
   start and end of the line, as in CUA and every Mac text field, extending Emacs's active region
   and moving as `0` and `$` in Vim. See
-  [Textarea: keybindings](website/component/textarea.md#keybindings).
+  [`Keymap`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/enum.Keymap.html).
 - **Paragraphs a blank line apart in copied text** (`gpui-base`). Plain-text copy of a text view,
   and `rendered_text()`, put a blank line between blocks, where there was one line break, so
   pasted paragraphs stay apart. See
-  [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
+  [`RangeHighlight`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.RangeHighlight.html).
 - **Text colors on range highlights** (`gpui-base`, `gpui-component`).
   `RangeHighlight::with_text_color` paints the glyphs of a highlighted range in a color of their
   own, so the current result of a search stays readable on a strong background. The text keeps
   its layout, so the color moves from match to match without laying the text out again.
   `contrast_ratio` gives the WCAG contrast of two colors, for choosing one that reads on the
-  highlight. See [TextView: highlight ranges](website/component/text-view.md#highlight-ranges).
+  highlight. See [`RangeHighlight`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.RangeHighlight.html).
 - **The layout of selectable text** (`gpui-base`). `SelectableText::layout` returns the
   `TextLayout` the text is drawn with, so an element around it can find where an offset is drawn
   without shaping the text again. See
-  [Text Selection](website/base/text-selection.md#selectable-highlighted-text).
+  [`SelectableText`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/struct.SelectableText.html).
 - **A frame rate per shimmer** (`gpui-component`). `ShimmerStyle::max_fps` and
   `ShimmerText::max_fps` set how many frames a second a shimmer draws, 30 by default. See
-  [Shimmer](website/component/shimmer.md#styling-theme-and-reduced-motion).
+  [`ShimmerStyle`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/shimmer/struct.ShimmerStyle.html).
 - **Keyboard navigation in tab bars and sidebar menus** (`gpui-base`, `gpui-component`). A
   `TabBar` and a `SidebarMenu` are each one Tab stop, on the selected tab or the active item, and
   the arrow keys, Home and End move focus between their enabled items. Enter or Space activates
   the focused one, and in a sidebar Right and Left open and close submenus. A sidebar taller than
   its window scrolls to the item that takes focus. `RovingFocus` gives other controls the same
-  behavior. See [Tabs](website/component/tabs.md#keyboard) and
-  [Sidebar](website/component/sidebar.md#keyboard).
+  behavior. See [`TabBar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/tab/struct.TabBar.html) and
+  [`SidebarMenu`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/sidebar/struct.SidebarMenu.html).
 - **Cached Settings groups** (`gpui-component`). `SettingGroup::key` reuses unchanged groups
   while editable controls keep their own redraws. Groups without a key keep the existing
-  behavior. See [Settings](website/component/settings.md#cache-independent-groups).
+  behavior. See [`SettingGroup`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/setting/struct.SettingGroup.html).
 - **Settings in narrow windows** (`gpui-component`). Below 480 px, `Settings` shows its search
   field and a page picker above the page instead of the sidebar. See
-  [Settings](website/component/settings.md#narrow-widths).
+  [`Settings`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/setting/struct.Settings.html).
 - **Long Settings fields stay in their rows** (`gpui-component`). A field too wide to sit beside
   its title moves below it, and a dropdown label wider than the row is truncated.
 - **Steady text when typing at the end of a Textarea** (`gpui-base`). Multi-line inputs clamp the
@@ -174,39 +177,39 @@ new apps and many fixes.
   `SuggestionProvider` and offers its suggestions in a menu under the word, as ghost text after the
   caret, or both, while staying a plain text area. Answers for text that has since changed are
   dropped, and the provider hears every edit with a revision. See
-  [Textarea: suggestions](website/component/textarea.md#suggestions).
+  [`SuggestionProvider`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/trait.SuggestionProvider.html).
 - **A text editor** (`gpui-base`, `gpui-component`). `TextareaState::text_editor` and
   `TextEditor` make a textarea a prose editor with line numbers, search and the application's
   spell checker. Misspelled words get wavy underlines that move with edits, and a right-click on
   one, or Shift-F10 and the Menu key at the caret, offers the checker's suggestions, Add to
   Dictionary and Ignore. Line numbers, marks (underlines that follow the text) and a context menu
   that knows the clicked word work on any textarea. See
-  [Textarea: text editor](website/component/textarea.md#text-editor).
+  [`TextEditor`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/input/struct.TextEditor.html).
 - **Spell checking and learned word suggestions** (`gpui-kit-writing`, feature `writing` on
   `gpui-kit`). A `Writing` handle loads an English dictionary (SCOWL), the user's own words and
   a vocabulary learned from what they type, and gives every textarea a spell checker that skips
   code, paths and URLs, and a suggestion provider that completes the word and predicts the next,
-  paced Off, Quiet or Eager. See [Spell checking and word suggestions](website/docs/writing.md).
+  paced Off, Quiet or Eager. See [`gpui_kit_writing`](https://docs.rs/mhr-gpui-kit-writing/latest/gpui_kit_writing/).
 - **Send keys for composers** (`gpui-base`). `TextareaState::submit_keys` makes any of Enter,
   Shift+Enter and Cmd/Ctrl+Enter submit a multi-line input without inserting anything, while the
   other Enter chords break lines. `SubmitKey` is a public, serializable setting. The deprecated
   `submit_on_enter(true)` stays, as Enter and Cmd/Ctrl+Enter. See
-  [Textarea: send key](website/component/textarea.md#send-key).
+  [`SubmitKey`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/enum.SubmitKey.html).
 - **Keybinding schemes** (`gpui-base`, `gpui-component`). A textarea follows CUA, Emacs or Vim keys
   and switches between them at run time. CUA binds each platform's own text-field shortcuts in
   every input, Emacs adds the mark, the kill ring and prefix arguments, and Vim its modes,
   operators, text objects, registers and command line. See
-  [Textarea: keybindings](website/component/textarea.md#keybindings), and
+  [`Keymap`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/enum.Keymap.html), and
   [docs/keymaps.md](docs/keymaps.md) for working on the schemes.
 - **Search-match colors** (`gpui-component`). `search_match` and `search_match_active` theme
   tokens distinguish matches from the current result, with yellow defaults at 25% and 55%
-  opacity. See [Theme](website/component/theme.md#search-matches).
+  opacity. See [`ThemeColor`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/theme/struct.ThemeColor.html).
 - **Inline reference tooltips** (`gpui-component`). `InputToken::tooltip` shows extra context
   on hover, with the same delay and dismissal as other component tooltips. See
-  [Input](website/component/input.md#show-a-tooltip-or-preview-on-hover).
+  [`InputToken`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/input/struct.InputToken.html).
 - **Selectable highlights** (`gpui-base`). `SelectableText::highlights` styles byte ranges
   while keeping the text selectable and copyable. See
-  [Text Selection](website/base/text-selection.md#selectable-highlighted-text).
+  [`SelectableText`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/struct.SelectableText.html).
 - **Quiet inactive inputs** (`gpui-base`). Caret blinking stops when the window becomes
   inactive and resumes when its focused input becomes active again.
 - **A smooth caret** (`gpui-base`). `smooth_caret(true)` on any input (a single-line input, a
@@ -214,17 +217,16 @@ new apps and many fixes.
   uncovered by the caret as it passes, and the rest of the line follows it. Off by default, and
   `set_app_smooth_caret` turns it on for every field that doesn't choose for itself, the ones
   inside other components too, such as the Settings search field. See
-  [Textarea: smooth caret](website/component/textarea.md#smooth-caret) and
-  [Input: smooth caret](website/component/input.md#smooth-caret).
+  [`set_app_smooth_caret`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/fn.set_app_smooth_caret.html).
 - **The system's reduced-motion setting, followed** (`gpui-base`). `gpui_base::init` reads it on
   macOS, Windows and Linux, and Base follows changes: macOS's accessibility notification, Linux's
   desktop portal, and on Windows a new reading whenever a window with a Base `Root` becomes
   active. An application that sets the flag itself keeps it. See
-  [Motion](website/base/motion.md).
+  [`gpui_base::motion`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/motion/index.html).
 - **Nested scrolling** (`gpui-component`). A List or an `overflow_*_scrollbar` area inside a
   scrolling page keeps the wheel while it can scroll, where GPUI scrolled the page along with
   it. At its end the page takes over with the next gesture. See
-  [Scrollable: inside another scroll area](website/component/scrollable.md#inside-another-scroll-area).
+  [`Scrollable`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/scroll/struct.Scrollable.html).
 - **Compact line numbers** (`gpui-base`). The line-number gutter of the code editor and of a
   textarea is as wide as the last line's number needs, from two digits, with the numbers
   right-aligned, and leaves room for folding markers only while folding is on.
@@ -235,7 +237,7 @@ new apps and many fixes.
   tree-sitter and its grammars from [Mesquite](https://github.com/mesa-hills-research/mesquite),
   a pure Rust port, so they build without a C compiler and cross-compile to Windows without
   MinGW headers. Kotlin and Svelte use the tree-sitter-kotlin-ng and tree-sitter-svelte-ng
-  grammars. See [Editor: basic usage](website/component/editor.md#basic-usage).
+  grammars. See [`Editor`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/input/struct.Editor.html).
 - **Code highlighting that keeps up with a stream** (`gpui-base`, `gpui-component`). Fenced code
   blocks are highlighted on a background thread, and a frame spends about 20 µs on a block's
   highlights, where a chunk of a 200 KB block of flat code such as Python, JSON or Markdown took 12
@@ -244,7 +246,7 @@ new apps and many fixes.
   scratch when its fence closes. A block shown in part is highlighted as far as its shown lines.
   Highlights are shared with the block rather than copied every frame, and a theme change
   recolors them without parsing. See
-  [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
+  [`TextView`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.TextView.html).
 - **More code languages** (`gpui-component`). Dart, Elm, Erlang, F#, GLSL, Haskell, HCL, Julia,
   Objective-C, OCaml, Perl, PowerShell, R and XML highlight with Mesquite's grammars and their
   projects' queries, and fences find their grammar by the names they usually carry (`shell`,
@@ -254,7 +256,7 @@ new apps and many fixes.
   first highlight, which took about a second and 75 MB. A code block whose language is not ready
   shows plain code while the language compiles on a background thread, and
   `LanguageRegistry::warm_up` prepares languages ahead of time. See
-  [TextView: code highlighting while streaming](website/component/text-view.md#code-highlighting-while-streaming).
+  [`LanguageRegistry`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/highlighter/struct.LanguageRegistry.html).
 - **Long answers as list rows** (`gpui-base`). `TextViewState::block_range` shows some top-level
   blocks of a document that another `TextViewState` parses, and `TextViewState::blocks` lists them
   with stable ids, so a chat transcript can show a long answer as rows of a list and lay out only
@@ -263,7 +265,7 @@ new apps and many fixes.
   Markdown extensions and plugins, which its rows render with, and a `TextView` given none leaves
   its state's as they are. `TextView::code_block_max_lines` shows the first lines of each code
   block. See
-  [TextView: a long document as rows](website/component/text-view.md#a-long-document-as-rows).
+  [`TextViewState::block_range`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/text/struct.TextViewState.html#method.block_range).
 - **Loading indicators at 30 frames a second** (`gpui-component`). Skeleton, the loading Progress
   and ProgressCircle, ShimmerText and the shimmer of loading Markers draw at most
   `LOADING_ANIMATION_MAX_FPS` (30) frames a second, so an indicator left up through a long request
@@ -282,66 +284,65 @@ new apps and many fixes.
   value with a tick, stack labelled `ProgressSegment`s along the ring or bar, take a track colour
   (and the ring a stroke width), and read out a value text such as "142k of 1M tokens" instead of
   a bare percentage. `UsageBar` shows a bar with its label, its amount and a legend of its
-  segments in text. See [Progress](website/component/progress.md#usagebar).
+  segments in text. See [`UsageBar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/progress/struct.UsageBar.html).
 - **Work Sans and JetBrains Mono** (`gpui-kit-assets`). The `fonts` feature embeds both as
   variable fonts, upright and italic, so medium, semibold and bold text use the real weights.
-  `gpui_kit::assets::fonts::all()` goes straight to `add_fonts`. See
-  [Fonts: bundled Work Sans and JetBrains Mono](website/docs/fonts.md#bundled-work-sans-and-jetbrains-mono).
+  `gpui_kit::assets::fonts::all()` goes straight to `add_fonts`.
 - **Bundled themes, a user folder, and fonts that stay** (`gpui-component`). `ThemeRegistry`
   keeps themes an app embeds (`add_bundled_themes_from_str`) across reloads of the watched
   folder, whose themes replace bundled ones of the same name ignoring case. The folder is read
   on a background thread (`ThemeRegistry::load_dir` reads a folder once, without a watcher, for
   tests). `Theme::set_font_overrides` sets the app's UI and mono fonts and sizes once, and every
   theme applied after keeps them, in one update. See
-  [Theme: font overrides](website/component/theme.md#font-overrides).
+  [`FontOverrides`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/theme/struct.FontOverrides.html).
 - **Code with or without ligatures** (`gpui-base`, `gpui-component`).
   `FontOverrides::with_mono_font_features` sets the monospace font's OpenType features, such as
   `calt` and `liga` turned off, and every theme applied after keeps them. Code blocks and inline
   code in text views, the diff view, the code editor and key caps use them, and text in the UI
   font keeps its own. See
-  [Theme: code font features](website/component/theme.md#code-font-features).
+  [`FontOverrides::with_mono_font_features`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/theme/struct.FontOverrides.html#method.with_mono_font_features).
 - **Sidebars and sheets that can snap** (`gpui-component`). `Sidebar::transition_duration` and
   `Sheet::transition_duration` set how long collapsing or sliding in takes, `Duration::ZERO`
   snaps, and both default to the theme's normal motion duration instead of fixed 200 ms and
-  150 ms. See [Sidebar: collapse transition](website/component/sidebar.md#collapse-transition).
+  150 ms. See [`Sidebar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/sidebar/struct.Sidebar.html).
 - **An image cache with a budget** (`gpui-base`). `LruImageCache` unloads the least recently
   drawn images once their decoded size passes a budget, never one still on screen, and decodes
   in-memory images (`LruImageCache::source`) on a background thread, scaled to fit a thumbnail
   if asked. It refuses an image larger than the whole budget from its header, before decoding.
   GPUI otherwise keeps every `ImageSource::Image` for the life of the app. See
-  [Image Cache](website/base/image-cache.md).
+  [`LruImageCache`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/image_cache/struct.LruImageCache.html).
 - **An image viewer** (`gpui-component`). `window.open_image_viewer(items, ix, cx)` shows a set of
   images over the window, fitted or at actual size (Z or a double-click), with a "2 / 5"
   counter and captions. ←/→, Page Up/Page Down and Home/End browse, the arrows pan an image
   at actual size, and Escape closes it and gives focus back to the thumbnail. Dialogs stack
   with it in the order they open. It only fades in, and not at all under reduced motion. See
-  [Image Viewer](website/component/image-viewer.md).
+  [`ImageViewer`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/image_viewer/struct.ImageViewer.html).
 - **Background font catalogs** (`gpui-component`). `FontCatalog::load` enumerates installed
   families on the background executor. Pickers keep their search and selection as fonts arrive,
   and `FontPickerState::set_catalog` updates an open picker in place. See
-  [FontPicker](website/component/font-picker.md#loading-and-replacing-a-catalog).
+  [`FontPickerState::set_catalog`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/font_picker/struct.FontPickerState.html#method.set_catalog).
 - **Font pickers with only the rows a setting keeps** (`gpui-component`).
   `FontPicker::show_weight`, `show_line_height` and `show_features` leave those rows out, for a
   setting that stores only a family and a size. `show_monospace_filter(false)` hides the
   monospace checkbox without changing the filter. See
-  [FontPicker](website/component/font-picker.md#compact-layout).
+  [`FontPicker`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/font_picker/struct.FontPicker.html).
 - **A diff view** (`gpui-component`). `DiffView` shows `Diff::between(path, old, new)` or
   `Diff::parse(unified)` with old and new line numbers, added and removed lines on the
   success and danger colors and marked `+`/`-`, hunk headers, syntax colors by extension
   (found off the UI thread, colored at paint), unchanged lines that fold and unfold, line
   break and final-newline changes, renames, modes and binary files, and a Copy button per
   file, in a virtualized list that can size to its rows and scrolls by keyboard. See
-  [Diff View](website/component/diff-view.md).
+  [`DiffView`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/diff_view/struct.DiffView.html).
 - **Window chrome per platform** (`gpui-component`). Windows gets Windows 11 caption buttons (46
   px, Segoe Fluent Icons glyphs, the close red, disabled for windows that can't be resized or
   minimized, dimmed while inactive), Linux buttons follow the desktop's button layout, sides and
   order, and the macOS inset drops in full screen. F10 or an Alt tap focuses the `AppMenuBar`,
   arrows move, Alt with a menu's underlined letter opens it. See
-  [TitleBar: menu bar and the keyboard](website/component/title-bar.md#menu-bar-and-the-keyboard).
+  [`AppMenuBar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/menu/struct.AppMenuBar.html).
   `TitleBar::center` centers a title on the window, moving it aside for the content beside it
   and narrowing it when the bar runs out of room, and `suffix` puts content just before the
-  window buttons. See [Centered title](website/component/title-bar.md#centered-title) on the
-  TitleBar page.
+  window buttons. See
+  [`TitleBar`](https://docs.rs/mhr-gpui-kit-component/latest/gpui_component/struct.TitleBar.html).
 - **GPUI from the gpui fork.** The kit pins the published `mhr-gpui` crates, each to an exact
   version, where upstream pins the `gpui-pre` snapshots. To work on both repositories together,
   see [crates/kit/TESTING.md](crates/kit/TESTING.md#working-on-the-gpui-fork-alongside).
@@ -356,18 +357,18 @@ new apps and many fixes.
   is drawn only on frames that draw the element it describes, so it disappears with a button
   whose click closes its page or a row that re-renders away, and one waiting for its show delay
   never appears. `TooltipTrigger` and `TooltipRequest::for_trigger` give a custom trigger the
-  same. See [Tooltip: when the trigger goes away](website/component/tooltip.md#when-the-trigger-goes-away).
+  same. See [`TooltipTrigger`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/struct.TooltipTrigger.html).
 - **Tooltips along a row of buttons** (`gpui-base`, `gpui-component`, `gpui-shell`). While a
   tooltip is up, the next button's replaces it once the pointer rests there for a tenth of a
   second, so sweeping across a row of buttons leaves the open tooltip in place instead of flashing
   each button's. The box then moves and resizes to the new tooltip and uncovers its text, which
   stays where it is. See
-  [Tooltip: moving between tooltips](website/component/tooltip.md#moving-between-tooltips).
+  [`TooltipTransition`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/enum.TooltipTransition.html).
 - **No tooltip over an open menu** (`gpui-base`, `gpui-component`). While a dropdown menu,
   popover or context menu is open, its trigger and the elements inside it show no tooltip, so none
   covers the menu when the pointer comes back to the trigger. `prepaint_popup_trigger` gives a
   custom popup host the same. See
-  [Tooltip: while a menu is open](website/component/tooltip.md#while-a-menu-is-open).
+  [`prepaint_popup_trigger`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/fn.prepaint_popup_trigger.html).
 - **A generator for new apps** (`gpui_new`), described in [Starting a new app](#starting-a-new-app).
 
 ## Using it
@@ -400,5 +401,4 @@ cd my-app && cargo run
 
 This is a fork of [GPUI Kit](https://github.com/longbridge/gpui-kit) by Longbridge, built on
 [GPUI](https://github.com/zed-industries/zed), the UI framework from Zed Industries. The licence
-files and notices of both come with the fork. The software is under [Apache-2.0](LICENSE-APACHE)
-and the documentation under [LICENSE-DOCS.md](LICENSE-DOCS.md).
+files and notices of both come with the fork. The fork is under [Apache-2.0](LICENSE-APACHE).

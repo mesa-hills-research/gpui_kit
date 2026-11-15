@@ -9,11 +9,6 @@ Enable `gpui-kit/test-support` under development dependencies and import
 `gpui_kit::test::{TestWindowExt, TestAppContextExt, TestSupportExt, ElementSnapshot}`.
 The implementation uses GPUI public APIs, with no fork, Cargo patch or separate crate.
 
-Read the [testing guide](../../website/docs/test.md) for
-setup, a compiled application workflow, the control coverage matrix, scoped IDs,
-state assertions, mouse/keyboard/scroll/drag operations, async waits and CI.
-The [Chinese guide](../../website/zh-CN/docs/test.md) covers the same API.
-
 For a component regression example, start with the
 [Input, Textarea and Editor suite](tests/input/README.md). It groups real editing
 workflows by behavior and explains how to add a case without bypassing focus,

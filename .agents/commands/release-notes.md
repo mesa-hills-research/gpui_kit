@@ -64,7 +64,7 @@ Rules:
 - Group by product area, ordered by significance: headline features (new
   platforms, new components), then editor and text input, Markdown and text
   rendering, motion, dock, other components (one bold component name per
-  bullet), shell, runtime and platform, documentation and website. Drop a
+  bullet), shell, runtime and platform, documentation. Drop a
   section that has nothing to say; merge small ones.
 - Every bullet cites its PR numbers as `[#n](https://github.com/longbridge/gpui-kit/pull/n)`
   at the end, in parentheses. Combine PRs that land one change into one bullet.

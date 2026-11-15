@@ -197,11 +197,11 @@ Base controls cannot suppress `hover` or `active` styles while disabled, because
 Text editing is split into purpose-specific controls instead of exposing the
 complete editor interface on every text field:
 
-| Control                                                 | State           | Use                                                                                       |
-| ------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
-| [`Input`](../../website/base/primitives/input.md)       | `InputState`    | Single-line values, masking, validation, and number stepping                              |
-| [`Textarea`](../../website/base/primitives/textarea.md) | `TextareaState` | Ordinary multi-line text, fixed rows, wrapping, and auto-grow                             |
-| [`Editor`](../../website/base/primitives/editor.md)     | `EditorState`   | Source code, highlighting, gutter, folding, decorations, diagnostics, and LSP integration |
+| Control                                                                                     | State           | Use                                                                                       |
+| ------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------- |
+| [`Input`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/struct.Input.html)       | `InputState`    | Single-line values, masking, validation, and number stepping                              |
+| [`Textarea`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/struct.Textarea.html) | `TextareaState` | Ordinary multi-line text, fixed rows, wrapping, and auto-grow                             |
+| [`Editor`](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/input/struct.Editor.html)     | `EditorState`   | Source code, highlighting, gutter, folding, decorations, diagnostics, and LSP integration |
 
 All three share the internal `InputBaseState` editing engine. Applications
 should construct the purpose-specific state rather than configuring modes on
@@ -236,7 +236,7 @@ A virtual list requires the caller to provide item sizes. Vertical lists use eac
 
 Foundation controls do not install animation automatically. Applications choose animation properties and timing according to their own visual language.
 
-See the [Motion guide](../../website/base/motion.md) and run its five focused interactive demonstrations with:
+See the [`motion` module](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/motion/index.html) and run its five focused interactive demonstrations with:
 
 ```bash
 cargo run -p gpui-base-examples --bin motion
@@ -324,7 +324,6 @@ style and motion contracts.
 ## Related Resources
 
 - [GPUI Kit repository](https://github.com/mesa-hills-research/gpui_kit)
-- [GPUI Kit documentation](https://github.com/mesa-hills-research/gpui_kit/tree/main/website/docs)
 - [`mhr-gpui-kit-component` crate](https://crates.io/crates/mhr-gpui-kit-component)
 - [`mhr-gpui-kit-base` API documentation](https://docs.rs/mhr-gpui-kit-base)
 - GPUI

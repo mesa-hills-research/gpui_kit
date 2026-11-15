@@ -27,7 +27,7 @@ Motion has a separate example because it demonstrates continuous behavior rather
 cargo run -p gpui-base-examples --bin motion
 ```
 
-The website builds `examples/wasm`, which imports the same `showcase/mod.rs` and selects the
+`examples/wasm` builds the same `showcase/mod.rs` for the browser and selects the
 component using the `?component=<slug>` query parameter.
 
 ## dock

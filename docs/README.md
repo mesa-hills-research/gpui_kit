@@ -15,4 +15,4 @@ rather than project-progress logs.
   model, capabilities and the sandbox, and the measured performance model.
 
 For component-level APIs and runnable examples, see the
-[gpui-base documentation](../website/base/index.md).
+[`gpui_base` API documentation](https://docs.rs/mhr-gpui-kit-base/latest/gpui_base/).
