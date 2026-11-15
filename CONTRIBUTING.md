@@ -66,7 +66,15 @@ and is not a guarantee that the proposed change will be accepted.
 
 Before you start to write code, please read the existing code to follow the same coding style and code organization.
 
+The [Coding Guides](skills/gpui-kit/references/coding-guides.md) and the [Design Guides](skills/gpui-kit-design-guides/references/design-guides.md) are the project's rules for code and interface, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the crate layers. Read them before changing a component.
+
 - Inspired by existing code or refer to macOS/Windows controls API design to name your functions, properties, structs etc.
+- Avoid `Kind` as a type-name suffix. Name an enum after what its variants are.
+- Tests, fixtures, examples and docs use made-up paths and names (`/home/ada/src`, "Acme Studio").
+
+### Commit messages
+
+A commit to one crate has the subject `<crate>: <behavior sentence>`, such as `gpui-base: A row's caret positions next to a token are its edges`. A change across the repository takes the sentence alone. Messages are public, so they describe the change for every user of the kit.
 
 ## Development and Testing
 
@@ -85,6 +93,16 @@ For Windows, you can run the following command in PowerShell:
 ```powershell
 .\script\install-window.ps1
 ```
+
+### Run the tests
+
+CI tests the workspace with the gallery's test support, which also turns on the headless UI tests in `crates/kit/tests`:
+
+```bash
+cargo test --workspace --features gpui-component-story/test-support
+```
+
+Test behavior, interaction, data flow and regressions. A change that only adjusts sizes or looks needs no test that asserts them. Use a plain `#[test]` where no GPUI context is needed, and `#[gpui::test]` when the test renders, opens a window or sends events.
 
 ### Accessibility-driven UI testing
 
@@ -126,7 +144,7 @@ cargo run -p example-editor
 
 ### Run the scripting shell
 
-The scripting shell (`gpui-shell`, `gpui-component-shell`) and the Shell story live in `shell/`, a workspace of their own. They depend on QuickJS and LLRT from git, and a build in the repository root never fetches those. Add `--manifest-path shell/Cargo.toml` to reach them.
+The scripting shell (`gpui-shell`, `gpui-component-shell`) and the Shell story live in `shell/`, a workspace of their own. They depend on QuickJS and LLRT from git, and a build in the repository root never fetches those, so a git dependency goes in `shell/`. Add `--manifest-path shell/Cargo.toml` to reach them.
 
 ```bash
 cargo run --manifest-path shell/Cargo.toml -p gpui-shell -- examples/js_todolist

@@ -245,7 +245,7 @@ appropriate to that production animation before asserting final geometry.
 
 ## Additional resources
 
-- [Website testing guide](https://gpui-kit.com/docs/test) — bilingual setup,
-  component coverage, platform requirements and CI.
+- [The kit's UI integration tests](https://github.com/mesa-hills-research/gpui_kit/tree/main/crates/kit/tests), which
+  use this setup on real components.
 - [GPUI test examples](test-examples.md) — entity and context patterns.
 - [GPUI test reference](test-reference.md) — re-entrancy and property tests.

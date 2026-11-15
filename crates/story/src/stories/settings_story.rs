@@ -144,7 +144,7 @@ impl SettingsStory {
                         .icon(IconName::Info)
                         .ghost()
                         .xsmall()
-                        .on_click(|_, _, cx| cx.open_url("https://gpui-kit.com/"))
+                        .on_click(|_, _, cx| cx.open_url("https://docs.rs/mhr-gpui-kit"))
                 })
                 .groups(vec![
                     SettingGroup::new().title("Appearance").items(vec![
@@ -488,12 +488,10 @@ impl SettingsStory {
                             "Documentation",
                             SettingField::element(OpenURLSettingField::new(
                                 "Rust Docs...",
-                                "https://docs.rs/gpui-component"
+                                "https://docs.rs/mhr-gpui-kit-component",
                             )),
                         )
-                        .description(markdown(
-                            "Rust doc for the `gpui-component` crate.",
-                        )),
+                        .description(markdown("Rust doc for the `mhr-gpui-kit-component` crate.")),
                         SettingItem::new(
                             "Website",
                             SettingField::render(|options, _window, _cx| {
@@ -502,7 +500,7 @@ impl SettingsStory {
                                     .label("Website...")
                                     .with_size(options.size())
                                     .on_click(|_, _window, cx| {
-                                        cx.open_url("https://gpui-kit.com/");
+                                        cx.open_url("https://docs.rs/mhr-gpui-kit");
                                     })
                             }),
                         )

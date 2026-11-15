@@ -1,13 +1,13 @@
 # gpui-base examples
 
 `components.rs` is the single Cargo example entrypoint for every documented `gpui-base`
-component. It selects one component from the shared `showcase` implementation, so native and
-WebAssembly previews exercise the same Rust code without producing one binary per component.
+component. It selects one component from the shared `showcase` implementation, so every
+component runs from one binary.
 
 These low-level fixtures initialize Base and use GPUI's window API directly.
 These examples depend on Base and GPUI without depending on the higher-level Kit crate.
 
-Run an individual component natively:
+Run an individual component:
 
 ```bash
 cargo run -p gpui-base-examples -- button
@@ -26,9 +26,6 @@ Motion has a separate example because it demonstrates continuous behavior rather
 ```bash
 cargo run -p gpui-base-examples --bin motion
 ```
-
-`examples/wasm` builds the same `showcase/mod.rs` for the browser and selects the
-component using the `?component=<slug>` query parameter.
 
 ## dock
 

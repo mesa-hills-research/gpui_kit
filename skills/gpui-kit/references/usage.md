@@ -396,5 +396,7 @@ Builders return the component so methods can be chained. Constructors follow com
 - `Selectable`: `.selected(bool)`
 - `Styled`: any GPUI style methods (`.w()`, `.bg()`, `.p_2()`, etc.)
 
-For any component not covered here, fetch its doc from:
-`https://gpui-kit.com/component/{name}.md`
+For any component not covered here, read its module in the
+[`mhr-gpui-kit-component` docs](https://docs.rs/mhr-gpui-kit-component) or its
+source, and its gallery page in `crates/story/src/stories/` of the
+[repository](https://github.com/mesa-hills-research/gpui_kit).

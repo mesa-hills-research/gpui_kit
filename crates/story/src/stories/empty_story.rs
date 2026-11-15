@@ -162,7 +162,7 @@ impl Render for EmptyStory {
                                             )
                                             .child(
                                                 Link::new("empty-learn-more")
-                                                    .href("https://gpui-kit.com/docs/getting-started")
+                                                    .href("https://docs.rs/mhr-gpui-kit")
                                                     .text_sm()
                                                     .child("Learn more"),
                                             ),
@@ -406,7 +406,7 @@ impl Render for EmptyStory {
                                                 .child("Need help?")
                                                 .child(
                                                     Link::new("empty-documentation")
-                                                        .href("https://gpui-kit.com/docs/getting-started")
+                                                        .href("https://docs.rs/mhr-gpui-kit")
                                                         .child("Read the documentation"),
                                                 ),
                                         ),

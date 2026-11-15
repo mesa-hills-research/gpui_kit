@@ -38,14 +38,13 @@ icon_assets!(ExtraIcons, [Accessibility, AlarmClock]);
 
 Register a composite source that checks `ExtraIcons` first, then falls back to
 the default `Assets`. The native default source returns an error for unknown
-paths, so lookup order matters. See the complete [selected-icons recipe] and
-[custom asset source guide] for the `AssetSource` implementation, registration,
-and rendering code. Custom SVG filenames do not create new `IconName` variants;
+paths, so lookup order matters. The assets crate's [extra-assets example] has the
+composite `AssetSource`, and this example's [`main.rs`](src/main.rs) loads its own
+SVG files and renders them. Custom SVG filenames do not create new `IconName` variants;
 use `Icon::path` with their asset keys.
 
 On WebAssembly, built-in `Assets` and `AllAssets` use an endpoint and load icons
-on demand. See the [WebAssembly section] for deployment details.
+on demand. The assets crate's [README](../../crates/assets/README.md#explicit-complete-bundle)
+says where to deploy them.
 
-[selected-icons recipe]: https://gpui-kit.com/docs/assets#pick-additional-catalog-icons-with-icon_assets
-[custom asset source guide]: https://gpui-kit.com/docs/assets#add-your-own-asset-files
-[WebAssembly section]: https://gpui-kit.com/docs/assets#packaging-and-webassembly
+[extra-assets example]: ../../crates/assets/examples/extra_assets.rs

@@ -323,7 +323,7 @@ impl Render for MarkerStory {
                             .content(
                                 MarkerContent::new().child(
                                     Link::new("marker-documentation-link")
-                                        .href("https://gpui-kit.com/")
+                                        .href("https://docs.rs/mhr-gpui-kit")
                                         .child("Open the component documentation"),
                                 ),
                             ),

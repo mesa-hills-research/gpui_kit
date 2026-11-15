@@ -1,7 +1,7 @@
 //! The font picker's model: the families read from font files, the monospace filter, the weights
 //! and features a family offers, the settings an application saves, and the state's events.
 //!
-//! The fonts are the ones the web gallery bundles, under `crates/story-web/fonts`.
+//! The fonts are the test fonts under `examples/fixtures/fonts`.
 
 mod common;
 
@@ -24,13 +24,15 @@ use gpui_component::{
 use gpui_kit::test::{TestAppContextExt as _, TestWindowExt as _};
 use std::time::Duration;
 
-const IBM_PLEX_SANS: &[u8] = include_bytes!("../../story-web/fonts/IBMPlexSans-Regular.ttf");
+const IBM_PLEX_SANS: &[u8] =
+    include_bytes!("../../../examples/fixtures/fonts/IBMPlexSans-Regular.ttf");
 /// Inter's variable font, "Inter Variable", with a `wght` axis from 100 to 900.
-const INTER: &[u8] = include_bytes!("../../story-web/fonts/Inter-Regular.ttf");
-const JETBRAINS_MONO: &[u8] = include_bytes!("../../story-web/fonts/JetBrainsMono-Regular.ttf");
+const INTER: &[u8] = include_bytes!("../../../examples/fixtures/fonts/Inter-Regular.ttf");
+const JETBRAINS_MONO: &[u8] =
+    include_bytes!("../../../examples/fixtures/fonts/JetBrainsMono-Regular.ttf");
 /// The same face before subsetting, which lists one more character variant.
 const JETBRAINS_MONO_SOURCE: &[u8] =
-    include_bytes!("../../story-web/fonts/JetBrainsMono-Regular.source.ttf");
+    include_bytes!("../../../examples/fixtures/fonts/JetBrainsMono-Regular.source.ttf");
 
 fn catalog() -> FontCatalog {
     FontCatalog::from_fonts(&[JETBRAINS_MONO, IBM_PLEX_SANS, INTER])

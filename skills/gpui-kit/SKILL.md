@@ -28,10 +28,10 @@ similar file in the codebase, or from training data.
 
 Read the Design Guides first when the change has a visible surface: code
 structure preserves product intent, it does not replace it. If the design
-skill is not installed, fetch `https://gpui-kit.com/docs/design-guides.md`,
-upstream's version of the guide. The coding guide's links to the Design Guides
-go to that skill, and its links to GPUI concepts and Getting Started go to
-upstream's site.
+skill is not installed, read
+[its guide in the repository](https://github.com/mesa-hills-research/gpui_kit/blob/main/skills/gpui-kit-design-guides/references/design-guides.md).
+The coding guide's links to the Design Guides go to that skill, and its links
+to GPUI concepts go to this skill's references and to GPUI's API on docs.rs.
 
 ### Coding Guides section map
 
@@ -86,11 +86,24 @@ A floor, not a substitute for the guides.
 
 ## Documentation
 
-- **Find a task/component page**: use `https://gpui-kit.com/llms.txt`, then load its Markdown page.
-- **Full reference**: `https://gpui-kit.com/llms-full.txt` is available when broad reference is actually needed
-- **Per-component API**: fetch `https://gpui-kit.com/component/{name}.md`,
-  e.g. `button.md`, `input.md`, `select.md`, `dialog.md`, `data-table.md`
-- **Any site page** can be fetched as Markdown by appending `.md` to the URL
+The API reference is the rustdoc on docs.rs, one page per crate.
+
+| Crate | Reached as | Docs |
+| ----- | ---------- | ---- |
+| `mhr-gpui-kit` | `gpui_kit` | <https://docs.rs/mhr-gpui-kit> |
+| `mhr-gpui-kit-component` | `gpui_kit::component` | <https://docs.rs/mhr-gpui-kit-component> |
+| `mhr-gpui-kit-base` | `gpui_kit::base` | <https://docs.rs/mhr-gpui-kit-base> |
+| `mhr-gpui-kit-assets` | `gpui_kit::assets` | <https://docs.rs/mhr-gpui-kit-assets> |
+| `mhr-gpui-kit-writing` | `gpui_kit::writing` | <https://docs.rs/mhr-gpui-kit-writing> |
+| `mhr-gpui` | `gpui_kit::*` | <https://docs.rs/mhr-gpui> |
+
+The source the app builds against is in Cargo's registry, at
+`~/.cargo/registry/src/*/mhr-gpui-kit-component-<version>/src` and its
+siblings, so its signatures match the app's version. The
+[repository](https://github.com/mesa-hills-research/gpui_kit) has the same
+source under `crates/`, a gallery page for each component in
+`crates/story/src/stories/` (`cargo run` opens the gallery), and small
+runnable apps in `examples/`.
 
 ## Quick Reference
 
@@ -122,8 +135,8 @@ gpui_kit::application()
 ## Component Catalog
 
 Import paths are relative to `gpui_kit::component::`, so `input::{Input, InputState}`
-means `use gpui_kit::component::input::{Input, InputState};`. For the full API
-fetch the component's `.md` doc.
+means `use gpui_kit::component::input::{Input, InputState};`. For the full API,
+read the component's module on docs.rs or its source.
 
 ### Input & Form
 

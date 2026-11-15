@@ -17,7 +17,7 @@ exact signatures.
 
 ## Make the common path inexpensive
 
-**Design principle: choose framework types and ownership so ordinary component use is inexpensive by default.** Developers should be able to build and reuse UI without adding a cache at every call site. [SharedString](https://gpui-kit.com/docs/shared-string) for retained UI text and [RenderOnce](https://gpui-kit.com/docs/render-once) for lightweight component values are examples: the API places ownership where it belongs and avoids repeated work in the common path. Small costs still multiply across elements and renders; measure exceptional hot paths before adding caches. Neither type promises zero cost. The [text ownership rule](#own-persistent-ui-text-with-sharedstring) and later rendering sections explain the mechanics.
+**Design principle: choose framework types and ownership so ordinary component use is inexpensive by default.** Developers should be able to build and reuse UI without adding a cache at every call site. [SharedString](https://docs.rs/mhr-gpui/latest/gpui/struct.SharedString.html) for retained UI text and [RenderOnce](https://docs.rs/mhr-gpui/latest/gpui/trait.RenderOnce.html) for lightweight component values are examples: the API places ownership where it belongs and avoids repeated work in the common path. Small costs still multiply across elements and renders; measure exceptional hot paths before adding caches. Neither type promises zero cost. The [text ownership rule](#own-persistent-ui-text-with-sharedstring) and later rendering sections explain the mechanics.
 
 ## Architecture at a glance
 
@@ -44,7 +44,7 @@ Use these boundaries:
 
 In a large Rust application, a complex capability often merits its own crate
 once its state, lifecycle, and public boundary are worth maintaining
-independently. Keep its model [Entity](https://gpui-kit.com/docs/entity), services, [Render](https://gpui-kit.com/docs/render)
+independently. Keep its model [Entity](gpui/entity.md), services, [Render](https://docs.rs/mhr-gpui/latest/gpui/trait.Render.html)
 Views, commands, dialogs, and workflow together. A dialog that edits a
 workspace belongs to the workspace feature; only the reusable dialog
 primitive belongs to the UI library. A small capability can remain a module
@@ -86,7 +86,7 @@ scattering every feature across the application.
 
 The application shell composes feature crates but contains little feature
 logic. Each feature owns its model Entities and the Views that render them. Keep a
-feature's [`Global`](https://gpui-kit.com/docs/global) private if it is needed for a genuinely application-wide
+feature's [`Global`](gpui/global.md) private if it is needed for a genuinely application-wide
 service or registry; a model used by one feature is not automatically a
 Global. Within a feature, pass cloned `Entity<T>` handles to cooperating
 owners instead of repeatedly copying a large `Vec` or collection. Across a
@@ -169,9 +169,9 @@ correct at rest but fails when overlays nest or focus changes quickly.
 
 ## Understand GPUI's phases and contexts
 
-GPUI is retained state with declarative rendering. An [Entity](https://gpui-kit.com/docs/entity) survives across
-frames; the [Element](https://gpui-kit.com/docs/element) tree returned by `render` is a fresh description of the
-current frame. Keep that distinction explicit. See [Context](https://gpui-kit.com/docs/context) for the
+GPUI is retained state with declarative rendering. An [Entity](gpui/entity.md) survives across
+frames; the [Element](gpui/element.md) tree returned by `render` is a fresh description of the
+current frame. Keep that distinction explicit. See [Context](gpui/context.md) for the
 scopes of `Context<T>`, `App`, and `Window`.
 
 - `Context<Self>` mutates the current entity, creates listeners tied to it,
@@ -191,7 +191,7 @@ which it is provided. Retain typed handles—`Entity`, `WeakEntity`,
 
 ### Use `RenderOnce` for value-like elements
 
-**Default to [`RenderOnce`](https://gpui-kit.com/docs/render-once) for lightweight, reusable component values.**
+**Default to [`RenderOnce`](https://docs.rs/mhr-gpui/latest/gpui/trait.RenderOnce.html) for lightweight, reusable component values.**
 The caller supplies current props and handlers, GPUI consumes the value to
 produce elements, and the value can then be discarded. GPUI Kit's `Button`
 and `Checkbox` follow this pattern: their displayed label, checked or selected
@@ -221,7 +221,7 @@ impl RenderOnce for EmptyState {
 
 ### Use `Entity<T>` for retained behavior
 
-Use an entity-backed [`Render`](https://gpui-kit.com/docs/render) view when a component owns persistent,
+Use an entity-backed [`Render`](https://docs.rs/mhr-gpui/latest/gpui/trait.Render.html) view when a component owns persistent,
 complex state or an independent lifecycle: subscriptions, async work, history,
 child entities, or incremental updates. Store entities in an owning view rather
 than recreating them in `render`.
@@ -261,11 +261,11 @@ not from how many `div`s appear in its renderer.
 
 ### Own persistent UI text with `SharedString`
 
-**Must prefer [`SharedString`](https://gpui-kit.com/docs/shared-string) for UI text retained across frames or callback closures**, including component labels, titles, and placeholders. Store a stable value in the owning View or Entity and clone that handle when building elements; do not repeatedly clone a `String` on every render. For a mutable editing buffer or text being assembled with formatting, use `String` and convert when the result is ready. For temporary read-only access during one call, use `&str`.
+**Must prefer [`SharedString`](https://docs.rs/mhr-gpui/latest/gpui/struct.SharedString.html) for UI text retained across frames or callback closures**, including component labels, titles, and placeholders. Store a stable value in the owning View or Entity and clone that handle when building elements; do not repeatedly clone a `String` on every render. For a mutable editing buffer or text being assembled with formatting, use `String` and convert when the result is ready. For temporary read-only access during one call, use `&str`.
 
-For immutable API or JSON response text that the UI will retain, make the response field a `SharedString` at the deserialization boundary. Keep the received transport value intact; put derived or formatted presentation text in a separate domain or View model instead of rewriting the response or repeatedly cloning a `String` into UI. This rule does not require `SharedString` for a truly mutable buffer or a narrow, non-UI parsing step. See the [API response example](https://gpui-kit.com/docs/shared-string#from-an-api-response-to-a-view).
+For immutable API or JSON response text that the UI will retain, make the response field a `SharedString` at the deserialization boundary. Keep the received transport value intact; put derived or formatted presentation text in a separate domain or View model instead of rewriting the response or repeatedly cloning a `String` into UI. This rule does not require `SharedString` for a truly mutable buffer or a narrow, non-UI parsing step.
 
-This is an ownership and performance rule, not a claim that text is always allocation-free. Short values can live inline; longer dynamic values use shared storage, so cloning them does not copy the text bytes. Constructing a value can still allocate, and cloning a heap-backed value updates a reference count. See [SharedString](https://gpui-kit.com/docs/shared-string) for the storage details and tradeoffs.
+This is an ownership and performance rule, not a claim that text is always allocation-free. Short values can live inline; longer dynamic values use shared storage, so cloning them does not copy the text bytes. Constructing a value can still allocate, and cloning a heap-backed value updates a reference count. See [SharedString](https://docs.rs/mhr-gpui/latest/gpui/struct.SharedString.html) for the storage details and tradeoffs.
 
 Put each state in the narrowest owner that can keep it correct:
 
@@ -301,7 +301,7 @@ When a parent strongly owns a child `Entity<T>`, a child reference back to
 that parent must be a `WeakEntity<T>`; a strong back-reference would close an
 ownership cycle. `WeakEntity::upgrade()` returns `Option`, and its `update`
 returns `Result`, so treat a missing parent as a normal lifecycle outcome.
-See [Entity](https://gpui-kit.com/docs/entity) for the ownership and weak-access patterns.
+See [Entity](gpui/entity.md) for the ownership and weak-access patterns.
 
 Store returned `Subscription` handles on the View or Entity that needs the
 callbacks, commonly in `_subscriptions: Vec<Subscription>`. Dropping that
@@ -316,7 +316,7 @@ own View can still close a cycle.
 
 When a View remains alive unexpectedly, first inspect strong Entity cycles,
 callbacks that capture strong View handles, and detached subscriptions or
-[Task](https://gpui-kit.com/docs/task)s that outlive their intended owner. A dropped Task handle cancels
+[Task](gpui/async.md)s that outlive their intended owner. A dropped Task handle cancels
 unfinished work; it does not itself keep the View alive. These are common places
 to start, not an exhaustive list of leak causes.
 
@@ -337,7 +337,7 @@ close, replace, or update the component that invoked it.
 
 ## Stable identity
 
-An [`ElementId`](https://gpui-kit.com/docs/element_id) is part of behavior. It gives an element stable identity and keys
+An [`ElementId`](gpui/element-id.md) is part of behavior. It gives an element stable identity and keys
 element-local or component state. A component may also use it as one input to
 its own focus, measurement, or animation identity; focus and scrolling are
 otherwise owned by their dedicated handles.
@@ -424,7 +424,7 @@ descriptions, or close buttons—make semantic parts explicit.
 ## Theme and styling
 
 Read semantic values from the active theme and apply layout with GPUI's
-[`Styled` methods](https://gpui-kit.com/docs/style):
+[`Styled` methods](gpui/layout-style.md):
 
 ```rust
 div()
@@ -502,7 +502,7 @@ application's rem-based design scale. This deliberately follows the useful part
 of Tailwind's model: named type, spacing, and size steps share one relative base
 instead of becoming unrelated pixel constants. See the [Tailwind CSS theme
 reference](https://tailwindcss.com/docs/theme) for that scale, and the
-[Style guide](https://gpui-kit.com/docs/style) for GPUI's fluent method names and layout behavior.
+[Style guide](gpui/layout-style.md) for GPUI's fluent method names and layout behavior.
 
 Change zoom by updating the base font and refreshing the window:
 
@@ -536,7 +536,7 @@ window rem size.
 
 ## Events, actions, and focus
 
-Use pointer callbacks for pointer-specific behavior. Use GPUI [Actions](https://gpui-kit.com/docs/action) for
+Use pointer callbacks for pointer-specific behavior. Use GPUI [Actions](gpui/action.md) for
 commands that should support key bindings, menus, or dispatch from multiple
 inputs. Keep action handlers close to the view that owns the command.
 
@@ -598,7 +598,7 @@ surface.
 
 ## Async work and side effects
 
-Start asynchronous work through a [Task](https://gpui-kit.com/docs/task) from an event, lifecycle hook, or named method—not as an
+Start asynchronous work through a [Task](gpui/async.md) from an event, lifecycle hook, or named method—not as an
 unconditional side effect of `render`. Capture weak entities when work should
 not keep a closed view alive. When the task completes, update state through the
 GPUI context, handle the case where the entity or window no longer exists, and
@@ -1002,5 +1002,5 @@ Before opening a change for review, confirm that:
 - tests prove behavior at the appropriate layer;
 - formatting, Clippy, targeted tests, and relevant examples pass.
 
-See [Getting Started](https://gpui-kit.com/docs/getting-started) for application setup and the
-component pages for current API details.
+See [usage](usage.md) for application setup and the crates' pages on
+[docs.rs](https://docs.rs/mhr-gpui-kit) for current API details.

@@ -2,9 +2,9 @@ use super::*;
 use gpui::{TestAppContext, point};
 use std::{cell::Cell, rc::Rc};
 
-const MONO: &[u8] = include_bytes!("../../../story-web/fonts/JetBrainsMono-Regular.ttf");
-const SANS: &[u8] = include_bytes!("../../../story-web/fonts/IBMPlexSans-Regular.ttf");
-const INTER: &[u8] = include_bytes!("../../../story-web/fonts/Inter-Regular.ttf");
+const MONO: &[u8] = include_bytes!("../../../../examples/fixtures/fonts/JetBrainsMono-Regular.ttf");
+const SANS: &[u8] = include_bytes!("../../../../examples/fixtures/fonts/IBMPlexSans-Regular.ttf");
+const INTER: &[u8] = include_bytes!("../../../../examples/fixtures/fonts/Inter-Regular.ttf");
 
 #[gpui::test]
 fn replacing_a_catalog_keeps_search_selection_and_open_controls(cx: &mut TestAppContext) {

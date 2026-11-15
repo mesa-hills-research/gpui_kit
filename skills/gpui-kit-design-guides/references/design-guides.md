@@ -34,7 +34,7 @@ than compete with them.
    when its behavior is genuinely new.
 3. **Tokens before values.** Colors, radii, typography, and spacing should form
    a system. Avoid isolated literals that cannot respond to themes. See
-   [Style](https://gpui-kit.com/docs/style) for GPUI's styling API.
+   [Style](../../gpui-kit/references/gpui/layout-style.md) for GPUI's styling API.
 4. **Desktop before web convention.** Preserve keyboard access, window chrome,
    menus, dense data views, resizable regions, and persistent navigation where
    the task benefits from them.
@@ -615,7 +615,7 @@ Use command frequency and scope to choose where an action lives:
 - put secondary actions for the current region behind a visible
   `DropdownMenu` trigger;
 - put commands that act on the object under the pointer in a `ContextMenu`;
-- expose the same important command through an [Action](https://gpui-kit.com/docs/action)/[key binding](https://gpui-kit.com/docs/keybinding) when it has a
+- expose the same important command through an [Action](../../gpui-kit/references/gpui/action.md)/[key binding](../../gpui-kit/references/gpui/action.md) when it has a
   natural keyboard form;
 - use a hover-revealed icon only as a shortcut to a command that remains
   reachable elsewhere.

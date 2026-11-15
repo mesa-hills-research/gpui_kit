@@ -212,7 +212,7 @@ impl Render for MenuStory {
                                             "https://github.com/longbridge/gpui-kit",
                                         )
                                         .separator()
-                                        .link("GPUI Kit", "https://gpui-kit.com")
+                                        .link("GPUI Kit", "https://github.com/mesa-hills-research/gpui_kit")
                                         .link("Zed", "https://zed.dev")
                                     })
                                     .separator()
@@ -226,7 +226,7 @@ impl Render for MenuStory {
                                                     .submenu("Deeper", window, cx, |menu, _, _| {
                                                         menu.link(
                                                             "GPUI Kit",
-                                                            "https://gpui-kit.com",
+                                                            "https://github.com/mesa-hills-research/gpui_kit",
                                                         )
                                                     })
                                             })

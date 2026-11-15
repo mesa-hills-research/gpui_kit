@@ -1278,9 +1278,11 @@ fn font_picker(mode: ThemeMode) -> Screenshot {
     let mut app = app(mode);
     let fonts: Vec<Cow<'static, [u8]>> = vec![
         Cow::Borrowed(include_bytes!(
-            "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+            "../../../examples/fixtures/fonts/JetBrainsMono-Regular.source.ttf"
         )),
-        Cow::Borrowed(include_bytes!("../../story-web/fonts/Inter-Regular.ttf")),
+        Cow::Borrowed(include_bytes!(
+            "../../../examples/fixtures/fonts/Inter-Regular.ttf"
+        )),
     ];
     app.add_fonts(fonts.clone()).unwrap();
     let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());
@@ -1316,9 +1318,11 @@ fn compact_font_picker(mode: ThemeMode, features: bool) -> Screenshot {
     let mut app = app(mode);
     let fonts: Vec<Cow<'static, [u8]>> = vec![
         Cow::Borrowed(include_bytes!(
-            "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+            "../../../examples/fixtures/fonts/JetBrainsMono-Regular.source.ttf"
         )),
-        Cow::Borrowed(include_bytes!("../../story-web/fonts/Inter-Regular.ttf")),
+        Cow::Borrowed(include_bytes!(
+            "../../../examples/fixtures/fonts/Inter-Regular.ttf"
+        )),
     ];
     app.add_fonts(fonts.clone()).unwrap();
     let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());
@@ -1409,7 +1413,7 @@ impl Render for FontPickerWithoutFilterView {
 fn font_picker_without_filter(mode: ThemeMode, compact: bool) -> Screenshot {
     let mut app = app(mode);
     let fonts: Vec<Cow<'static, [u8]>> = vec![Cow::Borrowed(include_bytes!(
-        "../../story-web/fonts/JetBrainsMono-Regular.source.ttf"
+        "../../../examples/fixtures/fonts/JetBrainsMono-Regular.source.ttf"
     ))];
     app.add_fonts(fonts.clone()).unwrap();
     let catalog = FontCatalog::from_fonts(&[gpui_screenshot::bundled_fonts(), fonts].concat());

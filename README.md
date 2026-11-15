@@ -21,8 +21,8 @@ The changes below include a text editor mode with spell checking and CUA, Emacs 
 font picker, Mesquite syntax highlighting, more themes, golden screenshot tests, a generator for
 new apps and many fixes.
 
-For general documentation, see [upstream GPUI Kit's own site](https://gpui-kit.com). The entries
-below link to this fork's API pages on docs.rs.
+The API documentation is on [docs.rs](https://docs.rs/mhr-gpui-kit), and the entries below link
+to its pages.
 
 ## Changes from GPUI Kit 0.7.1
 

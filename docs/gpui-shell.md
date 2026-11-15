@@ -334,8 +334,9 @@ consequence of GPUI's element model (§8.1), not a stylistic choice.
 correspond one-to-one with the Rust API, so learning one teaches the other. A
 DSL would need its own parser, diagnostics, editor support, and version
 evolution. JSX would need a compile step, and "edit a line, save, see it" is the
-reason this runtime exists. This matches the GPUI builder style in
-`AGENTS.md`: keep one fluent chain and express conditions with `when`.
+reason this runtime exists. This matches the GPUI builder style of the
+[Coding Guides](../skills/gpui-kit/references/coding-guides.md), one fluent chain
+with conditions expressed with `when`.
 
 **5.4 A context is valid only for the duration of a call.** `&mut App`,
 `&mut Window`, and `&mut Context<T>` are borrows. `CallScope` turns "am I inside
@@ -1897,8 +1898,8 @@ Rules for script:
 - An unknown token is an error listing the valid set, never a transparent
   fallback — that would reproduce the exact failure this module exists to
   prevent.
-- This matches `AGENTS.md`: the theme API exposes semantic tokens, not a growing
-  set of component-specific fields.
+- This matches [Architecture](ARCHITECTURE.md), where the theme API exposes
+  semantic tokens, not a growing set of component-specific fields.
 
 The preferred read is call-scoped and explicit at each use site, for example
 `cx.theme().colors.surface`, `cx.theme().spacing.md`, or
@@ -4063,8 +4064,7 @@ call without the capability, and a clipboard denial naming the half that was
 missing. Every one of these asserts on the _message_, because the message is the
 instruction for fixing it.
 
-These are security assertions and are not subject to the "avoid trivial tests"
-exemption in `.agents/COMPONENT_TEST_RULES.md`.
+These are security assertions, so they stay even where one looks trivial.
 
 Two of them are regression guards on the build rather than on this code:
 quickjs-libc's `std` and `os` are asserted absent because `rquickjs-sys` does not
@@ -4146,8 +4146,8 @@ tests that catch a duplicated element id or a missing hitbox.
 
 ### 22.6 Relation to the repository's testing rules
 
-Following `.agents/COMPONENT_TEST_RULES.md`: no tests assert presentation
-dimensions, and coverage concentrates on complex logic — call-scope validity,
+Following the [testing rules](../CONTRIBUTING.md#run-the-tests), no tests assert
+presentation dimensions, and coverage concentrates on complex logic — call-scope validity,
 arena reuse errors, snapshot lifecycle and render frequency, callback lifetime,
 value conversion, style table non-emptiness, sandbox boundaries, overlay ordering
 and focus, and task ownership and cancellation.
@@ -4472,8 +4472,8 @@ the view (§10.1).
 **`children` takes an array**, so `map` is the natural list form.
 
 **`when(condition, fn)` keeps the chain in one piece**, matching the GPUI
-builder style `AGENTS.md` requires, instead of splitting into a temporary and a
-sequence of `if`s:
+builder style the [Coding Guides](../skills/gpui-kit/references/coding-guides.md)
+require, instead of splitting into a temporary and a sequence of `if`s:
 
 ```js
 label(item.caption, cx).when(item.done, (el) =>
@@ -4561,7 +4561,8 @@ examples/js_todolist/         # the reference application
 
 ### Appendix C: Naming
 
-Following `AGENTS.md`:
+These follow [CONTRIBUTING.md](../CONTRIBUTING.md#code-style) and
+[Architecture](ARCHITECTURE.md#public-data-types-across-the-seam).
 
 - No `Kind` suffix: `ScopePhase` rather than `ScopeKind`, `ExecuteGrant` rather
   than `CapabilityKind`, `SpecOp` rather than `SpecOpKind`.

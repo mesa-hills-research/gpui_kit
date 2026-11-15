@@ -7,9 +7,9 @@ use gpui_kit::{
     test::TestWindowExt as _,
 };
 
-const MONO: &[u8] = include_bytes!("../../story-web/fonts/JetBrainsMono-Regular.ttf");
-const SANS: &[u8] = include_bytes!("../../story-web/fonts/IBMPlexSans-Regular.ttf");
-const INTER: &[u8] = include_bytes!("../../story-web/fonts/Inter-Regular.ttf");
+const MONO: &[u8] = include_bytes!("../../../examples/fixtures/fonts/JetBrainsMono-Regular.ttf");
+const SANS: &[u8] = include_bytes!("../../../examples/fixtures/fonts/IBMPlexSans-Regular.ttf");
+const INTER: &[u8] = include_bytes!("../../../examples/fixtures/fonts/Inter-Regular.ttf");
 
 struct PickerView {
     picker: Entity<FontPickerState>,

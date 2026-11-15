@@ -41,7 +41,7 @@ impl BaseShowcase {
                     [
                         ("gpui-base", "Stable", "0.4.1"),
                         ("gpui-component", "Active", "0.4.1"),
-                        ("story-web", "Preview", "0.2.8"),
+                        ("gpui-shell", "Preview", "0.2.8"),
                         ("gpui-web", "Beta", "0.1.0"),
                     ]
                     .into_iter()

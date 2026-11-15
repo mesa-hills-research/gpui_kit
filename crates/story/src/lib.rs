@@ -270,7 +270,7 @@ pub fn init(cx: &mut App) {
                                 alert.title("About").description(markdown(
                                     "GPUI Component Storybook\n\n\
                                     Version 0.1.0\n\n\
-                                    https://gpui-kit.com",
+                                    https://github.com/mesa-hills-research/gpui_kit",
                                 ))
                             });
                         });
