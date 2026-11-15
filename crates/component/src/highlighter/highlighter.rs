@@ -68,13 +68,13 @@ impl Drop for UnbudgetedInjectionParses {
 /// Makes the next parse of an injected `language` layer on this thread
 /// count `stall` more time than it takes, as if the thread were held up that
 /// long. Only a parse long enough to check the time takes it.
-#[cfg(test)]
+#[cfg(all(test, feature = "tree-sitter-languages"))]
 pub(crate) fn stall_next_injection_parse(language: &str, stall: Duration) {
     INJECTION_PARSE_STALL.set(Some((language.to_string().into(), stall)));
 }
 
 /// Whether a stall set by [`stall_next_injection_parse`] is still to come.
-#[cfg(test)]
+#[cfg(all(test, feature = "tree-sitter-languages"))]
 pub(crate) fn injection_parse_stall_pending() -> bool {
     INJECTION_PARSE_STALL.with_borrow(Option::is_some)
 }

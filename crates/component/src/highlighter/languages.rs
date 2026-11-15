@@ -1295,6 +1295,14 @@ endfunction()
         assert!(failures.is_empty(), "{failures:#?}");
     }
 
+    // The grammars of the tests that call it.
+    #[cfg(any(
+        feature = "tree-sitter-graphql",
+        feature = "tree-sitter-csharp",
+        feature = "tree-sitter-swift",
+        feature = "tree-sitter-proto",
+        feature = "tree-sitter-cmake"
+    ))]
     fn assert_highlights(language: &str, source: &str, expected: &[(&str, &str)]) {
         use crate::highlighter::{SyntaxHighlighter, registry::HIGHLIGHT_NAMES};
         use std::sync::Mutex;
