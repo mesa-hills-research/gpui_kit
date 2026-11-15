@@ -24,12 +24,10 @@ import {
 const props = defineProps<{
     starCount: number;
     base: string;
-    lang: 'en' | 'zh-CN';
+    lang: 'en';
     kitVersion: string;
 }>();
 
-const isZh = computed(() => props.lang === 'zh-CN');
-const localePrefix = computed(() => isZh.value ? 'zh-CN' : '');
 
 function url(path: string) {
     const b = props.base.replace(/\/$/, '');
@@ -39,12 +37,12 @@ function url(path: string) {
 const stars = props.starCount;
 const starLabel = stars >= 1000 ? `${(stars / 1000).toFixed(1)}k` : `${stars}`;
 
-const gettingStartedHref = computed(() => isZh.value ? url('zh-CN/docs/getting-started') : url('docs/getting-started'));
-const componentsHref = computed(() => isZh.value ? url('zh-CN/component') : url('component'));
+const gettingStartedHref = computed(() => url('docs/getting-started'));
+const componentsHref = computed(() => url('component'));
 const baseHref = computed(() => url('base'));
-const shellHref = computed(() => isZh.value ? url('zh-CN/shell') : url('shell'));
-const contributorsHref = computed(() => isZh.value ? url('zh-CN/contributors') : url('contributors'));
-const skillsHref = computed(() => isZh.value ? url('zh-CN/skills') : url('skills'));
+const shellHref = computed(() => url('shell'));
+const contributorsHref = computed(() => url('contributors'));
+const skillsHref = computed(() => url('skills'));
 const llmsHref = computed(() => url('llms-full.txt'));
 
 // Indent depth and token widths (rem) per line
@@ -95,63 +93,7 @@ const copyInstall = async () => {
 onBeforeUnmount(() => clearTimeout(copyTimer));
 
 const copy = computed(() =>
-    isZh.value
-        ? {
-              copyLabel: "复制安装命令",
-              eyebrow: "经过 Longbridge 生产验证",
-              title: "构建出色的高性能桌面应用。",
-              lead: "生产就绪的 Rust UI 框架，提供 75+ 组件与原语、WebAssembly、无障碍与 UI 集成测试，并集成数据表格、Dock、图表、代码编辑器和 JavaScript 扩展能力。",
-              componentsAction: "浏览组件",
-              baseAction: "探索 gpui-base",
-              signalStars: "GitHub stars",
-              signalLicense: "软件 · Apache-2.0",
-              signalPlatforms: "macOS / Windows / Linux / WebAssembly",
-              capsKicker: "核心能力",
-              capsTitle: "为信息密集型软件而生。",
-              capsDescription: "复杂桌面应用真正需要的系统能力，都已整合在框架之中。",
-              caps: [
-                  { icon: "perf", title: "高刷新率支持", description: "按需更新界面；120 Hz 下每帧约有 8.3 ms 预算，实际流畅度取决于完整界面与设备。", apis: ["RenderOnce", "GPU"] },
-                  { icon: "table", title: "复杂数据表格", description: "虚拟滚动、列固定、列宽调整、排序与单元格选择，可承载数十万行。", apis: ["Table", "DataTable"] },
-                  { icon: "list", title: "高性能虚拟列表", description: "只渲染可见区域，超长列表滚动依然保持流畅。", apis: ["VirtualList", "List"] },
-                  { icon: "editor", title: "完整代码编辑器", description: "Rope 存储，20 万行仍保持稳定性能；内置 Tree-sitter 高亮与 LSP 诊断、补全、悬浮提示。", apis: ["Rope", "Tree-Sitter", "LSP", "Highlighter"] },
-                  { icon: "dock", title: "Dock 自由布局", description: "面板停靠、拖拽重排与缩放，并可序列化保存。", apis: ["DockArea", "DockLayout", "TabGroup"] },
-                  { icon: "theme", title: "多主题支持", description: "基于语义化 token 的明暗与多主题切换，而非无尽的样式字段。", apis: ["Theme", "ThemeColor", "ActiveTheme"] },
-                  { icon: "wasm", title: "WebAssembly", description: "应用与组件示例可通过 wasm32-unknown-unknown 在 Web 中运行，并与原生端共享实现。", apis: ["WASM", "Web"] },
-                  { icon: "a11y", title: "无障碍", description: "交互层内置 AccessKit role、name、state、relationship 与 action。", apis: ["AccessKit", "Accessibility"] },
-                  { icon: "test", title: "UI 集成测试", description: "在 headless window 中渲染真实组件，驱动鼠标与键盘，并验证状态、Focus、布局和无障碍。", apis: ["gpui_kit::test", "TestWindowExt"] },
-              ],
-              chooseKicker: "三个层次，一个生态",
-              chooseTitle: "决定由谁掌控视觉系统。",
-              chooseDescription: "使用 gpui-component 保持统一风格，基于 gpui-base 构建自己的设计系统，或用 gpui-shell 让应用可以被 JavaScript 扩展。",
-              shipTitle: "保持风格统一",
-              shipDescription: "gpui-component 提供完整、成熟且开箱即用的视觉与交互系统。",
-              shipPoints: ["75+ 个组件与原语", "内置明暗主题", "开箱即用的交互细节"],
-              startComponent: "开始使用",
-              ownTitle: "拥有设计系统",
-              ownDescription: "复用 Focus、选择、浮层与虚拟化行为，视觉完全由你决定。",
-              ownPoints: ["零样式原语", "完整可访问性行为", "视觉表达 100% 自主"],
-              startBase: "阅读 gpui-base 文档",
-              scriptTitle: "用 JavaScript 扩展应用",
-              scriptDescription: "宿主仍然是 Rust，扩展是 JavaScript：脚本能碰到什么由宿主逐项授予，界面则在同一个进程里画出来。",
-              scriptPoints: ["扩展产品不必 fork，也不必发新版本", "默认不授予任何系统能力", "保存文件即 hot-reload，无需重启"],
-              startShell: "了解 gpui-shell",
-              principleKicker: "设计原则",
-              principleLead: "行为属于基础层。",
-              principleTail: "视觉属于应用。",
-              principleDetail: "gpui-base 处理困难的交互机制：Focus、浮层定位、虚拟化与无障碍；你的产品决定它们最终呈现的样子。",
-              footerPrefix: "GPUI Kit 软件源码及文档中的代码示例采用 Apache-2.0 许可证，由",
-              footerSuffix: " 开发。",
-              footerBuiltOn: "构建于",
-              footerAttribution: " 之上，GPUI 来自 Zed Industries，同样采用 Apache-2.0。",
-              footerNav: "页脚导航",
-              contributors: "贡献者",
-              reportBug: "报告问题",
-              discussion: "讨论",
-              iconCredits: "图标资源来自",
-              and: "与",
-              period: "。",
-          }
-        : {
+    ({
               copyLabel: "Copy install command",
               eyebrow: "Proven in production at Longbridge",
               title: "Build fantastic, high-performance desktop apps.",
@@ -206,7 +148,7 @@ const copy = computed(() =>
               iconCredits: "Icons by",
               and: "and",
               period: ".",
-          },
+          })
 );
 </script>
 
@@ -529,7 +471,6 @@ const copy = computed(() =>
     text-transform: uppercase;
 }
 
-html[lang^="zh"] .section-kicker { letter-spacing: 0.04em; }
 
 .hero { overflow: hidden; }
 

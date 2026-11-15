@@ -6,7 +6,7 @@ import { join } from 'node:path';
 const root = process.argv[2];
 if (!root) throw new Error('usage: normalize-doc-versions.js <website-root>');
 
-for (const locale of ['', 'zh-CN/']) {
+for (const locale of ['']) {
   for (const page of ['installation', 'getting-started']) {
     const file = join(root, locale, 'docs', `${page}.md`);
     if (!existsSync(file)) continue;
@@ -16,10 +16,6 @@ for (const locale of ['', 'zh-CN/']) {
       .replace(
         'The `0.6` requirement selects a compatible 0.6.x Kit release; this repository currently declares version `0.6.5`.',
         'The `{{gpui_kit_version}}` requirement selects a compatible Kit release.',
-      )
-      .replace(
-        '`0.6` 要求会选择兼容的 0.6.x 版 Kit；本仓库当前声明的是 `0.6.5`。',
-        '`{{gpui_kit_version}}` 要求会选择兼容的 Kit 版本。',
       );
     if (normalized !== source) writeFileSync(file, normalized);
   }

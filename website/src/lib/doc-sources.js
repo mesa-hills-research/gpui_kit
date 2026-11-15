@@ -11,13 +11,12 @@ import { visit } from 'unist-util-visit';
 // versioned build renders these below its own base (`/versions/<id>/...`).
 export const CONTENT_DIRS = [
   'docs', 'component', 'base', 'shell',
-  'zh-CN/docs', 'zh-CN/component', 'zh-CN/base', 'zh-CN/shell',
 ];
 
 // A link written from the site root to versioned content. It points at the
 // default version from every other version, so the source must link to the
 // file instead and let the build place it inside the current version.
-export const ROOT_CONTENT_LINK = /^\/(?:zh-CN(?:\/|$|#)|(?:zh-CN\/)?(?:docs|component|base|shell)(?:[/#]|$)|$|#)/;
+export const ROOT_CONTENT_LINK = /^\/(?:(?:docs|component|base|shell)(?:[/#]|$)|$|#)/;
 
 /** Every published Markdown file, as paths relative to `root`. */
 export function contentFiles(root) {
@@ -33,7 +32,7 @@ export function contentFiles(root) {
     const path = join(root, dir);
     if (existsSync(path)) walk(path);
   }
-  // `zh-CN/docs` is walked on its own; keep one entry per file.
+  // Keep one entry per file.
   return [...new Set(files)].sort();
 }
 

@@ -142,7 +142,7 @@ echo "Building main at /versions/main"
   SITE_OUT_DIR="$main_output_dir" \
   bunx --bun astro build
 )
-rm -rf "$main_output_dir/apps" "$main_output_dir/zh-CN/apps"
+rm -rf "$main_output_dir/apps"
 bunx pagefind --site "$main_output_dir"
 
 for tag in "${release_tags[@]:1}"; do
@@ -183,7 +183,7 @@ for tag in "${release_tags[@]:1}"; do
   # The current build is the single owner of the continuously updated App
   # Stories routes. Remove the historical copies and rebuild their search
   # index so versioned results cannot point at deleted pages.
-  rm -rf "$output_dir/apps" "$output_dir/zh-CN/apps"
+  rm -rf "$output_dir/apps"
   bunx pagefind --site "$output_dir"
   mkdir -p "$cached_dir"
   rsync -a "$output_dir/" "$cached_dir/"

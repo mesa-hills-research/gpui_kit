@@ -22,7 +22,7 @@ const BASE = configuredBase === '/' ? '/' : `/${configuredBase.replace(/^\/+|\/+
 
 // GitHub Pages serves static HTML redirects for old component bookmarks.
 const componentRedirects = Object.fromEntries(
-  ['', 'zh-CN/'].flatMap((locale) => {
+  [''].flatMap((locale) => {
     const componentDir = new URL(`./${locale}component/`, import.meta.url);
     if (!existsSync(componentDir)) return [];
     const entries = readdirSync(componentDir)
@@ -42,7 +42,7 @@ const componentRedirects = Object.fromEntries(
 // under /docs before this move, so they need a literal old->new mapping —
 // componentRedirects only recognizes the /docs/components/<slug> prefix.
 const legacyDocRedirects = Object.fromEntries(
-  ['', 'zh-CN/'].flatMap((locale) =>
+  [''].flatMap((locale) =>
     ['root', 'theme', 'dock']
       .filter((slug) => existsSync(new URL(`./${locale}component/${slug}.md`, import.meta.url)))
       .map((slug) => [
@@ -65,7 +65,6 @@ export default defineConfig({
       ...componentRedirects,
       ...legacyDocRedirects,
       '/docs/ui-testing': '/docs/test',
-      '/zh-CN/docs/ui-testing': '/zh-CN/docs/test',
     }).map(([from, to]) => [from, `${BASE.replace(/\/$/, '')}${to}`]),
   ),
 

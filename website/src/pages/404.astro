@@ -20,7 +20,7 @@ const versions = siteVersions.map((version) => ({
 ---
 
 <BaseLayout title="404 — Page Not Found" description="The page you are looking for does not exist." robots="noindex, nofollow" alternates={false}>
-  <Nav lang="en" currentPath="/404" starCount={starCount} langSwitchHref={`${base}zh-CN`} />
+  <Nav lang="en" currentPath="/404" starCount={starCount} />
   <main style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 3.5rem);padding:2rem;text-align:center;gap:1.25rem;">
     <h1 style="margin:0;font-size:clamp(3rem,8vw,6rem);font-weight:700;letter-spacing:-0.06em;color:var(--foreground);line-height:1;">404</h1>
     <p data-not-found-message style="margin:0;max-width:34rem;font-size:1.1rem;color:var(--muted-foreground);">The page you are looking for does not exist.</p>
@@ -40,9 +40,8 @@ const versions = siteVersions.map((version) => ({
       ? versions.find((version) => version.id === decodeURIComponent(match[1]))
       : versions.find((version) => version.prefix === '');
     const inner = match ? match[2] || '/' : pathname;
-    if (!current || !/^\/(?:zh-CN\/)?(?:docs|component|base|shell)(?:\/|$)/.test(inner)) return;
+    if (!current || !/^\/(?:docs|component|base|shell)(?:\/|$)/.test(inner)) return;
 
-    const zh = inner.startsWith('/zh-CN/');
     // Prefer the default version, then the others in their listed order (main
     // first): a page missing from a release is most often new on main.
     const candidates = [
@@ -57,13 +56,11 @@ const versions = siteVersions.map((version) => ({
       } catch {
         continue;
       }
-      const label = (entry) => entry.latest ? `${entry.label}${zh ? '（最新）' : ' (latest)'}` : entry.label;
+      const label = (entry) => entry.latest ? `${entry.label} (latest)` : entry.label;
       const message = document.querySelector('[data-not-found-message]');
       const action = document.querySelector('[data-not-found-action]');
-      message.textContent = zh
-        ? `此页面不在 ${label(current)}${current.latest ? '' : ' '}文档中，但在 ${label(version)}${version.latest ? '' : ' '}文档中可以找到。`
-        : `This page is not in the ${label(current)} documentation, but it exists in ${label(version)}.`;
-      action.textContent = zh ? `打开 ${label(version)}${version.latest ? '' : ' '}文档` : `Open in ${label(version)}`;
+      message.textContent = `This page is not in the ${label(current)} documentation, but it exists in ${label(version)}.`;
+      action.textContent = `Open in ${label(version)}`;
       action.href = href;
       return;
     }

@@ -21,19 +21,18 @@ function tag(html, pattern) {
 }
 
 test('primary landing pages contain server-rendered headings and copy', () => {
-  for (const path of ['index.html', 'zh-CN/index.html', 'apps/index.html', 'skills/index.html', 'contributors/index.html']) {
+  for (const path of ['index.html', 'apps/index.html', 'skills/index.html', 'contributors/index.html']) {
     const html = read(path);
     assert.match(html, /<h1[\s>]/, `${path} must contain an H1 before JavaScript runs`);
     assert.ok(tag(html, /<main[^>]*>([\s\S]*?)<\/main>/).length > 100, `${path} must contain meaningful main content`);
   }
 });
 
-test('indexable pages have canonical and bilingual alternates', () => {
-  for (const path of ['index.html', 'zh-CN/index.html', 'docs/index.html', 'zh-CN/docs/index.html', 'apps/index.html']) {
+test('indexable pages have canonical and alternates', () => {
+  for (const path of ['index.html', 'docs/index.html', 'apps/index.html']) {
     const html = read(path);
     assert.match(html, /<link rel="canonical" href="https:\/\/gpui-kit\.com\//, `${path} canonical`);
     assert.match(html, /hreflang="en"/, `${path} English alternate`);
-    assert.match(html, /hreflang="zh-CN"/, `${path} Chinese alternate`);
     assert.match(html, /hreflang="x-default"/, `${path} default alternate`);
   }
 });
@@ -48,13 +47,13 @@ test('titles contain the GPUI Kit brand exactly once', () => {
   }
 });
 
-test('titles are unique within each language', () => {
+test('titles are unique', () => {
   const seen = new Map();
   for (const file of htmlFiles(dist.pathname)) {
     if (file.endsWith('/404.html') || file.endsWith('/og-template.html')) continue;
     if (/<meta[^>]+http-equiv="refresh"/i.test(readFileSync(file, 'utf8'))) continue;
     const relative = file.slice(dist.pathname.length);
-    const locale = relative.startsWith('zh-CN/') ? 'zh-CN' : 'en';
+    const locale = 'en';
     const title = tag(readFileSync(file, 'utf8'), /<title>([\s\S]*?)<\/title>/);
     const key = `${locale}:${title}`;
     assert.ok(!seen.has(key), `${file} duplicates title from ${seen.get(key)}: ${title}`);
@@ -74,13 +73,13 @@ test('every indexable HTML page has exactly one H1', () => {
 test('core guide links resolve to existing pages and headings', () => {
   for (const file of htmlFiles(dist.pathname)) {
     const relative = file.slice(dist.pathname.length);
-    if (!/^(?:zh-CN\/)?docs\/[^/]+\/index\.html$/.test(relative)) continue;
+    if (!/^docs\/[^/]+\/index\.html$/.test(relative)) continue;
     if (!existsSync(join(dist.pathname, '..', relative.replace(/\/index\.html$/, '.md')))) continue;
     const article = readFileSync(file, 'utf8').match(/<article class="doc-content"[^>]*>([\s\S]*?)<\/article>/)?.[1];
     assert.ok(article, `${relative} has documentation content`);
     for (const [, href] of article.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
       const url = new URL(href, 'https://gpui-kit.com');
-      if (url.origin !== 'https://gpui-kit.com' || !/^\/(?:zh-CN\/)?docs\//.test(url.pathname)) continue;
+      if (url.origin !== 'https://gpui-kit.com' || !/^\/docs\//.test(url.pathname)) continue;
       const page = join(dist.pathname, decodeURIComponent(url.pathname), 'index.html');
       assert.ok(existsSync(page), `${relative} links to missing page ${href}`);
       if (url.hash) {
@@ -102,8 +101,8 @@ test('404 is excluded from indexing', () => {
   assert.match(read('404.html'), /<meta name="robots" content="noindex, nofollow"/);
 });
 
-test('component pages have independent routes, translated alternates and readable legacy URLs', () => {
-  for (const locale of ['', 'zh-CN/']) {
+test('component pages have independent routes, alternates and readable legacy URLs', () => {
+  for (const locale of ['']) {
     const source = new URL(`../${locale}component/`, import.meta.url);
     assert.match(read(`${locale}docs.md`).trimEnd(), /> [^\n]*CC BY 4\.0[^\n]*Apache-2\.0[^\n]*\.?$/);
     for (const name of readdirSync(source).filter(name => name.endsWith('.md'))) {
@@ -112,7 +111,6 @@ test('component pages have independent routes, translated alternates and readabl
       const html = read(`${route}/index.html`);
       assert.ok(html.includes(`rel="canonical" href="https://gpui-kit.com/${route}"`), route);
       assert.match(html, /hreflang="en"/);
-      assert.match(html, /hreflang="zh-CN"/);
       assert.match(read(`${route}.md`), new RegExp(`^---\nurl: /${route}\\.md\n`));
       assert.match(read(`${route}.md`).trimEnd(), /> [^\n]*CC BY 4\.0[^\n]*Apache-2\.0[^\n]*\.?$/);
       assert.match(read(`${locale}docs/components/${slug}/index.html`), /http-equiv="refresh"/);
@@ -128,8 +126,6 @@ test('versioned documentation examples load the shared root WASM builds', () => 
   for (const path of [
     'component/button/index.html',
     'base/primitives/button/index.html',
-    'zh-CN/component/button/index.html',
-    'zh-CN/base/primitives/button/index.html',
   ]) {
     const html = read(path);
     assert.ok(
@@ -140,7 +136,7 @@ test('versioned documentation examples load the shared root WASM builds', () => 
 });
 
 test('shared guides remain under docs and sidebars keep the sections separate', () => {
-  for (const locale of ['', 'zh-CN/']) {
+  for (const locale of ['']) {
     for (const guide of ['coding-guides', 'design-guides']) {
       const html = read(`${locale}docs/${guide}/index.html`);
       assert.ok(html.includes(`rel="canonical" href="https://gpui-kit.com/${locale}docs/${guide}"`));
@@ -162,7 +158,7 @@ test('component links and discovery use canonical routes', () => {
   const sitemap = read('sitemap.xml');
   const index = read('llms.txt');
   const full = read('llms-full.txt');
-  for (const locale of ['', 'zh-CN/']) {
+  for (const locale of ['']) {
     assert.ok(sitemap.includes(`https://gpui-kit.com/${locale}component/button`));
     assert.ok(index.includes(`/${locale}component.md`));
     assert.ok(index.includes(`/${locale}component/button.md`));
@@ -187,7 +183,6 @@ test('LLM discovery identifies tested consumer recipes', () => {
 test('primary navigation follows the Kit section order', () => {
   for (const [locale, labels] of [
     ['', ['Docs', 'Component', 'Base', 'Shell', 'App Stories']],
-    ['zh-CN/', ['文档', '组件', 'Base', 'Shell', '应用案例']],
   ]) {
     const html = read(`${locale}docs/index.html`);
     const nav = html.match(/<nav class="site-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
@@ -199,7 +194,7 @@ test('primary navigation follows the Kit section order', () => {
 
 
 test('testing guide has canonical routes and readable legacy URLs', () => {
-  for (const locale of ['', 'zh-CN/']) {
+  for (const locale of ['']) {
     const route = `${locale}docs/test`;
     const html = read(`${route}/index.html`);
     assert.ok(html.includes(`https://gpui-kit.com/${route}`));

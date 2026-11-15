@@ -14,7 +14,7 @@ import { currentVersionPath } from '../lib/versions';
 export interface Props {
   title?: string;
   description?: string;
-  lang?: 'en' | 'zh-CN';
+  lang?: 'en';
   sidebar?: SidebarItem[];
   headings?: Heading[];
   frontmatter?: Record<string, any>;
@@ -27,24 +27,22 @@ const base = import.meta.env.BASE_URL;
 
 const canonical = `${SITE_URL}${pathname}`;
 const contentPath = currentVersionPath(pathname, base);
-const isDocumentationPage = /^\/(?:zh-CN\/)?(?:docs|base|component|shell)(?:\/|$)/.test(contentPath);
+const isDocumentationPage = /^\/(?:docs|base|component|shell)(?:\/|$)/.test(contentPath);
 
 let starCount = 0;
 try {
   starCount = await fetchStarCount();
 } catch {}
 
-const isZh = lang === 'zh-CN';
 const segments = pathname.split('/').filter(Boolean);
 const itemListElement = segments
-  .filter(segment => segment !== 'zh-CN')
   .map((segment, index, visibleSegments) => ({
     '@type': 'ListItem',
     position: index + 1,
     name: index === visibleSegments.length - 1 && title
       ? title
       : segment.replace(/[-_]/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
-    item: `${SITE_URL}/${isZh ? 'zh-CN/' : ''}${visibleSegments.slice(0, index + 1).join('/')}`,
+    item: `${SITE_URL}/${visibleSegments.slice(0, index + 1).join('/')}`,
   }));
 const structuredData = [
   {
@@ -53,7 +51,7 @@ const structuredData = [
     name: title,
     description,
     url: canonical,
-    inLanguage: isZh ? 'zh-CN' : 'en',
+    inLanguage: 'en',
   },
   {
     '@context': 'https://schema.org',
@@ -63,7 +61,7 @@ const structuredData = [
 ];
 ---
 
-<BaseLayout title={title} description={description} lang={isZh ? 'zh-CN' : 'en'} canonical={canonical} structuredData={structuredData}>
+<BaseLayout title={title} description={description} lang="en" canonical={canonical} structuredData={structuredData}>
   <Nav lang={lang} currentPath={pathname} starCount={starCount} />
 
   <div class="docs-layout">
@@ -87,7 +85,6 @@ const structuredData = [
 <script>
   const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
   const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
-  const isZh = document.documentElement.lang === 'zh-CN';
 
   for (const pre of document.querySelectorAll<HTMLPreElement>('.doc-content pre')) {
     const code = pre.querySelector('code');
@@ -96,7 +93,7 @@ const structuredData = [
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'doc-code-copy';
-    button.setAttribute('aria-label', isZh ? '复制代码' : 'Copy code');
+    button.setAttribute('aria-label', 'Copy code');
     button.innerHTML = copyIcon;
     let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -104,12 +101,12 @@ const structuredData = [
       try {
         await navigator.clipboard.writeText(code.textContent ?? '');
         button.dataset.copied = '';
-        button.setAttribute('aria-label', isZh ? '已复制' : 'Copied');
+        button.setAttribute('aria-label', 'Copied');
         button.innerHTML = checkIcon;
         clearTimeout(resetTimer);
         resetTimer = setTimeout(() => {
           delete button.dataset.copied;
-          button.setAttribute('aria-label', isZh ? '复制代码' : 'Copy code');
+          button.setAttribute('aria-label', 'Copy code');
           button.innerHTML = copyIcon;
         }, 1600);
       } catch {}
@@ -133,8 +130,8 @@ const structuredData = [
     const toggle = timeline.querySelector<HTMLButtonElement>('[data-frame-timeline-toggle]');
     if (!toggle) continue;
 
-    const pauseLabel = isZh ? '暂停动画' : 'Pause animation';
-    const playLabel = isZh ? '播放动画' : 'Play animation';
+    const pauseLabel = 'Pause animation';
+    const playLabel = 'Play animation';
     const setPaused = (paused: boolean) => {
       timeline.dataset.paused = String(paused);
       toggle.setAttribute('aria-pressed', String(paused));

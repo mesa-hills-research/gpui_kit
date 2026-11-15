@@ -21,7 +21,6 @@ const INTENTIONAL_GPUI_PINS: Record<string, string[]> = {
   // the `mhr-gpui` release Kit pins, and `gpui-pre-mobile` has its own crate
   // version.
   'docs/mobile.md': ['0.3.4', '0.1.0'],
-  'zh-CN/docs/mobile.md': ['0.3.4', '0.1.0'],
 };
 
 /** The source file a relative link resolves to, or undefined. */
@@ -43,10 +42,9 @@ test('documentation links stay inside the version being read', () => {
   assert.deepEqual(failures, [], `Site-root links send versioned pages to the default version:\n${failures.join('\n')}`);
 });
 
-test('relative documentation links resolve to a page in the same locale', () => {
+test('relative documentation links resolve to a page', () => {
   const failures: string[] = [];
   for (const file of files) {
-    const zh = file.startsWith('zh-CN/');
     for (const link of markdownLinks(read(file))) {
       const { url } = link;
       if (/^[a-z][a-z\d+.-]*:/i.test(url) || url.startsWith('/') || url.startsWith('#')) continue;
@@ -59,10 +57,6 @@ test('relative documentation links resolve to a page in the same locale', () => 
       if (!target) {
         failures.push(`${file}:${link.line} ${url} — no such page`);
         continue;
-      }
-      const targetFile = relative(root, target).split(sep).join('/');
-      if (zh && !targetFile.startsWith('zh-CN/') && existsSync(join(root, 'zh-CN', targetFile))) {
-        failures.push(`${file}:${link.line} ${url} — links the English page; zh-CN/${targetFile} exists`);
       }
     }
   }
@@ -126,18 +120,4 @@ test('GPUI Kit versions come from the release variable', () => {
     });
   }
   assert.deepEqual(failures, [], failures.join('\n'));
-});
-
-test('both locales mark a page with the same maturity', () => {
-  const maturity = (file: string) =>
-    read(file).match(/^---\n[\s\S]*?^maturity:\s*(.+)$[\s\S]*?^---/m)?.[1]?.trim() ?? '';
-  const failures: string[] = [];
-  for (const file of files.filter((file) => !file.startsWith('zh-CN/'))) {
-    const zh = `zh-CN/${file}`;
-    if (!files.includes(zh)) continue;
-    if (maturity(file) !== maturity(zh)) {
-      failures.push(`${file} (${maturity(file) || 'none'}) and ${zh} (${maturity(zh) || 'none'})`);
-    }
-  }
-  assert.deepEqual(failures, [], `Maturity differs between locales:\n${failures.join('\n')}`);
 });

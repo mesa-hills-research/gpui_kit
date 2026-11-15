@@ -13,7 +13,7 @@ const base = `/${(process.env.SITE_TEST_BASE || '/').replace(/^\/+|\/+$/g, '')}/
 
 // Deployed once at the site root and shared by every version, so they are
 // neither in a versioned build nor expected to be.
-const SHARED_ROOT = /^\/(?:gallery|examples|apps|zh-CN\/apps)(?:[/?#]|$)/;
+const SHARED_ROOT = /^\/(?:gallery|examples|apps)(?:[/?#]|$)/;
 
 function htmlFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((name) => {

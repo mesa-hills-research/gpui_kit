@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
-const roots = ['docs', 'component', 'base', 'shell', 'zh-CN/docs', 'zh-CN/component', 'zh-CN/base', 'zh-CN/shell'];
+const roots = ['docs', 'component', 'base', 'shell'];
 const root = process.argv[2];
 
 if (!root) throw new Error('usage: normalize-website-frontmatter.mjs <website-root>');

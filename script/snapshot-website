@@ -6,7 +6,7 @@ ref=$2
 target=$3
 snapshot_paths=()
 
-for path in website/docs website/component website/base website/shell website/zh-CN; do
+for path in website/docs website/component website/base website/shell; do
   rm -rf "$target/${path#website/}"
   if git -C "$repo_root" cat-file -e "$ref:$path" 2>/dev/null; then
     snapshot_paths+=("$path")

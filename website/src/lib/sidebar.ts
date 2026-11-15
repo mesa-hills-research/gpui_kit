@@ -215,29 +215,6 @@ export const enBaseSidebar = generateSidebar({
   rootGroupText: 'GPUI Base',
 });
 
-export const zhDocsSidebar = generateSidebar({
-  contentDir: join(WEBSITE_ROOT, 'zh-CN/docs'),
-  labelContentDir: join(WEBSITE_ROOT, 'docs'),
-  baseUrl: `${BASE}/zh-CN/docs`,
-  rootGroupText: 'GPUI Kit',
-  rootLinkText: 'GPUI Kit',
-});
-
-export const zhShellSidebar = generateSidebar({
-  contentDir: join(WEBSITE_ROOT, 'zh-CN/shell'),
-  labelContentDir: join(WEBSITE_ROOT, 'shell'),
-  baseUrl: `${BASE}/zh-CN/shell`,
-  rootGroupText: 'GPUI Shell',
-  rootLinkText: 'Introduction',
-});
-
-export const zhBaseSidebar = generateSidebar({
-  contentDir: join(WEBSITE_ROOT, 'zh-CN/base'),
-  labelContentDir: join(WEBSITE_ROOT, 'base'),
-  baseUrl: `${BASE}/zh-CN/base`,
-  rootGroupText: 'GPUI Base',
-});
-
 export const enComponentSidebar = generateSidebar({
   contentDir: join(WEBSITE_ROOT, 'component'),
   baseUrl: `${BASE}/component`,
@@ -245,10 +222,3 @@ export const enComponentSidebar = generateSidebar({
   rootLinkText: 'Components',
 });
 
-export const zhComponentSidebar = generateSidebar({
-  contentDir: join(WEBSITE_ROOT, 'zh-CN/component'),
-  labelContentDir: join(WEBSITE_ROOT, 'component'),
-  baseUrl: `${BASE}/zh-CN/component`,
-  rootGroupText: 'GPUI Component',
-  rootLinkText: 'Components',
-});

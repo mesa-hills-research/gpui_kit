@@ -7,7 +7,7 @@ import { ROOT_CONTENT_LINK } from './doc-sources.js';
 // target file back to the route that renders it.
 //
 // The content lives in directories that mirror the routes — `docs/x.md` is
-// `/docs/x`, `zh-CN/base/y.md` is `/zh-CN/base/y` — so the route is just the
+// `/docs/x`, `base/y.md` is `/base/y` — so the route is just the
 // path relative to the site root, minus the extension, with `index` dropped.
 
 const SITE_ROOT = resolve(process.cwd());

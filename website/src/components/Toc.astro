@@ -7,15 +7,15 @@ export interface Heading {
 
 export interface Props {
   headings?: Heading[];
-  lang?: 'en' | 'zh-CN';
+  lang?: 'en';
 }
 
-const { headings = [], lang = 'en' } = Astro.props;
+const { headings = [] } = Astro.props;
 
 // h1 is the page title, already shown above; anything below h3 turns the
 // column into a wall of text on API pages.
 const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
-const label = lang === 'zh-CN' ? '本页内容' : 'On this page';
+const label = 'On this page';
 ---
 
 {items.length > 1 && (

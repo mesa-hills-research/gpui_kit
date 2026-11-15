@@ -100,8 +100,7 @@ Chinese. Monospace prefers `ui-monospace` / SF Mono and falls back to
 Two constraints that are easy to get wrong:
 
 - **Negative tracking and wide tracking are for Latin only.** CJK glyphs sit on
-  a fixed em grid, so `html[lang^="zh"]` resets body tracking and reduces the
-  kicker's letter-spacing. Do not apply Latin tracking globally.
+  a fixed em grid, so `html[lang^="ja"]` resets body tracking. Do not apply Latin tracking globally.
 - **Numerals use `tabular-nums`** in tables, keys and counters so they do not
   reflow when values change.
 
@@ -230,9 +229,7 @@ through motion alone.
 - Capability previews are **diagrams**, not product mocks: they share one
   padding box and one gap, and they may use `--data-*` to read as UI. A diagram
   that needs a scrollbar needs its track too, or it looks like a glitch.
-- Landing-page copy lives in one bilingual `copy` object in `HomeApp.vue`. Both
-  locales must be updated together, matching the site-wide rule that
-  `website/docs/` and `website/zh-CN/docs/` stay in sync.
+- Landing-page copy lives in one `copy` object in `HomeApp.vue`.
 - Live examples should demonstrate the documented component's real behavior
   and use the same source as its native example.
 
@@ -280,8 +277,7 @@ apps through PRs in [longbridge/gpui-kit-showcases](https://github.com/longbridg
   then committed to manifests before dispatching the website release. Website
   builds read these cached values. A failed lookup preserves prior values; missing
   manifests or images fail the build, preventing a broken catalog deployment.
-- **Optional detail pages.** An app README enables `/apps/<id>` and its Chinese
-  route. The catalog’s shared Bun validator and renderer enforce the 10 KB limit,
+- **Optional detail pages.** An app README enables `/apps/<id>`. The catalog’s shared Bun validator and renderer enforce the 10 KB limit,
   official-link allowlist, local media and product-only content rules. The catalog
   checkout’s locked dependencies must be installed before building.
 - **Review before publication.** Keep a labeled selection-policy disclosure before
@@ -302,8 +298,8 @@ apps through PRs in [longbridge/gpui-kit-showcases](https://github.com/longbridg
 | File | Role |
 | --- | --- |
 | `src/styles/global.css` | Tokens, `.mac-window`, docs-nav/doc-content typography |
-| `src/components/HomeApp.vue` | Landing page: markup, bilingual copy, page-scoped styles |
-| `src/components/AppsApp.vue` | App Stories page: the showcase list, bilingual copy, page-scoped styles |
+| `src/components/HomeApp.vue` | Landing page: markup, copy, page-scoped styles |
+| `src/components/AppsApp.vue` | App Stories page: the showcase list, copy, page-scoped styles |
 | `src/components/Nav.astro` | Docs/base/shell navbar: search, GitHub star, language, appearance, mobile drawer |
 | `src/components/ComponentExample.vue` | Windowed live example on component pages |
 | `src/lib/sidebar.ts` | Sidebar generation from the docs content collection |

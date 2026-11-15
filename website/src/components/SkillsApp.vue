@@ -29,16 +29,13 @@ interface Skill {
 }
 
 const props = defineProps<{
-    lang: 'en' | 'zh-CN';
+    lang: 'en';
     skills: Skill[];
 }>();
 
-const isZh = computed(() => props.lang === 'zh-CN');
-const title = computed(() => (isZh.value ? "GPUI Kit 技能" : "GPUI Kit Skills"));
+const title = computed(() => ("GPUI Kit Skills"));
 const description = computed(() =>
-    isZh.value
-        ? "这里汇总了适用于 GPUI Kit 的开发技能、约定和最佳实践。"
-        : "Skills available for working with GPUI Kit. These skills provide guidance and best practices for building GPUI applications.",
+    "Skills available for working with GPUI Kit. These skills provide guidance and best practices for building GPUI applications."
 );
 </script>
 

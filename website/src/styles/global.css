@@ -231,12 +231,10 @@ body {
   letter-spacing: -0.003em;
 }
 
-html[lang^="zh"] body,
 html[lang^="ja"] body {
   letter-spacing: normal;
 }
 
-html[lang^="zh"] :is(h1, h2, h3, h4),
 html[lang^="ja"] :is(h1, h2, h3, h4) {
   letter-spacing: -0.015em;
 }
@@ -1895,20 +1893,6 @@ html.dark .astro-code span {
 }
 
 .site-nav__search-hint { margin-right: auto; white-space: nowrap; }
-
-/* Tracking that reads as restrained emphasis on Latin caps pulls short CJK
-   labels apart — `文档`, `本页内容` — because Chinese has no case for the
-   uppercase to act on, leaving only the extra space. The Vue components already
-   narrow their own kickers this way; these four had been left behind. */
-html[lang^="zh"] :is(
-  .sidebar-group__title,
-  .toc__label,
-  .doc-pager__label,
-  .component-example__label,
-  .doc-content .doc-maturity__label
-) {
-  letter-spacing: 0.05em;
-}
 
 /* ====================================================================
    Mobile: the docs shell (the bar styles itself in Nav.astro)
