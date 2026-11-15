@@ -1,7 +1,6 @@
 ---
 title: Design Guides
 description: Product and interaction design guidance for GPUI Kit applications
-order: -2.1
 ---
 
 # Design Guides
@@ -17,7 +16,7 @@ and **may** is an optional technique. Component API documentation remains the
 authority for individual methods.
 
 The rules build on behavior in `gpui-base`, the GPUI Component theme and
-component system, and familiar desktop interaction. Shadcn contributes useful
+component system, and familiar desktop interaction. [shadcn/ui](https://ui.shadcn.com/docs) contributes useful
 methods—open code, composition, and dependable defaults—but does not determine
 how a GPUI application should look. When influences conflict, preserve GPUI's
 lifecycle constraints and the interaction people already understand.
@@ -34,7 +33,8 @@ than compete with them.
    compose them into product-specific workflows. Create a new primitive only
    when its behavior is genuinely new.
 3. **Tokens before values.** Colors, radii, typography, and spacing should form
-   a system. Avoid isolated literals that cannot respond to themes.
+   a system. Avoid isolated literals that cannot respond to themes. See
+   [Style](https://gpui-kit.com/docs/style) for GPUI's styling API.
 4. **Desktop before web convention.** Preserve keyboard access, window chrome,
    menus, dense data views, resizable regions, and persistent navigation where
    the task benefits from them.
@@ -180,8 +180,10 @@ value. A segmented control is one silhouette: its end segments follow the contai
 corners, its middle segments remain square, and each boundary has one divider
 of consistent thickness.
 
-<img class="alignment-light" src="/radius-hierarchy.svg" alt="Light theme chat composer: the inset surface, both buttons, and placeholder spacing change together; red guide circles show their shared corner center.">
-<img class="alignment-dark" src="/radius-hierarchy-dark.svg" alt="Dark theme chat composer: the inset surface, both buttons, and placeholder spacing change together; red guide circles show their shared corner center.">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/radius-hierarchy-dark.svg">
+  <img src="images/radius-hierarchy.svg" alt="Chat composer: the inset surface, both buttons, and placeholder spacing change together; red guide circles show their shared corner center.">
+</picture>
 
 A radius must govern the entire visible surface, not just its border. Exposed
 corners remain transparent to the surface behind them; child backgrounds,
@@ -292,8 +294,10 @@ text baselines, center lines, and fixed functional lanes. Elements at the same
 level should attach to the same spine from top to bottom or leading to trailing,
 even when they are different component types.
 
-<img class="alignment-light" src="/alignment-spines.svg?v=20260822-4" alt="Alignment spines across a desktop surface">
-<img class="alignment-dark" src="/alignment-spines-dark.svg?v=20260822-4" alt="Alignment spines across a desktop surface">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/alignment-spines-dark.svg">
+  <img src="images/alignment-spines.svg" alt="Alignment spines across a desktop surface">
+</picture>
 
 Vertical red lines sit beside shared edges or control centers for content,
 status, time, and trailing actions. Horizontal lines sit beneath text baselines
@@ -387,7 +391,7 @@ Zoom is successful when the relationship between title and body, control and
 icon, inner and outer spacing, primary and secondary regions still feels the
 same at every scale—not merely when every object becomes larger.
 
-GPUI Component adopts the relative-scale idea familiar from Tailwind. The
+GPUI Component adopts the relative-scale idea familiar from [Tailwind CSS](https://tailwindcss.com/docs/theme). The
 theme's base `font_size` becomes the window's `rem` through `Root`, and GPUI
 scale helpers such as `text_sm()`, `gap_2()`, `p_4()`, `h_8()`, and `size_4()`
 resolve against it. This gives typography, spacing, controls, and icons one
@@ -611,7 +615,7 @@ Use command frequency and scope to choose where an action lives:
 - put secondary actions for the current region behind a visible
   `DropdownMenu` trigger;
 - put commands that act on the object under the pointer in a `ContextMenu`;
-- expose the same important command through an Action/key binding when it has a
+- expose the same important command through an [Action](https://gpui-kit.com/docs/action)/[key binding](https://gpui-kit.com/docs/keybinding) when it has a
   natural keyboard form;
 - use a hover-revealed icon only as a shortcut to a command that remains
   reachable elsewhere.
@@ -948,5 +952,5 @@ the right decisions. Ask, in order:
 8. **Has it been tested in a real window?** Complete the task with real
    components, copy, and representative content—not only an ideal screenshot.
 
-Continue with [Coding Guides](./coding-guides.md) to translate these design
+Continue with [Coding Guides](../../gpui-kit/references/coding-guides.md) to translate these design
 decisions into GPUI architecture and code.

@@ -10,9 +10,9 @@ a requirement, not inspiration. Read the guide file itself before doing UI
 work. Do not answer from this page, from an existing screen in the codebase, or
 from training data.
 
-If the file is missing, fetch `https://gpui-kit.com/docs/design-guides.md`.
-The guide is a verbatim copy of that page, so its link to `./coding-guides.md`
-means the Coding Guides in the `gpui-kit` skill (or `https://gpui-kit.com/docs/coding-guides.md`).
+If the file is missing, fetch `https://gpui-kit.com/docs/design-guides.md`,
+upstream's version of the guide. The guide's link to the Coding Guides goes to
+the `gpui-kit` skill, and its links to GPUI concepts go to upstream's site.
 
 ## How to read it
 

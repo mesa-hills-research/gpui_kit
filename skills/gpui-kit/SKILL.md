@@ -28,10 +28,10 @@ similar file in the codebase, or from training data.
 
 Read the Design Guides first when the change has a visible surface: code
 structure preserves product intent, it does not replace it. If the design
-skill is not installed, fetch `https://gpui-kit.com/docs/design-guides.md`.
-The coding guide is a verbatim copy of `https://gpui-kit.com/docs/coding-guides.md`,
-so its links to `./design-guides.md` and `./getting-started.md` mean the design
-skill and `https://gpui-kit.com/docs/getting-started.md`.
+skill is not installed, fetch `https://gpui-kit.com/docs/design-guides.md`,
+upstream's version of the guide. The coding guide's links to the Design Guides
+go to that skill, and its links to GPUI concepts and Getting Started go to
+upstream's site.
 
 ### Coding Guides section map
 
@@ -41,6 +41,7 @@ section for the change (`grep -n '^## ' references/coding-guides.md`).
 
 | Section                              | Read when                                                              |
 | ------------------------------------ | ---------------------------------------------------------------------- |
+| Make the common path inexpensive     | Choosing framework types and ownership before adding a cache           |
 | Architecture at a glance             | Always; crate layering, ownership boundary                             |
 | Bootstrap and root ownership         | `main`, `init`, `Root`, window creation, app-level state               |
 | Understand GPUI's phases and contexts | Anything touching `App`, `Window`, `Context<T>`, render vs update      |
