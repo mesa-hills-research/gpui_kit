@@ -52,7 +52,7 @@ a window drag. `can_close` is where an app asks about unsaved work.
 
 The new app's `Cargo.toml` takes `gpui-kit` from crates.io, as `mhr-gpui-kit` at the version of
 the kit the generator was built from, so the template and the kit match. `cargo update` moves the
-app to later releases of the same minor version, such as 0.7.9 after 0.7.8.
+app to later releases of the same minor version, such as 0.8.2 after 0.8.1.
 
 GPUI comes with the kit, from the published `mhr-gpui` crates the kit pins, so the app's
 `Cargo.toml` names no GPUI crate and needs no patch for one.

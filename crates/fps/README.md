@@ -34,16 +34,20 @@ It does not depend on `gpui-component`, so it works in any GPUI application.
 
 ### 1. Add the dependency
 
+gpui-fps is not published to crates.io. It comes from this repository, at the
+commit of the `mhr-gpui-kit` 0.8.1 release:
+
 ```toml
 [dependencies]
-gpui-fps = { git = "https://github.com/longbridge/gpui-kit" }
+gpui-fps = { git = "https://github.com/mesa-hills-research/gpui_kit", rev = "9579e87e27fc7f73d6fd1948604b69989869f1e3" } # v0.8.1
 ```
 
 It must resolve to the same `gpui` as your application. Both depending on the
 same `mhr-gpui` version is enough — Cargo unifies them — but a `[patch]`, a
 different `mhr-gpui` version, or a checkout of the Zed repository will produce
 two incompatible `gpui` crates, and the error will be about mismatched `Window`
-types rather than about versions.
+types rather than about versions. This commit and `mhr-gpui-kit` 0.8.1 both use
+`mhr-gpui` 0.2.0.
 
 ### 2. Render it
 
