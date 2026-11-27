@@ -4,6 +4,22 @@ Each release publishes six crates together at one version, and they pin each oth
 `mhr-gpui-kit`, `mhr-gpui-kit-component`, `mhr-gpui-kit-base`, `mhr-gpui-kit-writing`,
 `mhr-gpui-kit-assets` and `mhr-gpui-kit-component-macros`.
 
+## 0.8.2
+
+A text field looks focused while its drawn context menu is open.
+
+- A right-click on selected text in a field that shows GPUI's drawn menu hid the selection's
+  highlight until the menu closed, and the caret and an input's focus border with it. The drawn
+  menu takes the keyboard focus, and the field drew those only while it had the focus itself. It
+  now draws as focused while the focus stays in its menu, as under an operating system's menu.
+- A field emits no `InputEvent::Blur` as its drawn menu opens, and no `InputEvent::Focus` as it
+  closes. It emits `InputEvent::Blur` when the focus moves from the menu somewhere else.
+- A menu drawn in the window calls `gpui_base::input::drawn_menu_took_focus` to tell a text field
+  it took the field's focus, and the field holds it the same way. `is_focused` on a field's state
+  says whether the field has the focus or its menu holds it.
+
+The six crates move to 0.8.2 together and still pin mhr-gpui 0.2.0.
+
 ## 0.8.1
 
 The kit's crates compile together with any mix of their test features.
