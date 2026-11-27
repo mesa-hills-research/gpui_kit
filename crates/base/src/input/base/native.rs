@@ -107,7 +107,7 @@ mod macos {
 #[cfg(target_os = "macos")]
 pub use macos::set_text_content_type;
 
-use gpui::SharedString;
+use gpui::{App, FocusHandle, Global, SharedString, Window};
 
 /// Presentation-independent context-menu model produced by the editor.
 #[derive(Default)]
@@ -151,4 +151,47 @@ impl NativeMenu {
         self.items.push(NativeMenuItem::Separator);
         self
     }
+}
+
+/// The text field whose context menu is opening, and the drawn menu that took
+/// the focus from it.
+struct OpeningContextMenu {
+    field: FocusHandle,
+    menu: Option<FocusHandle>,
+}
+
+impl Global for OpeningContextMenu {}
+
+/// Tell a text field that `menu`, a menu drawn in the window, took the
+/// keyboard focus from it as it opened.
+///
+/// A drawn menu calls this as it takes the focus from `from`. When `from` is
+/// a text field whose context menu is opening, the menu holds the focus for
+/// the field, as [`crate::input::InputBaseState::is_focused`] says. Otherwise this
+/// does nothing.
+pub fn drawn_menu_took_focus(from: &FocusHandle, menu: &FocusHandle, cx: &mut App) {
+    let opening_from = cx
+        .try_global::<OpeningContextMenu>()
+        .is_some_and(|opening| opening.field == *from);
+    if opening_from {
+        cx.global_mut::<OpeningContextMenu>().menu = Some(menu.clone());
+    }
+}
+
+/// Run `open`, which opens `field`'s context menu, and return the drawn menu
+/// that took the focus from the field, if one did.
+pub(crate) fn open_context_menu(
+    field: &FocusHandle,
+    window: &mut Window,
+    cx: &mut App,
+    open: impl FnOnce(&mut Window, &mut App),
+) -> Option<FocusHandle> {
+    cx.set_global(OpeningContextMenu {
+        field: field.clone(),
+        menu: None,
+    });
+    open(window, cx);
+    cx.has_global::<OpeningContextMenu>()
+        .then(|| cx.remove_global::<OpeningContextMenu>())
+        .and_then(|opening| opening.menu)
 }

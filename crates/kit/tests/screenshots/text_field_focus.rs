@@ -1,6 +1,6 @@
 use super::*;
 use gpui_kit::component::{
-    input::{InputGroup, InputGroupInput, NumberInput, OtpInput, OtpState},
+    input::{ContextMenuStyle, InputGroup, InputGroupInput, NumberInput, OtpInput, OtpState},
     time_field::{TimeField, TimeFieldState},
 };
 
@@ -88,5 +88,116 @@ fn text_fields_use_one_focus_border() {
                 "the {name} focus indicator must remain visible"
             );
         }
+    }
+}
+
+/// A text field's drawn context menu takes the keyboard focus as it opens,
+/// and the field goes on looking focused while the menu is open. Its
+/// selection, caret and focus border stay as they were.
+#[test]
+fn a_text_field_looks_focused_under_its_drawn_menu() {
+    for (kind, name) in [(0, "input"), (1, "textarea")] {
+        let mut app = app(ThemeMode::Light);
+        app.update(|cx| {
+            cx.set_reduce_motion(true);
+            ContextMenuStyle::set_app_default(ContextMenuStyle::Drawn, cx);
+        });
+        let fields = Rc::new(RefCell::new(None));
+        let window = open(&mut app, (320., 260.), SCALE, {
+            let fields = fields.clone();
+            move |window, cx| {
+                let input =
+                    cx.new(|cx| InputState::new(window, cx).default_value("A focused field"));
+                let textarea = cx.new(|cx| {
+                    TextareaState::new(window, cx)
+                        .rows(2)
+                        .default_value("A focused textarea")
+                });
+                *fields.borrow_mut() = Some((input.clone(), textarea.clone()));
+                FocusedField {
+                    kind,
+                    input,
+                    textarea,
+                    otp: cx.new(|cx| OtpState::new(6, window, cx)),
+                    time: cx.new(|cx| TimeFieldState::new(window, cx)),
+                }
+            }
+        });
+        let (input, textarea) = fields.borrow_mut().take().unwrap();
+        // The input's state and the textarea's are different types.
+        macro_rules! field {
+            (|$field:ident| $body:expr) => {
+                if kind == 0 {
+                    let $field = &input;
+                    $body
+                } else {
+                    let $field = &textarea;
+                    $body
+                }
+            };
+        }
+        let selected = 2..9;
+        act(&mut app, window, |window, cx| {
+            field!(|field| field.update(cx, |state, cx| {
+                state.focus(window, cx);
+                state.set_selected_range(selected.clone(), cx);
+            }));
+        });
+        app.advance_clock(Duration::from_millis(100));
+        let before = app.capture(window).unwrap();
+
+        // Just above the bottom of the selection's last letter, so the
+        // menu opens below nearly all of the field.
+        let position = app.update(|cx| {
+            let letter = field!(|field| field
+                .read(cx)
+                .range_to_bounds(&(selected.end - 1..selected.end))
+                .unwrap());
+            gpui_kit::point(letter.center().x, letter.bottom() - px(2.))
+        });
+        act(&mut app, window, |window, cx| {
+            let modifiers = Modifiers::default();
+            window.dispatch_event(
+                MouseDownEvent {
+                    position,
+                    button: MouseButton::Right,
+                    modifiers,
+                    click_count: 1,
+                    first_mouse: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+            window.dispatch_event(
+                MouseUpEvent {
+                    position,
+                    button: MouseButton::Right,
+                    modifiers,
+                    click_count: 1,
+                }
+                .to_platform_input(),
+                cx,
+            );
+        });
+        app.advance_clock(Duration::from_millis(100));
+        let during = app.capture(window).unwrap();
+
+        assert!(
+            before.image != during.image,
+            "the {name}'s context menu opens"
+        );
+        // The menu's shadow reaches a few pixels above its top.
+        let above_menu = ((position.y - px(6.)).as_f32() * SCALE) as u32;
+        for y in 0..above_menu {
+            for x in 0..before.image.width() {
+                assert_eq!(
+                    before.image.get_pixel(x, y),
+                    during.image.get_pixel(x, y),
+                    "the {name} looks as it did before its menu opened, at device pixel ({x}, {y})"
+                );
+            }
+        }
+        let kept = app.update(|cx| field!(|field| field.read(cx).selected_range()));
+        assert_eq!(kept, selected, "the {name} keeps its selection");
     }
 }

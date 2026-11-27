@@ -214,24 +214,30 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use gpui::{
-        AppContext as _, Context, IntoElement, ParentElement as _, Pixels, Point, Render,
-        Styled as _, TestAppContext, VisualTestContext, div, px, size,
+        AppContext as _, Context, Focusable as _, InteractiveElement as _, IntoElement,
+        ParentElement as _, Pixels, Point, Render, Styled as _, TestAppContext, VisualTestContext,
+        div, px, size,
     };
 
     use super::*;
-    use crate::input::InputContextMenuCapabilities;
+    use crate::input::{InputContextMenuCapabilities, InputEvent};
 
     struct Harness {
         textareas: Vec<Entity<TextareaState>>,
+        /// For a menu drawn in the window to focus.
+        menu: gpui::FocusHandle,
     }
 
     impl Render for Harness {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().children(
-                self.textareas
-                    .iter()
-                    .map(|textarea| div().h(px(80.)).child(textarea.clone())),
-            )
+            div()
+                .size_full()
+                .children(
+                    self.textareas
+                        .iter()
+                        .map(|textarea| div().h(px(80.)).child(textarea.clone())),
+                )
+                .child(div().track_focus(&self.menu).h(px(20.)))
         }
     }
 
@@ -247,6 +253,7 @@ mod tests {
                     cx.new(|cx| configure(TextareaState::new(window, cx).default_value("Hello")))
                 })
                 .collect(),
+            menu: cx.focus_handle(),
         });
         let mut cx = VisualTestContext::from_window(window.into(), cx);
         let textareas = window
@@ -387,5 +394,104 @@ mod tests {
         right_click(below, &mut cx);
         cx.dispatch_action(crate::input::Paste);
         assert_eq!(textarea.read_with(&cx, |state, _| state.value()), "Pasted");
+    }
+
+    /// The focus and blur events a textarea emits from now on, as "focus" and
+    /// "blur", in an active window.
+    fn record_focus_events(
+        textarea: &Entity<TextareaState>,
+        cx: &mut VisualTestContext,
+    ) -> Rc<RefCell<Vec<&'static str>>> {
+        let events: Rc<RefCell<Vec<&'static str>>> = Default::default();
+        // An inactive window sends no focus events.
+        cx.update(|window, _| window.activate_window());
+        settle(cx);
+        cx.update(|_, cx| {
+            let events = events.clone();
+            cx.subscribe(textarea, move |_, event: &InputEvent, _| match event {
+                InputEvent::Focus => events.borrow_mut().push("focus"),
+                InputEvent::Blur => events.borrow_mut().push("blur"),
+                _ => {}
+            })
+            .detach();
+        });
+        events
+    }
+
+    /// Run what the last input started, and draw, which sends the focus
+    /// events.
+    fn settle(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.run_until_parked();
+    }
+
+    /// A context menu handler may move the focus somewhere else and show no
+    /// menu. The field it opened on loses the focus, as for any other move.
+    #[gpui::test]
+    fn a_context_menu_handler_can_move_the_focus_away(cx: &mut TestAppContext) {
+        let (mut cx, textareas) = open(cx, vec![|state| state, |state| state]);
+        let other = textareas[1].clone();
+        cx.update(|_, cx| {
+            textareas[0].update(cx, |state, _| {
+                state.on_context_menu(Rc::new(move |_, _, _, window, cx| {
+                    other.update(cx, |other, cx| other.focus(window, cx));
+                }));
+            });
+        });
+        let events = record_focus_events(&textareas[0], &mut cx);
+
+        cx.simulate_keystrokes("shift-f10");
+        settle(&mut cx);
+
+        assert!(cx.update(|window, cx| textareas[1].focus_handle(cx).is_focused(window)));
+        assert!(!cx.update(|window, cx| textareas[0].read(cx).is_focused(window, cx)));
+        assert_eq!(*events.borrow(), ["blur"]);
+    }
+
+    /// A drawn menu that takes the focus from its field holds it for the
+    /// field. The field goes on drawing as focused and sends no blur, and when
+    /// the focus comes back no focus. Focus that moves on from the menu to
+    /// another field blurs it then.
+    #[gpui::test]
+    fn a_drawn_context_menu_holds_the_focus_for_its_field(cx: &mut TestAppContext) {
+        let (mut cx, textareas) = open(cx, vec![|state| state, |state| state]);
+        let field = textareas[0].clone();
+        let menu = cx.update(|window, cx| {
+            let harness = window.root::<Harness>().flatten().unwrap();
+            harness.read(cx).menu.clone()
+        });
+        cx.update(|_, cx| {
+            let menu = menu.clone();
+            field.update(cx, |state, _| {
+                state.on_context_menu(Rc::new(move |_, _, _, window, cx| {
+                    let from = window.focused(cx).expect("the field has the focus");
+                    menu.focus(window, cx);
+                    crate::input::drawn_menu_took_focus(&from, &menu, cx);
+                }));
+            });
+        });
+        let events = record_focus_events(&field, &mut cx);
+        let field_focused = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| field.read(cx).is_focused(window, cx))
+        };
+
+        cx.simulate_keystrokes("shift-f10");
+        settle(&mut cx);
+        assert!(cx.update(|window, _| menu.is_focused(window)));
+        assert!(field_focused(&mut cx));
+
+        cx.update(|window, cx| field.update(cx, |state, cx| state.focus(window, cx)));
+        settle(&mut cx);
+        assert!(field_focused(&mut cx));
+        assert_eq!(*events.borrow(), [] as [&str; 0]);
+
+        cx.simulate_keystrokes("shift-f10");
+        settle(&mut cx);
+        assert!(field_focused(&mut cx));
+        cx.update(|window, cx| textareas[1].update(cx, |state, cx| state.focus(window, cx)));
+        settle(&mut cx);
+        assert!(!field_focused(&mut cx));
+        assert_eq!(*events.borrow(), ["blur"]);
     }
 }

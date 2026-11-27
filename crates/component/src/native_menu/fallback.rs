@@ -50,13 +50,17 @@ impl FallbackMenuOverlay {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let menu = build_popup(items, action_context, window, cx);
+        let menu = build_popup(items, action_context.clone(), window, cx);
 
         let subscription = cx.subscribe(&menu, |this, _, _: &DismissEvent, cx| {
             this.active = None;
             cx.notify();
         });
-        menu.focus_handle(cx).focus(window, cx);
+        let menu_focus = menu.focus_handle(cx);
+        menu_focus.focus(window, cx);
+        if let Some(from) = action_context.as_ref() {
+            gpui_base::input::drawn_menu_took_focus(from, &menu_focus, cx);
+        }
 
         self.active = Some(ActiveMenu {
             menu,

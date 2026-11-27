@@ -98,6 +98,10 @@ to its pages.
 - **A right-click keeps the selection it lands on** (`gpui-base`). A right-click on a selection,
   just past its end or below the text after Select All, opens the menu with the selection kept,
   and so do Shift-F10 and the Menu key, so Copy, Cut and Paste act on it.
+- **A field looks focused under its drawn menu** (`gpui-base`, `gpui-component`). The menu GPUI
+  draws takes the keyboard focus, and the field goes on showing its selection, caret and focus
+  border while it's open, as under an operating system's menu. The field emits no
+  `InputEvent::Blur` as its menu opens, only when the focus moves from the menu somewhere else.
 - **One context menu style for every text field** (`gpui-component`).
   `ContextMenuStyle::set_app_default` chooses between the operating system's menu and the menu
   GPUI draws in the theme's colors for every input, textarea and editor without a style of its

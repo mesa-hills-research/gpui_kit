@@ -1105,7 +1105,7 @@ impl<M: InputModeKind> TextElement<M> {
         cx: &mut App,
     ) -> Vec<Path<Pixels>> {
         let state = self.state.read(cx);
-        if !state.focus_handle.is_focused(window) {
+        if !state.is_focused(window, cx) {
             return vec![];
         }
 
@@ -3566,10 +3566,19 @@ impl<M: InputModeKind> Element for TextElement<M> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let (focus_handle, show_cursor, disabled, selected_range, editor_style, editor_paddings) = {
+        let (
+            focus_handle,
+            focused,
+            show_cursor,
+            disabled,
+            selected_range,
+            editor_style,
+            editor_paddings,
+        ) = {
             let state = self.state.read(cx);
             (
                 state.focus_handle.clone(),
+                state.is_focused(window, cx),
                 state.show_cursor(window, cx),
                 state.disabled,
                 *state.active_selection(),
@@ -3578,7 +3587,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
             )
         };
         let state_cursor_shape = self.state.read(cx).extras.cursor_shape();
-        let focused = focus_handle.is_focused(window);
         let bounds = prepaint.bounds;
         let text_align = prepaint.last_layout.text_align;
 

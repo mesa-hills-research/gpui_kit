@@ -804,9 +804,7 @@ impl RenderOnce for Input {
         let accessibility_value = ((window.is_a11y_active() || cfg!(feature = "test-support"))
             && exposes_accessibility_value(presentation.is_masked(), content_type))
         .then(|| state.text(cx).to_string());
-        let input_focused =
-            presentation.focus_handle().is_focused(window) && !presentation.is_disabled();
-        if input_focused {
+        if presentation.focus_handle().is_focused(window) && !presentation.is_disabled() {
             sync_native_content_type(window, content_type, presentation.is_editable());
         }
         let frame_focus_handle = window
@@ -815,8 +813,11 @@ impl RenderOnce for Input {
             })
             .read(cx)
             .clone();
-        let focused = input_focused
-            || (frame_focus_handle.contains_focused(window, cx) && !presentation.is_disabled());
+        // The input's context menu holds the focus for it, and the border
+        // stays as it does under an operating system's menu.
+        let focused = !presentation.is_disabled()
+            && (presentation.is_focused(window, cx)
+                || frame_focus_handle.contains_focused(window, cx));
 
         let gap_x = match self.size {
             Size::Small => px(4.),

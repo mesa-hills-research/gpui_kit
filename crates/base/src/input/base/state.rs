@@ -367,6 +367,10 @@ pub struct InputBaseState<M: InputModeKind> {
         Rc<dyn Fn(NativeMenu, InputContextMenuCapabilities, Point<Pixels>, &mut Window, &mut App)>,
     >,
     pending_context_menu: Option<(Point<Pixels>, usize)>,
+    /// The focus the input's context menu took from it as it opened, which
+    /// the menu holds for the input (see [`Self::is_focused`]), and the watch
+    /// for the focus leaving the menu.
+    context_menu_focus: Option<(FocusHandle, Subscription)>,
 
     /// Whether the context menu that shows on right-click is enabled.
     ///
@@ -406,6 +410,7 @@ pub struct InputBaseState<M: InputModeKind> {
 #[derive(Clone)]
 pub struct InputPresentation {
     focus_handle: FocusHandle,
+    context_menu_focus: Option<FocusHandle>,
     disabled: bool,
     readonly: bool,
     loading: bool,
@@ -421,6 +426,16 @@ pub struct InputPresentation {
 impl InputPresentation {
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus_handle
+    }
+
+    /// Whether the input has the keyboard focus, or its context menu holds it
+    /// for the input: see [`InputBaseState::is_focused`].
+    pub fn is_focused(&self, window: &Window, cx: &App) -> bool {
+        self.focus_handle.is_focused(window)
+            || self
+                .context_menu_focus
+                .as_ref()
+                .is_some_and(|menu| menu.contains_focused(window, cx))
     }
 
     pub fn is_disabled(&self) -> bool {
@@ -497,6 +512,10 @@ impl<M: InputModeKind> InputBaseState<M> {
     pub fn presentation(&self) -> InputPresentation {
         InputPresentation {
             focus_handle: self.focus_handle.clone(),
+            context_menu_focus: self
+                .context_menu_focus
+                .as_ref()
+                .map(|(menu, _)| menu.clone()),
             disabled: self.disabled,
             readonly: self.readonly,
             loading: self.loading,
@@ -586,6 +605,13 @@ impl<M: InputModeKind> InputBaseState<M> {
         cx.notify();
     }
 
+    /// Show the context menu with `handler`, on a right-click, Shift-F10 or
+    /// the Menu key.
+    ///
+    /// A drawn menu that takes the keyboard focus as the handler shows it, and
+    /// says so with [`crate::input::drawn_menu_took_focus`] as GPUI Kit's drawn
+    /// menu does, holds the focus for the input while it stays in the menu, as
+    /// [`Self::is_focused`] says.
     pub fn on_context_menu(
         &mut self,
         handler: Rc<
@@ -593,6 +619,64 @@ impl<M: InputModeKind> InputBaseState<M> {
         >,
     ) {
         self.context_menu_handler = Some(handler);
+    }
+
+    /// Whether the input has the keyboard focus, or its context menu holds it
+    /// for the input.
+    ///
+    /// An operating system's menu leaves the focus where it is. A menu that
+    /// takes the focus as it opens, and says so with
+    /// [`crate::input::drawn_menu_took_focus`] as GPUI Kit's drawn menu does,
+    /// holds it for the input instead, until the focus leaves the menu. Meanwhile the
+    /// input goes on showing its selection, its caret and its focus border, it
+    /// emits no [`InputEvent::Blur`], and when the focus comes back from the
+    /// menu, no [`InputEvent::Focus`]. When the focus goes from the menu to
+    /// somewhere else, the input emits [`InputEvent::Blur`] then.
+    pub fn is_focused(&self, window: &Window, cx: &App) -> bool {
+        self.focus_handle.is_focused(window) || self.context_menu_has_focus(window, cx)
+    }
+
+    fn context_menu_has_focus(&self, window: &Window, cx: &App) -> bool {
+        self.context_menu_focus
+            .as_ref()
+            .is_some_and(|(menu, _)| menu.contains_focused(window, cx))
+    }
+
+    /// The context menu took the focus from the input as it opened, and holds
+    /// it for the input.
+    fn hold_focus_in_context_menu(
+        &mut self,
+        menu: FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let watch = cx.on_focus_out(&menu, window, {
+            let menu = menu.clone();
+            move |input, _, window, cx| input.on_context_menu_focus_out(&menu, window, cx)
+        });
+        self.context_menu_focus = Some((menu, watch));
+    }
+
+    /// The focus left the context menu `menu`. Back on the input, which never
+    /// let go of it, [`Self::on_focus`] ends the hold. Somewhere else, the
+    /// input loses the focus now.
+    fn on_context_menu_focus_out(
+        &mut self,
+        menu: &FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let holds = self
+            .context_menu_focus
+            .as_ref()
+            .is_some_and(|(held, _)| held == menu);
+        // A window that stops being active takes the focus path away, and
+        // leaves the focus in the menu.
+        if !holds || self.focus_handle.is_focused(window) || menu.contains_focused(window, cx) {
+            return;
+        }
+        self.context_menu_focus = None;
+        self.on_blur(window, cx);
     }
 
     /// Build the engine. Each mode's own `new` sets its layout on top of this.
@@ -617,7 +701,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             cx.observe(&blink_cursor, |_, _, cx| cx.notify()),
             // A window can become inactive without blurring its focused input.
             cx.observe_window_activation(window, |input, window, cx| {
-                if window.is_window_active() && input.focus_handle.is_focused(window) {
+                if window.is_window_active() && input.is_focused(window, cx) {
                     input.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
                 } else {
                     input.blink_cursor.update(cx, |cursor, cx| cursor.stop(cx));
@@ -700,6 +784,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             diagnostic_popover: None,
             context_menu_handler: None,
             pending_context_menu: None,
+            context_menu_focus: None,
             enable_context_menu: true,
             completion_inserting: false,
             overlay_action_handler: None,
@@ -2181,9 +2266,21 @@ impl<M: InputModeKind> InputBaseState<M> {
 
         if let Some(handler) = self.context_menu_handler.clone() {
             let capabilities = self.context_menu_capabilities().offset(offset);
+            let input = cx.weak_entity();
+            let focus_handle = self.focus_handle.clone();
             // Outside this state's update, so the menu builder can read it.
             window.defer(cx, move |window, cx| {
-                handler(NativeMenu::new(), capabilities, position, window, cx);
+                let menu =
+                    super::native::open_context_menu(&focus_handle, window, cx, |window, cx| {
+                        handler(NativeMenu::new(), capabilities, position, window, cx)
+                    });
+                if let Some(menu) = menu {
+                    input
+                        .update(cx, |input, cx| {
+                            input.hold_focus_in_context_menu(menu, window, cx)
+                        })
+                        .ok();
+                }
             });
         }
     }
@@ -3471,13 +3568,17 @@ impl<M: InputModeKind> InputBaseState<M> {
 
     /// Returns the true to let InputElement to render cursor, when Input is focused and current BlinkCursor is visible.
     pub(crate) fn show_cursor(&self, window: &Window, cx: &App) -> bool {
-        (self.focus_handle.is_focused(window) || M::is_context_menu_open(self, cx))
+        (self.is_focused(window, cx) || M::is_context_menu_open(self, cx))
             && !self.disabled
             && self.blink_cursor.read(cx).visible()
             && window.is_window_active()
     }
 
     fn on_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Back from its context menu, which held the focus for the input.
+        if self.context_menu_focus.take().is_some() {
+            return;
+        }
         if window.is_window_active() {
             self.blink_cursor.update(cx, |cursor, cx| cursor.start(cx));
         }
@@ -3485,7 +3586,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     }
 
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if M::is_context_menu_open(self, cx) {
+        if M::is_context_menu_open(self, cx) || self.context_menu_has_focus(window, cx) {
             return;
         }
 
