@@ -675,7 +675,6 @@ impl<M: InputModeKind> InputBaseState<M> {
         if !holds || self.focus_handle.is_focused(window) || menu.contains_focused(window, cx) {
             return;
         }
-        self.context_menu_focus = None;
         self.on_blur(window, cx);
     }
 
@@ -3589,6 +3588,9 @@ impl<M: InputModeKind> InputBaseState<M> {
         if M::is_context_menu_open(self, cx) || self.context_menu_has_focus(window, cx) {
             return;
         }
+        // The focus left for somewhere other than the context menu, perhaps
+        // through the menu before it was ever drawn, so the hold is over.
+        self.context_menu_focus = None;
 
         M::hide_context_menu(self, cx);
         self.undo_manager.break_transaction_coalescing();

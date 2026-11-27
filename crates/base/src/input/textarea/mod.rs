@@ -494,4 +494,41 @@ mod tests {
         assert!(!field_focused(&mut cx));
         assert_eq!(*events.borrow(), ["blur"]);
     }
+
+    /// The focus can move on from a drawn menu before the menu is first
+    /// drawn. The field loses the focus then, and gets it back as from any
+    /// other element.
+    #[gpui::test]
+    fn the_focus_can_leave_a_drawn_menu_before_it_draws(cx: &mut TestAppContext) {
+        let (mut cx, textareas) = open(cx, vec![|state| state, |state| state]);
+        let field = textareas[0].clone();
+        let menu = cx.update(|window, cx| {
+            let harness = window.root::<Harness>().flatten().unwrap();
+            harness.read(cx).menu.clone()
+        });
+        cx.update(|_, cx| {
+            let other = textareas[1].clone();
+            field.update(cx, |state, _| {
+                state.on_context_menu(Rc::new(move |_, _, _, window, cx| {
+                    let from = window.focused(cx).expect("the field has the focus");
+                    menu.focus(window, cx);
+                    crate::input::drawn_menu_took_focus(&from, &menu, cx);
+                    let other = other.clone();
+                    window.defer(cx, move |window, cx| {
+                        other.update(cx, |other, cx| other.focus(window, cx))
+                    });
+                }));
+            });
+        });
+        let events = record_focus_events(&field, &mut cx);
+
+        cx.simulate_keystrokes("shift-f10");
+        settle(&mut cx);
+        assert!(!cx.update(|window, cx| field.read(cx).is_focused(window, cx)));
+        assert_eq!(*events.borrow(), ["blur"]);
+
+        cx.update(|window, cx| field.update(cx, |state, cx| state.focus(window, cx)));
+        settle(&mut cx);
+        assert_eq!(*events.borrow(), ["blur", "focus"]);
+    }
 }
